@@ -1,0 +1,25 @@
+# IDE and Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Development server configs
+fiveserver.config.js
+.liveserver.json
+bs-config.js
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Dependencies (if you add any later)
+node_modules/
+
+# Temporary files
+*.tmp
+*.temp

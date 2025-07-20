@@ -1,19 +1,17 @@
-# Redirect requests for index.php to index.html
-Redirect /index.php /index.html
-
-# Activate the Apache mod_rewrite module
+# Enable rewrite engine
 RewriteEngine On
 
-# Remove index or index.html from the URL and redirect to the directory root
-RewriteRule ^(index|index\.html)?$ / [R=301,L]
+# Remove .html extension from URLs
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^([^\.]+)$ $1.html [NC,L]
 
-# Disable MultiViews - to disable page generation on /index.html
+# Redirect .html to clean URLs (optional, prevents duplicate content)
+RewriteCond %{THE_REQUEST} \s/+([^/]+)\.html[\s?] [NC]
+RewriteRule ^(.+)\.html$ /$1 [R=301,L]
+
+# Set index.html as directory index
+DirectoryIndex index.html
+
+# Disable MultiViews to prevent conflicts
 Options -MultiViews
-
-# Set index file without extension as the default file to serve when a directory is requested
-DirectoryIndex index
-
-# Treat (force) index file as PHP
-<Files index>
-    SetHandler application/x-httpd-php
-</Files>

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCB CAM - File-Based Operations</title>
+    <link rel="stylesheet" href="cam.css">
+</head>
+<body>
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div id="loading-text">Loading PCB CAM...</div>
+        <div id="loading-progress" style="margin-top: 8px; font-size: 12px;">0%</div>
+    </div>
+
+    <div class="app">
+        <header class="header">
+            <div class="header-content">
+                <div>
+                    <h1>PCB CAM</h1>
+                    <span class="version-badge">v6.0 - File Operations</span>
+                </div>
+                <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+                    <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main class="main">
+            <div class="container">
+                <section class="section">
+                    <h2>PCB Operations</h2>
+                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
+                        Each file becomes an independent operation with its own tool settings and parameters. 
+                        Multiple files of the same type are allowed for different tools and requirements.
+                    </p>
+                    
+                    <!-- Isolation Operations -->
+                    <div class="operation-group">
+                        <div class="operation-group-header">
+                            <h3>📄 Isolation Routing</h3>
+                            <span class="operation-group-desc">Isolate copper traces with precision tools</span>
+                        </div>
+                        <div class="operation-list" id="isolation-operations">
+                            <!-- Operations will be dynamically added here -->
+                            <!-- Upload area always at bottom -->
+                        </div>
+                    </div>
+
+                    <!-- Copper Clearing Operations -->
+                    <div class="operation-group">
+                        <div class="operation-group-header">
+                            <h3>📄 Copper Clearing</h3>
+                            <span class="operation-group-desc">Remove unwanted copper areas</span>
+                        </div>
+                        <div class="operation-list" id="clear-operations">
+                            <!-- Operations will be dynamically added here -->
+                        </div>
+                    </div>
+
+                    <!-- Drilling Operations -->
+                    <div class="operation-group">
+                        <div class="operation-group-header">
+                            <h3>🔧 Drilling</h3>
+                            <span class="operation-group-desc">Drill holes and vias</span>
+                        </div>
+                        <div class="operation-list" id="drill-operations">
+                            <!-- Operations will be dynamically added here -->
+                        </div>
+                    </div>
+
+                    <!-- Cutout Operations -->
+                    <div class="operation-group">
+                        <div class="operation-group-header">
+                            <h3>📄 Board Cutout</h3>
+                            <span class="operation-group-desc">Cut board outline and internal shapes</span>
+                        </div>
+                        <div class="operation-list" id="cutout-operations">
+                            <!-- Operations will be dynamically added here -->
+                        </div>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>PCB & Machine Settings</h2>
+                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+                        Global settings that apply to all operations. Individual tool and cutting parameters are configured per file above.
+                    </p>
+                    <div class="machine-grid">
+                        <div class="param-group">
+                            <h3>PCB Properties</h3>
+                            <div class="input-group">
+                                <label title="Total PCB thickness including substrate">PCB Thickness</label>
+                                <div class="input-unit">
+                                    <input type="number" id="pcb-thickness" value="1.6" min="0.2" step="0.1">
+                                    <span>mm</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="param-group">
+                            <h3>Machine Heights</h3>
+                            <div class="input-group">
+                                <label title="Safe height for tool changes and rapid moves">Safe Z</label>
+                                <div class="input-unit">
+                                    <input type="number" id="safe-z" value="2" min="0.5" step="0.1">
+                                    <span>mm</span>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label title="Height for rapid moves between cuts">Travel Z</label>
+                                <div class="input-unit">
+                                    <input type="number" id="travel-z" value="1" min="0.1" step="0.1">
+                                    <span>mm</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="param-group">
+                            <h3>Machine Speeds</h3>
+                            <div class="input-group">
+                                <label title="Non-cutting movement speed (rapids)">Rapid Feed</label>
+                                <div class="input-unit">
+                                    <input type="number" id="rapid-feed" value="1000" min="100" step="100">
+                                    <span>mm/min</span>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label title="Work coordinate system to use">Work Coordinates</label>
+                                <select id="work-coords">
+                                    <option value="G54">G54</option>
+                                    <option value="G55">G55</option>
+                                    <option value="G56">G56</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>G-code Configuration</h2>
+                    <div class="gcode-config">
+                        <div class="input-group">
+                            <label>Post-Processor</label>
+                            <select id="post-processor">
+                                <option value="grbl">GRBL Standard</option>
+                                <option value="marlin">Marlin</option>
+                                <option value="linuxcnc">LinuxCNC</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Units</label>
+                            <select id="gcode-units">
+                                <option value="mm">Millimeters (G21)</option>
+                                <option value="inch">Inches (G20)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="gcode-settings">
+                        <div class="gcode-group">
+                            <label>Start Code</label>
+                            <textarea id="start-gcode" rows="3">G90 G21 G17
+M3 S1000
+G4 P1</textarea>
+                        </div>
+                        <div class="gcode-group">
+                            <label>End Code</label>
+                            <textarea id="end-gcode" rows="3">M5
+G0 Z10
+M2</textarea>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="actions">
+                    <button class="btn-preview" id="preview-btn">Preview Geometry</button>
+                    <button class="btn-generate" id="export-gcode-btn" disabled>Export G-code Files</button>
+                </div>
+            </div>
+        </main>
+
+        <div class="status" id="status">
+            <span id="status-text">Ready - Add PCB files to begin</span>
+        </div>
+    </div>
+
+    <!-- Preview Modal with Integrated Debug -->
+    <div class="modal" id="preview-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>PCB Geometry Preview</h2>
+                <div class="modal-header-controls">
+                    <button class="btn-secondary" id="debug-toggle-btn">Debug</button>
+                    <button class="modal-close" id="modal-close-btn">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="preview-container">
+                    <canvas id="preview-canvas"></canvas>
+                    <div class="preview-tools">
+                         <button id="zoom-fit-btn">Fit</button>
+                        <button id="zoom-in-btn">+</button>
+                        <button id="zoom-out-btn">-</button>
+                        <button id="toggle-outlines-btn">Outlines</button>
+                        <button id="toggle-fill-btn">Fill</button>
+                    </div>
+                </div>
+                <div class="preview-sidebar">
+                    <!-- Coordinate System Controls -->
+                    <div class="coordinate-section">
+                        <h3>Origin Adjustment</h3>
+                        <div class="input-group">
+                            <label>X Offset</label>
+                            <div class="input-unit">
+                                <input type="number" id="x-offset" value="0" step="0.1">
+                                <span>mm</span>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label>Y Offset</label>
+                            <div class="input-unit">
+                                <input type="number" id="y-offset" value="0" step="0.1">
+                                <span>mm</span>
+                            </div>
+                        </div>
+                        <div class="coord-buttons">
+                            <button class="btn-secondary" id="center-origin-btn">Center</button>
+                            <button class="btn-secondary" id="bottom-left-origin-btn">Bottom Left</button>
+                        </div>
+                    </div>
+
+                    <!-- Geometry Statistics -->
+                    <div class="preview-stats">
+                        <h3>Geometry Statistics</h3>
+                        <div class="stat-row">
+                            <span>Operations:</span>
+                            <span id="preview-operations">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Total Polygons:</span>
+                            <span id="preview-total-polygons">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Unified Polygons:</span>
+                            <span id="preview-unified-polygons">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Board Size:</span>
+                            <span id="board-size">-- × -- mm</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Total Area:</span>
+                            <span id="total-area">-- mm²</span>
+                        </div>
+                    </div>
+
+                    <!-- Debug Panel (Initially Hidden) -->
+                    <div class="debug-section" id="debug-section" style="display: none;">
+                        <h3>Debug Information</h3>
+                        <div class="debug-content">
+                            <div class="debug-actions">
+                                <button class="btn-secondary" onclick="PCBDebugHelper?.analyzeGeometry()">Analyze Geometry</button>
+                                <button class="btn-secondary" onclick="PCBDebugHelper?.validateSystem()">Validate System</button>
+                                <button class="btn-secondary" onclick="PCBDebugHelper?.exportDebugData()">Export Debug Data</button>
+                            </div>
+                            <div class="debug-output" id="debug-output">
+                                <div style="font-family: monospace; font-size: 0.75rem; color: var(--text-secondary);">
+                                    Debug output will appear here...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Export Options -->
+                    <div class="export-section">
+                        <h3>Export Options</h3>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="export-unified-polygons" checked>
+                            <span>Export unified polygons<br><small>(boolean unioned output)</small></span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="export-debug-info">
+                            <span>Include debug information<br><small>(processing metadata)</small></span>
+                        </label>
+                    </div>
+                    
+                    <div class="preview-warnings" id="warnings"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="modal-goback-btn">Back to Operations</button>
+                <button class="btn-secondary" id="export-debug-svg-btn">Debug SVG</button>
+                <button class="btn-primary" id="export-clean-svg-btn">Export Clean SVG</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input for file selection -->
+    <input type="file" id="file-input-temp" style="display: none;">
+
+    <script>
+        // Script Loader with correct paths
+        const scripts = [
+            'geometry/clipper.min.js',
+            'geometry/polygon.js',
+            'geometry/fusion.js',
+            'geometry/offset-engine.js',
+            'parsers/gerber.js',
+            'parsers/excellon.js',
+            'preview/renderer.js',
+            'debug/svg-exporter.js',
+            'debug/debug-helper.js',
+            'cam.js' // Main controller must be last
+        ];
+        
+        let loadedCount = 0;
+        const totalScripts = scripts.length;
+        let loadingStartTime = Date.now();
+        
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.async = false;
+                script.onload = () => {
+                    console.log(`✅ Loaded: ${src}`);
+                    loadedCount++;
+                    updateLoadingProgress();
+                    resolve();
+                };
+                script.onerror = () => {
+                    console.error(`❌ Failed to load ${src}`);
+                    updateLoadingProgress(`❌ Failed: ${src}`);
+                    reject(new Error(`Failed to load ${src}`));
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        function updateLoadingProgress(errorMessage = null) {
+            const progress = Math.round((loadedCount / totalScripts) * 100);
+            const progressElement = document.getElementById('loading-progress');
+            const textElement = document.getElementById('loading-text');
+            
+            if (errorMessage) {
+                textElement.textContent = errorMessage;
+                progressElement.textContent = 'Loading failed';
+                return;
+            }
+            
+            progressElement.textContent = `${progress}%`;
+            
+            if (loadedCount === totalScripts) {
+                const loadTime = Date.now() - loadingStartTime;
+                textElement.textContent = `PCB CAM loaded in ${loadTime}ms`;
+                setTimeout(() => {
+                    document.getElementById('loading-overlay').style.display = 'none';
+                }, 500);
+            }
+        }
+        
+        async function loadAllScripts() {
+            try {
+                console.log('🚀 Loading PCB CAM...');
+                loadingStartTime = Date.now();
+                updateLoadingProgress();
+                
+                for (const scriptPath of scripts) {
+                    await loadScript(scriptPath);
+                }
+                
+                console.log('🎉 All scripts loaded successfully.');
+                
+                // Initialize the application
+                window.cam = new PolygonPCBCam();
+                
+                // Setup debug toggle
+                document.getElementById('debug-toggle-btn')?.addEventListener('click', () => {
+                    const debugSection = document.getElementById('debug-section');
+                    const isVisible = debugSection.style.display !== 'none';
+                    debugSection.style.display = isVisible ? 'none' : 'block';
+                });
+                
+            } catch (error) {
+                console.error('💥 Error loading PCB CAM:', error);
+                document.getElementById('loading-text').textContent = `Error: ${error.message}`;
+                document.getElementById('loading-progress').textContent = 'Loading failed';
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', loadAllScripts);
+    </script>
+</body>
+</html>
