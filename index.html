@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PCB CAM - File-Based Operations</title>
+    <title>PCB CAM</title>
     <link rel="stylesheet" href="cam.css">
 </head>
 <body>
@@ -18,7 +18,7 @@
             <div class="header-content">
                 <div>
                     <h1>PCB CAM</h1>
-                    <span class="version-badge">v6.0 - File Operations</span>
+                    <span class="version-badge">v7.2</span>
                 </div>
                 <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                     <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -42,51 +42,50 @@
         <main class="main">
             <div class="container">
                 <section class="section">
-                    <h2>PCB Operations</h2>
+                    <h2>📁 PCB Operations</h2>
                     <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
-                        Each file becomes an independent operation with its own tool settings and parameters. 
-                        Multiple files of the same type are allowed for different tools and requirements.
+                        Upload your PCB files. Each file becomes an operation with individual tool settings.
+                        Geometry processing is deferred until preview for better performance.
                     </p>
                     
-                    <!-- Isolation Operations -->
+                    <!-- Isolation Routing -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>📄 Isolation Routing</h3>
-                            <span class="operation-group-desc">Isolate copper traces with precision tools</span>
+                            <h3>🎯 Isolation Routing</h3>
+                            <button class="btn-add-file" onclick="addFile('isolation')">+ Add File</button>
                         </div>
                         <div class="operation-list" id="isolation-operations">
                             <!-- Operations will be dynamically added here -->
-                            <!-- Upload area always at bottom -->
                         </div>
                     </div>
 
-                    <!-- Copper Clearing Operations -->
-                    <div class="operation-group">
-                        <div class="operation-group-header">
-                            <h3>📄 Copper Clearing</h3>
-                            <span class="operation-group-desc">Remove unwanted copper areas</span>
-                        </div>
-                        <div class="operation-list" id="clear-operations">
-                            <!-- Operations will be dynamically added here -->
-                        </div>
-                    </div>
-
-                    <!-- Drilling Operations -->
+                    <!-- Drilling -->
                     <div class="operation-group">
                         <div class="operation-group-header">
                             <h3>🔧 Drilling</h3>
-                            <span class="operation-group-desc">Drill holes and vias</span>
+                            <button class="btn-add-file" onclick="addFile('drill')">+ Add File</button>
                         </div>
                         <div class="operation-list" id="drill-operations">
                             <!-- Operations will be dynamically added here -->
                         </div>
                     </div>
 
-                    <!-- Cutout Operations -->
+                    <!-- Copper Clearing -->
+                    <div class="operation-group">
+                        <div class="operation-group-header">
+                            <h3>📄 Copper Clearing</h3>
+                            <button class="btn-add-file" onclick="addFile('clear')">+ Add File</button>
+                        </div>
+                        <div class="operation-list" id="clear-operations">
+                            <!-- Operations will be dynamically added here -->
+                        </div>
+                    </div>
+
+                    <!-- Board Cutout -->
                     <div class="operation-group">
                         <div class="operation-group-header">
                             <h3>📄 Board Cutout</h3>
-                            <span class="operation-group-desc">Cut board outline and internal shapes</span>
+                            <button class="btn-add-file" onclick="addFile('cutout')">+ Add File</button>
                         </div>
                         <div class="operation-list" id="cutout-operations">
                             <!-- Operations will be dynamically added here -->
@@ -95,10 +94,7 @@
                 </section>
 
                 <section class="section">
-                    <h2>PCB & Machine Settings</h2>
-                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
-                        Global settings that apply to all operations. Individual tool and cutting parameters are configured per file above.
-                    </p>
+                    <h2>⚙️ Machine Settings</h2>
                     <div class="machine-grid">
                         <div class="param-group">
                             <h3>PCB Properties</h3>
@@ -151,7 +147,7 @@
                 </section>
 
                 <section class="section">
-                    <h2>G-code Configuration</h2>
+                    <h2>📝 G-code Configuration</h2>
                     <div class="gcode-config">
                         <div class="input-group">
                             <label>Post-Processor</label>
@@ -186,8 +182,8 @@ M2</textarea>
                 </section>
 
                 <div class="actions">
-                    <button class="btn-preview" id="preview-btn">Preview Geometry</button>
-                    <button class="btn-generate" id="export-gcode-btn" disabled>Export G-code Files</button>
+                    <button class="btn-preview" id="preview-btn">🔍 Preview & Setup</button>
+                    <button class="btn-generate" id="export-gcode-btn" disabled>⚡ Generate G-code</button>
                 </div>
             </div>
         </main>
@@ -197,13 +193,12 @@ M2</textarea>
         </div>
     </div>
 
-    <!-- Preview Modal with Integrated Debug -->
+    <!-- Enhanced Preview Modal -->
     <div class="modal" id="preview-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>PCB Geometry Preview</h2>
+                <h2>📐 PCB Preview & Setup</h2>
                 <div class="modal-header-controls">
-                    <button class="btn-secondary" id="debug-toggle-btn">Debug</button>
                     <button class="modal-close" id="modal-close-btn">&times;</button>
                 </div>
             </div>
@@ -211,17 +206,33 @@ M2</textarea>
                 <div class="preview-container">
                     <canvas id="preview-canvas"></canvas>
                     <div class="preview-tools">
-                         <button id="zoom-fit-btn">Fit</button>
+                        <button id="zoom-fit-btn">Fit</button>
                         <button id="zoom-in-btn">+</button>
                         <button id="zoom-out-btn">-</button>
-                        <button id="toggle-outlines-btn">Outlines</button>
-                        <button id="toggle-fill-btn">Fill</button>
                     </div>
                 </div>
                 <div class="preview-sidebar">
-                    <!-- Coordinate System Controls -->
+                    <!-- Origin Setup -->
                     <div class="coordinate-section">
-                        <h3>Origin Adjustment</h3>
+                        <h3>🎯 Origin Setup</h3>
+                        
+                        <div class="board-info">
+                            <div class="info-row">
+                                <span>Board Size:</span>
+                                <span id="board-size">-- × -- mm</span>
+                            </div>
+                            <div class="info-row">
+                                <span>Current Origin:</span>
+                                <span id="current-origin">0, 0</span>
+                            </div>
+                        </div>
+                        
+                        <div class="coord-buttons">
+                            <button class="btn-secondary" id="center-origin-btn">Center</button>
+                            <button class="btn-secondary" id="bottom-left-origin-btn">Bottom Left</button>
+                        </div>
+                        
+                        <!-- Manual origin input -->
                         <div class="input-group">
                             <label>X Offset</label>
                             <div class="input-unit">
@@ -236,74 +247,27 @@ M2</textarea>
                                 <span>mm</span>
                             </div>
                         </div>
-                        <div class="coord-buttons">
-                            <button class="btn-secondary" id="center-origin-btn">Center</button>
-                            <button class="btn-secondary" id="bottom-left-origin-btn">Bottom Left</button>
-                        </div>
                     </div>
 
-                    <!-- Geometry Statistics -->
+                    <!-- Simple Stats -->
                     <div class="preview-stats">
-                        <h3>Geometry Statistics</h3>
-                        <div class="stat-row">
-                            <span>Operations:</span>
-                            <span id="preview-operations">0</span>
-                        </div>
-                        <div class="stat-row">
-                            <span>Total Polygons:</span>
-                            <span id="preview-total-polygons">0</span>
-                        </div>
-                        <div class="stat-row">
-                            <span>Unified Polygons:</span>
-                            <span id="preview-unified-polygons">0</span>
-                        </div>
-                        <div class="stat-row">
-                            <span>Board Size:</span>
-                            <span id="board-size">-- × -- mm</span>
-                        </div>
-                        <div class="stat-row">
-                            <span>Total Area:</span>
-                            <span id="total-area">-- mm²</span>
-                        </div>
-                    </div>
-
-                    <!-- Debug Panel (Initially Hidden) -->
-                    <div class="debug-section" id="debug-section" style="display: none;">
-                        <h3>Debug Information</h3>
-                        <div class="debug-content">
-                            <div class="debug-actions">
-                                <button class="btn-secondary" onclick="PCBDebugHelper?.analyzeGeometry()">Analyze Geometry</button>
-                                <button class="btn-secondary" onclick="PCBDebugHelper?.validateSystem()">Validate System</button>
-                                <button class="btn-secondary" onclick="PCBDebugHelper?.exportDebugData()">Export Debug Data</button>
+                        <h3>📊 Operations</h3>
+                        <div class="stat-grid">
+                            <div class="stat-row">
+                                <span>Files Loaded:</span>
+                                <span id="preview-operations">0</span>
                             </div>
-                            <div class="debug-output" id="debug-output">
-                                <div style="font-family: monospace; font-size: 0.75rem; color: var(--text-secondary);">
-                                    Debug output will appear here...
-                                </div>
+                            <div class="stat-row">
+                                <span>Total Polygons:</span>
+                                <span id="preview-total-polygons">0</span>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Export Options -->
-                    <div class="export-section">
-                        <h3>Export Options</h3>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="export-unified-polygons" checked>
-                            <span>Export unified polygons<br><small>(boolean unioned output)</small></span>
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="export-debug-info">
-                            <span>Include debug information<br><small>(processing metadata)</small></span>
-                        </label>
-                    </div>
-                    
-                    <div class="preview-warnings" id="warnings"></div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-secondary" id="modal-goback-btn">Back to Operations</button>
-                <button class="btn-secondary" id="export-debug-svg-btn">Debug SVG</button>
-                <button class="btn-primary" id="export-clean-svg-btn">Export Clean SVG</button>
+                <button class="btn-secondary" id="modal-goback-btn">← Back</button>
+                <button class="btn-primary" id="export-clean-svg-btn">Export SVG</button>
             </div>
         </div>
     </div>
@@ -312,18 +276,19 @@ M2</textarea>
     <input type="file" id="file-input-temp" style="display: none;">
 
     <script>
-        // Script Loader with correct paths
+        // Balanced script loader
         const scripts = [
-            'geometry/clipper.min.js',
+            'geometry/clipper.min.js',            // Local Copy
             'geometry/polygon.js',
             'geometry/fusion.js',
-            'geometry/offset-engine.js',
+            'geometry/offset-engine.js',          // Keep original for now
+            'geometry/analyzer.js',               // Use balanced version
+            'coordinate/coordinate-system.js',    // Use balanced version
             'parsers/gerber.js',
             'parsers/excellon.js',
-            'preview/renderer.js',
-            'debug/svg-exporter.js',
-            'debug/debug-helper.js',
-            'cam.js' // Main controller must be last
+            'preview/renderer.js',                // Use balanced version
+            'debug/svg-exporter.js',              // Restore SVG export
+            'cam.js'                              // Main controller must be last
         ];
         
         let loadedCount = 0;
@@ -365,7 +330,7 @@ M2</textarea>
             
             if (loadedCount === totalScripts) {
                 const loadTime = Date.now() - loadingStartTime;
-                textElement.textContent = `PCB CAM loaded in ${loadTime}ms`;
+                textElement.textContent = `PCB CAM Ready (${loadTime}ms)`;
                 setTimeout(() => {
                     document.getElementById('loading-overlay').style.display = 'none';
                 }, 500);
@@ -386,13 +351,7 @@ M2</textarea>
                 
                 // Initialize the application
                 window.cam = new PolygonPCBCam();
-                
-                // Setup debug toggle
-                document.getElementById('debug-toggle-btn')?.addEventListener('click', () => {
-                    const debugSection = document.getElementById('debug-section');
-                    const isVisible = debugSection.style.display !== 'none';
-                    debugSection.style.display = isVisible ? 'none' : 'block';
-                });
+                console.log('🎯 Balanced PCB CAM initialized successfully');
                 
             } catch (error) {
                 console.error('💥 Error loading PCB CAM:', error);

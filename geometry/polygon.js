@@ -1,5 +1,4 @@
 // Core Polygon System for PCB Geometry
-// This replaces all the old TraceGeometry, ArcGeometry, etc. classes
 
 class CopperPolygon {
     constructor(points, properties = {}) {
