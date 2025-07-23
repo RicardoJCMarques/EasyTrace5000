@@ -1,4 +1,5 @@
 /* Simplified CSS for PCB CAM - Focus on Clean UI */
+/* cam.css */
 
 * {
     margin: 0;
@@ -601,14 +602,17 @@ h1 {
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 100;
+    overflow-y: auto; /* Allow scrolling on modal backdrop */
     padding: 2rem;
     backdrop-filter: blur(4px);
 }
 
 .modal.active {
     display: flex;
-    align-items: center;
+    align-items: flex-start; /* Align to top instead of center */
     justify-content: center;
+    padding-top: 2rem; /* Space from top */
+    padding-bottom: 2rem;
 }
 
 .modal-content {
@@ -616,11 +620,13 @@ h1 {
     border-radius: var(--radius);
     width: 100%;
     max-width: 1400px;
-    max-height: 90vh;
+    margin: auto;
     display: flex;
     flex-direction: column;
     box-shadow: var(--shadow-lg);
     border: 1px solid var(--border);
+    max-height: none; /* Remove height restriction */
+    height: auto; /* Natural height */
 }
 
 .modal-header {
@@ -668,7 +674,8 @@ h1 {
 .modal-body {
     flex: 1;
     display: flex;
-    overflow: hidden;
+    overflow: visible; /* Content can expand */
+    min-height: 600px; /* Minimum height */
 }
 
 .preview-container {

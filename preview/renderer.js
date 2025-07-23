@@ -1,4 +1,5 @@
-// Preview Renderer with Proper Origin Marker
+// Fixed Preview Renderer - Proper Data Handling and Auto-Fit
+// preview/renderer.js
 
 class PreviewRenderer {
     constructor(canvasId) {
@@ -15,833 +16,744 @@ class PreviewRenderer {
         // View settings
         this.viewOffset = { x: 0, y: 0 };
         this.viewScale = 1;
-        this.bounds = null;
+        this.bounds = null; // Overall board bounds
         
-        // Origin position (separate from geometry transform)
-        this.originPosition = { x: 0, y: 0 };
+        // Coordinate system integration
+        this.coordinateSystem = null; // Will be linked from coordinate system manager
+        this.gerberOrigin = { x: 0, y: 0 }; // Gerber coordinate origin
+        this.originPosition = { x: 0, y: 0 }; // Current working origin
         
-        // Rendering settings
+        // Rendering settings - ONE COLOR PER OPERATION
         this.colors = {
             isolation: '#00ff00',
             clear: '#ff6600', 
             drill: '#4488ff',
             cutout: '#ff00ff',
-            grid: '#333333',
+            grid: '#666666',
+            gridText: '#888888',
             background: '#1a1a1a',
+            bounds: '#ff0000',
             origin: '#ffffff',
-            bounds: '#888888'
+            offsetOutline: '#ffff00',
+            originalOutline: '#00ffff',
+            ruler: '#ffffff',
+            rulerText: '#cccccc'
         };
-        
-        // Light theme colors
+
         this.lightColors = {
             isolation: '#00aa00',
-            clear: '#cc4400', 
+            clear: '#cc4400',
             drill: '#0066cc',
             cutout: '#cc00cc',
             grid: '#cccccc',
+            gridText: '#666666',
             background: '#ffffff',
+            bounds: '#ff0000',
             origin: '#000000',
-            bounds: '#666666'
+            offsetOutline: '#ccbb00',
+            originalOutline: '#009999',
+            ruler: '#000000',
+            rulerText: '#333333'
         };
         
-        // Debug controls
-        this.debugMode = false;
+        this.currentColors = this.colors; // Default to dark theme
+        this.theme = 'dark';
+
+        // Layers to render
+        this.operationLayers = new Map(); // operationType -> { polygons: [], holes: [], preservedFills: [] }
+        this.offsetLayers = new Map(); // operationId -> offset polygons
+        
+        // Debug and render options
+        this.showFilled = true;
+        this.showOutlines = true;
+        this.blackAndWhite = false;
         this.showGrid = true;
         this.showOrigin = true;
         this.showBounds = false;
-        this.showOutlines = true;
-        this.showFilled = true;
-        this.blackAndWhite = false;
-        
-        // Data storage
-        this.data = null;
-        this.layerPolygons = new Map();
-        this.layerHoles = new Map();
-        
-        // SVG exporter reference
-        this.svgExporter = null;
-        
-        // Statistics
+        this.showOffsets = false; // Show offset polygons
+        this.showOriginal = true; // Show original polygons
+        this.offsetOnly = false; // Show only offset polygons, hide original
+        this.showRulers = true;
+        this.debugMode = false;
+
+        // Stats
         this.renderStats = {
-            totalPolygons: 0,
-            totalHoles: 0,
-            visiblePolygons: 0,
+            drawCalls: 0,
+            polygonsRendered: 0,
             renderTime: 0
         };
-        
-        // Mouse handling
-        this.isPanning = false;
-        this.lastMouse = { x: 0, y: 0 };
-        
-        this.setupCanvas();
+
+        // Initialize SVG Exporter
+        this.svgExporter = null; // Will be linked from cam.js or main script
+
         this.setupEventListeners();
-        this.setupDebugPanel();
-        
-        console.log('Balanced PreviewRenderer initialized with origin marker support');
+        this.resizeCanvas(); // Initial resize
     }
-    
-    setupCanvas() {
-        this.canvas.style.display = 'block';
-        this.canvas.style.cursor = 'grab';
-        
-        this.resizeCanvas();
+
+    setSVGExporter(exporter) {
+        this.svgExporter = exporter;
     }
-    
-    resizeCanvas() {
-        try {
-            const rect = this.canvas.parentElement.getBoundingClientRect();
-            const width = Math.max(rect.width, 400);
-            const height = Math.max(rect.height, 300);
-            
-            this.canvas.width = width;
-            this.canvas.height = height;
-            
-            this.render();
-        } catch (error) {
-            console.error('Error resizing canvas:', error);
-        }
+
+    // Set the coordinate system manager
+    setCoordinateSystemManager(manager) {
+        this.coordinateSystem = manager;
+        this.updateCoordinateSystem(); // Initial update
     }
-    
-    setupEventListeners() {
-        // Mouse events
-        this.canvas.addEventListener('mousedown', (e) => {
-            if (e.button === 0) {
-                this.isPanning = true;
-                this.lastMouse = { x: e.clientX, y: e.clientY };
-                this.canvas.style.cursor = 'grabbing';
-                e.preventDefault();
-            }
-        });
-        
-        window.addEventListener('mousemove', (e) => {
-            if (this.isPanning) {
-                const dx = e.clientX - this.lastMouse.x;
-                const dy = e.clientY - this.lastMouse.y;
-                
-                this.viewOffset.x += dx;
-                this.viewOffset.y -= dy;
-                
-                this.lastMouse = { x: e.clientX, y: e.clientY };
-                this.render();
-                e.preventDefault();
-            }
-        });
-        
-        window.addEventListener('mouseup', (e) => {
-            if (this.isPanning) {
-                this.isPanning = false;
-                this.canvas.style.cursor = 'grab';
-            }
-        });
-        
-        // Wheel zoom
-        this.canvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            
-            const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
-            const mouseX = e.offsetX;
-            const mouseY = e.offsetY;
-            
-            this.viewOffset.x = mouseX - (mouseX - this.viewOffset.x) * scaleFactor;
-            this.viewOffset.y = mouseY - (mouseY - this.viewOffset.y) * scaleFactor;
-            this.viewScale *= scaleFactor;
-            
-            this.render();
-        });
-        
-        // Window resize
-        window.addEventListener('resize', () => this.resizeCanvas());
-    }
-    
-    setupDebugPanel() {
-        // Create debug control panel
-        const debugPanel = document.createElement('div');
-        debugPanel.id = 'debug-panel';
-        debugPanel.style.cssText = `
-            position: fixed;
-            top: 120px;
-            right: 20px;
-            z-index: 1001;
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 12px;
-            border-radius: 6px;
-            font-family: monospace;
-            font-size: 12px;
-            display: none;
-            min-width: 200px;
-            backdrop-filter: blur(4px);
-        `;
-        
-        debugPanel.innerHTML = `
-            <div style="font-weight: bold; margin-bottom: 8px; color: #4fc3f7;">🔧 Debug Controls</div>
-            
-            <div style="margin-bottom: 8px;">
-                <label><input type="checkbox" id="show-grid" checked> Show Grid</label><br>
-                <label><input type="checkbox" id="show-origin" checked> Show Origin</label><br>
-                <label><input type="checkbox" id="show-bounds"> Show Bounds</label>
-            </div>
-            
-            <div style="margin-bottom: 8px; border-top: 1px solid #444; padding-top: 8px;">
-                <label><input type="checkbox" id="show-outlines" checked> Show Outlines</label><br>
-                <label><input type="checkbox" id="show-filled" checked> Show Fill</label><br>
-                <label><input type="checkbox" id="black-and-white"> Black & White</label>
-            </div>
-            
-            <div style="border-top: 1px solid #444; padding-top: 8px; margin-bottom: 8px;">
-                <div style="font-weight: bold; margin-bottom: 4px; color: #81c784;">📊 Render Stats</div>
-                <div id="render-stats" style="font-size: 11px; color: #bbb;">No data</div>
-            </div>
-            
-            <button onclick="window.cam?.renderer?.downloadDebugSVG()" 
-                    style="width: 100%; padding: 6px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                📁 Export Debug SVG
-            </button>
-        `;
-        
-        document.body.appendChild(debugPanel);
-        
-        // Add debug toggle button to preview tools
-        const previewTools = document.querySelector('.preview-tools');
-        if (previewTools) {
-            const debugToggle = document.createElement('button');
-            debugToggle.id = 'debug-toggle-btn';
-            debugToggle.textContent = 'Debug';
-            debugToggle.style.cssText = `
-                padding: 0.375rem 0.75rem;
-                background: var(--bg-alt);
-                border: 1px solid var(--border);
-                border-radius: var(--radius);
-                font-size: 0.8125rem;
-                cursor: pointer;
-                transition: all 0.15s ease;
-                color: var(--text);
-            `;
-            
-            debugToggle.addEventListener('click', () => {
-                const panel = document.getElementById('debug-panel');
-                const isVisible = panel.style.display !== 'none';
-                panel.style.display = isVisible ? 'none' : 'block';
-                debugToggle.style.background = isVisible ? 'var(--bg-alt)' : 'var(--accent)';
-                debugToggle.style.color = isVisible ? 'var(--text)' : 'white';
-            });
-            
-            previewTools.appendChild(debugToggle);
-        }
-        
-        this.setupDebugControlHandlers();
-    }
-    
-    setupDebugControlHandlers() {
-        const controls = [
-            'show-grid', 'show-origin', 'show-bounds', 
-            'show-outlines', 'show-filled', 'black-and-white'
-        ];
-        
-        controls.forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.addEventListener('change', () => {
-                    this.updateDebugControls();
-                    this.render();
-                });
-            }
-        });
-    }
-    
-    updateDebugControls() {
-        this.showGrid = document.getElementById('show-grid')?.checked !== false;
-        this.showOrigin = document.getElementById('show-origin')?.checked !== false;
-        this.showBounds = document.getElementById('show-bounds')?.checked || false;
-        this.showOutlines = document.getElementById('show-outlines')?.checked !== false;
-        this.showFilled = document.getElementById('show-filled')?.checked !== false;
-        this.blackAndWhite = document.getElementById('black-and-white')?.checked || false;
-    }
-    
-    // Get current color scheme based on theme and debug settings
-    getCurrentColors() {
-        const theme = document.documentElement.getAttribute('data-theme');
-        const baseColors = theme === 'light' ? this.lightColors : this.colors;
-        
-        if (this.blackAndWhite) {
-            const bwColor = theme === 'light' ? '#000000' : '#ffffff';
-            return {
-                ...baseColors,
-                isolation: bwColor,
-                clear: bwColor,
-                drill: bwColor,
-                cutout: bwColor
+
+    // Update coordinate system display based on manager
+    updateCoordinateSystem() {
+        if (this.coordinateSystem) {
+            const status = this.coordinateSystem.getStatus();
+            // Update origin position for rendering
+            this.originPosition = {
+                x: status.workingOrigin.x + status.tareOffset.x,
+                y: status.workingOrigin.y + status.tareOffset.y
             };
+            this.render(); // Re-render to show updated origin
         }
-        
-        return baseColors;
     }
-    
-    // Set origin position (visual marker only)
+
+    // Set Gerber origin
+    setGerberOrigin(x, y) {
+        this.gerberOrigin = { x, y };
+    }
+
+    // Set working origin position
     setOriginPosition(x, y) {
         this.originPosition = { x, y };
         this.render();
-        console.log(`Origin marker moved to (${x.toFixed(3)}, ${y.toFixed(3)})`);
     }
-    
-    // Main data setter
-    setData(data) {
-        if (!data || typeof data !== 'object') {
-            console.warn('PreviewRenderer.setData: Invalid data provided');
-            this.data = null;
-            this.layerPolygons.clear();
-            this.layerHoles.clear();
-            this.render();
-            return;
-        }
-        
-        console.log('🎨 PreviewRenderer: Processing data for', Object.keys(data));
-        
-        this.data = data;
-        this.processData();
-        this.calculateBounds();
-        this.zoomFit();
+
+    // Set theme
+    setTheme(theme) {
+        this.theme = theme;
+        this.currentColors = theme === 'dark' ? this.colors : this.lightColors;
+        this.render();
     }
-    
-    processData() {
-        this.layerPolygons.clear();
-        this.layerHoles.clear();
-        this.renderStats.totalPolygons = 0;
-        this.renderStats.totalHoles = 0;
+
+    // Set debug mode
+    setDebugMode(mode) {
+        this.debugMode = mode;
+        this.render();
+    }
+
+    // FIXED: Set operations to render with proper data structure
+    setOperations(operations) {
+        this.operationLayers.clear();
         
-        if (!this.data) return;
-        
-        // Process each operation type
-        ['isolation', 'clear', 'drill', 'cutout'].forEach(operationType => {
-            const files = this.data[operationType] || [];
-            const allPolygons = [];
-            const allHoles = [];
-            
-            files.forEach(file => {
-                if (file && file.polygons && Array.isArray(file.polygons)) {
-                    // Handle all types of polygons, including filled regions
-                    file.polygons.forEach(polygon => {
-                        if (polygon && polygon.points && polygon.points.length >= 3) {
-                            allPolygons.push(polygon);
-                            this.renderStats.totalPolygons++;
-                        }
-                    });
-                }
-                
-                if (file && file.holes && Array.isArray(file.holes)) {
-                    allHoles.push(...file.holes);
-                    this.renderStats.totalHoles += file.holes.length;
-                }
+        operations.forEach(op => {
+            // Store by operation type
+            this.operationLayers.set(op.type, {
+                polygons: op.polygons || [],
+                holes: op.holes || [],
+                preservedFills: op.preservedFills || []
             });
-            
-            if (allPolygons.length > 0) {
-                this.layerPolygons.set(operationType, allPolygons);
-                console.log(`${operationType}: ${allPolygons.length} polygons`);
-            }
-            
-            if (allHoles.length > 0) {
-                this.layerHoles.set(operationType, allHoles);
-                console.log(`${operationType}: ${allHoles.length} holes`);
-            }
         });
         
-        console.log(`📊 Total: ${this.renderStats.totalPolygons} polygons, ${this.renderStats.totalHoles} holes`);
+        // Recalculate bounds after setting new data
+        this.calculateBounds();
+        this.render();
     }
-    
+
+    // Set offset polygons to render
+    setOffsetPolygons(operationId, polygons) {
+        this.offsetLayers.set(operationId, polygons);
+        this.render();
+    }
+
+    // Helper to clear specific offset layer
+    clearOffsetPolygons(operationId) {
+        this.offsetLayers.delete(operationId);
+        this.render();
+    }
+
+    // Calculate bounds of all loaded polygons
     calculateBounds() {
         let minX = Infinity, minY = Infinity;
         let maxX = -Infinity, maxY = -Infinity;
-        
-        // Include polygon bounds
-        for (const polygons of this.layerPolygons.values()) {
-            for (const polygon of polygons) {
-                if (polygon && polygon.points) {
-                    for (const point of polygon.points) {
-                        if (point && typeof point.x === 'number' && typeof point.y === 'number') {
-                            minX = Math.min(minX, point.x);
-                            minY = Math.min(minY, point.y);
-                            maxX = Math.max(maxX, point.x);
-                            maxY = Math.max(maxY, point.y);
-                        }
+
+        const allPolygons = [];
+        this.operationLayers.forEach(data => {
+            if (data.polygons) allPolygons.push(...data.polygons);
+            if (data.holes) {
+                // Convert holes to simple polygons for bounds calculation
+                data.holes.forEach(hole => {
+                    if (hole.position && typeof hole.diameter === 'number') {
+                        const r = hole.diameter / 2;
+                        // Approximate a square bounds for the circular hole
+                        allPolygons.push({
+                            getBounds: () => ({
+                                minX: hole.position.x - r,
+                                minY: hole.position.y - r,
+                                maxX: hole.position.x + r,
+                                maxY: hole.position.y + r
+                            })
+                        });
                     }
-                }
+                });
             }
+            if (data.preservedFills) allPolygons.push(...data.preservedFills);
+        });
+        this.offsetLayers.forEach(polygons => allPolygons.push(...polygons)); // Include offset layers for bounds
+
+        if (allPolygons.length === 0) {
+            this.bounds = null;
+            return;
         }
-        
-        // Include hole positions
-        for (const holes of this.layerHoles.values()) {
-            for (const hole of holes) {
-                if (hole && hole.position) {
-                    const pos = hole.position;
-                    const radius = (hole.diameter || 1) / 2;
-                    minX = Math.min(minX, pos.x - radius);
-                    minY = Math.min(minY, pos.y - radius);
-                    maxX = Math.max(maxX, pos.x + radius);
-                    maxY = Math.max(maxY, pos.y + radius);
-                }
-            }
-        }
-        
-        if (isFinite(minX)) {
-            this.bounds = { minX, minY, maxX, maxY };
-            console.log(`Bounds: ${minX.toFixed(3)}, ${minY.toFixed(3)} to ${maxX.toFixed(3)}, ${maxY.toFixed(3)}`);
-        } else {
-            this.bounds = { minX: -50, minY: -50, maxX: 50, maxY: 50 };
-        }
-    }
-    
-    zoomFit() {
-        if (!this.bounds) return;
-        
-        const width = this.bounds.maxX - this.bounds.minX;
-        const height = this.bounds.maxY - this.bounds.minY;
-        
-        if (width <= 0 || height <= 0) return;
-        
-        const margin = 40;
-        const scaleX = (this.canvas.width - margin * 2) / width;
-        const scaleY = (this.canvas.height - margin * 2) / height;
-        this.viewScale = Math.min(scaleX, scaleY, 50); // Limit max zoom
-        
-        this.viewOffset.x = (this.canvas.width - width * this.viewScale) / 2 - this.bounds.minX * this.viewScale;
-        this.viewOffset.y = (this.canvas.height - height * this.viewScale) / 2 - this.bounds.minY * this.viewScale;
-        
-        this.render();
-    }
-    
-    zoomIn() {
-        this.viewScale *= 1.2;
-        this.render();
-    }
-    
-    zoomOut() {
-        this.viewScale *= 0.8;
-        this.render();
-    }
-    
-    // Main render method
-    render() {
-        const startTime = performance.now();
-        const colors = this.getCurrentColors();
-        
-        try {
-            // Clear canvas
-            this.ctx.fillStyle = colors.background;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            
-            // Draw grid and origin
-            if (this.showGrid) {
-                this.drawGrid();
-            }
-            if (this.showOrigin) {
-                this.drawOrigin();
-            }
-            if (this.showBounds && this.bounds) {
-                this.drawBounds();
-            }
-            
-            if (this.layerPolygons.size === 0 && this.layerHoles.size === 0) {
-                this.drawNoDataMessage();
-                return;
-            }
-            
-            // Render all layers
-            this.renderAllLayers();
-            
-            this.renderStats.renderTime = performance.now() - startTime;
-            this.updateRenderStats();
-            
-        } catch (error) {
-            console.error('💥 Render error:', error);
-            this.drawErrorMessage(error.message);
-        }
-    }
-    
-    renderAllLayers() {
-        const renderOrder = ['cutout', 'clear', 'isolation', 'drill'];
-        this.renderStats.visiblePolygons = 0;
-        
-        renderOrder.forEach(operationType => {
-            // Render polygons
-            const polygons = this.layerPolygons.get(operationType);
-            if (polygons && polygons.length > 0) {
-                this.renderPolygonLayer(polygons, operationType);
-            }
-            
-            // Render holes
-            const holes = this.layerHoles.get(operationType);
-            if (holes && holes.length > 0) {
-                this.renderHoleLayer(holes, operationType);
+
+        allPolygons.forEach(polygon => {
+            // Ensure polygon has a getBounds method or is a simple object with min/max properties
+            const b = polygon.getBounds ? polygon.getBounds() : polygon; 
+            if (b && typeof b.minX === 'number' && typeof b.minY === 'number' &&
+                    typeof b.maxX === 'number' && typeof b.maxY === 'number') {
+                minX = Math.min(minX, b.minX);
+                minY = Math.min(minY, b.minY);
+                maxX = Math.max(maxX, b.maxX);
+                maxY = Math.max(maxY, b.maxY);
             }
         });
+
+        if (minX === Infinity) {
+            this.bounds = null;
+        } else {
+            this.bounds = { 
+                minX, minY, maxX, maxY,
+                width: maxX - minX, 
+                height: maxY - minY,
+                centerX: (minX + maxX) / 2,
+                centerY: (minY + maxY) / 2
+            };
+        }
     }
-    
-    renderPolygonLayer(polygons, operationType) {
-        const colors = this.getCurrentColors();
-        const color = colors[operationType] || '#ffffff';
+
+    // Zoom and pan operations
+    zoomIn() {
+        this.setZoom(this.viewScale * 1.2);
+    }
+
+    zoomOut() {
+        this.setZoom(this.viewScale / 1.2);
+    }
+
+    setZoom(newScale) {
+        const oldScale = this.viewScale;
+        this.viewScale = Math.max(0.1, Math.min(100, newScale)); // Limit zoom
         
+        // Adjust offset to keep center point the same
+        const scaleFactor = this.viewScale / oldScale;
+        this.viewOffset.x = this.viewOffset.x * scaleFactor;
+        this.viewOffset.y = this.viewOffset.y * scaleFactor;
+        this.render();
+    }
+
+    pan(dx, dy) {
+        this.viewOffset.x += dx;
+        this.viewOffset.y += dy;
+        this.render();
+    }
+
+    zoomFit() {
+        this.calculateBounds();
+        if (!this.bounds) {
+            this.viewScale = 1;
+            this.viewOffset = { x: 0, y: 0 };
+            this.render();
+            return;
+        }
+
+        const padding = 0.1; // 10% padding
+        const desiredWidth = this.bounds.width * (1 + padding);
+        const desiredHeight = this.bounds.height * (1 + padding);
+
+        const scaleX = this.canvas.width / desiredWidth;
+        const scaleY = this.canvas.height / desiredHeight;
+        this.viewScale = Math.min(scaleX, scaleY);
+        
+        // Center the view on the board
+        const centerX_board = this.bounds.centerX;
+        const centerY_board = this.bounds.centerY;
+        
+        // Calculate offset to center the board in the canvas
+        this.viewOffset.x = this.canvas.width / 2 - centerX_board * this.viewScale;
+        this.viewOffset.y = this.canvas.height / 2 + centerY_board * this.viewScale; // Y inverted
+        
+        this.render();
+    }
+
+    // Main render loop
+    render() {
+        const startTime = performance.now();
+        this.renderStats.drawCalls = 0;
+        this.renderStats.polygonsRendered = 0;
+
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.fillStyle = this.currentColors.background;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
         this.ctx.save();
         
-        // Set fill and stroke styles - SAME COLOR for consistency
-        if (this.showFilled) {
-            this.ctx.fillStyle = color + '60'; // Semi-transparent fill
-        }
-        if (this.showOutlines) {
-            this.ctx.strokeStyle = color; // Same color as fill
-            this.ctx.lineWidth = Math.max(0.5, 1 / this.viewScale);
-        }
+        // Apply transformations
+        this.ctx.translate(this.viewOffset.x, this.viewOffset.y);
+        this.ctx.scale(this.viewScale, -this.viewScale); // Y-axis inverted for standard Cartesian
         
-        for (const polygon of polygons) {
-            if (this.isPolygonValid(polygon)) {
-                this.renderPolygon(polygon);
-                this.renderStats.visiblePolygons++;
-            }
+        // Translate to origin position (coordinate system)
+        this.ctx.translate(-this.originPosition.x, -this.originPosition.y);
+
+        // Draw grid and rulers before geometry (background)
+        if (this.showGrid) {
+            this.drawGrid();
+        }
+        if (this.showRulers) { 
+            this.drawRulers();
+        }
+
+        // Draw bounding box if enabled
+        if (this.showBounds && this.bounds) {
+            this.ctx.strokeStyle = this.currentColors.bounds;
+            this.ctx.lineWidth = 1 / this.viewScale;
+            this.ctx.strokeRect(this.bounds.minX, this.bounds.minY, this.bounds.width, this.bounds.height);
+            this.renderStats.drawCalls++;
+        }
+
+        // Draw original layers
+        if (this.showOriginal && !this.offsetOnly) {
+            this.operationLayers.forEach((data, type) => {
+                const color = this.currentColors[type] || this.currentColors.isolation;
+                
+                // Draw polygons (filled or outline based on type and properties)
+                if (data.polygons && data.polygons.length > 0) {
+                    data.polygons.forEach(polygon => {
+                        // Determine if this specific polygon should be filled
+                        let shouldFill = false;
+                        
+                        if (polygon.properties) {
+                            // Check polygon properties
+                            const props = polygon.properties;
+                            shouldFill = (
+                                props.type === 'region' ||
+                                props.type === 'copper_fill' ||
+                                props.type === 'pad' ||
+                                props.type === 'flash' ||
+                                props.type === 'large_pad' ||
+                                props.type === 'connector_pad' ||
+                                props.isFill === true ||
+                                props.isRegion === true ||
+                                props.source === 'region'
+                            );
+                        } else {
+                            // Default behavior for polygons without properties
+                            shouldFill = type !== 'isolation';
+                        }
+                        
+                        // Draw individual polygon
+                        this.drawPolygons([polygon], color, shouldFill);
+                    });
+                }
+                
+                // Draw preserved fills (cutouts)
+                if (data.preservedFills && data.preservedFills.length > 0) {
+                    this.drawPolygons(data.preservedFills, this.currentColors.background, true);
+                }
+                
+                // Draw holes
+                if (data.holes && data.holes.length > 0) {
+                    this.drawHoles(data.holes, this.currentColors.drill);
+                }
+            });
+        }
+
+        // Draw offset layers
+        if (this.showOffsets) {
+            this.offsetLayers.forEach((polygons, opId) => {
+                // Try to determine color from operation ID
+                let color = this.currentColors.offsetOutline;
+                
+                // Extract operation type from ID (e.g., "op_1" -> check original operation)
+                const opType = Array.from(this.operationLayers.keys()).find(type => 
+                    opId.includes('isolation') ? type === 'isolation' :
+                    opId.includes('clear') ? type === 'clear' :
+                    opId.includes('cutout') ? type === 'cutout' : false
+                );
+                
+                if (opType) {
+                    color = this.currentColors[opType] || color;
+                }
+                
+                this.drawPolygons(polygons, color, false); // No fill for offsets
+            });
+        }
+
+        // Draw origin marker if enabled
+        if (this.showOrigin) {
+            this.drawOriginMarker();
         }
         
         this.ctx.restore();
+
+        const endTime = performance.now();
+        this.renderStats.renderTime = endTime - startTime;
     }
-    
-    renderHoleLayer(holes, operationType) {
-        const colors = this.getCurrentColors();
-        const color = colors[operationType] || '#ffffff';
-        
-        this.ctx.save();
-        this.ctx.fillStyle = color + '80';
+
+    drawPolygons(polygonsInput, color, fill = true) {
+        const polygons = Array.isArray(polygonsInput) ? polygonsInput : [];
+        if (polygons.length === 0) return;
+
+        this.ctx.fillStyle = color;
         this.ctx.strokeStyle = color;
-        this.ctx.lineWidth = Math.max(0.5, 1 / this.viewScale);
-        
-        for (const hole of holes) {
-            if (hole && hole.position && hole.diameter) {
-                this.renderHole(hole);
+        this.ctx.lineWidth = 0.5 / this.viewScale;
+
+        polygons.forEach(polygon => {
+            if (this.blackAndWhite) {
+                this.ctx.fillStyle = fill ? '#FFFFFF' : '#000000';
+                this.ctx.strokeStyle = '#000000';
+            } else {
+                this.ctx.fillStyle = color;
+                this.ctx.strokeStyle = color;
             }
-        }
-        
-        this.ctx.restore();
-    }
-    
-    renderPolygon(polygon) {
-        const points = polygon.points;
-        if (!points || points.length < 3) return;
-        
-        try {
+
             this.ctx.beginPath();
-            
-            // Move to first point
-            const firstPoint = this.worldToScreen(points[0]);
-            if (!this.isScreenPointValid(firstPoint)) return;
-            
-            this.ctx.moveTo(firstPoint.x, firstPoint.y);
-            
-            // Line to all other points
-            for (let i = 1; i < points.length; i++) {
-                const point = this.worldToScreen(points[i]);
-                if (this.isScreenPointValid(point)) {
-                    this.ctx.lineTo(point.x, point.y);
+            if (polygon.points && Array.isArray(polygon.points)) {
+                polygon.points.forEach((p, i) => {
+                    if (i === 0) {
+                        this.ctx.moveTo(p.x, p.y);
+                    } else {
+                        this.ctx.lineTo(p.x, p.y);
+                    }
+                });
+                this.ctx.closePath();
+
+                if (this.showFilled && fill) {
+                    this.ctx.fill();
+                }
+                if (this.showOutlines || !fill) {
+                    this.ctx.stroke();
                 }
             }
-            
-            this.ctx.closePath();
-            
-            // Fill and/or stroke based on settings
-            if (this.showFilled) {
-                this.ctx.fill();
+
+            // Draw holes for this polygon
+            if (polygon.holes && Array.isArray(polygon.holes) && this.showFilled && fill) {
+                polygon.holes.forEach(hole => {
+                    if (hole.points && Array.isArray(hole.points)) {
+                        this.ctx.save();
+                        this.ctx.globalCompositeOperation = 'destination-out';
+                        this.ctx.beginPath();
+                        hole.points.forEach((p, i) => {
+                            if (i === 0) {
+                                this.ctx.moveTo(p.x, p.y);
+                            } else {
+                                this.ctx.lineTo(p.x, p.y);
+                            }
+                        });
+                        this.ctx.closePath();
+                        this.ctx.fill();
+                        this.ctx.restore();
+                    }
+                });
             }
-            if (this.showOutlines) {
-                this.ctx.stroke();
-            }
-            
-        } catch (error) {
-            console.warn('Error rendering polygon:', error);
-        }
+            this.renderStats.polygonsRendered++;
+            this.renderStats.drawCalls++;
+        });
     }
-    
-    renderHole(hole) {
-        try {
-            const center = this.worldToScreen(hole.position);
-            if (!this.isScreenPointValid(center)) return;
-            
-            const radius = (hole.diameter / 2) * this.viewScale;
-            
-            if (radius > 0.5) { // Only render if visible
+
+    drawHoles(holesInput, color) {
+        const holes = Array.isArray(holesInput) ? holesInput : [];
+        if (holes.length === 0) return;
+
+        this.ctx.fillStyle = color;
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 0.5 / this.viewScale;
+
+        holes.forEach(hole => {
+            if (hole && hole.position && typeof hole.diameter === 'number') {
+                const center = hole.position;
+                const radius = hole.diameter / 2;
+
                 this.ctx.beginPath();
-                this.ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
-                
+                this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+                this.ctx.closePath();
+
                 if (this.showFilled) {
                     this.ctx.fill();
                 }
                 if (this.showOutlines) {
                     this.ctx.stroke();
                 }
+                this.renderStats.drawCalls++;
             }
-        } catch (error) {
-            console.warn('Error rendering hole:', error);
-        }
+        });
     }
-    
-    // Validation helpers
-    isPolygonValid(polygon) {
-        return polygon && 
-               polygon.points && 
-               Array.isArray(polygon.points) && 
-               polygon.points.length >= 3 &&
-               polygon.points.every(p => p && typeof p.x === 'number' && typeof p.y === 'number');
-    }
-    
-    isScreenPointValid(point) {
-        return point && 
-               typeof point.x === 'number' && 
-               typeof point.y === 'number' && 
-               isFinite(point.x) && 
-               isFinite(point.y);
-    }
-    
-    // Coordinate transformation (geometry stays fixed, only screen projection)
-    worldToScreen(point) {
-        if (!point || typeof point.x !== 'number' || typeof point.y !== 'number') {
-            return { x: 0, y: 0 };
-        }
-        
-        return {
-            x: point.x * this.viewScale + this.viewOffset.x,
-            y: this.canvas.height - (point.y * this.viewScale + this.viewOffset.y)
-        };
-    }
-    
-    screenToWorld(point) {
-        if (!point || !isFinite(point.x) || !isFinite(point.y)) {
-            return { x: 0, y: 0 };
-        }
-        
-        const worldX = (point.x - this.viewOffset.x) / this.viewScale;
-        const worldY = (this.canvas.height - point.y - this.viewOffset.y) / this.viewScale;
-        
-        return { x: worldX, y: worldY };
-    }
-    
+
     drawGrid() {
-        if (this.viewScale < 2) return;
+        this.ctx.strokeStyle = this.currentColors.grid;
+        this.ctx.lineWidth = 0.1 / this.viewScale;
+        this.ctx.font = `${8 / this.viewScale}px Arial`;
+        this.ctx.fillStyle = this.currentColors.gridText;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        // Determine grid step based on zoom
+        const minGridPixelSize = 50;
+        let gridStep = 10;
         
-        const colors = this.getCurrentColors();
+        const possibleSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+        gridStep = possibleSteps.find(step => step * this.viewScale >= minGridPixelSize) || possibleSteps[possibleSteps.length - 1];
+
+        // Calculate visible area in world coordinates
+        const viewBounds = this.getViewBounds();
         
-        try {
-            this.ctx.strokeStyle = colors.grid;
-            this.ctx.lineWidth = 0.5;
-            this.ctx.globalAlpha = 0.3;
-            
-            const gridSpacing = this.getGridSpacing();
-            const bounds = this.getViewBounds();
-            
-            // Grid is relative to origin position
-            const originOffset = this.originPosition;
-            
-            // Vertical lines
-            for (let x = Math.floor((bounds.minX - originOffset.x) / gridSpacing) * gridSpacing + originOffset.x; 
-                 x <= bounds.maxX; x += gridSpacing) {
-                const screenX = x * this.viewScale + this.viewOffset.x;
-                if (screenX >= 0 && screenX <= this.canvas.width) {
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(screenX, 0);
-                    this.ctx.lineTo(screenX, this.canvas.height);
-                    this.ctx.stroke();
-                }
-            }
-            
-            // Horizontal lines
-            for (let y = Math.floor((bounds.minY - originOffset.y) / gridSpacing) * gridSpacing + originOffset.y; 
-                 y <= bounds.maxY; y += gridSpacing) {
-                const screenY = this.canvas.height - (y * this.viewScale + this.viewOffset.y);
-                if (screenY >= 0 && screenY <= this.canvas.height) {
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(0, screenY);
-                    this.ctx.lineTo(this.canvas.width, screenY);
-                    this.ctx.stroke();
-                }
-            }
-            
-            this.ctx.globalAlpha = 1;
-        } catch (error) {
-            this.ctx.globalAlpha = 1;
+        const startX = Math.floor(viewBounds.minX / gridStep) * gridStep;
+        const endX = Math.ceil(viewBounds.maxX / gridStep) * gridStep;
+        const startY = Math.floor(viewBounds.minY / gridStep) * gridStep;
+        const endY = Math.ceil(viewBounds.maxY / gridStep) * gridStep;
+
+        // Draw vertical lines
+        for (let x = startX; x <= endX; x += gridStep) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, viewBounds.minY);
+            this.ctx.lineTo(x, viewBounds.maxY);
+            this.ctx.stroke();
+            this.renderStats.drawCalls++;
+        }
+
+        // Draw horizontal lines
+        for (let y = startY; y <= endY; y += gridStep) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(viewBounds.minX, y);
+            this.ctx.lineTo(viewBounds.maxX, y);
+            this.ctx.stroke();
+            this.renderStats.drawCalls++;
         }
     }
-    
-    getGridSpacing() {
-        const pixelsPerUnit = this.viewScale;
-        if (pixelsPerUnit > 50) return 0.5;
-        if (pixelsPerUnit > 20) return 1;
-        if (pixelsPerUnit > 5) return 5;
-        if (pixelsPerUnit > 2) return 10;
-        if (pixelsPerUnit > 0.5) return 50;
-        return 100;
+
+    drawRulers() {
+        this.ctx.save();
+        
+        // Reset transformation for screen-space drawing
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        
+        this.ctx.strokeStyle = this.currentColors.ruler;
+        this.ctx.fillStyle = this.currentColors.rulerText;
+        this.ctx.lineWidth = 1;
+        this.ctx.font = '12px Arial';
+        this.ctx.textBaseline = 'top';
+        this.ctx.textAlign = 'left';
+
+        const rulerSize = 20;
+        const tickLength = 5;
+        const minorTickLength = 3;
+
+        // Determine ruler step
+        const minPixelDistance = 50;
+        let majorTickUnit = 10;
+        
+        const possibleMajorSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500];
+        majorTickUnit = possibleMajorSteps.find(step => (step * this.viewScale) >= minPixelDistance) || possibleMajorSteps[possibleMajorSteps.length - 1];
+        
+        const viewBounds = this.getViewBounds();
+
+        // Draw X-axis ruler (at the top)
+        this.ctx.beginPath();
+        this.ctx.moveTo(rulerSize, rulerSize);
+        this.ctx.lineTo(this.canvas.width, rulerSize);
+        this.ctx.stroke();
+        
+        this.ctx.textBaseline = 'top';
+        this.ctx.textAlign = 'center';
+        
+        const startX = Math.floor(viewBounds.minX / majorTickUnit) * majorTickUnit;
+        const endX = Math.ceil(viewBounds.maxX / majorTickUnit) * majorTickUnit;
+        
+        for (let xWorld = startX; xWorld <= endX; xWorld += majorTickUnit) {
+            const xCanvas = this.worldToCanvasX(xWorld);
+            if (xCanvas >= rulerSize && xCanvas <= this.canvas.width) {
+                this.ctx.moveTo(xCanvas, rulerSize);
+                this.ctx.lineTo(xCanvas, rulerSize - tickLength);
+                this.ctx.fillText(xWorld.toFixed(1), xCanvas, 0);
+            }
+        }
+        this.ctx.stroke();
+
+        // Draw Y-axis ruler (at the left)
+        this.ctx.beginPath();
+        this.ctx.moveTo(rulerSize, 0);
+        this.ctx.lineTo(rulerSize, this.canvas.height);
+        this.ctx.stroke();
+        
+        this.ctx.textBaseline = 'middle';
+        this.ctx.textAlign = 'left';
+        
+        const startY = Math.floor(viewBounds.minY / majorTickUnit) * majorTickUnit;
+        const endY = Math.ceil(viewBounds.maxY / majorTickUnit) * majorTickUnit;
+        
+        for (let yWorld = startY; yWorld <= endY; yWorld += majorTickUnit) {
+            const yCanvas = this.worldToCanvasY(yWorld);
+            if (yCanvas >= 0 && yCanvas <= this.canvas.height) {
+                this.ctx.moveTo(rulerSize, yCanvas);
+                this.ctx.lineTo(rulerSize - tickLength, yCanvas);
+                this.ctx.fillText(yWorld.toFixed(1), tickLength + 2, yCanvas);
+            }
+        }
+        this.ctx.stroke();
+
+        // Draw corner square
+        this.ctx.fillStyle = this.currentColors.background;
+        this.ctx.fillRect(0, 0, rulerSize, rulerSize);
+        this.ctx.strokeStyle = this.currentColors.ruler;
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(0, 0, rulerSize, rulerSize);
+
+        this.ctx.restore();
     }
-    
+
+    drawOriginMarker() {
+        this.ctx.strokeStyle = this.currentColors.origin;
+        this.ctx.lineWidth = 1.5 / this.viewScale;
+        const markerSize = 5 / this.viewScale;
+
+        // Draw at actual origin (0,0) in world space
+        this.ctx.beginPath();
+        // X-axis arm
+        this.ctx.moveTo(-markerSize, 0);
+        this.ctx.lineTo(markerSize, 0);
+        // Y-axis arm
+        this.ctx.moveTo(0, -markerSize);
+        this.ctx.lineTo(0, markerSize);
+        this.ctx.stroke();
+        this.renderStats.drawCalls++;
+
+        // Draw '0,0' text
+        this.ctx.save();
+        this.ctx.scale(1, -1); // Flip text right-side up
+        this.ctx.font = `${10 / this.viewScale}px Arial`;
+        this.ctx.fillStyle = this.currentColors.origin;
+        this.ctx.textAlign = 'left';
+        this.ctx.textBaseline = 'top';
+        this.ctx.fillText('0,0', markerSize + (2 / this.viewScale), -(markerSize + (12 / this.viewScale)));
+        this.ctx.restore();
+    }
+
+    // Get view bounds in world coordinates
     getViewBounds() {
+        const topLeft = this.canvasToWorld(0, 0);
+        const bottomRight = this.canvasToWorld(this.canvas.width, this.canvas.height);
+        
         return {
-            minX: -this.viewOffset.x / this.viewScale,
-            minY: -(this.viewOffset.y - this.canvas.height) / this.viewScale,
-            maxX: (this.canvas.width - this.viewOffset.x) / this.viewScale,
-            maxY: -this.viewOffset.y / this.viewScale
+            minX: Math.min(topLeft.x, bottomRight.x),
+            maxX: Math.max(topLeft.x, bottomRight.x),
+            minY: Math.min(topLeft.y, bottomRight.y),
+            maxY: Math.max(topLeft.y, bottomRight.y)
         };
     }
-    
-    drawOrigin() {
-        const colors = this.getCurrentColors();
-        
-        try {
-            // Draw origin at current origin position (visual marker)
-            const origin = this.worldToScreen(this.originPosition);
-            
-            if (!this.isScreenPointValid(origin)) return;
-            
-            this.ctx.strokeStyle = colors.origin;
-            this.ctx.lineWidth = 2;
-            
-            // X axis
-            this.ctx.beginPath();
-            this.ctx.moveTo(origin.x - 20, origin.y);
-            this.ctx.lineTo(origin.x + 20, origin.y);
-            this.ctx.stroke();
-            
-            // Y axis
-            this.ctx.beginPath();
-            this.ctx.moveTo(origin.x, origin.y - 20);
-            this.ctx.lineTo(origin.x, origin.y + 20);
-            this.ctx.stroke();
-            
-            // Origin circle
-            this.ctx.beginPath();
-            this.ctx.arc(origin.x, origin.y, 4, 0, 2 * Math.PI);
-            this.ctx.stroke();
-            
-            // Origin label
-            if (this.viewScale > 5) {
-                this.ctx.fillStyle = colors.origin;
-                this.ctx.font = '12px monospace';
-                this.ctx.fillText(
-                    `(${this.originPosition.x.toFixed(1)}, ${this.originPosition.y.toFixed(1)})`, 
-                    origin.x + 8, 
-                    origin.y - 8
-                );
-            }
-        } catch (error) {
-            console.error('Error drawing origin:', error);
-        }
+
+    // Coordinate conversion helpers
+    worldToCanvasX(worldX) {
+        return this.viewOffset.x + (worldX - this.originPosition.x) * this.viewScale;
     }
-    
-    drawBounds() {
-        if (!this.bounds) return;
-        
-        const colors = this.getCurrentColors();
-        
-        try {
-            const topLeft = this.worldToScreen({ x: this.bounds.minX, y: this.bounds.maxY });
-            const bottomRight = this.worldToScreen({ x: this.bounds.maxX, y: this.bounds.minY });
-            
-            this.ctx.strokeStyle = colors.bounds;
-            this.ctx.lineWidth = 1;
-            this.ctx.setLineDash([5, 5]);
-            this.ctx.globalAlpha = 0.5;
-            
-            this.ctx.beginPath();
-            this.ctx.rect(
-                topLeft.x, 
-                topLeft.y, 
-                bottomRight.x - topLeft.x, 
-                bottomRight.y - topLeft.y
-            );
-            this.ctx.stroke();
-            
-            this.ctx.setLineDash([]);
-            this.ctx.globalAlpha = 1;
-        } catch (error) {
-            this.ctx.setLineDash([]);
-            this.ctx.globalAlpha = 1;
-        }
+
+    worldToCanvasY(worldY) {
+        return this.viewOffset.y - (worldY - this.originPosition.y) * this.viewScale; // Y inverted
     }
-    
-    drawNoDataMessage() {
-        const colors = this.getCurrentColors();
-        this.ctx.fillStyle = colors.grid;
-        this.ctx.font = '16px sans-serif';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('No PCB data to display - Upload files to begin', this.canvas.width / 2, this.canvas.height / 2);
-        this.ctx.textAlign = 'left';
-    }
-    
-    updateRenderStats() {
-        const statsElement = document.getElementById('render-stats');
-        if (statsElement) {
-            const polygonCount = this.renderStats.visiblePolygons;
-            const holeCount = this.renderStats.totalHoles;
-            const renderTime = this.renderStats.renderTime.toFixed(1);
-            const layerCount = this.layerPolygons.size + this.layerHoles.size;
-            
-            statsElement.innerHTML = `
-                Layers: ${layerCount}<br>
-                Polygons: ${polygonCount}<br>
-                Holes: ${holeCount}<br>
-                Render: ${renderTime}ms<br>
-                Scale: ${this.viewScale.toFixed(2)}x<br>
-                Origin: (${this.originPosition.x.toFixed(1)}, ${this.originPosition.y.toFixed(1)})
-            `;
-        }
-    }
-    
-    drawErrorMessage(message) {
-        this.ctx.fillStyle = '#ff4444';
-        this.ctx.font = '14px sans-serif';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText(`Render Error: ${message}`, this.canvas.width / 2, this.canvas.height / 2);
-        this.ctx.fillText('Check console for details', this.canvas.width / 2, this.canvas.height / 2 + 20);
-        this.ctx.textAlign = 'left';
-    }
-    
-    // Legacy method for compatibility - don't use for origin changes
-    updateOffset(offsetX, offsetY) {
-        console.warn('updateOffset is deprecated - use setOriginPosition for origin changes');
-        // This shouldn't be used for origin changes - geometry should stay fixed
-    }
-    
-    setDebugMode(enabled) {
-        this.debugMode = enabled;
-        this.render();
-    }
-    
-    toggleOutlines() {
-        this.showOutlines = !this.showOutlines;
-        this.render();
-    }
-    
-    toggleFilled() {
-        this.showFilled = !this.showFilled;
-        this.render();
-    }
-    
-    getViewInfo() {
+
+    canvasToWorld(canvasX, canvasY) {
         return {
-            scale: this.viewScale,
-            offset: this.viewOffset,
-            originPosition: this.originPosition,
-            bounds: this.bounds,
-            stats: this.renderStats,
-            layerCount: this.layerPolygons.size + this.layerHoles.size,
+            x: (canvasX - this.viewOffset.x) / this.viewScale + this.originPosition.x,
+            y: -(canvasY - this.viewOffset.y) / this.viewScale + this.originPosition.y // Y inverted
+        };
+    }
+
+    setupEventListeners() {
+        let isPanning = false;
+        let lastX, lastY;
+
+        this.canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // Left click for pan
+                isPanning = true;
+                lastX = e.clientX;
+                lastY = e.clientY;
+                this.canvas.style.cursor = 'grabbing';
+            }
+        });
+
+        this.canvas.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                const dx = e.clientX - lastX;
+                const dy = e.clientY - lastY;
+                this.pan(dx, dy);
+                lastX = e.clientX;
+                lastY = e.clientY;
+            }
+        });
+
+        this.canvas.addEventListener('mouseup', () => {
+            isPanning = false;
+            this.canvas.style.cursor = 'grab';
+        });
+
+        this.canvas.addEventListener('mouseleave', () => {
+            isPanning = false;
+            this.canvas.style.cursor = 'default';
+        });
+
+        this.canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const scaleAmount = 1.1;
+            
+            if (e.deltaY < 0) { // Zoom in
+                this.setZoom(this.viewScale * scaleAmount);
+            } else { // Zoom out
+                this.setZoom(this.viewScale / scaleAmount);
+            }
+        });
+
+        // Handle canvas resize
+        this.resizeObserver = new ResizeObserver(() => {
+            this.resizeCanvas();
+        });
+        this.resizeObserver.observe(this.canvas);
+    }
+
+    // Method to resize canvas to fit its parent
+    resizeCanvas() {
+        const parent = this.canvas.parentElement;
+        if (parent) {
+            this.canvas.width = parent.clientWidth;
+            this.canvas.height = parent.clientHeight;
+            this.render();
+        }
+    }
+
+    getRenderState() {
+        return {
+            viewOffset: { ...this.viewOffset },
+            viewScale: this.viewScale,
+            bounds: this.bounds ? { ...this.bounds } : null,
+            originPosition: { ...this.originPosition },
+            showFilled: this.showFilled,
+            showOutlines: this.showOutlines,
+            blackAndWhite: this.blackAndWhite,
+            showGrid: this.showGrid,
+            showOrigin: this.showOrigin,
+            showBounds: this.showBounds,
+            showOffsets: this.showOffsets,
+            showOriginal: this.showOriginal,
+            offsetOnly: this.offsetOnly,
+            showRulers: this.showRulers,
+            theme: this.theme,
+            canvasSize: { width: this.canvas.width, height: this.canvas.height },
+            renderStats: this.renderStats,
+            operationCount: this.operationLayers.size,
+            offsetLayerCount: this.offsetLayers.size,
             debugMode: this.debugMode
         };
     }
     
-    // SVG export support
-    exportDebugSVG() {
+    // Export canvas as SVG
+    exportCanvasAsSVG() {
         if (this.svgExporter) {
-            return this.svgExporter.exportSVG();
-        }
-        console.error('SVG exporter not available');
-        return '';
-    }
-
-    downloadDebugSVG() {
-        if (this.svgExporter) {
-            this.svgExporter.download();
+            const renderState = this.getRenderState();
+            this.svgExporter.exportCanvasState(renderState);
         } else {
-            console.error('SVG exporter not available - check if debug/svg-exporter.js is loaded');
+            console.error('SVG exporter not available');
         }
     }
 }
@@ -849,6 +761,4 @@ class PreviewRenderer {
 // Export for use
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = PreviewRenderer;
-} else {
-    window.PreviewRenderer = PreviewRenderer;
 }

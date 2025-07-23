@@ -18,7 +18,7 @@
             <div class="header-content">
                 <div>
                     <h1>PCB CAM</h1>
-                    <span class="version-badge">v7.2</span>
+                    <span class="version-badge">v7.4</span>
                 </div>
                 <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                     <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -232,7 +232,7 @@ M2</textarea>
                             <button class="btn-secondary" id="bottom-left-origin-btn">Bottom Left</button>
                         </div>
                         
-                        <!-- Manual origin input -->
+                        <!-- Manual origin input with explicit Set button -->
                         <div class="input-group">
                             <label>X Offset</label>
                             <div class="input-unit">
@@ -246,6 +246,50 @@ M2</textarea>
                                 <input type="number" id="y-offset" value="0" step="0.1">
                                 <span>mm</span>
                             </div>
+                        </div>
+                        
+                        <button class="btn-primary" id="set-origin-btn" style="width: 100%; margin-top: 0.5rem;">📌 Set Origin</button>
+                    </div>
+
+                    <!-- Debug Controls -->
+                    <div class="preview-stats" id="debug-controls">
+                        <h3>🔧 Debug Options</h3>
+                        <div class="debug-options" style="display: grid; gap: 0.5rem;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="show-filled" checked>
+                                <span>Show Fill</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="show-outlines" checked>
+                                <span>Show Outlines</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="black-white">
+                                <span>Black & White Mode</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="show-grid" checked>
+                                <span>Show Grid</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="show-rulers" checked>
+                                <span>Show Rulers</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="show-bounds">
+                                <span>Show Bounds</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="show-offsets">
+                                <span>Show Offset Paths</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="show-original" checked>
+                                <span>Show Original Geometry</span>
+                            </label>
+                            <button class="btn-secondary" id="export-svg-btn" style="width: 100%; margin-top: 0.5rem;">
+                                📁 Export SVG
+                            </button>
                         </div>
                     </div>
 
@@ -267,7 +311,7 @@ M2</textarea>
             </div>
             <div class="modal-footer">
                 <button class="btn-secondary" id="modal-goback-btn">← Back</button>
-                <button class="btn-primary" id="export-clean-svg-btn">Export SVG</button>
+                <button class="btn-primary" id="generate-gcode-modal-btn">⚡ Generate G-code</button>
             </div>
         </div>
     </div>
@@ -276,19 +320,19 @@ M2</textarea>
     <input type="file" id="file-input-temp" style="display: none;">
 
     <script>
-        // Balanced script loader
+        // Updated script loader
         const scripts = [
-            'geometry/clipper.min.js',            // Local Copy
-            'geometry/polygon.js',
-            'geometry/fusion.js',
-            'geometry/offset-engine.js',          // Keep original for now
-            'geometry/analyzer.js',               // Use balanced version
-            'coordinate/coordinate-system.js',    // Use balanced version
-            'parsers/gerber.js',
-            'parsers/excellon.js',
-            'preview/renderer.js',                // Use balanced version
-            'debug/svg-exporter.js',              // Restore SVG export
-            'cam.js'                              // Main controller must be last
+            'geometry/clipper.min.js',            // Clipper for boolean operations
+            'geometry/polygon.js',                // Core polygon system
+            'geometry/fusion.js',                 // Polygon fusion engine
+            'geometry/offset-engine.js',          // Enhanced offset engine
+            'geometry/analyzer.js',               // Balanced geometry analyzer
+            'coordinate/coordinate-system.js',    // Coordinate system manager
+            'parsers/gerber.js',                  // Gerber parser with reduced warnings
+            'parsers/excellon.js',                // Excellon parser
+            'preview/renderer.js',                // Preview renderer with unified rendering
+            'debug/svg-exporter.js',              // SVG exporter
+            'cam.js'                              // Main controller with complete settings
         ];
         
         let loadedCount = 0;
@@ -339,7 +383,7 @@ M2</textarea>
         
         async function loadAllScripts() {
             try {
-                console.log('🚀 Loading PCB CAM...');
+                console.log('🚀 Loading PCB CAM v7.4...');
                 loadingStartTime = Date.now();
                 updateLoadingProgress();
                 
@@ -351,7 +395,12 @@ M2</textarea>
                 
                 // Initialize the application
                 window.cam = new PolygonPCBCam();
-                console.log('🎯 Balanced PCB CAM initialized successfully');
+                console.log('🎯 PCB CAM v7.4 initialized - Fixed geometry pipeline');
+                console.log('✅ Traces and regions rendering properly');
+                console.log('✅ Board auto-fits to viewport on load');
+                console.log('✅ Debug controls restored in preview modal');
+                console.log('✅ Code consolidated while maintaining functionality');
+                console.log('🔧 Ready for offset geometry development');
                 
             } catch (error) {
                 console.error('💥 Error loading PCB CAM:', error);
@@ -362,5 +411,52 @@ M2</textarea>
         
         document.addEventListener('DOMContentLoaded', loadAllScripts);
     </script>
+    
+    <style>
+        /* Modal fixes for proper scrolling */
+        .modal {
+            overflow-y: auto;
+            padding: 2rem;
+        }
+        
+        .modal-content {
+            margin: auto;
+            max-width: 1400px;
+            width: 100%;
+            max-height: none; /* Remove height limit */
+            height: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-body {
+            flex: 1;
+            display: flex;
+            overflow: visible; /* Allow content to expand */
+            min-height: 600px;
+        }
+        
+        /* Additional styles for debug controls */
+        .debug-options label {
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        
+        .debug-options label:hover {
+            background-color: var(--bg-hover);
+        }
+        
+        .debug-options input[type="checkbox"] {
+            cursor: pointer;
+        }
+        
+        #debug-controls {
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+            margin-top: 1rem;
+        }
+    </style>
 </body>
 </html>
