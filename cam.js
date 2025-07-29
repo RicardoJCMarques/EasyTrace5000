@@ -1,59 +1,56 @@
-// Complete PCB CAM Controller - Fixed Geometry Pipeline
+// PCB CAM Controller - Fixed coordinate system and color handling
 // cam.js
 
-class PolygonPCBCam {
+class SemanticPCBCam {
     constructor() {
-        // Core architecture - each file is one operation
+        // Operations storage
         this.operations = [];
         this.nextOperationId = 1;
         
-        // File type definitions
+        // File type definitions with distinct colors
         this.fileTypes = {
             isolation: {
                 extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs', '.gto', '.gbo', '.gtp', '.gbp'],
                 description: 'Gerber files for isolation routing',
-                icon: '📄'
+                icon: '📄',
+                color: '#ff8844' // Orange
             },
             clear: {
                 extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd'],
                 description: 'Gerber files for copper clearing',
-                icon: '📄'
+                icon: '📄',
+                color: '#44ff88' // Green
             },
             drill: {
                 extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'],
                 description: 'Excellon drill files',
-                icon: '🔧'
+                icon: '🔧',
+                color: '#4488ff' // Blue
             },
             cutout: {
                 extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill'],
                 description: 'Gerber files for board cutout',
-                icon: '📄'
+                icon: '📄',
+                color: '#ff00ff' // Magenta
             }
         };
         
-        // Processing engines (initialized on demand)
-        this.geometryAnalyzer = null;
-        this.offsetEngine = null;
+        // Parsers and plotter
+        this.gerberParser = null;
+        this.excellonParser = null;
+        this.plotter = null;
+        this.renderer = null;
+        
+        // FIXED: Coordinate system integration
         this.coordinateSystem = null;
-        this.fusionEngine = null;
-        this.gcodeGenerator = null;
         
-        // Processing state
-        this.layers = new Map();
-        this.processedGeometry = null;
-        this.coordinateAnalysis = null;
-        this.geometryProcessed = false;
-        this.fusedLayers = new Map();
-        
-        // Offset engine results storage
-        this.offsetResults = new Map(); // operationId -> offset geometry
-        
+        // Settings
         this.settings = this.loadSettings();
-        this.debugMode = false;
+        this.debugMode = localStorage.getItem('pcbcam-debug') === 'true' || false;
         
-        // Statistics
+        // Stats
         this.stats = {
-            totalPolygons: 0,
+            totalPrimitives: 0,
             operations: 0,
             layers: 0,
             holes: 0
@@ -62,7 +59,8 @@ class PolygonPCBCam {
         this.initializeUI();
         this.setupEventListeners();
         
-        console.log('PCB CAM Controller initialized - Fixed geometry pipeline');
+        console.log('Semantic PCB CAM Controller initialized with fixed coordinate system');
+        console.log('🔧 Press Ctrl+Alt+D to toggle debug mode');
     }
     
     loadSettings() {
@@ -87,14 +85,21 @@ class PolygonPCBCam {
         
         try {
             const saved = localStorage.getItem('pcbcam-settings');
-            return saved ? this.deepMerge(defaults, JSON.parse(saved)) : defaults;
+            return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
         } catch (error) {
             console.warn('Error loading saved settings:', error);
             return defaults;
         }
     }
     
-    // Get default settings for operation types
+    saveSettings() {
+        try {
+            localStorage.setItem('pcbcam-settings', JSON.stringify(this.settings));
+        } catch (error) {
+            console.warn('Error saving settings:', error);
+        }
+    }
+    
     getDefaultOperationSettings(operationType) {
         const baseDefaults = {
             tool: { diameter: 0.1, type: 'end_mill', material: 'carbide' },
@@ -160,7 +165,6 @@ class PolygonPCBCam {
         return baseDefaults;
     }
     
-    // Create new operation from file
     createOperation(operationType, file) {
         const operation = {
             id: `op_${this.nextOperationId++}`,
@@ -173,40 +177,19 @@ class PolygonPCBCam {
             },
             settings: this.getDefaultOperationSettings(operationType),
             parsed: null,
+            primitives: null,
+            bounds: null,
             error: null,
             warnings: null,
-            polygons: [],
-            holes: [],
             expanded: true,
-            layerName: null,
             processed: false,
-            offsetGenerated: false
+            color: this.fileTypes[operationType].color // Store operation color
         };
         
         this.operations.push(operation);
         return operation;
     }
     
-    deepMerge(target, source) {
-        const result = { ...target };
-        for (const key in source) {
-            if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-                result[key] = this.deepMerge(target[key] || {}, source[key]);
-            } else {
-                result[key] = source[key];
-            }
-        }
-        return result;
-    }
-
-    saveSettings() {
-        try {
-            localStorage.setItem('pcbcam-settings', JSON.stringify(this.settings));
-        } catch (error) {
-            console.warn('Error saving settings:', error);
-        }
-    }
-
     initializeUI() {
         // Set theme
         const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -217,222 +200,111 @@ class PolygonPCBCam {
         this.updateStatus();
     }
     
-    // Parse files immediately with FIXED warning handling
     async parseOperationAsync(operation) {
         try {
             this.updateStatus(`Loading ${operation.file.name}...`, 'info');
             
-            let parser;
-            let result;
+            let parseResult;
             
             if (operation.type === 'drill') {
-                parser = new ExcellonPolygonParser({ debug: this.debugMode });
-                result = parser.parse(operation.file.content);
-                
-                operation.parsed = result;
-                operation.holes = result.holes;
-                operation.polygons = [];
-                
-            } else {
-                parser = new GerberPolygonParser({ debug: this.debugMode });
-                result = parser.parse(operation.file.content);
-                
-                operation.parsed = result;
-                operation.polygons = result.polygons;
-            }
-            
-            // Better error vs warning handling
-            if (result.errors && result.errors.length > 0) {
-                operation.error = result.errors.join('; ');
-                console.error(`❌ Critical errors for ${operation.file.name}: ${result.errors.length} issues`);
-                this.showOperationMessage(operation.type, `Parse errors: ${result.errors.length} critical issues`, 'error');
-            }
-            
-            // Handle warnings separately and don't spam console
-            if (result.warnings && result.warnings.length > 0) {
-                operation.warnings = result.warnings;
-                if (this.debugMode) {
-                    console.log(`⚠️ Parse warnings for ${operation.file.name}: ${result.warnings.length} minor issues (debug mode)`);
+                if (!this.excellonParser) {
+                    this.excellonParser = new ExcellonSemanticParser({ debug: this.debugMode });
                 }
+                parseResult = this.excellonParser.parse(operation.file.content);
+            } else {
+                if (!this.gerberParser) {
+                    this.gerberParser = new GerberSemanticParser({ debug: this.debugMode });
+                }
+                parseResult = this.gerberParser.parse(operation.file.content);
             }
             
-            // Simple layer setup
-            operation.layerName = `${operation.type}_${operation.id}`;
-            this.layers.set(operation.layerName, operation.polygons);
-            
-            // Mark that we need to reprocess geometry
-            this.geometryProcessed = false;
-            
-            this.updateSimpleStatistics();
-            
-            const itemCount = operation.type === 'drill' ? result.holes.length : result.polygons.length;
-            const unitType = operation.type === 'drill' ? 'holes' : 'polygons';
-            
-            // Only show success if no critical errors
-            if (!operation.error) {
-                this.showOperationMessage(operation.type, `Successfully loaded ${itemCount} ${unitType}`, 'success');
-                this.updateStatus(`Loaded ${operation.file.name}: ${itemCount} ${unitType}`, 'success');
+            if (!parseResult.success) {
+                operation.error = parseResult.errors.join('; ');
+                this.showOperationMessage(operation.type, `Parse errors: ${parseResult.errors.length} issues`, 'error');
+                return;
             }
-
+            
+            operation.parsed = parseResult;
+            
+            // Convert to primitives immediately
+            if (!this.plotter) {
+                this.plotter = new GerberPlotter({ debug: this.debugMode });
+            }
+            
+            let plotResult;
+            if (operation.type === 'drill') {
+                plotResult = this.plotter.plotDrillData(parseResult);
+            } else {
+                plotResult = this.plotter.plot(parseResult);
+            }
+            
+            if (!plotResult.success) {
+                operation.error = plotResult.error;
+                this.showOperationMessage(operation.type, `Plot error: ${plotResult.error}`, 'error');
+                return;
+            }
+            
+            operation.primitives = plotResult.primitives;
+            operation.bounds = plotResult.bounds;
+            
+            // Update stats
+            this.updateStatistics();
+            
+            const count = operation.primitives.length;
+            this.showOperationMessage(operation.type, `Successfully loaded ${count} primitives`, 'success');
+            this.updateStatus(`Loaded ${operation.file.name}: ${count} primitives`, 'success');
+            
         } catch (error) {
             operation.error = error.message;
-            console.error(`Error parsing ${operation.file.name}:`, error);
-            this.showOperationMessage(operation.type, `Error parsing ${operation.file.name}: ${error.message}`, 'error');
-            this.updateStatus(`Error parsing ${operation.file.name}: ${error.message}`, 'error');
+            console.error(`Error processing ${operation.file.name}:`, error);
+            this.showOperationMessage(operation.type, `Error: ${error.message}`, 'error');
+            this.updateStatus(`Error processing ${operation.file.name}: ${error.message}`, 'error');
         }
         
         this.renderOperations(operation.type);
     }
     
-    // Initialize processing engines on first use
-    initializeProcessingEngines() {
-        if (!this.geometryAnalyzer) {
-            this.geometryAnalyzer = new GeometryAnalyzer({ debug: this.debugMode });
-            console.log('✅ Geometry analyzer initialized');
-        }
-        
-        if (!this.offsetEngine) {
-            this.offsetEngine = new EnhancedOffsetEngine({ debug: this.debugMode });
-            console.log('✅ Enhanced offset engine initialized');
-        }
-        
-        if (!this.coordinateSystem) {
-            this.coordinateSystem = new CoordinateSystemManager({ debug: this.debugMode });
-            console.log('✅ Fixed coordinate system initialized');
-        }
-        
-        if (!this.fusionEngine) {
-            this.fusionEngine = new PolygonFusionEngine({ debug: this.debugMode });
-            console.log('✅ Polygon fusion engine initialized');
-        }
-    }
-    
-    // Process geometry when preview is opened
-    async processGeometryForPreview() {
-        if (this.operations.length === 0) return null;
-        
-        this.updateStatus('Processing geometry for preview...', 'info');
-        
-        try {
-            // Initialize engines
-            this.initializeProcessingEngines();
+    initializeRenderer() {
+        if (!this.renderer) {
+            this.renderer = new LayerRenderer('preview-canvas');
             
-            // Collect all geometry
-            const allPolygons = [];
-            const allHoles = [];
-            
-            this.operations.forEach(operation => {
-                if (operation.polygons && operation.polygons.length > 0) {
-                    allPolygons.push(...operation.polygons);
-                }
-                if (operation.holes && operation.holes.length > 0) {
-                    allHoles.push(...operation.holes);
-                }
-            });
-            
-            // Geometry analysis (filtered to avoid spam)
-            const geometryAnalysis = this.geometryAnalyzer.analyzeGeometry(this.operations);
-            
-            // Coordinate system analysis
-            this.coordinateAnalysis = this.coordinateSystem.analyzeCoordinateSystem(this.operations);
-            
-            // Boolean fusion where beneficial - CONSOLIDATE GEOMETRY BY OPERATION
-            const processedLayers = new Map();
-            for (const [layerName, polygons] of this.layers.entries()) {
-                if (polygons.length > 1 && this.shouldFuseLayer(layerName, polygons)) {
-                    const fusedPolygons = this.fusionEngine.fusePolygons(polygons, 'union');
-                    processedLayers.set(layerName, fusedPolygons);
-                    console.log(`Fused layer ${layerName}: ${polygons.length} → ${fusedPolygons.length} polygons`);
-                } else {
-                    processedLayers.set(layerName, [...polygons]);
-                }
+            // FIXED: Initialize coordinate system properly
+            if (!this.coordinateSystem) {
+                this.coordinateSystem = new CoordinateSystemManager({ debug: this.debugMode });
             }
-
-            this.fusedLayers = processedLayers;
             
-            this.updateStatus('Geometry processing complete', 'success');
+            // Link coordinate system to renderer
+            this.renderer.setCoordinateSystem(this.coordinateSystem);
+            this.coordinateSystem.setRenderer(this.renderer);
             
-            return {
-                polygons: allPolygons,
-                holes: allHoles,
-                processedLayers: processedLayers,
-                coordinateAnalysis: this.coordinateAnalysis,
-                geometryAnalysis: geometryAnalysis
-            };
-            
-        } catch (error) {
-            console.error('Geometry processing error:', error);
-            this.updateStatus(`Geometry processing failed: ${error.message}`, 'error');
-            return null;
+            console.log('✅ Layer renderer initialized with coordinate system');
         }
     }
     
-    // Determine if layer should be fused
-    shouldFuseLayer(layerName, polygons) {
-        if (polygons.length <= 1) return false;
-        
-        // Simple heuristics for auto-fusion
-        if (polygons.length > 20) return true; // Many small features
-        
-        // Check for overlapping or very close polygons
-        const bounds = PolygonUtils.calculateBounds(polygons);
-        const totalArea = bounds ? (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY) : 0;
-        const polygonArea = polygons.reduce((sum, p) => sum + (p.getArea ? p.getArea() : 0), 0);
-        
-        // If polygons take up significant area, they might be connected
-        if (totalArea > 0 && polygonArea / totalArea > 0.3) return true;
-        
-        return false;
-    }
-    
-    // FIXED: Enhanced preview with proper coordinate system initialization
     async openPreview() {
         const modal = document.getElementById('preview-modal');
         if (!modal) return;
         
-        // Add overflow hidden to body
+        // Show modal
         document.body.style.overflow = 'hidden';
-        
         modal.style.display = 'flex';
         
-        // Process geometry if not already done
-        if (!this.geometryProcessed) {
-            this.processedGeometry = await this.processGeometryForPreview();
-            this.geometryProcessed = true;
-        }
+        // Initialize renderer
+        this.initializeRenderer();
         
-        if (!this.renderer) {
-            this.renderer = new PreviewRenderer('preview-canvas');
-            
-            // Initialize SVG exporter
-            if (typeof SVGDebugExporter !== 'undefined') {
-                this.renderer.svgExporter = new SVGDebugExporter(this.renderer);
-                console.log('✅ SVG exporter initialized');
-            }
-        }
-
-        this.renderer.setDebugMode(this.debugMode);
-        
-        // Initialize coordinate system properly
-        if (this.coordinateAnalysis && this.coordinateAnalysis.boardBounds) {
-            // Set Gerber origin in renderer
-            this.renderer.setGerberOrigin(0, 0); // Gerber coordinate system origin
-            
-            // Set initial working origin to Gerber origin (don't auto-move to board corner)
-            this.renderer.setOriginPosition(0, 0);
-            
-            // Update coordinate system manager
-            this.coordinateSystem.setGerberOrigin(0, 0);
-            
-            // Link renderer to coordinate system
-            this.coordinateSystem.setRenderer(this.renderer);
-            this.renderer.setCoordinateSystemManager(this.coordinateSystem);
-        }
-        
+        // Update renderer with current operations
         this.updateRenderer();
+        
+        // FIXED: Calculate coordinate analysis using coordinate system
+        this.analyzeCoordinates();
+        
+        // Setup controls
+        this.setupPreviewControls();
+        
+        // Update UI
         this.updatePreviewUI();
         
-        // Force canvas resize and render
+        // Fit view
         setTimeout(() => {
             if (this.renderer) {
                 this.renderer.resizeCanvas();
@@ -440,390 +312,301 @@ class PolygonPCBCam {
             }
         }, 100);
     }
-
+    
     updateRenderer() {
-        if (!this.renderer) {
-            console.warn('Renderer not initialized yet.');
-            return;
-        }
-
-        // FIXED: Create proper operation data structure for renderer
-        const operations = [];
+        if (!this.renderer) return;
         
-        // Process each operation and create renderer-compatible data
+        // Clear existing layers
+        this.renderer.clearLayers();
+        
+        // Add each operation as a layer with proper type and color
         this.operations.forEach(operation => {
-            if (operation.type === 'drill' && operation.holes && operation.holes.length > 0) {
-                operations.push({
-                    type: 'drill',
-                    polygons: [],
-                    holes: operation.holes,
-                    preservedFills: []
-                });
-            } else if (operation.polygons && operation.polygons.length > 0) {
-                // Use fused polygons if available, otherwise original
-                const layerName = operation.layerName;
-                const polygons = this.fusedLayers.has(layerName) ? 
-                    this.fusedLayers.get(layerName) : operation.polygons;
-                
-                operations.push({
+            if (operation.primitives && operation.primitives.length > 0) {
+                this.renderer.addLayer(operation.id, operation.primitives, {
                     type: operation.type,
-                    polygons: polygons,
-                    holes: [],
-                    preservedFills: []
+                    visible: true,
+                    bounds: operation.bounds,
+                    color: operation.color || this.fileTypes[operation.type].color
                 });
             }
         });
-
-        // Set operations in renderer
-        this.renderer.setOperations(operations);
-        
-        // Update bounds in renderer
-        if (this.coordinateAnalysis) {
-            this.renderer.bounds = this.coordinateAnalysis.boardBounds;
-        }
-        
-        // Add offset polygons if any
-        this.offsetResults.forEach((offsetData, opId) => {
-            if (offsetData && offsetData.passes) {
-                const allOffsetPolygons = [];
-                offsetData.passes.forEach(pass => {
-                    if (pass.polygons) {
-                        allOffsetPolygons.push(...pass.polygons);
-                    }
-                });
-                if (allOffsetPolygons.length > 0) {
-                    this.renderer.setOffsetPolygons(opId, allOffsetPolygons);
-                }
-            }
-        });
-    }
-
-    centerOrigin() {
-        if (this.coordinateSystem && this.coordinateAnalysis && this.coordinateAnalysis.boardBounds) {
-            const bounds = this.coordinateAnalysis.boardBounds;
-            const centerX = (bounds.minX + bounds.maxX) / 2;
-            const centerY = (bounds.minY + bounds.maxY) / 2;
-            
-            this.coordinateSystem.setWorkingOrigin(centerX, centerY);
-            if (this.renderer) {
-                this.renderer.setOriginPosition(centerX, centerY);
-            }
-            this.updateStatus(`Origin set to board center`, 'info');
-        }
-    }
-
-    bottomLeftOrigin() {
-        if (this.coordinateSystem && this.coordinateAnalysis && this.coordinateAnalysis.boardBounds) {
-            const bounds = this.coordinateAnalysis.boardBounds;
-            this.coordinateSystem.setWorkingOrigin(bounds.minX, bounds.minY);
-            if (this.renderer) {
-                this.renderer.setOriginPosition(bounds.minX, bounds.minY);
-            }
-            this.updateStatus(`Origin set to board bottom-left`, 'info');
-        }
-    }
-
-    setOrigin() {
-        if (!this.coordinateSystem || !this.renderer) {
-            console.error('Coordinate system or renderer not initialized.');
-            return;
-        }
-
-        const xOffsetInput = document.getElementById('x-offset');
-        const yOffsetInput = document.getElementById('y-offset');
-        
-        const xVal = parseFloat(xOffsetInput.value) || 0;
-        const yVal = parseFloat(yOffsetInput.value) || 0;
-
-        if (xVal === 0 && yVal === 0) {
-            // Tare operation
-            const result = this.coordinateSystem.tareToCurrentPosition();
-            if (result.success) {
-                this.updateStatus('Origin tared - coordinates reset to (0, 0)', 'success');
-            }
-        } else {
-            // Apply manual offset
-            const result = this.coordinateSystem.applyManualOffset(xVal, yVal);
-            if (result.success) {
-                this.updateStatus(`Origin offset by (${xVal.toFixed(2)}, ${yVal.toFixed(2)})`, 'info');
-            }
-        }
-        
-        // Reset input fields
-        if (xOffsetInput) xOffsetInput.value = 0;
-        if (yOffsetInput) yOffsetInput.value = 0;
-    }
-
-    resetOrigin() {
-        if (this.coordinateSystem) {
-            this.coordinateSystem.reset();
-            this.updateStatus('Origin reset to default', 'info');
-        }
     }
     
-    // Setup origin controls
-    setupOriginControls() {
-        // Remove any existing event listeners to prevent duplicates
-        this.removeOriginListeners();
+    analyzeCoordinates() {
+        if (!this.coordinateSystem) return;
         
-        // Origin preset buttons
+        console.log('[CAM] Analyzing coordinates with operations:', this.operations.length);
+        
+        // Use coordinate system to analyze operations
+        const analysis = this.coordinateSystem.analyzeCoordinateSystem(this.operations);
+        
+        // Store the analysis for UI updates
+        this.coordinateAnalysis = analysis;
+        
+        console.log('[CAM] Coordinate analysis result:', analysis);
+        
+        return analysis;
+    }
+    
+    setupPreviewControls() {
+        // Origin controls - FIXED to use coordinate system methods
         const centerBtn = document.getElementById('center-origin-btn');
         const bottomLeftBtn = document.getElementById('bottom-left-origin-btn');
         const setBtn = document.getElementById('set-origin-btn');
+        const resetBtn = document.getElementById('reset-origin-btn');
         
         if (centerBtn) {
-            this.centerOriginHandler = () => this.centerOrigin();
-            centerBtn.addEventListener('click', this.centerOriginHandler);
+            centerBtn.onclick = () => this.centerOrigin();
         }
-        
         if (bottomLeftBtn) {
-            this.bottomLeftOriginHandler = () => this.bottomLeftOrigin();
-            bottomLeftBtn.addEventListener('click', this.bottomLeftOriginHandler);
+            bottomLeftBtn.onclick = () => this.bottomLeftOrigin();
         }
-        
         if (setBtn) {
-            this.setOriginHandler = () => this.setOrigin();
-            setBtn.addEventListener('click', this.setOriginHandler);
+            setBtn.onclick = () => this.setOrigin();
         }
-    }
-    
-    // Update preview UI with enhanced coordinate system
-    updatePreviewUI() {
-        // Update board size
-        if (this.coordinateAnalysis && this.coordinateAnalysis.boardBounds) {
-            const bounds = this.coordinateAnalysis.boardBounds;
-            const sizeElement = document.getElementById('board-size');
-            if (sizeElement) {
-                sizeElement.textContent = `${bounds.width.toFixed(1)} × ${bounds.height.toFixed(1)} mm`;
-            }
+        if (resetBtn) {
+            resetBtn.onclick = () => this.resetOrigin();
         }
         
-        // Update statistics
-        const stats = this.getPolygonStats();
-        const operationsElement = document.getElementById('preview-operations');
-        const polygonsElement = document.getElementById('preview-total-polygons');
+        // Debug controls - ENHANCED with better fill/outline toggle
+        const showFilled = document.getElementById('show-filled');
+        const showOutlines = document.getElementById('show-outlines');
+        const blackWhite = document.getElementById('black-white');
+        const showGrid = document.getElementById('show-grid');
+        const showRulers = document.getElementById('show-rulers');
+        const showBounds = document.getElementById('show-bounds');
+        const showOffsets = document.getElementById('show-offsets');
+        const showOriginal = document.getElementById('show-original');
         
-        if (operationsElement) operationsElement.textContent = stats.operations;
-        if (polygonsElement) polygonsElement.textContent = stats.totalPolygons;
-        
-        // Setup origin controls
-        this.setupOriginControls();
-        
-        // Setup debug controls
-        this.setupDebugControls();
-    }
-    
-    // FIXED: Setup debug controls in preview modal
-    setupDebugControls() {
-        const debugControls = document.getElementById('debug-controls');
-        if (!debugControls) return;
-        
-        // Show/hide filled polygons
-        const showFilledCheckbox = document.getElementById('show-filled');
-        if (showFilledCheckbox) {
-            showFilledCheckbox.checked = this.renderer?.showFilled ?? true;
-            showFilledCheckbox.addEventListener('change', (e) => {
-                if (this.renderer) {
-                    this.renderer.showFilled = e.target.checked;
-                    this.renderer.render();
+        if (showFilled) {
+            showFilled.checked = this.renderer.options.showFill;
+            showFilled.onchange = (e) => {
+                this.renderer.setOptions({ showFill: e.target.checked });
+                // Auto-enable outlines when fill is disabled for better visibility
+                if (!e.target.checked && showOutlines) {
+                    showOutlines.checked = true;
+                    this.renderer.setOptions({ showOutlines: true });
                 }
-            });
+            };
         }
         
-        // Show/hide outlines
-        const showOutlinesCheckbox = document.getElementById('show-outlines');
-        if (showOutlinesCheckbox) {
-            showOutlinesCheckbox.checked = this.renderer?.showOutlines ?? true;
-            showOutlinesCheckbox.addEventListener('change', (e) => {
-                if (this.renderer) {
-                    this.renderer.showOutlines = e.target.checked;
-                    this.renderer.render();
-                }
-            });
+        if (showOutlines) {
+            showOutlines.checked = this.renderer.options.showOutlines;
+            showOutlines.onchange = (e) => {
+                this.renderer.setOptions({ showOutlines: e.target.checked });
+            };
         }
         
-        // Black and white mode
-        const blackWhiteCheckbox = document.getElementById('black-white');
-        if (blackWhiteCheckbox) {
-            blackWhiteCheckbox.checked = this.renderer?.blackAndWhite ?? false;
-            blackWhiteCheckbox.addEventListener('change', (e) => {
-                if (this.renderer) {
-                    this.renderer.blackAndWhite = e.target.checked;
-                    this.renderer.render();
-                }
-            });
+        if (blackWhite) {
+            blackWhite.checked = this.renderer.options.blackAndWhite;
+            blackWhite.onchange = (e) => {
+                this.renderer.setOptions({ blackAndWhite: e.target.checked });
+            };
         }
         
-        // Show/hide grid
-        const showGridCheckbox = document.getElementById('show-grid');
-        if (showGridCheckbox) {
-            showGridCheckbox.checked = this.renderer?.showGrid ?? true;
-            showGridCheckbox.addEventListener('change', (e) => {
-                if (this.renderer) {
-                    this.renderer.showGrid = e.target.checked;
-                    this.renderer.render();
-                }
-            });
+        if (showGrid) {
+            showGrid.checked = this.renderer.options.showGrid;
+            showGrid.onchange = (e) => {
+                this.renderer.setOptions({ showGrid: e.target.checked });
+            };
         }
         
-        // Show/hide rulers
-        const showRulersCheckbox = document.getElementById('show-rulers');
-        if (showRulersCheckbox) {
-            showRulersCheckbox.checked = this.renderer?.showRulers ?? true;
-            showRulersCheckbox.addEventListener('change', (e) => {
-                if (this.renderer) {
-                    this.renderer.showRulers = e.target.checked;
-                    this.renderer.render();
-                }
-            });
+        if (showRulers) {
+            showRulers.checked = this.renderer.options.showRulers;
+            showRulers.onchange = (e) => {
+                this.renderer.setOptions({ showRulers: e.target.checked });
+            };
+        }
+        
+        if (showBounds) {
+            showBounds.checked = this.renderer.options.showBounds;
+            showBounds.onchange = (e) => {
+                this.renderer.setOptions({ showBounds: e.target.checked });
+            };
+        }
+        
+        // Future offset geometry controls
+        if (showOffsets) {
+            showOffsets.checked = false;
+            showOffsets.onchange = (e) => {
+                // Placeholder for future offset path visualization
+                console.log('Offset paths:', e.target.checked ? 'ON' : 'OFF');
+            };
+        }
+        
+        if (showOriginal) {
+            showOriginal.checked = true;
+            showOriginal.onchange = (e) => {
+                // Control original geometry visibility
+                this.renderer.setOptions({ showOriginal: e.target.checked });
+            };
         }
         
         // Export SVG button
         const exportSvgBtn = document.getElementById('export-svg-btn');
         if (exportSvgBtn) {
-            exportSvgBtn.addEventListener('click', () => {
-                if (this.renderer && this.renderer.svgExporter) {
-                    const renderState = this.renderer.getRenderState();
-                    this.renderer.svgExporter.exportCanvasState(renderState);
-                }
-            });
+            exportSvgBtn.onclick = () => this.exportSVG();
         }
     }
     
-    // Generate offset geometry for specific operation
-    async generateOffsetGeometry(operationId) {
-        const operation = this.operations.find(op => op.id === operationId);
-        if (!operation) {
-            console.error(`Operation ${operationId} not found`);
-            return null;
-        }
+    // FIXED: Use coordinate system methods with proper UI updates
+    centerOrigin() {
+        if (!this.coordinateSystem) return;
         
-        // Only generate offsets for operations that need them
-        if (operation.type !== 'isolation' && operation.type !== 'clear' && operation.type !== 'cutout') {
-            console.log(`Operation ${operation.type} doesn't require offset generation`);
-            return null;
-        }
-        
-        // Check if we have valid polygons to work with
-        if (!operation.polygons || operation.polygons.length === 0) {
-            console.warn(`No polygons available for offset generation in operation ${operationId}`);
-            this.updateStatus(`No geometry loaded for ${operation.file.name}`, 'warning');
-            return null;
-        }
-        
-        this.initializeProcessingEngines();
-        
-        try {
-            this.updateStatus(`Generating ${operation.type} toolpaths for ${operation.file.name}...`, 'info');
-            console.log(`🎯 Starting offset generation for ${operation.type} operation ${operationId}`);
-            
-            let result;
-            
-            // Generate offsets based on operation type
-            switch (operation.type) {
-                case 'isolation':
-                    result = this.offsetEngine.generateIsolationToolpaths(
-                        operation.polygons,
-                        operation.settings
-                    );
-                    break;
-                    
-                case 'clear':
-                    result = this.offsetEngine.generateClearingToolpaths(
-                        operation.polygons,
-                        operation.settings
-                    );
-                    break;
-                    
-                case 'cutout':
-                    result = this.offsetEngine.generateCutoutToolpaths(
-                        operation.polygons,
-                        operation.settings
-                    );
-                    break;
+        console.log('[CAM] Center origin button pressed');
+        const result = this.coordinateSystem.centerOrigin();
+        if (result.success) {
+            // Force UI update
+            this.updateOriginDisplay();
+            // Force renderer update to show origin marker in new position
+            if (this.renderer) {
+                this.renderer.render();
             }
-            
-            if (result && result.success) {
-                this.offsetResults.set(operationId, result);
-                operation.offsetGenerated = true;
-                
-                console.log(`✅ Offset generation success for ${operation.type}:`, result);
-                
-                // Update renderer with offset geometry
-                if (this.renderer) {
-                    const allOffsetPolygons = [];
-                    if (result.passes) {
-                        result.passes.forEach(pass => {
-                            if (pass.polygons) {
-                                allOffsetPolygons.push(...pass.polygons);
-                            }
-                        });
-                    }
-                    
-                    if (allOffsetPolygons.length > 0) {
-                        this.renderer.setOffsetPolygons(operationId, allOffsetPolygons);
-                        console.log(`🎯 Updated renderer with ${allOffsetPolygons.length} offset polygons`);
-                    }
-                }
-                
-                const pathCount = result.passes?.length || result.toolpaths?.length || 0;
-                this.updateStatus(`Generated ${operation.type} toolpaths: ${pathCount} paths`, 'success');
-                
-                // Update the operation card to show new status
-                this.renderOperations(operation.type);
-                
-                return result;
-            } else {
-                const error = result?.error || 'Unknown offset generation error';
-                this.updateStatus(`Offset generation failed: ${error}`, 'error');
-                console.error(`❌ Offset generation failed for ${operation.type}:`, error);
-                return null;
-            }
-            
-        } catch (error) {
-            console.error(`Offset generation error for ${operation.type}:`, error);
-            this.updateStatus(`Offset generation failed: ${error.message}`, 'error');
-            return null;
-        }
-    }
-    
-    // Generate G-code (stub for future implementation)
-    async exportGcode() {
-        if (this.operations.length === 0) {
-            this.updateStatus('No operations loaded for G-code export.', 'warning');
-            return;
-        }
-        
-        // Initialize processing if needed
-        if (!this.geometryProcessed) {
-            this.processedGeometry = await this.processGeometryForPreview();
-            this.geometryProcessed = true;
-        }
-        
-        // Generate offsets for all operations that need them
-        let offsetsGenerated = 0;
-        for (const operation of this.operations) {
-            if (['isolation', 'clear', 'cutout'].includes(operation.type) && !operation.offsetGenerated) {
-                const result = await this.generateOffsetGeometry(operation.id);
-                if (result) offsetsGenerated++;
-            }
-        }
-        
-        if (offsetsGenerated > 0) {
-            this.updateStatus(`Generated ${offsetsGenerated} toolpath operations. G-code generation in development.`, 'info');
+            this.updateStatus('Origin set to board center', 'info');
+            console.log('[CAM] Origin centered successfully');
         } else {
-            this.updateStatus('All operations processed. G-code generation in development.', 'info');
+            this.updateStatus('Cannot center origin: ' + result.error, 'error');
+            console.log('[CAM] Failed to center origin:', result.error);
         }
-        
-        console.log('G-code generation would use:', {
-            operations: this.operations,
-            processedGeometry: this.processedGeometry,
-            coordinateAnalysis: this.coordinateAnalysis,
-            offsetResults: this.offsetResults
-        });
     }
     
-    // Standard UI methods
+    bottomLeftOrigin() {
+        if (!this.coordinateSystem) return;
+        
+        console.log('[CAM] Bottom-left origin button pressed');
+        const result = this.coordinateSystem.bottomLeftOrigin();
+        if (result.success) {
+            // Force UI update
+            this.updateOriginDisplay();
+            // Force renderer update to show origin marker in new position
+            if (this.renderer) {
+                this.renderer.render();
+            }
+            this.updateStatus('Origin set to board bottom-left', 'info');
+            console.log('[CAM] Origin set to bottom-left successfully');
+        } else {
+            this.updateStatus('Cannot set bottom-left origin: ' + result.error, 'error');
+            console.log('[CAM] Failed to set bottom-left origin:', result.error);
+        }
+    }
+    
+    setOrigin() {
+        const xInput = document.getElementById('x-offset');
+        const yInput = document.getElementById('y-offset');
+        
+        const x = parseFloat(xInput.value) || 0;
+        const y = parseFloat(yInput.value) || 0;
+        
+        console.log(`[CAM] Set origin button pressed with offset (${x}, ${y})`);
+        
+        if (x === 0 && y === 0) {
+            // If both offsets are zero, treat as "tare" - current position becomes new 0,0
+            const status = this.coordinateSystem.getStatus();
+            this.coordinateSystem.setWorkingOrigin(status.workingOrigin.x, status.workingOrigin.y);
+            this.updateStatus('Origin tared to current position', 'info');
+            console.log('[CAM] Origin tared to current position');
+        } else {
+            // Apply offset
+            const result = this.coordinateSystem.applyManualOffset(x, y);
+            if (result.success) {
+                this.updateStatus(`Origin moved by (${x.toFixed(2)}, ${y.toFixed(2)})`, 'info');
+                console.log(`[CAM] Origin offset applied: (${x}, ${y})`);
+            }
+        }
+        
+        // Force UI update
+        this.updateOriginDisplay();
+        // Force renderer update
+        if (this.renderer) {
+            this.renderer.render();
+        }
+        
+        // Reset inputs
+        if (xInput) xInput.value = 0;
+        if (yInput) yInput.value = 0;
+    }
+    
+    resetOrigin() {
+        if (!this.coordinateSystem) return;
+        
+        console.log('[CAM] Reset origin button pressed');
+        this.coordinateSystem.reset();
+        
+        // Force UI update
+        this.updateOriginDisplay();
+        // Force renderer update
+        if (this.renderer) {
+            this.renderer.render();
+        }
+        
+        this.updateStatus('Origin reset to (0, 0)', 'info');
+        console.log('[CAM] Origin reset to (0, 0)');
+    }
+    
+    updateOriginDisplay() {
+        if (!this.coordinateSystem) return;
+        
+        const status = this.coordinateSystem.getStatus();
+        const currentOriginElement = document.getElementById('current-origin');
+        
+        if (currentOriginElement) {
+            const origin = status.workingOrigin;
+            // Show the current working origin coordinates in board coordinate system
+            currentOriginElement.textContent = `${origin.x.toFixed(2)}, ${origin.y.toFixed(2)}`;
+        }
+        
+        if (status.boardBounds) {
+            const bounds = status.boardBounds;
+            const sizeElement = document.getElementById('board-size');
+            if (sizeElement) {
+                sizeElement.textContent = `${bounds.width.toFixed(1)} × ${bounds.height.toFixed(1)} mm`;
+            }
+            
+            // ENHANCED: Show additional helpful info about the current origin
+            if (this.debugMode) {
+                console.log('[CAM] Origin display updated:');
+                console.log(`  Working origin: (${status.workingOrigin.x.toFixed(2)}, ${status.workingOrigin.y.toFixed(2)})`);
+                console.log(`  Board bounds: (${bounds.minX.toFixed(2)}, ${bounds.minY.toFixed(2)}) to (${bounds.maxX.toFixed(2)}, ${bounds.maxY.toFixed(2)})`);
+                console.log(`  Board center: (${bounds.centerX.toFixed(2)}, ${bounds.centerY.toFixed(2)})`);
+            }
+        }
+    }
+    
+    updatePreviewUI() {
+        const stats = this.getStats();
+        const operationsElement = document.getElementById('preview-operations');
+        const polygonsElement = document.getElementById('preview-total-polygons');
+        
+        if (operationsElement) operationsElement.textContent = stats.operations;
+        if (polygonsElement) polygonsElement.textContent = stats.totalPrimitives;
+        
+        this.updateOriginDisplay();
+    }
+    
+    closePreview() {
+        document.getElementById('preview-modal').style.display = 'none';
+        document.body.style.overflow = '';
+    }
+    
+    updateStatistics() {
+        this.stats.operations = this.operations.length;
+        this.stats.totalPrimitives = this.operations.reduce((sum, op) => 
+            sum + (op.primitives ? op.primitives.length : 0), 0);
+        this.stats.layers = this.operations.filter(op => op.primitives && op.primitives.length > 0).length;
+        this.stats.holes = this.operations
+            .filter(op => op.type === 'drill')
+            .reduce((sum, op) => sum + (op.primitives ? op.primitives.length : 0), 0);
+    }
+    
+    getStats() {
+        return {
+            totalPrimitives: this.stats.totalPrimitives,
+            layers: this.stats.layers,
+            holes: this.stats.holes,
+            operations: this.stats.operations
+        };
+    }
+    
     validateFileType(fileName, operationType) {
         const extension = this.getFileExtension(fileName);
         const config = this.fileTypes[operationType];
@@ -875,32 +658,61 @@ class PolygonPCBCam {
             
             // Update renderer theme
             if (this.renderer) {
-                this.renderer.setTheme(newTheme);
+                this.renderer.setOptions({ theme: newTheme });
             }
         });
 
-        // File input change handler
+        // File input
         document.getElementById('file-input-temp')?.addEventListener('change', (e) => this.handleFileSelect(e));
         
-        // Main action buttons
+        // Main buttons
         document.getElementById('preview-btn')?.addEventListener('click', () => this.openPreview());
         document.getElementById('export-gcode-btn')?.addEventListener('click', () => this.exportGcode());
         
-        // Modal and preview controls
+        // Modal controls
         document.getElementById('modal-close-btn')?.addEventListener('click', () => this.closePreview());
         document.getElementById('modal-goback-btn')?.addEventListener('click', () => this.closePreview());
         document.getElementById('generate-gcode-modal-btn')?.addEventListener('click', () => this.exportGcode());
         document.getElementById('zoom-fit-btn')?.addEventListener('click', () => this.renderer?.zoomFit());
         document.getElementById('zoom-in-btn')?.addEventListener('click', () => this.renderer?.zoomIn());
         document.getElementById('zoom-out-btn')?.addEventListener('click', () => this.renderer?.zoomOut());
+        
+        // Debug mode toggle
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.altKey && e.key === 'D') {
+                e.preventDefault();
+                this.debugMode = !this.debugMode;
+                localStorage.setItem('pcbcam-debug', this.debugMode.toString());
+                console.log(`Debug mode: ${this.debugMode ? 'ON' : 'OFF'}`);
+                
+                // Update renderer debug mode
+                if (this.renderer) {
+                    this.renderer.setOptions({ debug: this.debugMode });
+                }
+                
+                // Update parsers and systems
+                if (this.gerberParser) {
+                    this.gerberParser.options.debug = this.debugMode;
+                }
+                if (this.excellonParser) {
+                    this.excellonParser.options.debug = this.debugMode;
+                }
+                if (this.plotter) {
+                    this.plotter.options.debug = this.debugMode;
+                }
+                if (this.coordinateSystem) {
+                    this.coordinateSystem.options.debug = this.debugMode;
+                }
+            }
+        });
     }
-
+    
     triggerFileInput(type) {
         const fileInput = document.getElementById('file-input-temp');
         if (fileInput) {
             fileInput.setAttribute('data-type', type);
             
-            // Set file filter based on operation type
+            // Set file filter
             const config = this.fileTypes[type];
             if (config) {
                 fileInput.setAttribute('accept', config.extensions.join(','));
@@ -926,7 +738,7 @@ class PolygonPCBCam {
             rapidFeed.value = this.settings.machine.rapidFeed;
         }
     }
-
+    
     updateStatus(message = null, type = 'normal') {
         const statusText = document.getElementById('status-text');
         const statusBar = document.getElementById('status');
@@ -935,7 +747,8 @@ class PolygonPCBCam {
         statusBar.className = 'status';
         if (type !== 'normal') statusBar.classList.add(type);
 
-        const hasValidOperations = this.operations.length > 0 && this.layers.size > 0;
+        const hasValidOperations = this.operations.length > 0 && 
+            this.operations.some(op => op.primitives && op.primitives.length > 0);
         
         // Update button states
         const previewBtn = document.getElementById('preview-btn');
@@ -948,7 +761,7 @@ class PolygonPCBCam {
             statusText.textContent = message;
         } else {
             statusText.textContent = hasValidOperations ? 
-                `Ready: ${this.operations.length} operations, ${this.stats.totalPolygons} polygons.` : 
+                `Ready: ${this.operations.length} operations, ${this.stats.totalPrimitives} primitives.` : 
                 'Ready - Add PCB files to begin';
         }
     }
@@ -984,13 +797,6 @@ class PolygonPCBCam {
         event.target.value = '';
     }
     
-    updateSimpleStatistics() {
-        this.stats.operations = this.operations.length;
-        this.stats.layers = this.layers.size;
-        this.stats.totalPolygons = Array.from(this.layers.values()).reduce((sum, polygons) => sum + polygons.length, 0);
-        this.stats.holes = this.operations.reduce((sum, op) => sum + (op.holes ? op.holes.length : 0), 0);
-    }
-    
     renderAllOperations() {
         ['isolation', 'clear', 'drill', 'cutout'].forEach(type => this.renderOperations(type));
     }
@@ -1021,18 +827,18 @@ class PolygonPCBCam {
         
         if (operation.error) {
             statusIcon = '❌';
-        } else if (operation.offsetGenerated) {
-            statusIcon = '🎯'; // Offset generated
-        } else if (operation.parsed) {
+        } else if (operation.primitives) {
             statusIcon = '✅';
         }
+        
+        // Add color indicator
+        const colorIndicator = `<span style="display: inline-block; width: 12px; height: 12px; background: ${operation.color}; border-radius: 2px; margin-right: 4px;"></span>`;
         
         card.innerHTML = `
             <div class="operation-header">
                 <span class="operation-icon">${config.icon}</span>
-                <span class="operation-name">${operation.file.name}</span>
+                <span class="operation-name">${colorIndicator}${operation.file.name}</span>
                 <span class="operation-status">${statusIcon}</span>
-                ${this.createOffsetButton(operation)}
                 <button class="expand-btn" data-operation-id="${operation.id}">
                     ${operation.expanded ? '▼' : '▶'}
                 </button>
@@ -1052,34 +858,7 @@ class PolygonPCBCam {
             this.removeOperation(e.target.dataset.operationId);
         });
         
-        // Add offset button listener if it exists
-        const offsetBtn = card.querySelector('.btn-offset');
-        if (offsetBtn) {
-            offsetBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log(`🎯 Offset button clicked for operation ${operation.id}`);
-                this.generateOffsetGeometry(operation.id);
-            });
-        }
-        
         return card;
-    }
-    
-    // Create offset generation button for applicable operations
-    createOffsetButton(operation) {
-        if (!['isolation', 'clear', 'cutout'].includes(operation.type) || !operation.parsed) {
-            return '';
-        }
-        
-        const label = operation.offsetGenerated ? 'Regenerate' : 'Generate';
-        const icon = operation.offsetGenerated ? '🔄' : '🎯';
-        
-        return `<button class="btn-offset" data-operation-id="${operation.id}" 
-                        title="Generate toolpath offsets" 
-                        style="background: var(--isolation-accent); color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 3px; font-size: 0.75rem; cursor: pointer; margin-right: 0.5rem;">
-                    ${icon} ${label}
-                </button>`;
     }
     
     createSettingsPanel(operation) {
@@ -1142,166 +921,31 @@ class PolygonPCBCam {
             case 'isolation':
                 return `
                     <div class="input-group">
-                        <label>Direction</label>
-                        <select id="direction-${operation.id}">
-                            <option value="outside" ${settings.direction === 'outside' ? 'selected' : ''}>Outside</option>
-                            <option value="inside" ${settings.direction === 'inside' ? 'selected' : ''}>Inside</option>
-                            <option value="both" ${settings.direction === 'both' ? 'selected' : ''}>Both</option>
-                        </select>
-                        <small class="input-hint">Outside routes around copper (standard)</small>
-                    </div>
-                    <div class="input-group">
                         <label>Passes</label>
-                        <input type="number" id="passes-${operation.id}" 
-                               value="${settings.passes}" min="1" max="5" step="1">
-                        <small class="input-hint">Number of concentric isolation passes</small>
+                        <input type="number" value="${settings.passes}" min="1" max="5">
                     </div>
                     <div class="input-group">
                         <label>Overlap %</label>
-                        <input type="number" id="overlap-${operation.id}" 
-                               value="${settings.overlap}" min="10" max="90" step="1">
-                        <small class="input-hint">Overlap between passes</small>
-                    </div>
-                    <div class="input-group">
-                        <label>
-                            <input type="checkbox" id="corner-handling-${operation.id}" 
-                                   ${settings.cornerHandling ? 'checked' : ''}> 
-                            Corner Handling
-                        </label>
-                        <small class="input-hint">Smooth sharp corners for better tool access</small>
+                        <input type="number" value="${settings.overlap}" min="10" max="90">
                     </div>
                 `;
-                
-            case 'clear':
-                return `
-                    <div class="input-group">
-                        <label>Pattern</label>
-                        <select id="pattern-${operation.id}">
-                            <option value="parallel" ${settings.pattern === 'parallel' ? 'selected' : ''}>Parallel</option>
-                            <option value="crosshatch" ${settings.pattern === 'crosshatch' ? 'selected' : ''}>Crosshatch</option>
-                        </select>
-                        <small class="input-hint">Clearing pattern for material removal</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Overlap %</label>
-                        <input type="number" id="overlap-${operation.id}" 
-                               value="${settings.overlap}" min="10" max="90" step="1">
-                        <small class="input-hint">Tool overlap for complete material removal</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Angle</label>
-                        <div class="input-unit">
-                            <input type="number" id="angle-${operation.id}" 
-                                   value="${settings.angle || 0}" min="0" max="180" step="15">
-                            <span>°</span>
-                        </div>
-                        <small class="input-hint">Cutting pattern angle</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Step Down</label>
-                        <div class="input-unit">
-                            <input type="number" id="step-down-${operation.id}" 
-                                   value="${settings.stepDown || 0.1}" min="0.01" step="0.01">
-                            <span>mm</span>
-                        </div>
-                        <small class="input-hint">Maximum depth per pass</small>
-                    </div>
-                `;
-                
             case 'drill':
                 return `
                     <div class="input-group">
                         <label>Peck Depth</label>
                         <div class="input-unit">
-                            <input type="number" id="peck-depth-${operation.id}" 
-                                   value="${settings.peckDepth}" min="0" step="0.1">
+                            <input type="number" value="${settings.peckDepth}" min="0" step="0.1">
                             <span>mm</span>
                         </div>
-                        <small class="input-hint">Depth per peck (0 = no pecking)</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Dwell Time</label>
-                        <div class="input-unit">
-                            <input type="number" id="dwell-time-${operation.id}" 
-                                   value="${settings.dwellTime}" min="0" step="0.1">
-                            <span>s</span>
-                        </div>
-                        <small class="input-hint">Pause at bottom of hole</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Retract Height</label>
-                        <div class="input-unit">
-                            <input type="number" id="retract-height-${operation.id}" 
-                                   value="${settings.retractHeight}" min="0.1" step="0.1">
-                            <span>mm</span>
-                        </div>
-                        <small class="input-hint">Height to retract between holes</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Spindle Speed</label>
-                        <div class="input-unit">
-                            <input type="number" id="spindle-speed-${operation.id}" 
-                                   value="${settings.spindleSpeed || 10000}" min="1000" step="500">
-                            <span>RPM</span>
-                        </div>
-                        <small class="input-hint">Spindle speed for drilling</small>
                     </div>
                 `;
-                
             case 'cutout':
                 return `
                     <div class="input-group">
                         <label>Tabs</label>
-                        <input type="number" id="tabs-${operation.id}" 
-                               value="${settings.tabs}" min="0" max="8" step="1">
-                        <small class="input-hint">Number of holding tabs (0 = no tabs)</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Tab Width</label>
-                        <div class="input-unit">
-                            <input type="number" id="tab-width-${operation.id}" 
-                                   value="${settings.tabWidth}" min="0.5" step="0.1">
-                            <span>mm</span>
-                        </div>
-                        <small class="input-hint">Width of each holding tab</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Tab Height</label>
-                        <div class="input-unit">
-                            <input type="number" id="tab-height-${operation.id}" 
-                                   value="${settings.tabHeight}" min="0.1" step="0.1">
-                            <span>mm</span>
-                        </div>
-                        <small class="input-hint">Height of material left in tabs</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Step Down</label>
-                        <div class="input-unit">
-                            <input type="number" id="step-down-${operation.id}" 
-                                   value="${settings.stepDown || 0.2}" min="0.01" step="0.01">
-                            <span>mm</span>
-                        </div>
-                        <small class="input-hint">Maximum depth per pass</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Lead In/Out</label>
-                        <div class="input-unit">
-                            <input type="number" id="lead-in-${operation.id}" 
-                                   value="${settings.leadIn || 0.5}" min="0" step="0.1">
-                            <span>mm</span>
-                        </div>
-                        <small class="input-hint">Distance for gradual entry/exit</small>
-                    </div>
-                    <div class="input-group">
-                        <label>Direction</label>
-                        <select id="direction-${operation.id}">
-                            <option value="conventional" ${settings.direction === 'conventional' ? 'selected' : ''}>Conventional</option>
-                            <option value="climb" ${settings.direction === 'climb' ? 'selected' : ''}>Climb</option>
-                        </select>
-                        <small class="input-hint">Cutting direction (conventional is safer)</small>
+                        <input type="number" value="${settings.tabs}" min="0" max="8">
                     </div>
                 `;
-                
             default:
                 return '';
         }
@@ -1329,76 +973,35 @@ class PolygonPCBCam {
         
         const operation = this.operations[operationIndex];
         
-        // Remove from layers and offset results
-        if (operation.layerName) {
-            this.layers.delete(operation.layerName);
-            this.fusedLayers.delete(operation.layerName);
-        }
-        this.offsetResults.delete(operationId);
-        
         // Remove from operations
         this.operations.splice(operationIndex, 1);
         
-        // Mark for reprocessing
-        this.geometryProcessed = false;
-        
-        // Clear any messages for this operation type
-        this.showOperationMessage(operation.type, null);
-        
-        // Re-render and update
-        this.renderOperations(operation.type);
-        this.updateSimpleStatistics();
-        this.updateStatus();
-        this.saveSettings();
-        
-        // Update renderer if preview is open
+        // Remove from renderer
         if (this.renderer) {
             this.updateRenderer();
         }
+        
+        // Update UI
+        this.showOperationMessage(operation.type, null);
+        this.renderOperations(operation.type);
+        this.updateStatistics();
+        this.updateStatus();
+        this.saveSettings();
     }
     
-    // Clean up origin listeners
-    removeOriginListeners() {
-        const centerBtn = document.getElementById('center-origin-btn');
-        const bottomLeftBtn = document.getElementById('bottom-left-origin-btn');
-        const setBtn = document.getElementById('set-origin-btn');
-        
-        if (centerBtn && this.centerOriginHandler) {
-            centerBtn.removeEventListener('click', this.centerOriginHandler);
-        }
-        if (bottomLeftBtn && this.bottomLeftOriginHandler) {
-            bottomLeftBtn.removeEventListener('click', this.bottomLeftOriginHandler);
-        }
-        if (setBtn && this.setOriginHandler) {
-            setBtn.removeEventListener('click', this.setOriginHandler);
-        }
+    async exportGcode() {
+        // Placeholder for G-code generation
+        this.updateStatus('G-code generation in development...', 'info');
     }
     
-    closePreview() {
-        document.getElementById('preview-modal').style.display = 'none';
-        
-        // Restore body overflow
-        document.body.style.overflow = '';
-        
-        // Clean up origin listeners when closing preview
-        this.removeOriginListeners();
+    async exportSVG() {
+        // Placeholder for SVG export
+        this.updateStatus('SVG export in development...', 'info');
+        console.log('SVG export requested - will generate SVG from current primitives');
     }
     
     hasValidOperations() {
-        return this.operations.length > 0 && this.layers.size > 0;
-    }
-    
-    zoomFit() { this.renderer?.zoomFit(); }
-    zoomIn() { this.renderer?.zoomIn(); }
-    zoomOut() { this.renderer?.zoomOut(); }
-    
-    getPolygonStats() {
-        return {
-            totalPolygons: this.stats.totalPolygons,
-            layers: this.stats.layers,
-            holes: this.stats.holes,
-            operations: this.stats.operations
-        };
+        return this.operations.some(op => op.primitives && op.primitives.length > 0);
     }
 }
 
@@ -1413,8 +1016,11 @@ window.addFile = function(type) {
 function openPreview() { window.cam?.openPreview(); }
 function closePreview() { window.cam?.closePreview(); }
 function exportGcode() { window.cam?.exportGcode(); }
+function exportSVG() { window.cam?.exportSVG(); }
 function centerOrigin() { window.cam?.centerOrigin(); }
 function bottomLeftOrigin() { window.cam?.bottomLeftOrigin(); }
-function zoomFit() { window.cam?.zoomFit(); }
-function zoomIn() { window.cam?.zoomIn(); }
-function zoomOut() { window.cam?.zoomOut(); }
+function setOrigin() { window.cam?.setOrigin(); }
+function resetOrigin() { window.cam?.resetOrigin(); }
+function zoomFit() { window.cam?.renderer?.zoomFit(); }
+function zoomIn() { window.cam?.renderer?.zoomIn(); }
+function zoomOut() { window.cam?.renderer?.zoomOut(); }

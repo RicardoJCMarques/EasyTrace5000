@@ -18,7 +18,7 @@
             <div class="header-content">
                 <div>
                     <h1>PCB CAM</h1>
-                    <span class="version-badge">v7.4</span>
+                    <span class="version-badge">v7.7</span>
                 </div>
                 <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                     <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -44,14 +44,14 @@
                 <section class="section">
                     <h2>📁 PCB Operations</h2>
                     <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
-                        Upload your PCB files. Each file becomes an operation with individual tool settings.
-                        Geometry processing is deferred until preview for better performance.
+                        Upload your PCB files. Each operation type has a distinct color for easy identification.
+                        Stroke width handling is optimized to prevent compounding thickness issues.
                     </p>
                     
                     <!-- Isolation Routing -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>🎯 Isolation Routing</h3>
+                            <h3>🎯 Isolation Routing <span style="background: #ff8844; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
                             <button class="btn-add-file" onclick="addFile('isolation')">+ Add File</button>
                         </div>
                         <div class="operation-list" id="isolation-operations">
@@ -62,7 +62,7 @@
                     <!-- Drilling -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>🔧 Drilling</h3>
+                            <h3>🔧 Drilling <span style="background: #4488ff; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
                             <button class="btn-add-file" onclick="addFile('drill')">+ Add File</button>
                         </div>
                         <div class="operation-list" id="drill-operations">
@@ -73,7 +73,7 @@
                     <!-- Copper Clearing -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>📄 Copper Clearing</h3>
+                            <h3>📄 Copper Clearing <span style="background: #44ff88; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
                             <button class="btn-add-file" onclick="addFile('clear')">+ Add File</button>
                         </div>
                         <div class="operation-list" id="clear-operations">
@@ -84,7 +84,7 @@
                     <!-- Board Cutout -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>📄 Board Cutout</h3>
+                            <h3>📄 Board Cutout <span style="background: #ff00ff; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
                             <button class="btn-add-file" onclick="addFile('cutout')">+ Add File</button>
                         </div>
                         <div class="operation-list" id="cutout-operations">
@@ -206,15 +206,18 @@ M2</textarea>
                 <div class="preview-container">
                     <canvas id="preview-canvas"></canvas>
                     <div class="preview-tools">
-                        <button id="zoom-fit-btn">Fit</button>
-                        <button id="zoom-in-btn">+</button>
-                        <button id="zoom-out-btn">-</button>
+                        <button id="zoom-fit-btn" title="Fit to view">Fit</button>
+                        <button id="zoom-in-btn" title="Zoom in">+</button>
+                        <button id="zoom-out-btn" title="Zoom out">-</button>
                     </div>
                 </div>
                 <div class="preview-sidebar">
                     <!-- Origin Setup -->
                     <div class="coordinate-section">
                         <h3>🎯 Origin Setup</h3>
+                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                            Set where (0,0) should be on your PCB. Handles unpredictable KiCad exports by placing origin at board-relative positions. Watch the white crosshair move.
+                        </p>
                         
                         <div class="board-info">
                             <div class="info-row">
@@ -223,32 +226,33 @@ M2</textarea>
                             </div>
                             <div class="info-row">
                                 <span>Current Origin:</span>
-                                <span id="current-origin">0, 0</span>
+                                <span id="current-origin" title="Current working origin position in board coordinates">0, 0</span>
                             </div>
                         </div>
                         
                         <div class="coord-buttons">
-                            <button class="btn-secondary" id="center-origin-btn">Center</button>
-                            <button class="btn-secondary" id="bottom-left-origin-btn">Bottom Left</button>
+                            <button class="btn-secondary" onclick="centerOrigin()" title="Set origin to board center">Center</button>
+                            <button class="btn-secondary" onclick="bottomLeftOrigin()" title="Set origin to board bottom-left">Bottom Left</button>
                         </div>
                         
-                        <!-- Manual origin input with explicit Set button -->
+                        <!-- Manual origin input -->
                         <div class="input-group">
-                            <label>X Offset</label>
+                            <label title="Move origin by this amount in X from current position">X Offset</label>
                             <div class="input-unit">
                                 <input type="number" id="x-offset" value="0" step="0.1">
                                 <span>mm</span>
                             </div>
                         </div>
                         <div class="input-group">
-                            <label>Y Offset</label>
+                            <label title="Move origin by this amount in Y from current position">Y Offset</label>
                             <div class="input-unit">
                                 <input type="number" id="y-offset" value="0" step="0.1">
                                 <span>mm</span>
                             </div>
                         </div>
                         
-                        <button class="btn-primary" id="set-origin-btn" style="width: 100%; margin-top: 0.5rem;">📌 Set Origin</button>
+                        <button class="btn-primary" onclick="setOrigin()" style="width: 100%; margin-top: 0.5rem;" title="Apply offset or tare if both are 0">📌 Apply Offset</button>
+                        <button class="btn-secondary" onclick="resetOrigin()" style="width: 100%; margin-top: 0.25rem;" title="Reset origin to absolute (0, 0)">↺ Reset to (0, 0)</button>
                     </div>
 
                     <!-- Debug Controls -->
@@ -260,7 +264,7 @@ M2</textarea>
                                 <span>Show Fill</span>
                             </label>
                             <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="show-outlines" checked>
+                                <input type="checkbox" id="show-outlines">
                                 <span>Show Outlines</span>
                             </label>
                             <label style="display: flex; align-items: center; gap: 0.5rem;">
@@ -287,7 +291,7 @@ M2</textarea>
                                 <input type="checkbox" id="show-original" checked>
                                 <span>Show Original Geometry</span>
                             </label>
-                            <button class="btn-secondary" id="export-svg-btn" style="width: 100%; margin-top: 0.5rem;">
+                            <button class="btn-secondary" onclick="exportSVG()" style="width: 100%; margin-top: 0.5rem;">
                                 📁 Export SVG
                             </button>
                         </div>
@@ -302,16 +306,24 @@ M2</textarea>
                                 <span id="preview-operations">0</span>
                             </div>
                             <div class="stat-row">
-                                <span>Total Polygons:</span>
+                                <span>Total Primitives:</span>
                                 <span id="preview-total-polygons">0</span>
                             </div>
+                        </div>
+                        
+                        <!-- Test Functions -->
+                        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                            <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Debug Tests</h4>
+                            <button class="btn-secondary" onclick="testStrokeWidth()" style="width: 100%; margin-bottom: 0.25rem; font-size: 0.75rem;">Test Stroke Toggle</button>
+                            <button class="btn-secondary" onclick="testColorSystem()" style="width: 100%; margin-bottom: 0.25rem; font-size: 0.75rem;">Test Colors</button>
+                            <button class="btn-secondary" onclick="testCoordinateSystem()" style="width: 100%; font-size: 0.75rem;">Test Coordinates</button>
                         </div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-secondary" id="modal-goback-btn">← Back</button>
-                <button class="btn-primary" id="generate-gcode-modal-btn">⚡ Generate G-code</button>
+                <button class="btn-secondary" onclick="closePreview()">← Back</button>
+                <button class="btn-primary" onclick="exportGcode()">⚡ Generate G-code</button>
             </div>
         </div>
     </div>
@@ -320,19 +332,16 @@ M2</textarea>
     <input type="file" id="file-input-temp" style="display: none;">
 
     <script>
-        // Updated script loader
+        // Updated script loader with test verification
         const scripts = [
-            'geometry/clipper.min.js',            // Clipper for boolean operations
-            'geometry/polygon.js',                // Core polygon system
-            'geometry/fusion.js',                 // Polygon fusion engine
-            'geometry/offset-engine.js',          // Enhanced offset engine
-            'geometry/analyzer.js',               // Balanced geometry analyzer
-            'coordinate/coordinate-system.js',    // Coordinate system manager
-            'parsers/gerber.js',                  // Gerber parser with reduced warnings
-            'parsers/excellon.js',                // Excellon parser
-            'preview/renderer.js',                // Preview renderer with unified rendering
-            'debug/svg-exporter.js',              // SVG exporter
-            'cam.js'                              // Main controller with complete settings
+            'geometry/clipper.min.js',            // Local Copy of Clipper
+            'plotter/render-primitives.js',       // Enhanced primitive shape definitions
+            'parsers/gerber-semantic.js',         // Lossless Gerber parser
+            'parsers/excellon-semantic.js',       // Semantic Excellon parser
+            'plotter/gerber-plotter.js',          // Fixed stroke width handling
+            'renderer/layer-renderer.js',         // Fixed coordinate system & colors
+            'coordinate/coordinate-system.js',    // Simplified coordinate system
+            'cam.js'                              // Fixed main controller
         ];
         
         let loadedCount = 0;
@@ -383,7 +392,7 @@ M2</textarea>
         
         async function loadAllScripts() {
             try {
-                console.log('🚀 Loading PCB CAM v7.4...');
+                console.log('🚀 Loading PCB CAM v7.7 Fixed...');
                 loadingStartTime = Date.now();
                 updateLoadingProgress();
                 
@@ -394,13 +403,56 @@ M2</textarea>
                 console.log('🎉 All scripts loaded successfully.');
                 
                 // Initialize the application
-                window.cam = new PolygonPCBCam();
-                console.log('🎯 PCB CAM v7.4 initialized - Fixed geometry pipeline');
-                console.log('✅ Traces and regions rendering properly');
-                console.log('✅ Board auto-fits to viewport on load');
-                console.log('✅ Debug controls restored in preview modal');
-                console.log('✅ Code consolidated while maintaining functionality');
+                window.cam = new SemanticPCBCam();
+                console.log('🎯 PCB CAM v7.7 initialized');
+                console.log('✅ Fixed zoom to always center on viewport (predictable behavior)');
+                console.log('✅ Fixed coordinate system UI updates and visual feedback');  
+                console.log('✅ Enhanced origin marker with debug info');
+                console.log('✅ Better coordinate system testing and logging');
+                console.log('🎯 Origin buttons now properly move the white crosshair relative to board');
                 console.log('🔧 Ready for offset geometry development');
+                
+                // Load test verification script
+                const testScript = document.createElement('script');
+                testScript.textContent = `
+                    // Inline test script
+                    window.testStrokeWidth = function() {
+                        console.log('🧪 Testing stroke width handling...');
+                        if (window.cam?.renderer) {
+                            const current = window.cam.renderer.options.showFill;
+                            console.log('Toggling fill mode for stroke test...');
+                            window.cam.renderer.setOptions({ showFill: !current });
+                            setTimeout(() => {
+                                window.cam.renderer.setOptions({ showFill: current });
+                                console.log('✅ Stroke width test complete');
+                            }, 2000);
+                        }
+                    };
+                    
+                    window.testColorSystem = function() {
+                        console.log('🌈 Testing color system...');
+                        if (window.cam?.fileTypes) {
+                            Object.entries(window.cam.fileTypes).forEach(([type, config]) => {
+                                console.log(\`  \${type}: \${config.color}\`);
+                            });
+                        }
+                    };
+                    
+                    window.testCoordinateSystem = function() {
+                        console.log('🧭 Testing coordinate system...');
+                        if (window.cam?.coordinateSystem) {
+                            const original = window.cam.coordinateSystem.getStatus();
+                            console.log('Testing origin changes...');
+                            window.cam.coordinateSystem.setWorkingOrigin(50, 25);
+                            setTimeout(() => {
+                                window.cam.coordinateSystem.setWorkingOrigin(original.workingOrigin.x, original.workingOrigin.y);
+                                window.cam.updateOriginDisplay();
+                                console.log('✅ Coordinate test complete');
+                            }, 1000);
+                        }
+                    };
+                `;
+                document.head.appendChild(testScript);
                 
             } catch (error) {
                 console.error('💥 Error loading PCB CAM:', error);
@@ -411,52 +463,6 @@ M2</textarea>
         
         document.addEventListener('DOMContentLoaded', loadAllScripts);
     </script>
-    
-    <style>
-        /* Modal fixes for proper scrolling */
-        .modal {
-            overflow-y: auto;
-            padding: 2rem;
-        }
-        
-        .modal-content {
-            margin: auto;
-            max-width: 1400px;
-            width: 100%;
-            max-height: none; /* Remove height limit */
-            height: auto;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .modal-body {
-            flex: 1;
-            display: flex;
-            overflow: visible; /* Allow content to expand */
-            min-height: 600px;
-        }
-        
-        /* Additional styles for debug controls */
-        .debug-options label {
-            cursor: pointer;
-            padding: 0.25rem;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
-        
-        .debug-options label:hover {
-            background-color: var(--bg-hover);
-        }
-        
-        .debug-options input[type="checkbox"] {
-            cursor: pointer;
-        }
-        
-        #debug-controls {
-            border-top: 1px solid var(--border);
-            padding-top: 1rem;
-            margin-top: 1rem;
-        }
-    </style>
+
 </body>
 </html>
