@@ -1,4 +1,4 @@
-// Semantic Excellon Parser - Preserves all Excellon semantics without interpretation
+// Semantic Excellon Parser - Enhanced with coordinate validation and consistency
 // parsers/excellon-semantic.js
 
 class ExcellonSemanticParser {
@@ -16,6 +16,14 @@ class ExcellonSemanticParser {
         this.inHeader = false;
         this.headerEnded = false;
         
+        // ENHANCED: Coordinate validation tracking
+        this.coordinateValidation = {
+            validCoordinates: 0,
+            invalidCoordinates: 0,
+            coordinateRange: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+            suspiciousCoordinates: []
+        };
+        
         // Results
         this.drillData = {
             units: this.options.units,
@@ -31,7 +39,7 @@ class ExcellonSemanticParser {
     
     parse(content) {
         try {
-            this.debug('Starting semantic Excellon parse...');
+            this.debug('Starting semantic Excellon parse with enhanced coordinate validation...');
             
             // Reset state
             this.reset();
@@ -44,6 +52,8 @@ class ExcellonSemanticParser {
                 .map(line => line.trim())
                 .filter(line => line.length > 0);
             
+            this.debug(`Processing ${lines.length} lines`);
+            
             // Process each line
             lines.forEach((line, index) => {
                 this.processLine(line, index + 1);
@@ -53,12 +63,14 @@ class ExcellonSemanticParser {
             this.finalizeParse();
             
             this.debug(`Parse complete: ${this.drillData.holes.length} holes, ${this.tools.size} tools`);
+            this.debug(`Coordinate validation: ${this.coordinateValidation.validCoordinates} valid, ${this.coordinateValidation.invalidCoordinates} invalid`);
             
             return {
                 success: true,
                 drillData: this.drillData,
                 errors: this.errors,
-                warnings: this.warnings
+                warnings: this.warnings,
+                coordinateValidation: this.coordinateValidation
             };
             
         } catch (error) {
@@ -67,7 +79,8 @@ class ExcellonSemanticParser {
                 success: false,
                 drillData: this.drillData,
                 errors: this.errors,
-                warnings: this.warnings
+                warnings: this.warnings,
+                coordinateValidation: this.coordinateValidation
             };
         }
     }
@@ -77,6 +90,12 @@ class ExcellonSemanticParser {
         this.currentTool = null;
         this.inHeader = false;
         this.headerEnded = false;
+        this.coordinateValidation = {
+            validCoordinates: 0,
+            invalidCoordinates: 0,
+            coordinateRange: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+            suspiciousCoordinates: []
+        };
         this.drillData = {
             units: this.options.units,
             format: this.options.format,
@@ -84,6 +103,8 @@ class ExcellonSemanticParser {
             holes: [],
             bounds: null
         };
+        this.errors = [];
+        this.warnings = [];
     }
     
     processLine(line, lineNumber) {
@@ -178,6 +199,12 @@ class ExcellonSemanticParser {
         const toolNumber = parseInt(match[1]);
         let diameter = parseFloat(match[2]);
         
+        // ENHANCED: Validate tool diameter
+        if (!isFinite(diameter) || diameter <= 0) {
+            this.errors.push(`Invalid tool diameter: ${diameter} in line: ${line}`);
+            return;
+        }
+        
         // Store original units with the tool
         const tool = {
             number: toolNumber,
@@ -186,9 +213,18 @@ class ExcellonSemanticParser {
             displayDiameter: diameter // Will be converted if needed
         };
         
-        // Convert to mm for internal storage
+        // Convert to mm for internal storage with validation
         if (this.options.units === 'inch') {
             tool.displayDiameter = diameter * 25.4;
+            
+            // Validate reasonable drill sizes
+            if (tool.displayDiameter > 25.4) { // > 1 inch
+                this.warnings.push(`Unusually large drill diameter: ${tool.displayDiameter.toFixed(3)}mm for tool T${toolNumber}`);
+            }
+        } else {
+            if (diameter > 25.4) { // > 25.4mm
+                this.warnings.push(`Unusually large drill diameter: ${diameter}mm for tool T${toolNumber}`);
+            }
         }
         
         this.tools.set(`T${toolNumber.toString().padStart(2, '0')}`, tool);
@@ -249,7 +285,7 @@ class ExcellonSemanticParser {
             }
         }
         
-        const coordinates = this.parseCoordinates(line);
+        const coordinates = this.parseCoordinates(line, lineNumber);
         if (!coordinates) {
             this.errors.push(`Invalid coordinates at line ${lineNumber}: ${line}`);
             return;
@@ -270,7 +306,10 @@ class ExcellonSemanticParser {
         this.debug(`Hole at (${coordinates.x.toFixed(3)}, ${coordinates.y.toFixed(3)}) with ${this.currentTool}`);
     }
     
-    parseCoordinates(line) {
+    /**
+     * ENHANCED: Parse coordinates with validation and consistency checking
+     */
+    parseCoordinates(line, lineNumber = 0) {
         const xMatch = line.match(/X([+-]?\d+\.?\d*)/);
         const yMatch = line.match(/Y([+-]?\d+\.?\d*)/);
         
@@ -278,21 +317,90 @@ class ExcellonSemanticParser {
         
         const coordinates = { x: 0, y: 0 };
         
-        if (xMatch) {
-            coordinates.x = this.parseCoordinateValue(xMatch[1]);
+        try {
+            if (xMatch) {
+                coordinates.x = this.parseCoordinateValue(xMatch[1]);
+            }
+            
+            if (yMatch) {
+                coordinates.y = this.parseCoordinateValue(yMatch[1]);
+            }
+            
+            // ENHANCED: Validate parsed coordinates
+            if (!this.validateCoordinates(coordinates, lineNumber)) {
+                return null;
+            }
+            
+            // Update coordinate tracking
+            this.coordinateValidation.validCoordinates++;
+            this.updateCoordinateRange(coordinates);
+            
+            return coordinates;
+            
+        } catch (error) {
+            this.coordinateValidation.invalidCoordinates++;
+            this.errors.push(`Coordinate parsing error at line ${lineNumber}: ${error.message}`);
+            return null;
         }
-        
-        if (yMatch) {
-            coordinates.y = this.parseCoordinateValue(yMatch[1]);
-        }
-        
-        return coordinates;
     }
     
+    /**
+     * ENHANCED: Validate coordinate values for consistency
+     */
+    validateCoordinates(coordinates, lineNumber) {
+        // Check for finite values
+        if (!isFinite(coordinates.x) || !isFinite(coordinates.y)) {
+            this.errors.push(`Non-finite coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
+            this.coordinateValidation.invalidCoordinates++;
+            return false;
+        }
+        
+        // Check for reasonable coordinate ranges (PCB should not be kilometers wide)
+        const maxCoordinate = 1000; // 1 meter in mm, very generous for PCB
+        if (Math.abs(coordinates.x) > maxCoordinate || Math.abs(coordinates.y) > maxCoordinate) {
+            this.coordinateValidation.suspiciousCoordinates.push({
+                line: lineNumber,
+                coordinates: { ...coordinates },
+                reason: 'coordinates_too_large'
+            });
+            this.warnings.push(`Suspiciously large coordinates at line ${lineNumber}: (${coordinates.x.toFixed(3)}, ${coordinates.y.toFixed(3)})`);
+        }
+        
+        // Check for precision issues (coordinates that are clearly meant to be integers but have tiny decimals)
+        const precision = 0.001; // 1 micron precision
+        const xRounded = Math.round(coordinates.x / precision) * precision;
+        const yRounded = Math.round(coordinates.y / precision) * precision;
+        
+        if (Math.abs(coordinates.x - xRounded) > precision * 0.1 || 
+            Math.abs(coordinates.y - yRounded) > precision * 0.1) {
+            this.debug(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
+        }
+        
+        return true;
+    }
+    
+    /**
+     * ENHANCED: Update coordinate range tracking
+     */
+    updateCoordinateRange(coordinates) {
+        const range = this.coordinateValidation.coordinateRange;
+        range.minX = Math.min(range.minX, coordinates.x);
+        range.minY = Math.min(range.minY, coordinates.y);
+        range.maxX = Math.max(range.maxX, coordinates.x);
+        range.maxY = Math.max(range.maxY, coordinates.y);
+    }
+    
+    /**
+     * ENHANCED: Parse coordinate value with better error handling
+     */
     parseCoordinateValue(value) {
         // Handle decimal coordinates
         if (value.includes('.')) {
             let coordinate = parseFloat(value);
+            
+            if (!isFinite(coordinate)) {
+                throw new Error(`Invalid decimal coordinate: ${value}`);
+            }
             
             // Convert to mm if needed
             if (this.options.units === 'inch') {
@@ -307,6 +415,11 @@ class ExcellonSemanticParser {
         const negative = value.startsWith('-');
         const absValue = value.replace(/^[+-]/, '');
         
+        // Validate format
+        if (absValue.length > format.integer + format.decimal) {
+            this.warnings.push(`Coordinate value "${value}" exceeds format specification ${format.integer}.${format.decimal}`);
+        }
+        
         // Pad with zeros
         const totalDigits = format.integer + format.decimal;
         const padded = absValue.padStart(totalDigits, '0');
@@ -316,6 +429,11 @@ class ExcellonSemanticParser {
         const decimalPart = padded.slice(format.integer);
         
         let coordinate = parseFloat(`${integerPart}.${decimalPart}`);
+        
+        if (!isFinite(coordinate)) {
+            throw new Error(`Invalid formatted coordinate: ${value} -> ${integerPart}.${decimalPart}`);
+        }
+        
         if (negative) coordinate = -coordinate;
         
         // Convert to mm if needed
@@ -337,11 +455,59 @@ class ExcellonSemanticParser {
             this.errors.push('No tools defined in file');
         }
         
-        // Calculate bounds
+        // Calculate bounds with validation
         this.calculateBounds();
+        
+        // ENHANCED: Validate coordinate consistency
+        this.validateCoordinateConsistency();
         
         // Generate statistics
         this.generateStats();
+    }
+    
+    /**
+     * ENHANCED: Validate coordinate consistency across all holes
+     */
+    validateCoordinateConsistency() {
+        if (this.drillData.holes.length === 0) return;
+        
+        const range = this.coordinateValidation.coordinateRange;
+        
+        // Check if coordinate range is reasonable
+        const width = range.maxX - range.minX;
+        const height = range.maxY - range.minY;
+        
+        if (width > 500 || height > 500) { // 500mm is very large for a PCB
+            this.warnings.push(`Board dimensions are unusually large: ${width.toFixed(1)} × ${height.toFixed(1)} mm`);
+        }
+        
+        if (width < 1 || height < 1) { // 1mm is very small
+            this.warnings.push(`Board dimensions are unusually small: ${width.toFixed(3)} × ${height.toFixed(3)} mm`);
+        }
+        
+        // Check for coordinate clustering (most holes should be in similar range)
+        const centerX = (range.minX + range.maxX) / 2;
+        const centerY = (range.minY + range.maxY) / 2;
+        
+        let outliers = 0;
+        const outlierThreshold = Math.max(width, height) * 0.75; // 75% of board size
+        
+        this.drillData.holes.forEach(hole => {
+            const distanceFromCenter = Math.sqrt(
+                Math.pow(hole.position.x - centerX, 2) + 
+                Math.pow(hole.position.y - centerY, 2)
+            );
+            
+            if (distanceFromCenter > outlierThreshold) {
+                outliers++;
+            }
+        });
+        
+        if (outliers > this.drillData.holes.length * 0.1) { // More than 10% outliers
+            this.warnings.push(`${outliers} holes appear to be outliers (far from board center)`);
+        }
+        
+        this.debug(`Coordinate consistency check: ${width.toFixed(1)} × ${height.toFixed(1)} mm, ${outliers} outliers`);
     }
     
     calculateBounds() {
@@ -358,7 +524,15 @@ class ExcellonSemanticParser {
             maxY = Math.max(maxY, hole.position.y + radius);
         });
         
+        // ENHANCED: Validate calculated bounds
+        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+            this.errors.push('Unable to calculate valid bounds from drill data');
+            return;
+        }
+        
         this.drillData.bounds = { minX, minY, maxX, maxY };
+        
+        this.debug(`Calculated bounds: (${minX.toFixed(3)}, ${minY.toFixed(3)}) to (${maxX.toFixed(3)}, ${maxY.toFixed(3)})`);
     }
     
     generateStats() {
@@ -381,6 +555,16 @@ class ExcellonSemanticParser {
                 const toolInfo = this.tools.get(tool);
                 console.log(`  ${tool}: ${count} holes, ⌀${toolInfo.displayDiameter.toFixed(3)}mm`);
             });
+            
+            console.log('[ExcellonSemantic] Coordinate validation summary:');
+            console.log(`  Valid coordinates: ${this.coordinateValidation.validCoordinates}`);
+            console.log(`  Invalid coordinates: ${this.coordinateValidation.invalidCoordinates}`);
+            console.log(`  Suspicious coordinates: ${this.coordinateValidation.suspiciousCoordinates.length}`);
+            
+            const range = this.coordinateValidation.coordinateRange;
+            if (isFinite(range.minX)) {
+                console.log(`  Coordinate range: (${range.minX.toFixed(3)}, ${range.minY.toFixed(3)}) to (${range.maxX.toFixed(3)}, ${range.maxY.toFixed(3)})`);
+            }
         }
     }
     

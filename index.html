@@ -18,7 +18,7 @@
             <div class="header-content">
                 <div>
                     <h1>PCB CAM</h1>
-                    <span class="version-badge">v7.7</span>
+                    <span class="version-badge">v7.12-professional</span>
                 </div>
                 <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                     <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -45,7 +45,7 @@
                     <h2>📁 PCB Operations</h2>
                     <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
                         Upload your PCB files. Each operation type has a distinct color for easy identification.
-                        Stroke width handling is optimized to prevent compounding thickness issues.
+                        <strong>v7.12-professional:</strong> Professional coordinate system workflow and fixed cutout filtering.
                     </p>
                     
                     <!-- Isolation Routing -->
@@ -193,11 +193,11 @@ M2</textarea>
         </div>
     </div>
 
-    <!-- Enhanced Preview Modal -->
+    <!-- Enhanced Professional Preview Modal -->
     <div class="modal" id="preview-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>📐 PCB Preview & Setup</h2>
+                <h2>📐 PCB Preview & Coordinate Setup</h2>
                 <div class="modal-header-controls">
                     <button class="modal-close" id="modal-close-btn">&times;</button>
                 </div>
@@ -206,17 +206,17 @@ M2</textarea>
                 <div class="preview-container">
                     <canvas id="preview-canvas"></canvas>
                     <div class="preview-tools">
-                        <button id="zoom-fit-btn" title="Fit to view">Fit</button>
+                        <button id="zoom-fit-btn" title="Fit to view (or double-click canvas)">Fit</button>
                         <button id="zoom-in-btn" title="Zoom in">+</button>
                         <button id="zoom-out-btn" title="Zoom out">-</button>
                     </div>
                 </div>
                 <div class="preview-sidebar">
-                    <!-- Origin Setup -->
+                    <!-- Professional Origin Setup -->
                     <div class="coordinate-section">
-                        <h3>🎯 Origin Setup</h3>
+                        <h3>🎯 Work Coordinate System</h3>
                         <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Set where (0,0) should be on your PCB. Handles unpredictable KiCad exports by placing origin at board-relative positions. Watch the white crosshair move.
+                            Professional workflow: 1) Use Calculate buttons to set offsets, 2) Click Apply Offset to move origin.
                         </p>
                         
                         <div class="board-info">
@@ -226,75 +226,33 @@ M2</textarea>
                             </div>
                             <div class="info-row">
                                 <span>Current Origin:</span>
-                                <span id="current-origin" title="Current working origin position in board coordinates">0, 0</span>
+                                <span id="board-position">File Origin</span>
                             </div>
                         </div>
                         
                         <div class="coord-buttons">
-                            <button class="btn-secondary" onclick="centerOrigin()" title="Set origin to board center">Center</button>
-                            <button class="btn-secondary" onclick="bottomLeftOrigin()" title="Set origin to board bottom-left">Bottom Left</button>
+                            <button class="btn-secondary" onclick="centerOrigin()" title="Calculate offset to center board origin">📐 Calculate Center</button>
+                            <button class="btn-secondary" onclick="bottomLeftOrigin()" title="Calculate offset to bottom-left board origin">📐 Calculate Bottom-Left</button>
                         </div>
                         
-                        <!-- Manual origin input -->
+                        <!-- Professional offset input -->
                         <div class="input-group">
-                            <label title="Move origin by this amount in X from current position">X Offset</label>
+                            <label title="X offset to apply (calculated by buttons or enter manually)">X Offset</label>
                             <div class="input-unit">
-                                <input type="number" id="x-offset" value="0" step="0.1">
+                                <input type="number" id="x-offset" value="0" step="0.1" placeholder="0.0">
                                 <span>mm</span>
                             </div>
                         </div>
                         <div class="input-group">
-                            <label title="Move origin by this amount in Y from current position">Y Offset</label>
+                            <label title="Y offset to apply (calculated by buttons or enter manually)">Y Offset</label>
                             <div class="input-unit">
-                                <input type="number" id="y-offset" value="0" step="0.1">
+                                <input type="number" id="y-offset" value="0" step="0.1" placeholder="0.0">
                                 <span>mm</span>
                             </div>
                         </div>
                         
-                        <button class="btn-primary" onclick="setOrigin()" style="width: 100%; margin-top: 0.5rem;" title="Apply offset or tare if both are 0">📌 Apply Offset</button>
-                        <button class="btn-secondary" onclick="resetOrigin()" style="width: 100%; margin-top: 0.25rem;" title="Reset origin to absolute (0, 0)">↺ Reset to (0, 0)</button>
-                    </div>
-
-                    <!-- Debug Controls -->
-                    <div class="preview-stats" id="debug-controls">
-                        <h3>🔧 Debug Options</h3>
-                        <div class="debug-options" style="display: grid; gap: 0.5rem;">
-                            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="show-filled" checked>
-                                <span>Show Fill</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="show-outlines">
-                                <span>Show Outlines</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="black-white">
-                                <span>Black & White Mode</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="show-grid" checked>
-                                <span>Show Grid</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="show-rulers" checked>
-                                <span>Show Rulers</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="show-bounds">
-                                <span>Show Bounds</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="show-offsets">
-                                <span>Show Offset Paths</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                <input type="checkbox" id="show-original" checked>
-                                <span>Show Original Geometry</span>
-                            </label>
-                            <button class="btn-secondary" onclick="exportSVG()" style="width: 100%; margin-top: 0.5rem;">
-                                📁 Export SVG
-                            </button>
-                        </div>
+                        <button class="btn-primary" onclick="setOrigin()" style="width: 100%; margin-top: 0.5rem;" title="Apply the offset values shown above">📌 Apply Offset</button>
+                        <button class="btn-secondary" onclick="resetOrigin()" style="width: 100%; margin-top: 0.25rem;" title="Reset to previous stored origin">↶ Reset to Previous</button>
                     </div>
 
                     <!-- Simple Stats -->
@@ -310,13 +268,89 @@ M2</textarea>
                                 <span id="preview-total-polygons">0</span>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Collapsible Advanced Options -->
+                    <div class="advanced-options">
+                        <button class="btn-secondary" id="advanced-options-toggle" style="width: 100%; margin-bottom: 0.5rem;">
+                            🔧 Show Advanced Options
+                        </button>
                         
-                        <!-- Test Functions -->
-                        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                            <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Debug Tests</h4>
-                            <button class="btn-secondary" onclick="testStrokeWidth()" style="width: 100%; margin-bottom: 0.25rem; font-size: 0.75rem;">Test Stroke Toggle</button>
-                            <button class="btn-secondary" onclick="testColorSystem()" style="width: 100%; margin-bottom: 0.25rem; font-size: 0.75rem;">Test Colors</button>
-                            <button class="btn-secondary" onclick="testCoordinateSystem()" style="width: 100%; font-size: 0.75rem;">Test Coordinates</button>
+                        <div id="advanced-options-section" style="display: none;">
+                            <h3>🔧 Advanced Display Options</h3>
+                            
+                            <!-- Geometry Type Controls -->
+                            <div style="margin-bottom: 1rem;">
+                                <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Geometry Types</h4>
+                                <div class="debug-options" style="display: grid; gap: 0.5rem;">
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-regions" checked>
+                                        <span>Show Filled Regions</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-traces" checked>
+                                        <span>Show Traces/Lines</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-cutouts" checked>
+                                        <span>Show Board Cutouts</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-pads" checked>
+                                        <span>Show Pads/Flashes</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-drills" checked>
+                                        <span>Show Drill Holes</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Rendering Mode -->
+                            <div style="margin-bottom: 1rem;">
+                                <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Rendering Mode</h4>
+                                <div class="debug-options" style="display: grid; gap: 0.5rem;">
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-filled" checked>
+                                        <span>Fill Mode (Solid)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="black-white">
+                                        <span>Black & White</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Overlay Options -->
+                            <div style="margin-bottom: 1rem;">
+                                <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Display Overlays</h4>
+                                <div class="debug-options" style="display: grid; gap: 0.5rem;">
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-grid" checked>
+                                        <span>Show Grid</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-rulers" checked>
+                                        <span>Show Rulers</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" id="show-bounds">
+                                        <span>Show Bounding Box</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- File Statistics -->
+                            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                                <h4 style="font-size: 0.75rem; margin-bottom: 0.75rem; color: var(--text-secondary);">File Statistics</h4>
+                                <div id="operation-stats">
+                                    <p>Load PCB files to see statistics</p>
+                                </div>
+                            </div>
+                            
+                            <button class="btn-secondary" onclick="exportSVG()" style="width: 100%; margin-top: 1rem;">
+                                📁 Export SVG
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -332,16 +366,16 @@ M2</textarea>
     <input type="file" id="file-input-temp" style="display: none;">
 
     <script>
-        // Updated script loader with test verification
+        // Professional script loader with enhanced debugging functions
         const scripts = [
-            'geometry/clipper.min.js',            // Local Copy of Clipper
-            'plotter/render-primitives.js',       // Enhanced primitive shape definitions
-            'parsers/gerber-semantic.js',         // Lossless Gerber parser
-            'parsers/excellon-semantic.js',       // Semantic Excellon parser
-            'plotter/gerber-plotter.js',          // Fixed stroke width handling
-            'renderer/layer-renderer.js',         // Fixed coordinate system & colors
-            'coordinate/coordinate-system.js',    // Simplified coordinate system
-            'cam.js'                              // Fixed main controller
+            'geometry/clipper.min.js',
+            'plotter/render-primitives.js',
+            'parsers/gerber-semantic.js',
+            'parsers/excellon-semantic.js',
+            'plotter/gerber-plotter.js',
+            'renderer/layer-renderer.js',
+            'coordinate/coordinate-system.js',
+            'cam.js'
         ];
         
         let loadedCount = 0;
@@ -392,7 +426,7 @@ M2</textarea>
         
         async function loadAllScripts() {
             try {
-                console.log('🚀 Loading PCB CAM v7.7 Fixed...');
+                console.log('🚀 Loading PCB CAM v7.12-professional...');
                 loadingStartTime = Date.now();
                 updateLoadingProgress();
                 
@@ -404,55 +438,11 @@ M2</textarea>
                 
                 // Initialize the application
                 window.cam = new SemanticPCBCam();
-                console.log('🎯 PCB CAM v7.7 initialized');
-                console.log('✅ Fixed zoom to always center on viewport (predictable behavior)');
-                console.log('✅ Fixed coordinate system UI updates and visual feedback');  
-                console.log('✅ Enhanced origin marker with debug info');
-                console.log('✅ Better coordinate system testing and logging');
-                console.log('🎯 Origin buttons now properly move the white crosshair relative to board');
-                console.log('🔧 Ready for offset geometry development');
-                
-                // Load test verification script
-                const testScript = document.createElement('script');
-                testScript.textContent = `
-                    // Inline test script
-                    window.testStrokeWidth = function() {
-                        console.log('🧪 Testing stroke width handling...');
-                        if (window.cam?.renderer) {
-                            const current = window.cam.renderer.options.showFill;
-                            console.log('Toggling fill mode for stroke test...');
-                            window.cam.renderer.setOptions({ showFill: !current });
-                            setTimeout(() => {
-                                window.cam.renderer.setOptions({ showFill: current });
-                                console.log('✅ Stroke width test complete');
-                            }, 2000);
-                        }
-                    };
-                    
-                    window.testColorSystem = function() {
-                        console.log('🌈 Testing color system...');
-                        if (window.cam?.fileTypes) {
-                            Object.entries(window.cam.fileTypes).forEach(([type, config]) => {
-                                console.log(\`  \${type}: \${config.color}\`);
-                            });
-                        }
-                    };
-                    
-                    window.testCoordinateSystem = function() {
-                        console.log('🧭 Testing coordinate system...');
-                        if (window.cam?.coordinateSystem) {
-                            const original = window.cam.coordinateSystem.getStatus();
-                            console.log('Testing origin changes...');
-                            window.cam.coordinateSystem.setWorkingOrigin(50, 25);
-                            setTimeout(() => {
-                                window.cam.coordinateSystem.setWorkingOrigin(original.workingOrigin.x, original.workingOrigin.y);
-                                window.cam.updateOriginDisplay();
-                                console.log('✅ Coordinate test complete');
-                            }, 1000);
-                        }
-                    };
-                `;
-                document.head.appendChild(testScript);
+                console.log('🎯 PCB CAM v7.12-professional initialized');
+                console.log('✅ PROFESSIONAL: Coordinate system mirrors professional CAM tools');
+                console.log('✅ PROFESSIONAL: Predictable origin operations and UI feedback');
+                console.log('✅ PROFESSIONAL: Fixed cutout layer filtering to eliminate artifacts');
+                console.log('🔧 Debug Tools: Run debugCutoutLayer(), enableRendererDebug(), debugCoordinateSystem() in console');
                 
             } catch (error) {
                 console.error('💥 Error loading PCB CAM:', error);

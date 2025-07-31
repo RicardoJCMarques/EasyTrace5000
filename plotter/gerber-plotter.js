@@ -1,4 +1,4 @@
-// Gerber Plotter - Fixed stroke width handling and primitive creation
+// Gerber Plotter - SIMPLIFIED: Back to basics without complex geometry classification
 // plotter/gerber-plotter.js
 
 class GerberPlotter {
@@ -10,6 +10,8 @@ class GerberPlotter {
         
         this.primitives = [];
         this.bounds = null;
+        
+        // SIMPLIFIED: Remove complex geometry classifier
     }
     
     plot(gerberData) {
@@ -21,7 +23,7 @@ class GerberPlotter {
             };
         }
         
-        this.debug('Starting Gerber plotting...');
+        this.debug('SIMPLIFIED: Starting Gerber plotting - back to basics...');
         
         // Reset
         this.primitives = [];
@@ -33,12 +35,41 @@ class GerberPlotter {
             this.apertures.set(aperture.code, aperture);
         });
         
-        // Process each object
+        // DEBUG: Log gerber data structure
+        this.debug(`Input gerber data: ${gerberData.layers.objects.length} objects, ${gerberData.layers.apertures.length} apertures`);
+        
+        // Count objects by type for debugging
+        const objectTypes = {};
+        gerberData.layers.objects.forEach(obj => {
+            objectTypes[obj.type] = (objectTypes[obj.type] || 0) + 1;
+        });
+        this.debug('Object types:', objectTypes);
+        
+        // SIMPLIFIED: Process each object directly (no classification)
         gerberData.layers.objects.forEach((obj, index) => {
             try {
+                this.debug(`Processing object ${index + 1}/${gerberData.layers.objects.length}: ${obj.type}`);
+                
+                // VALIDATION: Check coordinate validity before plotting
+                if (!this.validateObjectCoordinates(obj)) {
+                    console.warn(`[GerberPlotter-SIMPLIFIED] Invalid coordinates in object ${index}:`, obj);
+                    return;
+                }
+                
                 const primitive = this.plotObject(obj);
                 if (primitive) {
+                    // VALIDATION: Check primitive coordinates after creation
+                    const bounds = primitive.getBounds();
+                    if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
+                        !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
+                        console.warn(`[GerberPlotter-SIMPLIFIED] Primitive ${index} has invalid bounds:`, bounds);
+                        return;
+                    }
+                    
                     this.primitives.push(primitive);
+                    this.debug(`SIMPLIFIED: Created ${primitive.type} primitive with bounds:`, bounds);
+                } else {
+                    this.debug(`No primitive created for object ${index}`);
                 }
             } catch (error) {
                 console.error(`Error plotting object ${index}:`, error);
@@ -48,7 +79,8 @@ class GerberPlotter {
         // Calculate overall bounds
         this.calculateBounds();
         
-        this.debug(`Plotting complete: ${this.primitives.length} primitives`);
+        this.debug(`SIMPLIFIED: Plotting complete: ${this.primitives.length} primitives created`);
+        this.debug('Final plotter bounds:', this.bounds);
         
         return {
             success: true,
@@ -56,6 +88,35 @@ class GerberPlotter {
             bounds: this.bounds,
             units: gerberData.layers.units
         };
+    }
+    
+    // ... (rest of the existing methods remain the same)
+    
+    // Validate object coordinates for consistency
+    validateObjectCoordinates(obj) {
+        switch (obj.type) {
+            case 'region':
+                if (!obj.points || !Array.isArray(obj.points)) return false;
+                return obj.points.every(point => 
+                    point && typeof point.x === 'number' && typeof point.y === 'number' &&
+                    isFinite(point.x) && isFinite(point.y)
+                );
+                
+            case 'draw':
+                if (!obj.start || !obj.end) return false;
+                return typeof obj.start.x === 'number' && typeof obj.start.y === 'number' &&
+                       typeof obj.end.x === 'number' && typeof obj.end.y === 'number' &&
+                       isFinite(obj.start.x) && isFinite(obj.start.y) &&
+                       isFinite(obj.end.x) && isFinite(obj.end.y);
+                
+            case 'flash':
+                if (!obj.position) return false;
+                return typeof obj.position.x === 'number' && typeof obj.position.y === 'number' &&
+                       isFinite(obj.position.x) && isFinite(obj.position.y);
+                
+            default:
+                return true; // Unknown types pass validation
+        }
     }
     
     plotObject(obj) {
@@ -73,6 +134,19 @@ class GerberPlotter {
     }
     
     plotRegion(region) {
+        this.debug(`REDESIGNED: Plotting region with ${region.points.length} points (${region.geometryClass})`);
+        
+        // ENHANCED: Validate and log region coordinates
+        if (!region.points || region.points.length < 3) {
+            console.warn('[GerberPlotter-REDESIGNED] Region has too few points:', region);
+            return null;
+        }
+        
+        // Log sample coordinates for debugging
+        const firstPoint = region.points[0];
+        const lastPoint = region.points[region.points.length - 1];
+        this.debug(`REDESIGNED: Region coordinates - first: (${firstPoint.x.toFixed(3)}, ${firstPoint.y.toFixed(3)}), last: (${lastPoint.x.toFixed(3)}, ${lastPoint.y.toFixed(3)})`);
+        
         // Regions are always filled polygons
         const properties = {
             fill: true,
@@ -86,8 +160,10 @@ class GerberPlotter {
         // Check if this is a non-conductor region
         if (region.function === 'NonConductor' || region.function === 'Keepout') {
             properties.isNonConductor = true;
+            this.debug('REDESIGNED: Region marked as non-conductor');
         }
         
+        // REDESIGNED: Create primitive with original coordinates and classification
         return new PathPrimitive(region.points, properties);
     }
     
@@ -98,10 +174,14 @@ class GerberPlotter {
             return null;
         }
         
-        // FIXED: Better logic for determining trace vs text
+        this.debug(`REDESIGNED: Plotting draw from (${draw.start.x.toFixed(3)}, ${draw.start.y.toFixed(3)}) to (${draw.end.x.toFixed(3)}, ${draw.end.y.toFixed(3)}) (${draw.geometryClass})`);
+        
+        // ENHANCED: Better logic for determining trace vs text
         const apertureSize = aperture.parameters[0];
         const isText = draw.function === 'Legend' || 
                       draw.function === 'NonConductor' ||
+                      draw.geometryClass === 'text' ||
+                      draw.geometryClass === 'legend' ||
                       apertureSize < 0.15; // Very thin traces are likely text
         
         const properties = {
@@ -135,7 +215,9 @@ class GerberPlotter {
                 );
             }
             
-            // FIXED: Create proper stroked arc
+            this.debug(`REDESIGNED: Plotting arc with center (${draw.center.x.toFixed(3)}, ${draw.center.y.toFixed(3)})`);
+            
+            // Create proper stroked arc
             return this.createStrokedArc(
                 draw.start,
                 draw.end,
@@ -156,6 +238,8 @@ class GerberPlotter {
             return null;
         }
         
+        this.debug(`REDESIGNED: Plotting flash at (${flash.position.x.toFixed(3)}, ${flash.position.y.toFixed(3)}) (${flash.geometryClass})`);
+        
         const properties = {
             fill: true, // Flashes are always filled
             stroke: false,
@@ -167,15 +251,18 @@ class GerberPlotter {
         
         switch (aperture.type) {
             case 'circle':
+                const radius = aperture.parameters[0] / 2;
+                this.debug(`REDESIGNED: Creating circle flash with radius ${radius.toFixed(3)}`);
                 return new CirclePrimitive(
                     flash.position,
-                    aperture.parameters[0] / 2,
+                    radius,
                     properties
                 );
                 
             case 'rectangle':
                 const width = aperture.parameters[0];
                 const height = aperture.parameters[1] || width;
+                this.debug(`REDESIGNED: Creating rectangle flash ${width.toFixed(3)} × ${height.toFixed(3)}`);
                 return new RectanglePrimitive(
                     {
                         x: flash.position.x - width / 2,
@@ -189,6 +276,7 @@ class GerberPlotter {
             case 'obround':
                 const oWidth = aperture.parameters[0];
                 const oHeight = aperture.parameters[1] || oWidth;
+                this.debug(`REDESIGNED: Creating obround flash ${oWidth.toFixed(3)} × ${oHeight.toFixed(3)}`);
                 return new ObroundPrimitive(
                     {
                         x: flash.position.x - oWidth / 2,
@@ -202,6 +290,7 @@ class GerberPlotter {
             case 'polygon':
                 const sides = aperture.parameters[1] || 3;
                 const rotation = aperture.parameters[2] || 0;
+                this.debug(`REDESIGNED: Creating polygon flash with ${sides} sides`);
                 return PrimitiveFactory.createPolygonAperture(
                     flash.position,
                     aperture.parameters[0],
@@ -216,8 +305,10 @@ class GerberPlotter {
         }
     }
     
-    // FIXED: Improved stroked arc creation
+    // Improved stroked arc creation with coordinate validation
     createStrokedArc(start, end, center, clockwise, strokeWidth, properties) {
+        this.debug(`SIMPLIFIED: Creating stroked arc - start(${start.x.toFixed(3)}, ${start.y.toFixed(3)}), end(${end.x.toFixed(3)}, ${end.y.toFixed(3)}), center(${center.x.toFixed(3)}, ${center.y.toFixed(3)})`);
+        
         const radius = Math.sqrt(
             Math.pow(start.x - center.x, 2) +
             Math.pow(start.y - center.y, 2)
@@ -313,8 +404,16 @@ class GerberPlotter {
         let minX = Infinity, minY = Infinity;
         let maxX = -Infinity, maxY = -Infinity;
         
-        this.primitives.forEach(primitive => {
+        this.primitives.forEach((primitive, index) => {
             const bounds = primitive.getBounds();
+            
+            // VALIDATION: Check for invalid bounds
+            if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
+                !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
+                console.warn(`[GerberPlotter-SIMPLIFIED] Primitive ${index} has invalid bounds:`, bounds);
+                return;
+            }
+            
             minX = Math.min(minX, bounds.minX);
             minY = Math.min(minY, bounds.minY);
             maxX = Math.max(maxX, bounds.maxX);
@@ -322,6 +421,7 @@ class GerberPlotter {
         });
         
         this.bounds = { minX, minY, maxX, maxY };
+        this.debug('SIMPLIFIED: Calculated plotter bounds:', this.bounds);
     }
     
     plotDrillData(drillData) {
@@ -333,12 +433,21 @@ class GerberPlotter {
             };
         }
         
-        this.debug('Plotting drill data...');
+        this.debug('SIMPLIFIED: Plotting drill data...');
         
         const drillPrimitives = [];
         
-        drillData.drillData.holes.forEach(hole => {
-            // FIXED: Drill holes should be filled circles to show drilled area
+        drillData.drillData.holes.forEach((hole, index) => {
+            // VALIDATION: Check hole data
+            if (!hole.position || typeof hole.position.x !== 'number' || typeof hole.position.y !== 'number' ||
+                !isFinite(hole.position.x) || !isFinite(hole.position.y)) {
+                console.warn(`[GerberPlotter-SIMPLIFIED] Invalid drill hole ${index}:`, hole);
+                return;
+            }
+            
+            this.debug(`SIMPLIFIED: Plotting drill hole ${index + 1} at (${hole.position.x.toFixed(3)}, ${hole.position.y.toFixed(3)})`);
+            
+            // Drill holes should be filled circles to show drilled area
             const primitive = new CirclePrimitive(
                 hole.position,
                 hole.diameter / 2,
@@ -358,7 +467,7 @@ class GerberPlotter {
             drillPrimitives.push(primitive);
         });
         
-        this.debug(`Plotted ${drillPrimitives.length} drill holes`);
+        this.debug(`SIMPLIFIED: Plotted ${drillPrimitives.length} drill holes`);
         
         // Calculate bounds for drill data
         let bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
@@ -377,6 +486,8 @@ class GerberPlotter {
             bounds = { minX, minY, maxX, maxY };
         }
         
+        this.debug('SIMPLIFIED: Drill bounds:', bounds);
+        
         return {
             success: true,
             primitives: drillPrimitives,
@@ -388,15 +499,15 @@ class GerberPlotter {
     debug(message, data = null) {
         if (this.options.debug) {
             if (data) {
-                console.log(`[GerberPlotter] ${message}`, data);
+                console.log(`[GerberPlotter-SIMPLIFIED] ${message}`, data);
             } else {
-                console.log(`[GerberPlotter] ${message}`);
+                console.log(`[GerberPlotter-SIMPLIFIED] ${message}`);
             }
         }
     }
 }
 
-// Export
+// Export - SIMPLIFIED: Remove GeometryClassifier
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = GerberPlotter;
 } else {

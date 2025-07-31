@@ -606,17 +606,14 @@ h1 {
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 100;
-    overflow-y: auto; /* Allow scrolling on modal backdrop */
     padding: 2rem;
     backdrop-filter: blur(4px);
 }
 
 .modal.active {
     display: flex;
-    align-items: flex-start; /* Align to top instead of center */
+    align-items: center;
     justify-content: center;
-    padding-top: 2rem; /* Space from top */
-    padding-bottom: 2rem;
 }
 
 .modal-content {
@@ -624,13 +621,12 @@ h1 {
     border-radius: var(--radius);
     width: 100%;
     max-width: 1400px;
-    margin: auto;
+    height: 85vh; /* Fixed height */
     display: flex;
     flex-direction: column;
     box-shadow: var(--shadow-lg);
     border: 1px solid var(--border);
-    max-height: none; /* Remove height restriction */
-    height: auto; /* Natural height */
+    /* Remove any transitions that might cause weird animations */
 }
 
 .modal-header {
@@ -682,8 +678,103 @@ h1 {
     min-height: 600px; /* Minimum height */
 }
 
-/* Debug Options */
+/* Coordinate Controls - Enhanced */
+.coordinate-section {
+    margin-bottom: 1.5rem;
+}
 
+.coordinate-section h3 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.coordinate-section .btn-primary {
+    background: var(--isolation-accent);
+    font-weight: 600;
+    border: none;
+    box-shadow: var(--shadow);
+}
+
+.coordinate-section .btn-primary:hover {
+    background: color-mix(in srgb, var(--isolation-accent) 85%, black);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+}
+
+.coord-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.coord-buttons button {
+    font-size: 0.8125rem;
+    padding: 0.5rem;
+    font-weight: 500;
+}
+
+/* Advanced Options Section - Renamed from Debug Tools */
+.advanced-options {
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+    margin-top: 1rem;
+}
+
+#advanced-options-toggle {
+    background: var(--bg);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    transition: all 0.15s ease;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+#advanced-options-toggle:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+#advanced-options-toggle.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+#advanced-options-section {
+    margin-top: 0.75rem;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    animation: fadeIn 0.2s ease;
+    /* Ensure it doesn't cause layout shift */
+    box-sizing: border-box;
+}
+
+#advanced-options-section h3 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text);
+}
+
+#advanced-options-section h4 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Debug Options */
 .debug-options label {
     cursor: pointer;
     padding: 0.25rem;
@@ -700,28 +791,6 @@ h1 {
     cursor: pointer;
 }
 
-#debug-controls {
-    border-top: 1px solid var(--border);
-    padding-top: 1rem;
-    margin-top: 1rem;
-} 
-
-
-/* Color indicators in operation groups */
-
-/* Enhanced coordinate buttons */
-.coord-buttons {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.coord-buttons button {
-    font-size: 0.8125rem;
-    padding: 0.375rem 0.5rem;
-}
-
 .preview-container {
     flex: 1;
     position: relative;
@@ -730,6 +799,8 @@ h1 {
     align-items: center;
     justify-content: center;
     border-right: 1px solid var(--border);
+    min-width: 0; /* Allow flexbox to shrink */
+    overflow: hidden; /* Prevent content from affecting size */
 }
 
 #preview-canvas {
@@ -827,13 +898,6 @@ h1 {
     font-weight: 600;
 }
 
-.coord-buttons {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
 /* Statistics */
 .stat-grid {
     display: grid;
@@ -870,6 +934,28 @@ h1 {
     display: flex;
     justify-content: flex-end;
     gap: 0.75rem;
+    background: var(--bg-alt);
+}
+
+/* ENHANCED: File Statistics - No Nested Scrolling + Removed Confusing Status Row */
+#operation-stats {
+    /* Remove max-height and overflow-y to eliminate nested scrolling */
+    font-size: 0.75rem;
+    color: var(--text-hint);
+    /* Let the content expand naturally */
+}
+
+#operation-stats > div {
+    margin-bottom: 0.75rem;
+    padding: 0.5rem;
+    background: var(--bg-hover);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    transition: all 0.15s ease;
+}
+
+#operation-stats > div:hover {
+    border-color: var(--accent);
     background: var(--bg-alt);
 }
 
@@ -960,17 +1046,29 @@ h1 {
         padding: 0.5rem;
     }
     
+    .modal-content {
+        height: 95vh; /* More space on mobile */
+        max-height: none; /* Remove height cap on mobile */
+    }
+    
     .modal-body {
-        flex-direction: column;
+        flex-direction: column; /* Stack vertically on mobile */
     }
     
     .preview-container {
         border-right: none;
         border-bottom: 1px solid var(--border);
+        min-height: 300px; /* Ensure usable canvas height */
+        min-width: auto; /* Remove min-width constraint */
+        flex: 1; /* Take available space */
     }
     
     .preview-sidebar {
         width: 100%;
+        min-width: auto; /* Remove min-width constraint */
+        height: auto; /* Natural height */
+        max-height: 50vh; /* Limit height to 50% viewport */
+        flex: 0 0 auto; /* Don't grow, fixed height */
     }
     
     .header-content {
@@ -981,6 +1079,18 @@ h1 {
     
     .version-badge {
         margin-left: 0;
+    }
+}
+
+/* Large screens - optimize for desktop use */
+@media (min-width: 1200px) {
+    .modal-content {
+        max-width: 1600px; /* Allow wider on large screens */
+    }
+    
+    .preview-sidebar {
+        width: 400px; /* Wider sidebar on large screens */
+        min-width: 400px;
     }
 }
 

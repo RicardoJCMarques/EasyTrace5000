@@ -1,4 +1,4 @@
-// Coordinate System Manager - Fixed communication with renderer
+// Coordinate System Manager - PROFESSIONAL: Simplified professional CAM workflow
 // coordinate/coordinate-system.js
 
 class CoordinateSystemManager {
@@ -8,68 +8,37 @@ class CoordinateSystemManager {
             ...options
         };
         
-        // SIMPLIFIED coordinate system state
-        this.workingOrigin = { x: 0, y: 0 }; // Current working origin in board coordinates
-        this.boardBounds = null;
+        // PROFESSIONAL: Simplified coordinate tracking like professional CAM tools
+        this.fileOrigin = { x: 0, y: 0 }; // Where the original file coordinates are (never changes)
+        this.workingOrigin = { x: 0, y: 0 }; // Current working origin (user's chosen reference point)
+        this.storedOrigin = { x: 0, y: 0 }; // Last stored origin (for reset functionality)
+        
+        this.boardBounds = null; // Board bounds in file coordinates
+        this.initialized = false;
+        this.hasCustomOrigin = false; // Track if user has set a custom origin
         
         // Communication with renderer
         this.renderer = null;
-        this._updating = false; // Prevent circular updates
         
-        this.debug('CoordinateSystemManager initialized with simplified state');
+        this.debug('PROFESSIONAL: CoordinateSystemManager initialized with stored origin tracking');
     }
     
     /**
-     * Set renderer for proper communication
+     * Set renderer for coordinate system display
      */
     setRenderer(renderer) {
         this.renderer = renderer;
         this.debug('Renderer linked to coordinate system');
-        // Initial sync without triggering updates
-        this._updating = true;
-        if (this.renderer && this.renderer.setOriginPosition) {
-            this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
-        }
-        this._updating = false;
     }
     
     /**
-     * Analyze coordinate system from operations
+     * PROFESSIONAL: Analyze coordinate system from operations and set initial state
      */
     analyzeCoordinateSystem(operations) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         let hasData = false;
 
         operations.forEach(op => {
-            // Handle all primitive-based operations (Gerber files)
-            if (op.primitives && op.primitives.length > 0) {
-                op.primitives.forEach(primitive => {
-                    const bounds = primitive.getBounds();
-                    if (bounds) {
-                        minX = Math.min(minX, bounds.minX);
-                        minY = Math.min(minY, bounds.minY);
-                        maxX = Math.max(maxX, bounds.maxX);
-                        maxY = Math.max(maxY, bounds.maxY);
-                        hasData = true;
-                    }
-                });
-            }
-            
-            // FIXED: Handle drill holes from parsed data structure
-            if (op.type === 'drill' && op.parsed && op.parsed.drillData && op.parsed.drillData.holes) {
-                op.parsed.drillData.holes.forEach(hole => {
-                    if (hole.position && typeof hole.diameter === 'number') {
-                        const r = hole.diameter / 2;
-                        minX = Math.min(minX, hole.position.x - r);
-                        minY = Math.min(minY, hole.position.y - r);
-                        maxX = Math.max(maxX, hole.position.x + r);
-                        maxY = Math.max(maxY, hole.position.y + r);
-                        hasData = true;
-                    }
-                });
-            }
-            
-            // Also check operation bounds if available
             if (op.bounds) {
                 minX = Math.min(minX, op.bounds.minX);
                 minY = Math.min(minY, op.bounds.minY);
@@ -80,16 +49,35 @@ class CoordinateSystemManager {
         });
 
         if (hasData) {
-            this.boardBounds = {
+            const bounds = {
                 minX, minY, maxX, maxY,
                 width: maxX - minX,
                 height: maxY - minY,
                 centerX: (minX + maxX) / 2,
                 centerY: (minY + maxY) / 2
             };
+            
+            this.boardBounds = { ...bounds };
             this.debug('Board bounds calculated:', this.boardBounds);
+            
+            // PROFESSIONAL: Initialize to file origin if not already initialized
+            if (!this.initialized) {
+                this.fileOrigin.x = 0;
+                this.fileOrigin.y = 0;
+                this.workingOrigin.x = 0;
+                this.workingOrigin.y = 0;
+                this.storedOrigin.x = 0; // Initialize stored origin to file origin
+                this.storedOrigin.y = 0;
+                this.initialized = true;
+                
+                // Update renderer to show initial origin position
+                if (this.renderer) {
+                    this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
+                }
+                
+                this.debug(`PROFESSIONAL: Initialized - Working Origin at file origin (0, 0)`);
+            }
         } else {
-            this.boardBounds = null;
             this.debug('No board data found for bounds calculation');
         }
 
@@ -97,198 +85,175 @@ class CoordinateSystemManager {
     }
 
     /**
-     * Set the working origin to a specific absolute board coordinate
+     * PROFESSIONAL: Calculate offset needed to move to board center (doesn't apply it)
      */
-    setWorkingOrigin(x, y) {
-        // Prevent circular updates from renderer
-        if (this._updating) {
-            this.debug('Skipping setWorkingOrigin - circular update prevention');
-            return { success: true };
+    calculateCenterOffset() {
+        if (!this.boardBounds) {
+            return { success: false, error: 'No board bounds available' };
         }
         
-        this.workingOrigin = { x, y };
-        this.debug(`Working origin set to: (${x.toFixed(3)}, ${y.toFixed(3)})`);
+        const targetX = this.boardBounds.centerX;
+        const targetY = this.boardBounds.centerY;
         
-        // Update renderer if available
-        if (this.renderer && this.renderer.setOriginPosition) {
-            this.debug('Updating renderer origin position...');
-            this._updating = true;
-            this.renderer.setOriginPosition(x, y);
-            this._updating = false;
-            this.debug('Renderer origin position updated');
-        } else {
-            this.debug('No renderer available to update');
-        }
+        const offsetX = targetX - this.workingOrigin.x;
+        const offsetY = targetY - this.workingOrigin.y;
         
-        return { success: true };
-    }
-
-    /**
-     * Apply manual offset to working origin
-     */
-    applyManualOffset(deltaX, deltaY) {
-        const newX = this.workingOrigin.x + deltaX;
-        const newY = this.workingOrigin.y + deltaY;
-        
-        this.setWorkingOrigin(newX, newY);
-        
-        this.debug(`Applied manual offset (${deltaX}, ${deltaY}). New working origin: (${newX.toFixed(3)}, ${newY.toFixed(3)})`);
-        
+        this.debug(`PROFESSIONAL: Calculated center offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
         return { 
-            success: true,
-            newOrigin: { x: newX, y: newY }
+            success: true, 
+            offset: { x: offsetX, y: offsetY },
+            target: { x: targetX, y: targetY }
+        };
+    }
+    
+    /**
+     * PROFESSIONAL: Calculate offset needed to move to board bottom-left (doesn't apply it)
+     */
+    calculateBottomLeftOffset() {
+        if (!this.boardBounds) {
+            return { success: false, error: 'No board bounds available' };
+        }
+        
+        const targetX = this.boardBounds.minX;
+        const targetY = this.boardBounds.minY;
+        
+        const offsetX = targetX - this.workingOrigin.x;
+        const offsetY = targetY - this.workingOrigin.y;
+        
+        this.debug(`PROFESSIONAL: Calculated bottom-left offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
+        return { 
+            success: true, 
+            offset: { x: offsetX, y: offsetY },
+            target: { x: targetX, y: targetY }
         };
     }
 
     /**
-     * Set origin to board center
+     * PROFESSIONAL: Move origin by offset from current position and store previous position
      */
-    centerOrigin() {
-        if (!this.boardBounds) {
-            this.debug('Cannot center origin: No board bounds available');
-            return { success: false, error: 'No board bounds available' };
+    moveOriginByOffset(offsetX, offsetY) {
+        if (!this.initialized) {
+            return { success: false, error: 'Coordinate system not initialized' };
         }
         
-        const result = this.setWorkingOrigin(this.boardBounds.centerX, this.boardBounds.centerY);
-        this.debug(`Centered origin to (${this.boardBounds.centerX.toFixed(3)}, ${this.boardBounds.centerY.toFixed(3)})`);
-        return result;
-    }
-    
-    /**
-     * Set origin to board bottom-left
-     */
-    bottomLeftOrigin() {
-        if (!this.boardBounds) {
-            this.debug('Cannot set bottom-left origin: No board bounds available');
-            return { success: false, error: 'No board bounds available' };
+        // Store current position before moving
+        this.storedOrigin.x = this.workingOrigin.x;
+        this.storedOrigin.y = this.workingOrigin.y;
+        
+        // Move working origin by the specified offset
+        this.workingOrigin.x += offsetX;
+        this.workingOrigin.y += offsetY;
+        this.hasCustomOrigin = true;
+        
+        // Update renderer to show new origin position
+        if (this.renderer) {
+            this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
         }
         
-        const result = this.setWorkingOrigin(this.boardBounds.minX, this.boardBounds.minY);
-        this.debug(`Set origin to bottom-left (${this.boardBounds.minX.toFixed(3)}, ${this.boardBounds.minY.toFixed(3)})`);
-        return result;
-    }
-    
-    /**
-     * Set origin to board bottom-right
-     */
-    bottomRightOrigin() {
-        if (!this.boardBounds) {
-            return { success: false, error: 'No board bounds available' };
-        }
-        
-        return this.setWorkingOrigin(this.boardBounds.maxX, this.boardBounds.minY);
-    }
-    
-    /**
-     * Set origin to board top-left
-     */
-    topLeftOrigin() {
-        if (!this.boardBounds) {
-            return { success: false, error: 'No board bounds available' };
-        }
-        
-        return this.setWorkingOrigin(this.boardBounds.minX, this.boardBounds.maxY);
-    }
-    
-    /**
-     * Set origin to board top-right
-     */
-    topRightOrigin() {
-        if (!this.boardBounds) {
-            return { success: false, error: 'No board bounds available' };
-        }
-        
-        return this.setWorkingOrigin(this.boardBounds.maxX, this.boardBounds.maxY);
+        this.debug(`PROFESSIONAL: Working origin moved by (${offsetX}, ${offsetY}) to: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), stored previous: (${this.storedOrigin.x.toFixed(3)}, ${this.storedOrigin.y.toFixed(3)})`);
+        return { success: true };
     }
 
     /**
-     * Get current system state
+     * PROFESSIONAL: Reset to stored origin (previous position)
+     */
+    resetToStoredOrigin() {
+        if (!this.initialized) {
+            return { success: false, error: 'Coordinate system not initialized' };
+        }
+        
+        // Reset working origin to stored position
+        this.workingOrigin.x = this.storedOrigin.x;
+        this.workingOrigin.y = this.storedOrigin.y;
+        
+        // If stored origin is file origin, mark as not custom
+        if (this.storedOrigin.x === this.fileOrigin.x && this.storedOrigin.y === this.fileOrigin.y) {
+            this.hasCustomOrigin = false;
+        }
+        
+        // Update renderer to show new origin position
+        if (this.renderer) {
+            this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
+        }
+        
+        this.debug(`PROFESSIONAL: Working origin reset to stored position: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)})`);
+        return { success: true };
+    }
+
+    /**
+     * PROFESSIONAL: Get current system status for UI display
      */
     getStatus() {
+        const boardSize = this.boardBounds ? {
+            width: this.boardBounds.width,
+            height: this.boardBounds.height
+        } : { width: 0, height: 0 };
+        
+        const currentPosition = { ...this.workingOrigin };
+        
+        // Generate professional origin description
+        let originDescription = 'File Origin';
+        if (this.hasCustomOrigin && this.boardBounds) {
+            // Check if at board center
+            const atCenter = Math.abs(this.workingOrigin.x - this.boardBounds.centerX) < 0.01 &&
+                            Math.abs(this.workingOrigin.y - this.boardBounds.centerY) < 0.01;
+            
+            // Check if at board bottom-left
+            const atBottomLeft = Math.abs(this.workingOrigin.x - this.boardBounds.minX) < 0.01 &&
+                               Math.abs(this.workingOrigin.y - this.boardBounds.minY) < 0.01;
+            
+            if (atCenter) {
+                originDescription = 'Board Center';
+            } else if (atBottomLeft) {
+                originDescription = 'Board Bottom-Left';
+            } else {
+                // Show offset from file origin
+                const offsetX = this.workingOrigin.x - this.fileOrigin.x;
+                const offsetY = this.workingOrigin.y - this.fileOrigin.y;
+                originDescription = `Custom (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})mm`;
+            }
+        }
+        
         return {
+            boardSize: boardSize,
+            currentPosition: currentPosition,
+            originDescription: originDescription,
+            hasCustomOrigin: this.hasCustomOrigin,
+            initialized: this.initialized,
+            
+            // For backward compatibility with existing code
+            currentOrigin: { ...this.workingOrigin },
             workingOrigin: { ...this.workingOrigin },
+            storedOrigin: { ...this.storedOrigin },
+            fileOrigin: { ...this.fileOrigin },
             boardBounds: this.boardBounds ? { ...this.boardBounds } : null,
+            originalBounds: this.boardBounds ? { ...this.boardBounds } : null,
             hasValidBounds: this.boardBounds !== null,
-            suggestedOrigins: this.getSuggestedOrigins(),
-            displayCoordinates: {
-                x: 0, // In the new simplified system, display is always relative to working origin
-                y: 0
+            userHasSetOrigin: this.hasCustomOrigin,
+            isAtWorking: true, // Always at working position in simplified model
+            displayInfo: {
+                boardSize: boardSize,
+                currentOffset: { x: 0, y: 0 }, // Always 0 since offset inputs represent "move from current"
+                originDescription: originDescription
             }
         };
     }
 
     /**
-     * Get suggested origin points
+     * Get origin position for rendering
      */
-    getSuggestedOrigins() {
-        const origins = {};
-        if (this.boardBounds) {
-            const b = this.boardBounds;
-            origins.bottomLeft = { x: b.minX, y: b.minY };
-            origins.bottomRight = { x: b.maxX, y: b.minY };
-            origins.topLeft = { x: b.minX, y: b.maxY };
-            origins.topRight = { x: b.maxX, y: b.maxY };
-            origins.center = { x: b.centerX, y: b.centerY };
-        }
-        return origins;
+    getOriginPosition() {
+        return { ...this.workingOrigin };
     }
 
     /**
-     * Reset coordinate system to default
+     * Get coordinate transformation for G-code generation
      */
-    reset() {
-        this.workingOrigin = { x: 0, y: 0 };
-        this.debug('Coordinate system reset');
-        
-        // Update renderer
-        if (this.renderer && this.renderer.setOriginPosition) {
-            this._updating = true;
-            this.renderer.setOriginPosition(0, 0);
-            this._updating = false;
-        }
-        
-        return { success: true };
-    }
-
-    /**
-     * Convert board coordinate to working coordinate system
-     */
-    boardToWorking(boardCoords) {
+    getCoordinateTransform() {
         return {
-            x: boardCoords.x - this.workingOrigin.x,
-            y: boardCoords.y - this.workingOrigin.y
+            offsetX: -this.workingOrigin.x,
+            offsetY: -this.workingOrigin.y
         };
-    }
-
-    /**
-     * Convert working coordinate to board coordinate system  
-     */
-    workingToBoard(workingCoords) {
-        return {
-            x: workingCoords.x + this.workingOrigin.x,
-            y: workingCoords.y + this.workingOrigin.y
-        };
-    }
-
-    /**
-     * Get absolute coordinates (board system) from working coordinates
-     */
-    getAbsoluteCoordinates(workingCoords) {
-        return this.workingToBoard(workingCoords);
-    }
-
-    /**
-     * Simple distance calculation
-     */
-    distance(p1, p2) {
-        if (!p1 || !p2 || typeof p1.x !== 'number' || typeof p1.y !== 'number' ||
-            typeof p2.x !== 'number' || typeof p2.y !== 'number') {
-            return 0;
-        }
-        
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        return Math.sqrt(dx * dx + dy * dy);
     }
     
     /**
@@ -297,9 +262,9 @@ class CoordinateSystemManager {
     debug(message, data = null) {
         if (this.options.debug) {
             if (data) {
-                console.log(`[CoordinateSystem] ${message}`, data);
+                console.log(`[CoordinateSystem-PROFESSIONAL] ${message}`, data);
             } else {
-                console.log(`[CoordinateSystem] ${message}`);
+                console.log(`[CoordinateSystem-PROFESSIONAL] ${message}`);
             }
         }
     }

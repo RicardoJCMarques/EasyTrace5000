@@ -1,4 +1,4 @@
-// PCB CAM Controller - Fixed coordinate system and color handling
+// PCB CAM Controller - FIXED: Professional coordinate system workflow
 // cam.js
 
 class SemanticPCBCam {
@@ -41,12 +41,11 @@ class SemanticPCBCam {
         this.plotter = null;
         this.renderer = null;
         
-        // FIXED: Coordinate system integration
+        // PROFESSIONAL: Coordinate system with clear workflow
         this.coordinateSystem = null;
         
         // Settings
         this.settings = this.loadSettings();
-        this.debugMode = localStorage.getItem('pcbcam-debug') === 'true' || false;
         
         // Stats
         this.stats = {
@@ -59,8 +58,8 @@ class SemanticPCBCam {
         this.initializeUI();
         this.setupEventListeners();
         
-        console.log('Semantic PCB CAM Controller initialized with fixed coordinate system');
-        console.log('🔧 Press Ctrl+Alt+D to toggle debug mode');
+        console.log('PROFESSIONAL: PCB CAM Controller initialized with professional coordinate workflow');
+        console.log('🎯 Coordinate system mirrors professional CAM tools');
     }
     
     loadSettings() {
@@ -183,7 +182,7 @@ class SemanticPCBCam {
             warnings: null,
             expanded: true,
             processed: false,
-            color: this.fileTypes[operationType].color // Store operation color
+            color: this.fileTypes[operationType].color
         };
         
         this.operations.push(operation);
@@ -207,15 +206,13 @@ class SemanticPCBCam {
             let parseResult;
             
             if (operation.type === 'drill') {
-                if (!this.excellonParser) {
-                    this.excellonParser = new ExcellonSemanticParser({ debug: this.debugMode });
-                }
-                parseResult = this.excellonParser.parse(operation.file.content);
+                // FIXED: Create fresh parser instance for each operation to prevent contamination
+                const excellonParser = new ExcellonSemanticParser();
+                parseResult = excellonParser.parse(operation.file.content);
             } else {
-                if (!this.gerberParser) {
-                    this.gerberParser = new GerberSemanticParser({ debug: this.debugMode });
-                }
-                parseResult = this.gerberParser.parse(operation.file.content);
+                // FIXED: Create fresh parser instance for each operation to prevent contamination
+                const gerberParser = new GerberSemanticParser();
+                parseResult = gerberParser.parse(operation.file.content);
             }
             
             if (!parseResult.success) {
@@ -226,16 +223,15 @@ class SemanticPCBCam {
             
             operation.parsed = parseResult;
             
-            // Convert to primitives immediately
-            if (!this.plotter) {
-                this.plotter = new GerberPlotter({ debug: this.debugMode });
-            }
+            // FIXED: Create fresh plotter instance for each operation to prevent contamination
+            const plotter = new GerberPlotter({ debug: this.debugMode });
             
+            // Convert to primitives with ORIGINAL coordinates
             let plotResult;
             if (operation.type === 'drill') {
-                plotResult = this.plotter.plotDrillData(parseResult);
+                plotResult = plotter.plotDrillData(parseResult);
             } else {
-                plotResult = this.plotter.plot(parseResult);
+                plotResult = plotter.plot(parseResult);
             }
             
             if (!plotResult.success) {
@@ -244,8 +240,22 @@ class SemanticPCBCam {
                 return;
             }
             
+            // Store primitives (geometry never moves in new system)
             operation.primitives = plotResult.primitives;
             operation.bounds = plotResult.bounds;
+            
+            // FIXED: Debug logging to track primitive isolation per operation
+            console.log(`[CUTOUT-FIX] Operation ${operation.type} (${operation.file.name}): ${operation.primitives.length} primitives`);
+            if (operation.type === 'cutout') {
+                console.log('[CUTOUT-FIX] Cutout operation primitives:', operation.primitives.map(p => ({
+                    type: p.type, 
+                    closed: p.closed,
+                    bounds: p.getBounds()
+                })));
+            }
+            
+            // Update coordinate system bounds
+            this.updateCoordinateSystem();
             
             // Update stats
             this.updateStatistics();
@@ -268,16 +278,23 @@ class SemanticPCBCam {
         if (!this.renderer) {
             this.renderer = new LayerRenderer('preview-canvas');
             
-            // FIXED: Initialize coordinate system properly
+            // Initialize coordinate system with professional workflow
             if (!this.coordinateSystem) {
-                this.coordinateSystem = new CoordinateSystemManager({ debug: this.debugMode });
+                this.coordinateSystem = new CoordinateSystemManager({ debug: true });
             }
             
-            // Link coordinate system to renderer
+            // Link coordinate system and renderer
             this.renderer.setCoordinateSystem(this.coordinateSystem);
             this.coordinateSystem.setRenderer(this.renderer);
             
-            console.log('✅ Layer renderer initialized with coordinate system');
+            console.log('✅ PROFESSIONAL: Layer renderer initialized with professional coordinate workflow');
+        }
+    }
+    
+    // Update coordinate system with current operations
+    updateCoordinateSystem() {
+        if (this.coordinateSystem) {
+            this.coordinateSystem.analyzeCoordinateSystem(this.operations);
         }
     }
     
@@ -292,19 +309,17 @@ class SemanticPCBCam {
         // Initialize renderer
         this.initializeRenderer();
         
-        // Update renderer with current operations
+        // Update coordinate system and renderer with current operations
+        this.updateCoordinateSystem();
         this.updateRenderer();
-        
-        // FIXED: Calculate coordinate analysis using coordinate system
-        this.analyzeCoordinates();
         
         // Setup controls
         this.setupPreviewControls();
         
-        // Update UI
+        // Update UI with current coordinate system state
         this.updatePreviewUI();
         
-        // Fit view
+        // Fit view after a short delay to ensure everything is ready
         setTimeout(() => {
             if (this.renderer) {
                 this.renderer.resizeCanvas();
@@ -332,24 +347,8 @@ class SemanticPCBCam {
         });
     }
     
-    analyzeCoordinates() {
-        if (!this.coordinateSystem) return;
-        
-        console.log('[CAM] Analyzing coordinates with operations:', this.operations.length);
-        
-        // Use coordinate system to analyze operations
-        const analysis = this.coordinateSystem.analyzeCoordinateSystem(this.operations);
-        
-        // Store the analysis for UI updates
-        this.coordinateAnalysis = analysis;
-        
-        console.log('[CAM] Coordinate analysis result:', analysis);
-        
-        return analysis;
-    }
-    
     setupPreviewControls() {
-        // Origin controls - FIXED to use coordinate system methods
+        // Origin controls
         const centerBtn = document.getElementById('center-origin-btn');
         const bottomLeftBtn = document.getElementById('bottom-left-origin-btn');
         const setBtn = document.getElementById('set-origin-btn');
@@ -368,32 +367,35 @@ class SemanticPCBCam {
             resetBtn.onclick = () => this.resetOrigin();
         }
         
-        // Debug controls - ENHANCED with better fill/outline toggle
+        // Debug controls setup (keeping existing functionality)
         const showFilled = document.getElementById('show-filled');
-        const showOutlines = document.getElementById('show-outlines');
+        const showPads = document.getElementById('show-pads');
         const blackWhite = document.getElementById('black-white');
         const showGrid = document.getElementById('show-grid');
         const showRulers = document.getElementById('show-rulers');
         const showBounds = document.getElementById('show-bounds');
-        const showOffsets = document.getElementById('show-offsets');
-        const showOriginal = document.getElementById('show-original');
+        
+        // Geometry type controls
+        const showRegions = document.getElementById('show-regions');
+        const showTraces = document.getElementById('show-traces');
+        const showCutouts = document.getElementById('show-cutouts');
+        const showDrills = document.getElementById('show-drills');
         
         if (showFilled) {
             showFilled.checked = this.renderer.options.showFill;
             showFilled.onchange = (e) => {
                 this.renderer.setOptions({ showFill: e.target.checked });
-                // Auto-enable outlines when fill is disabled for better visibility
-                if (!e.target.checked && showOutlines) {
-                    showOutlines.checked = true;
-                    this.renderer.setOptions({ showOutlines: true });
+                if (!e.target.checked && showPads) {
+                    showPads.checked = true;
+                    this.renderer.setOptions({ showPads: true });
                 }
             };
         }
         
-        if (showOutlines) {
-            showOutlines.checked = this.renderer.options.showOutlines;
-            showOutlines.onchange = (e) => {
-                this.renderer.setOptions({ showOutlines: e.target.checked });
+        if (showPads) {
+            showPads.checked = this.renderer.options.showPads !== false;
+            showPads.onchange = (e) => {
+                this.renderer.setOptions({ showPads: e.target.checked });
             };
         }
         
@@ -425,20 +427,32 @@ class SemanticPCBCam {
             };
         }
         
-        // Future offset geometry controls
-        if (showOffsets) {
-            showOffsets.checked = false;
-            showOffsets.onchange = (e) => {
-                // Placeholder for future offset path visualization
-                console.log('Offset paths:', e.target.checked ? 'ON' : 'OFF');
+        // Geometry type controls
+        if (showRegions) {
+            showRegions.checked = this.renderer.options.showRegions !== false;
+            showRegions.onchange = (e) => {
+                this.renderer.setOptions({ showRegions: e.target.checked });
             };
         }
         
-        if (showOriginal) {
-            showOriginal.checked = true;
-            showOriginal.onchange = (e) => {
-                // Control original geometry visibility
-                this.renderer.setOptions({ showOriginal: e.target.checked });
+        if (showTraces) {
+            showTraces.checked = this.renderer.options.showTraces !== false;
+            showTraces.onchange = (e) => {
+                this.renderer.setOptions({ showTraces: e.target.checked });
+            };
+        }
+        
+        if (showCutouts) {
+            showCutouts.checked = this.renderer.options.showCutouts !== false;
+            showCutouts.onchange = (e) => {
+                this.renderer.setOptions({ showCutouts: e.target.checked });
+            };
+        }
+        
+        if (showDrills) {
+            showDrills.checked = this.renderer.options.showDrills !== false;
+            showDrills.onchange = (e) => {
+                this.renderer.setOptions({ showDrills: e.target.checked });
             };
         }
         
@@ -447,46 +461,112 @@ class SemanticPCBCam {
         if (exportSvgBtn) {
             exportSvgBtn.onclick = () => this.exportSVG();
         }
+        
+        // Advanced options collapse functionality
+        this.setupAdvancedOptionsCollapse();
     }
     
-    // FIXED: Use coordinate system methods with proper UI updates
+    setupAdvancedOptionsCollapse() {
+        const advancedToggle = document.getElementById('advanced-options-toggle');
+        const advancedSection = document.getElementById('advanced-options-section');
+        
+        if (advancedToggle && advancedSection) {
+            advancedToggle.onclick = () => {
+                const isExpanded = advancedSection.style.display !== 'none';
+                advancedSection.style.display = isExpanded ? 'none' : 'block';
+                advancedToggle.textContent = isExpanded ? '🔧 Show Advanced Options' : '🔧 Hide Advanced Options';
+                
+                // Add visual indicator when expanded
+                if (isExpanded) {
+                    advancedToggle.classList.remove('active');
+                } else {
+                    advancedToggle.classList.add('active');
+                    // Update operation statistics when opened
+                    this.updateOperationStatistics();
+                }
+            };
+            
+            // Start collapsed
+            advancedSection.style.display = 'none';
+        }
+    }
+    
+    updateOperationStatistics() {
+        const statsContainer = document.getElementById('operation-stats');
+        if (!statsContainer) return;
+        
+        if (this.operations.length === 0) {
+            statsContainer.innerHTML = '<p>Load PCB files to see statistics</p>';
+            return;
+        }
+        
+        let statsHtml = '';
+        
+        this.operations.forEach((operation, index) => {
+            const status = operation.error ? '❌' : (operation.primitives ? '✅' : '⏳');
+            const primitiveCount = operation.primitives ? operation.primitives.length : 0;
+            const fileSize = (operation.file.size / 1024).toFixed(1);
+            
+            statsHtml += `
+                <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: var(--bg-hover); border-radius: 4px;">
+                    <div style="font-weight: 500; margin-bottom: 0.25rem;">${status} ${operation.file.name}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-hint);">
+                        Type: ${operation.type} • Size: ${fileSize}KB • Primitives: ${primitiveCount}
+                    </div>
+                    ${operation.error ? `<div style="color: var(--error); font-size: 0.75rem; margin-top: 0.25rem;">Error: ${operation.error}</div>` : ''}
+                </div>
+            `;
+        });
+        
+        // Add summary
+        const totalPrimitives = this.operations.reduce((sum, op) => sum + (op.primitives ? op.primitives.length : 0), 0);
+        const validOperations = this.operations.filter(op => op.primitives && op.primitives.length > 0).length;
+        
+        statsHtml += `
+            <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); font-size: 0.8rem;">
+                <strong>Total: ${validOperations}/${this.operations.length} files loaded, ${totalPrimitives} primitives</strong>
+            </div>
+        `;
+        
+        statsContainer.innerHTML = statsHtml;
+    }
+    
+    // PROFESSIONAL: Calculate and show required offsets without applying them
     centerOrigin() {
         if (!this.coordinateSystem) return;
         
-        console.log('[CAM] Center origin button pressed');
-        const result = this.coordinateSystem.centerOrigin();
+        console.log('[CAM-PROFESSIONAL] Calculate center offset');
+        const result = this.coordinateSystem.calculateCenterOffset();
         if (result.success) {
-            // Force UI update
-            this.updateOriginDisplay();
-            // Force renderer update to show origin marker in new position
-            if (this.renderer) {
-                this.renderer.render();
-            }
-            this.updateStatus('Origin set to board center', 'info');
-            console.log('[CAM] Origin centered successfully');
+            // Update text boxes to show required offset
+            const xOffsetInput = document.getElementById('x-offset');
+            const yOffsetInput = document.getElementById('y-offset');
+            
+            if (xOffsetInput) xOffsetInput.value = result.offset.x.toFixed(1);
+            if (yOffsetInput) yOffsetInput.value = result.offset.y.toFixed(1);
+            
+            this.updateStatus('Offset calculated for board center - click "Move Origin" to apply', 'info');
         } else {
-            this.updateStatus('Cannot center origin: ' + result.error, 'error');
-            console.log('[CAM] Failed to center origin:', result.error);
+            this.updateStatus('Cannot calculate center offset: ' + result.error, 'error');
         }
     }
     
     bottomLeftOrigin() {
         if (!this.coordinateSystem) return;
         
-        console.log('[CAM] Bottom-left origin button pressed');
-        const result = this.coordinateSystem.bottomLeftOrigin();
+        console.log('[CAM-PROFESSIONAL] Calculate bottom-left offset');
+        const result = this.coordinateSystem.calculateBottomLeftOffset();
         if (result.success) {
-            // Force UI update
-            this.updateOriginDisplay();
-            // Force renderer update to show origin marker in new position
-            if (this.renderer) {
-                this.renderer.render();
-            }
-            this.updateStatus('Origin set to board bottom-left', 'info');
-            console.log('[CAM] Origin set to bottom-left successfully');
+            // Update text boxes to show required offset
+            const xOffsetInput = document.getElementById('x-offset');
+            const yOffsetInput = document.getElementById('y-offset');
+            
+            if (xOffsetInput) xOffsetInput.value = result.offset.x.toFixed(1);
+            if (yOffsetInput) yOffsetInput.value = result.offset.y.toFixed(1);
+            
+            this.updateStatus('Offset calculated for board bottom-left - click "Move Origin" to apply', 'info');
         } else {
-            this.updateStatus('Cannot set bottom-left origin: ' + result.error, 'error');
-            console.log('[CAM] Failed to set bottom-left origin:', result.error);
+            this.updateStatus('Cannot calculate bottom-left offset: ' + result.error, 'error');
         }
     }
     
@@ -497,79 +577,83 @@ class SemanticPCBCam {
         const x = parseFloat(xInput.value) || 0;
         const y = parseFloat(yInput.value) || 0;
         
-        console.log(`[CAM] Set origin button pressed with offset (${x}, ${y})`);
+        console.log(`[CAM-PROFESSIONAL] Apply offset from text boxes: (${x}, ${y})`);
         
-        if (x === 0 && y === 0) {
-            // If both offsets are zero, treat as "tare" - current position becomes new 0,0
-            const status = this.coordinateSystem.getStatus();
-            this.coordinateSystem.setWorkingOrigin(status.workingOrigin.x, status.workingOrigin.y);
-            this.updateStatus('Origin tared to current position', 'info');
-            console.log('[CAM] Origin tared to current position');
+        // Validate inputs
+        if (Math.abs(x) > 500 || Math.abs(y) > 500) {
+            this.updateStatus('Offset too large (max ±500mm)', 'error');
+            return;
+        }
+        
+        // PROFESSIONAL: Apply the offset shown in text boxes
+        const result = this.coordinateSystem.moveOriginByOffset(x, y);
+        if (result.success) {
+            this.updateOriginDisplay();
+            this.updateStatus(`Origin moved by (${x.toFixed(1)}, ${y.toFixed(1)})mm`, 'success');
         } else {
-            // Apply offset
-            const result = this.coordinateSystem.applyManualOffset(x, y);
-            if (result.success) {
-                this.updateStatus(`Origin moved by (${x.toFixed(2)}, ${y.toFixed(2)})`, 'info');
-                console.log(`[CAM] Origin offset applied: (${x}, ${y})`);
-            }
+            this.updateStatus('Cannot move origin: ' + result.error, 'error');
         }
-        
-        // Force UI update
-        this.updateOriginDisplay();
-        // Force renderer update
-        if (this.renderer) {
-            this.renderer.render();
-        }
-        
-        // Reset inputs
-        if (xInput) xInput.value = 0;
-        if (yInput) yInput.value = 0;
     }
     
     resetOrigin() {
         if (!this.coordinateSystem) return;
         
-        console.log('[CAM] Reset origin button pressed');
-        this.coordinateSystem.reset();
+        console.log('[CAM-PROFESSIONAL] Reset to last stored origin');
+        const result = this.coordinateSystem.resetToStoredOrigin();
         
-        // Force UI update
-        this.updateOriginDisplay();
-        // Force renderer update
-        if (this.renderer) {
-            this.renderer.render();
+        if (result.success) {
+            this.updateOriginDisplay();
+            this.updateStatus('Origin reset to last stored position', 'success');
+        } else {
+            this.updateStatus('Cannot reset: ' + result.error, 'error');
         }
-        
-        this.updateStatus('Origin reset to (0, 0)', 'info');
-        console.log('[CAM] Origin reset to (0, 0)');
     }
     
+    
+    // PROFESSIONAL: Display coordinate information showing current offsets
     updateOriginDisplay() {
         if (!this.coordinateSystem) return;
         
         const status = this.coordinateSystem.getStatus();
-        const currentOriginElement = document.getElementById('current-origin');
         
-        if (currentOriginElement) {
-            const origin = status.workingOrigin;
-            // Show the current working origin coordinates in board coordinate system
-            currentOriginElement.textContent = `${origin.x.toFixed(2)}, ${origin.y.toFixed(2)}`;
+        console.log('[CAM-PROFESSIONAL] Updating coordinate display');
+        
+        // Update board size display
+        const sizeElement = document.getElementById('board-size');
+        if (sizeElement) {
+            const size = status.boardSize;
+            sizeElement.textContent = `${size.width.toFixed(1)} × ${size.height.toFixed(1)} mm`;
         }
         
-        if (status.boardBounds) {
-            const bounds = status.boardBounds;
-            const sizeElement = document.getElementById('board-size');
-            if (sizeElement) {
-                sizeElement.textContent = `${bounds.width.toFixed(1)} × ${bounds.height.toFixed(1)} mm`;
-            }
-            
-            // ENHANCED: Show additional helpful info about the current origin
-            if (this.debugMode) {
-                console.log('[CAM] Origin display updated:');
-                console.log(`  Working origin: (${status.workingOrigin.x.toFixed(2)}, ${status.workingOrigin.y.toFixed(2)})`);
-                console.log(`  Board bounds: (${bounds.minX.toFixed(2)}, ${bounds.minY.toFixed(2)}) to (${bounds.maxX.toFixed(2)}, ${bounds.maxY.toFixed(2)})`);
-                console.log(`  Board center: (${bounds.centerX.toFixed(2)}, ${bounds.centerY.toFixed(2)})`);
+        // PROFESSIONAL: Show clear origin status
+        const positionElement = document.getElementById('board-position');
+        if (positionElement) {
+            positionElement.textContent = status.originDescription;
+        }
+        
+        // PROFESSIONAL: Keep current values in offset inputs (don't reset them)
+        // This allows user to see what they've entered or what preset buttons calculated
+        // Only update if user is not currently editing the fields
+        const xOffsetInput = document.getElementById('x-offset');
+        const yOffsetInput = document.getElementById('y-offset');
+        
+        if (xOffsetInput && !xOffsetInput.matches(':focus')) {
+            // Keep current value or show 0 if empty
+            if (!xOffsetInput.value) {
+                xOffsetInput.value = '0.0';
             }
         }
+        if (yOffsetInput && !yOffsetInput.matches(':focus')) {
+            // Keep current value or show 0 if empty  
+            if (!yOffsetInput.value) {
+                yOffsetInput.value = '0.0';
+            }
+        }
+        
+        console.log('[CAM-PROFESSIONAL] Coordinate display updated:');
+        console.log(`  Board size: ${status.boardSize.width.toFixed(1)} × ${status.boardSize.height.toFixed(1)} mm`);
+        console.log(`  Origin: ${status.originDescription}`);
+        console.log(`  Current position: (${status.currentPosition.x.toFixed(2)}, ${status.currentPosition.y.toFixed(2)})`);
     }
     
     updatePreviewUI() {
@@ -580,7 +664,11 @@ class SemanticPCBCam {
         if (operationsElement) operationsElement.textContent = stats.operations;
         if (polygonsElement) polygonsElement.textContent = stats.totalPrimitives;
         
+        // Update coordinate display
         this.updateOriginDisplay();
+        
+        // Update operation statistics in debug section
+        this.updateOperationStatistics();
     }
     
     closePreview() {
@@ -676,35 +764,6 @@ class SemanticPCBCam {
         document.getElementById('zoom-fit-btn')?.addEventListener('click', () => this.renderer?.zoomFit());
         document.getElementById('zoom-in-btn')?.addEventListener('click', () => this.renderer?.zoomIn());
         document.getElementById('zoom-out-btn')?.addEventListener('click', () => this.renderer?.zoomOut());
-        
-        // Debug mode toggle
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.altKey && e.key === 'D') {
-                e.preventDefault();
-                this.debugMode = !this.debugMode;
-                localStorage.setItem('pcbcam-debug', this.debugMode.toString());
-                console.log(`Debug mode: ${this.debugMode ? 'ON' : 'OFF'}`);
-                
-                // Update renderer debug mode
-                if (this.renderer) {
-                    this.renderer.setOptions({ debug: this.debugMode });
-                }
-                
-                // Update parsers and systems
-                if (this.gerberParser) {
-                    this.gerberParser.options.debug = this.debugMode;
-                }
-                if (this.excellonParser) {
-                    this.excellonParser.options.debug = this.debugMode;
-                }
-                if (this.plotter) {
-                    this.plotter.options.debug = this.debugMode;
-                }
-                if (this.coordinateSystem) {
-                    this.coordinateSystem.options.debug = this.debugMode;
-                }
-            }
-        });
     }
     
     triggerFileInput(type) {
@@ -761,7 +820,7 @@ class SemanticPCBCam {
             statusText.textContent = message;
         } else {
             statusText.textContent = hasValidOperations ? 
-                `Ready: ${this.operations.length} operations, ${this.stats.totalPrimitives} primitives.` : 
+                `Ready: ${this.operations.length} operations, ${this.stats.totalPrimitives} primitives` : 
                 'Ready - Add PCB files to begin';
         }
     }
@@ -958,11 +1017,13 @@ class SemanticPCBCam {
         operation.expanded = !operation.expanded;
         
         const card = document.querySelector(`[data-operation-id="${operationId}"]`);
+        if (!card) return;
+        
         const settings = card.querySelector('.operation-settings');
         const btn = card.querySelector('.expand-btn');
         
-        settings.style.display = operation.expanded ? 'block' : 'none';
-        btn.textContent = operation.expanded ? '▼' : '▶';
+        if (settings) settings.style.display = operation.expanded ? 'block' : 'none';
+        if (btn) btn.textContent = operation.expanded ? '▼' : '▶';
         
         this.saveSettings();
     }
@@ -975,6 +1036,9 @@ class SemanticPCBCam {
         
         // Remove from operations
         this.operations.splice(operationIndex, 1);
+        
+        // Update coordinate system
+        this.updateCoordinateSystem();
         
         // Remove from renderer
         if (this.renderer) {
@@ -995,9 +1059,15 @@ class SemanticPCBCam {
     }
     
     async exportSVG() {
-        // Placeholder for SVG export
-        this.updateStatus('SVG export in development...', 'info');
-        console.log('SVG export requested - will generate SVG from current primitives');
+        // SVG Export Foundation - will export visible geometry from current viewport
+        console.log('🎯 SVG Export Plan:');
+        console.log('1. Capture current viewport bounds');
+        console.log('2. Collect visible layers/primitives based on current show/hide settings');
+        console.log('3. Apply coordinate transformation based on origin position');
+        console.log('4. Generate SVG with proper scaling and colors');
+        console.log('5. Include coordinate system markers (optional)');
+        
+        this.updateStatus('SVG export foundation prepared - implementation coming next...', 'info');
     }
     
     hasValidOperations() {
@@ -1024,3 +1094,53 @@ function resetOrigin() { window.cam?.resetOrigin(); }
 function zoomFit() { window.cam?.renderer?.zoomFit(); }
 function zoomIn() { window.cam?.renderer?.zoomIn(); }
 function zoomOut() { window.cam?.renderer?.zoomOut(); }
+
+// Debug helpers
+window.enableRendererDebug = function() {
+    if (window.cam?.renderer) {
+        window.cam.renderer.setOptions({ debug: true });
+        console.log('✅ Renderer debug mode enabled');
+    }
+};
+
+window.debugCutoutLayer = function() {
+    if (!window.cam?.renderer) {
+        console.log('❌ No renderer available');
+        return;
+    }
+    
+    console.log('🔍 CUTOUT LAYER DEBUG');
+    console.log('=====================');
+    
+    window.cam.renderer.layers.forEach((layer, layerName) => {
+        if (layer.type === 'cutout') {
+            console.log(`📄 Cutout layer: ${layerName}`);
+            console.log(`  Primitives: ${layer.primitives.length}`);
+            console.log(`  Visible: ${layer.visible}`);
+            
+            layer.primitives.forEach((primitive, index) => {
+                console.log(`  [${index}] Type: ${primitive.type}, Properties:`, primitive.properties);
+            });
+        }
+    });
+};
+
+// PROFESSIONAL: Enhanced debug for coordinate system
+window.debugCoordinateSystem = function() {
+    if (!window.cam?.coordinateSystem) {
+        console.log('❌ No coordinate system available');
+        return;
+    }
+    
+    console.log('🔍 PROFESSIONAL COORDINATE SYSTEM DEBUG');
+    console.log('=======================================');
+    
+    const status = window.cam.coordinateSystem.getStatus();
+    console.log('Current Status:');
+    console.log(`  Origin: ${status.originDescription}`);
+    console.log(`  Board Size: ${status.boardSize.width.toFixed(1)} × ${status.boardSize.height.toFixed(1)} mm`);
+    console.log(`  Current Position: (${status.currentPosition.x.toFixed(2)}, ${status.currentPosition.y.toFixed(2)})`);
+    console.log(`  Has Custom Origin: ${status.hasCustomOrigin ? 'Yes' : 'No'}`);
+    
+    return status;
+};
