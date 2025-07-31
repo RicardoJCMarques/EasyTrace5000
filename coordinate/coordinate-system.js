@@ -85,46 +85,74 @@ class CoordinateSystemManager {
     }
 
     /**
-     * PROFESSIONAL: Calculate offset needed to move to board center (doesn't apply it)
+     * PROFESSIONAL: Move origin to board center immediately and return applied offset
      */
-    calculateCenterOffset() {
+    moveToCenter() {
         if (!this.boardBounds) {
             return { success: false, error: 'No board bounds available' };
         }
         
+        // Calculate offset
         const targetX = this.boardBounds.centerX;
         const targetY = this.boardBounds.centerY;
-        
         const offsetX = targetX - this.workingOrigin.x;
         const offsetY = targetY - this.workingOrigin.y;
         
-        this.debug(`PROFESSIONAL: Calculated center offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
+        // Store current position before moving
+        this.storedOrigin.x = this.workingOrigin.x;
+        this.storedOrigin.y = this.workingOrigin.y;
+        
+        // Move to center
+        this.workingOrigin.x = targetX;
+        this.workingOrigin.y = targetY;
+        this.hasCustomOrigin = true;
+        
+        // Update renderer to show new origin position
+        if (this.renderer) {
+            this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
+        }
+        
+        this.debug(`PROFESSIONAL: Moved origin to center: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), applied offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
         return { 
-            success: true, 
-            offset: { x: offsetX, y: offsetY },
-            target: { x: targetX, y: targetY }
+            success: true,
+            appliedOffset: { x: offsetX, y: offsetY },
+            newPosition: { x: this.workingOrigin.x, y: this.workingOrigin.y }
         };
     }
     
     /**
-     * PROFESSIONAL: Calculate offset needed to move to board bottom-left (doesn't apply it)
+     * PROFESSIONAL: Move origin to board bottom-left immediately and return applied offset
      */
-    calculateBottomLeftOffset() {
+    moveToBottomLeft() {
         if (!this.boardBounds) {
             return { success: false, error: 'No board bounds available' };
         }
         
+        // Calculate offset
         const targetX = this.boardBounds.minX;
         const targetY = this.boardBounds.minY;
-        
         const offsetX = targetX - this.workingOrigin.x;
         const offsetY = targetY - this.workingOrigin.y;
         
-        this.debug(`PROFESSIONAL: Calculated bottom-left offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
+        // Store current position before moving
+        this.storedOrigin.x = this.workingOrigin.x;
+        this.storedOrigin.y = this.workingOrigin.y;
+        
+        // Move to bottom-left
+        this.workingOrigin.x = targetX;
+        this.workingOrigin.y = targetY;
+        this.hasCustomOrigin = true;
+        
+        // Update renderer to show new origin position
+        if (this.renderer) {
+            this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
+        }
+        
+        this.debug(`PROFESSIONAL: Moved origin to bottom-left: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), applied offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
         return { 
-            success: true, 
-            offset: { x: offsetX, y: offsetY },
-            target: { x: targetX, y: targetY }
+            success: true,
+            appliedOffset: { x: offsetX, y: offsetY },
+            newPosition: { x: this.workingOrigin.x, y: this.workingOrigin.y }
         };
     }
 

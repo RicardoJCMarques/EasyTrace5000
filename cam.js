@@ -531,42 +531,44 @@ class SemanticPCBCam {
         statsContainer.innerHTML = statsHtml;
     }
     
-    // PROFESSIONAL: Calculate and show required offsets without applying them
+    // PROFESSIONAL: Move origin to center immediately + show offset in text boxes
     centerOrigin() {
         if (!this.coordinateSystem) return;
         
-        console.log('[CAM-PROFESSIONAL] Calculate center offset');
-        const result = this.coordinateSystem.calculateCenterOffset();
+        console.log('[CAM-PROFESSIONAL] Move to center and calculate offset');
+        const result = this.coordinateSystem.moveToCenter();
         if (result.success) {
-            // Update text boxes to show required offset
+            // Show the offset that was applied in the text boxes
             const xOffsetInput = document.getElementById('x-offset');
             const yOffsetInput = document.getElementById('y-offset');
             
-            if (xOffsetInput) xOffsetInput.value = result.offset.x.toFixed(1);
-            if (yOffsetInput) yOffsetInput.value = result.offset.y.toFixed(1);
+            if (xOffsetInput) xOffsetInput.value = result.appliedOffset.x.toFixed(1);
+            if (yOffsetInput) yOffsetInput.value = result.appliedOffset.y.toFixed(1);
             
-            this.updateStatus('Offset calculated for board center - click "Move Origin" to apply', 'info');
+            this.updateOriginDisplay();
+            this.updateStatus('Origin moved to board center', 'success');
         } else {
-            this.updateStatus('Cannot calculate center offset: ' + result.error, 'error');
+            this.updateStatus('Cannot move to center: ' + result.error, 'error');
         }
     }
     
     bottomLeftOrigin() {
         if (!this.coordinateSystem) return;
         
-        console.log('[CAM-PROFESSIONAL] Calculate bottom-left offset');
-        const result = this.coordinateSystem.calculateBottomLeftOffset();
+        console.log('[CAM-PROFESSIONAL] Move to bottom-left and calculate offset');
+        const result = this.coordinateSystem.moveToBottomLeft();
         if (result.success) {
-            // Update text boxes to show required offset
+            // Show the offset that was applied in the text boxes
             const xOffsetInput = document.getElementById('x-offset');
             const yOffsetInput = document.getElementById('y-offset');
             
-            if (xOffsetInput) xOffsetInput.value = result.offset.x.toFixed(1);
-            if (yOffsetInput) yOffsetInput.value = result.offset.y.toFixed(1);
+            if (xOffsetInput) xOffsetInput.value = result.appliedOffset.x.toFixed(1);
+            if (yOffsetInput) yOffsetInput.value = result.appliedOffset.y.toFixed(1);
             
-            this.updateStatus('Offset calculated for board bottom-left - click "Move Origin" to apply', 'info');
+            this.updateOriginDisplay();
+            this.updateStatus('Origin moved to board bottom-left', 'success');
         } else {
-            this.updateStatus('Cannot calculate bottom-left offset: ' + result.error, 'error');
+            this.updateStatus('Cannot move to bottom-left: ' + result.error, 'error');
         }
     }
     
@@ -585,9 +587,13 @@ class SemanticPCBCam {
             return;
         }
         
-        // PROFESSIONAL: Apply the offset shown in text boxes
+        // PROFESSIONAL: Apply the offset and reset text boxes to 0,0
         const result = this.coordinateSystem.moveOriginByOffset(x, y);
         if (result.success) {
+            // Reset text boxes to 0,0 for predictable UI behavior
+            if (xInput) xInput.value = '0.0';
+            if (yInput) yInput.value = '0.0';
+            
             this.updateOriginDisplay();
             this.updateStatus(`Origin moved by (${x.toFixed(1)}, ${y.toFixed(1)})mm`, 'success');
         } else {
@@ -610,7 +616,7 @@ class SemanticPCBCam {
     }
     
     
-    // PROFESSIONAL: Display coordinate information showing current offsets
+    // PROFESSIONAL: Display coordinate information - preserve text box values
     updateOriginDisplay() {
         if (!this.coordinateSystem) return;
         
@@ -631,24 +637,8 @@ class SemanticPCBCam {
             positionElement.textContent = status.originDescription;
         }
         
-        // PROFESSIONAL: Keep current values in offset inputs (don't reset them)
-        // This allows user to see what they've entered or what preset buttons calculated
-        // Only update if user is not currently editing the fields
-        const xOffsetInput = document.getElementById('x-offset');
-        const yOffsetInput = document.getElementById('y-offset');
-        
-        if (xOffsetInput && !xOffsetInput.matches(':focus')) {
-            // Keep current value or show 0 if empty
-            if (!xOffsetInput.value) {
-                xOffsetInput.value = '0.0';
-            }
-        }
-        if (yOffsetInput && !yOffsetInput.matches(':focus')) {
-            // Keep current value or show 0 if empty  
-            if (!yOffsetInput.value) {
-                yOffsetInput.value = '0.0';
-            }
-        }
+        // PROFESSIONAL: Don't touch the offset text boxes - they show pending offset/adjustments
+        // The user manages these values directly, and they reset to 0,0 only when Apply Additional Offset is used
         
         console.log('[CAM-PROFESSIONAL] Coordinate display updated:');
         console.log(`  Board size: ${status.boardSize.width.toFixed(1)} × ${status.boardSize.height.toFixed(1)} mm`);

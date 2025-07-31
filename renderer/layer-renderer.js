@@ -503,10 +503,10 @@ class LayerRenderer {
     }
     
     /**
-     * FIXED: Aggressive cutout filtering to eliminate contamination
+     * FIXED: Less aggressive cutout filtering - focus on contamination prevention, not blocking everything
      */
     shouldRenderPrimitive(primitive, layerType) {
-        // FIXED: Very aggressive cutout layer filtering
+        // FIXED: More reasonable cutout layer filtering
         if (layerType === 'cutout') {
             // Only show if cutouts are enabled
             if (!this.options.showCutouts) {
@@ -516,51 +516,49 @@ class LayerRenderer {
                 return false;
             }
             
-            // AGGRESSIVE: Only show closed paths (board outlines must be closed)
-            if (primitive.type !== 'path' || !primitive.closed) {
-                if (this.options.debug) {
-                    console.log(`[Cutout Filter] HIDDEN: type=${primitive.type}, closed=${primitive.closed || false} (only closed paths allowed)`);
+            // Show closed paths (board outlines are typically closed)
+            if (primitive.type === 'path' && primitive.closed) {
+                const bounds = primitive.getBounds();
+                const width = bounds.maxX - bounds.minX;
+                const height = bounds.maxY - bounds.minY;
+                const perimeter = Math.max(width, height);
+                
+                // Reasonable size filter - board outlines should be at least 5mm 
+                if (perimeter > 5) {
+                    if (this.options.debug) {
+                        console.log(`[Cutout Filter] SHOWING closed path: ${width.toFixed(1)} × ${height.toFixed(1)} mm`);
+                    }
+                    return true;
                 }
-                return false;
             }
             
-            // Check size - board outlines should be substantial
-            const bounds = primitive.getBounds();
-            const width = bounds.maxX - bounds.minX;
-            const height = bounds.maxY - bounds.minY;
-            const perimeter = Math.max(width, height);
-            const area = width * height;
-            
-            // AGGRESSIVE: Board outlines should be large (>20mm in at least one dimension and >100mm² area)
-            if (perimeter < 20 || area < 100) {
-                if (this.options.debug) {
-                    console.log(`[Cutout Filter] HIDDEN: size too small - ${width.toFixed(1)} × ${height.toFixed(1)} mm (area: ${area.toFixed(1)}mm²)`);
+            // Show circles and rectangles that could be cutouts (mounting holes, etc.)
+            if (primitive.type === 'circle' || primitive.type === 'rectangle' || primitive.type === 'obround') {
+                const bounds = primitive.getBounds();
+                const size = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+                
+                // Show holes/cutouts bigger than 1mm
+                if (size > 1) {
+                    if (this.options.debug) {
+                        console.log(`[Cutout Filter] SHOWING ${primitive.type}: ${size.toFixed(1)}mm`);
+                    }
+                    return true;
                 }
-                return false;
             }
             
-            // AGGRESSIVE: Reject anything marked as text, stroke, or non-conductor
+            // Don't show obvious non-cutout features
             if (primitive.properties.isText || 
-                primitive.properties.isStroke || 
-                primitive.properties.isNonConductor ||
-                primitive.properties.function === 'Legend') {
+                primitive.properties.function === 'Legend' ||
+                primitive.properties.isStroke) {
                 if (this.options.debug) {
-                    console.log(`[Cutout Filter] HIDDEN: unwanted properties - text:${!!primitive.properties.isText}, stroke:${!!primitive.properties.isStroke}, nonConductor:${!!primitive.properties.isNonConductor}, function:${primitive.properties.function}`);
+                    console.log(`[Cutout Filter] HIDDEN: text/legend/stroke feature`);
                 }
                 return false;
             }
             
-            // AGGRESSIVE: Only rectangular-ish board outlines (aspect ratio between 0.1 and 10)
-            const aspectRatio = width / height;
-            if (aspectRatio < 0.1 || aspectRatio > 10) {
-                if (this.options.debug) {
-                    console.log(`[Cutout Filter] HIDDEN: extreme aspect ratio ${aspectRatio.toFixed(2)} (${width.toFixed(1)} × ${height.toFixed(1)})`);
-                }
-                return false;
-            }
-            
+            // Default for cutout: show it and let user decide
             if (this.options.debug) {
-                console.log(`[Cutout Filter] SHOWING: closed path ${width.toFixed(1)} × ${height.toFixed(1)} mm, area: ${area.toFixed(1)}mm², aspect: ${aspectRatio.toFixed(2)}`);
+                console.log(`[Cutout Filter] SHOWING by default: ${primitive.type}`);
             }
             return true;
         }

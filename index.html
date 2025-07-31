@@ -216,7 +216,7 @@ M2</textarea>
                     <div class="coordinate-section">
                         <h3>🎯 Work Coordinate System</h3>
                         <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Professional workflow: 1) Use Calculate buttons to set offsets, 2) Click Apply Offset to move origin.
+                            Professional workflow: Move buttons act immediately. Apply Additional Offset for fine adjustments.
                         </p>
                         
                         <div class="board-info">
@@ -231,27 +231,27 @@ M2</textarea>
                         </div>
                         
                         <div class="coord-buttons">
-                            <button class="btn-secondary" onclick="centerOrigin()" title="Calculate offset to center board origin">📐 Calculate Center</button>
-                            <button class="btn-secondary" onclick="bottomLeftOrigin()" title="Calculate offset to bottom-left board origin">📐 Calculate Bottom-Left</button>
+                            <button class="btn-secondary" onclick="centerOrigin()" title="Move origin to board center immediately">📍 Move to Center</button>
+                            <button class="btn-secondary" onclick="bottomLeftOrigin()" title="Move origin to board bottom-left immediately">📍 Move to Bottom-Left</button>
                         </div>
                         
                         <!-- Professional offset input -->
                         <div class="input-group">
-                            <label title="X offset to apply (calculated by buttons or enter manually)">X Offset</label>
+                            <label title="Additional X offset to apply (auto-filled by Move buttons or enter manually)">X Offset</label>
                             <div class="input-unit">
                                 <input type="number" id="x-offset" value="0" step="0.1" placeholder="0.0">
                                 <span>mm</span>
                             </div>
                         </div>
                         <div class="input-group">
-                            <label title="Y offset to apply (calculated by buttons or enter manually)">Y Offset</label>
+                            <label title="Additional Y offset to apply (auto-filled by Move buttons or enter manually)">Y Offset</label>
                             <div class="input-unit">
                                 <input type="number" id="y-offset" value="0" step="0.1" placeholder="0.0">
                                 <span>mm</span>
                             </div>
                         </div>
                         
-                        <button class="btn-primary" onclick="setOrigin()" style="width: 100%; margin-top: 0.5rem;" title="Apply the offset values shown above">📌 Apply Offset</button>
+                        <button class="btn-primary" onclick="setOrigin()" style="width: 100%; margin-top: 0.5rem;" title="Apply the offset values shown above (resets boxes to 0,0)">📌 Apply Additional Offset</button>
                         <button class="btn-secondary" onclick="resetOrigin()" style="width: 100%; margin-top: 0.25rem;" title="Reset to previous stored origin">↶ Reset to Previous</button>
                     </div>
 
@@ -285,7 +285,7 @@ M2</textarea>
                                 <div class="debug-options" style="display: grid; gap: 0.5rem;">
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="show-regions" checked>
-                                        <span>Show Filled Regions</span>
+                                        <span>Fill Regions</span>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="show-traces" checked>
@@ -439,9 +439,9 @@ M2</textarea>
                 // Initialize the application
                 window.cam = new SemanticPCBCam();
                 console.log('🎯 PCB CAM v7.12-professional initialized');
-                console.log('✅ PROFESSIONAL: Coordinate system mirrors professional CAM tools');
-                console.log('✅ PROFESSIONAL: Predictable origin operations and UI feedback');
-                console.log('✅ PROFESSIONAL: Fixed cutout layer filtering to eliminate artifacts');
+                console.log('✅ PROFESSIONAL: Immediate origin movement with predictable UI behavior');
+                console.log('✅ PROFESSIONAL: Fixed cutout layer contamination with surgical filtering');
+                console.log('✅ PROFESSIONAL: Apply Additional Offset resets to 0,0 for predictable state');
                 console.log('🔧 Debug Tools: Run debugCutoutLayer(), enableRendererDebug(), debugCoordinateSystem() in console');
                 
             } catch (error) {
