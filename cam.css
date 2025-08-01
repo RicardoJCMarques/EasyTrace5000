@@ -1,5 +1,9 @@
-/* Simplified CSS for PCB CAM - Focus on Clean UI */
-/* cam.css */
+/* PCB CAM CSS - SIMPLIFIED: Minimal animations, proper responsive design
+ * Pipeline Position: Final styling layer for the entire UI
+ * Input: HTML structure from index.html
+ * Output: Styled interface with minimal performance overhead
+ * Dependencies: None (pure CSS)
+ */
 
 * {
     margin: 0;
@@ -57,7 +61,6 @@ body {
     color: var(--text);
     line-height: 1.5;
     font-size: 14px;
-    transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .app {
@@ -73,7 +76,6 @@ body {
     position: sticky;
     top: 0;
     z-index: 50;
-    backdrop-filter: blur(10px);
 }
 
 .header-content {
@@ -112,7 +114,6 @@ h1 {
     align-items: center;
     justify-content: center;
     color: var(--text);
-    transition: all 0.15s ease;
 }
 
 .theme-toggle:hover {
@@ -149,7 +150,6 @@ h1 {
     border-radius: var(--radius);
     padding: 1.25rem;
     margin-bottom: 1.25rem;
-    transition: all 0.2s ease;
 }
 
 .section:hover {
@@ -174,14 +174,13 @@ h1 {
     border-radius: 2px;
 }
 
-/* Operation Groups - Fixed Layout */
+/* Operation Groups */
 .operation-group {
     margin-bottom: 1.5rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg);
     overflow: hidden;
-    transition: all 0.2s ease;
 }
 
 .operation-group:hover {
@@ -208,7 +207,7 @@ h1 {
     vertical-align: middle;
 }
 
-/* Fixed Add File Button */
+/* Buttons - SIMPLIFIED: No hover animations */
 .btn-add-file {
     background: var(--accent);
     color: white;
@@ -218,14 +217,11 @@ h1 {
     font-size: 0.8125rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
     white-space: nowrap;
 }
 
 .btn-add-file:hover {
     background: var(--accent-hover);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow);
 }
 
 .operation-list {
@@ -233,14 +229,12 @@ h1 {
     min-height: 60px;
 }
 
-/* Operation Cards */
+/* Operation Cards - SIMPLIFIED: No animations */
 .operation-card {
     background: var(--bg-alt);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     margin-bottom: 0.75rem;
-    transition: all 0.15s ease;
-    animation: fadeIn 0.3s ease;
 }
 
 .operation-card:hover {
@@ -286,7 +280,6 @@ h1 {
     font-size: 0.875rem;
     font-family: monospace;
     border-radius: 2px;
-    transition: all 0.15s ease;
     min-width: 24px;
     text-align: center;
 }
@@ -305,7 +298,6 @@ h1 {
     font-size: 1rem;
     line-height: 1;
     border-radius: 2px;
-    transition: all 0.15s ease;
 }
 
 .remove-btn:hover {
@@ -379,7 +371,7 @@ h1 {
     border-radius: 50%;
 }
 
-/* Input Groups */
+/* Input Groups - SIMPLIFIED: No animations */
 .input-group {
     margin-bottom: 0.75rem;
 }
@@ -402,7 +394,6 @@ h1 {
     background: var(--bg);
     color: var(--text);
     font-size: 0.875rem;
-    transition: all 0.15s ease;
 }
 
 .input-group input:focus,
@@ -483,7 +474,6 @@ h1 {
     font-size: 0.8125rem;
     resize: vertical;
     min-height: 60px;
-    transition: all 0.15s ease;
 }
 
 .gcode-group textarea:focus {
@@ -492,7 +482,7 @@ h1 {
     box-shadow: 0 0 0 2px rgba(64, 128, 255, 0.1);
 }
 
-/* Action Buttons */
+/* Action Buttons - SIMPLIFIED: No hover animations */
 .actions {
     display: flex;
     gap: 1rem;
@@ -510,7 +500,6 @@ h1 {
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -526,8 +515,6 @@ h1 {
 .btn-preview:hover:not(:disabled) {
     background: var(--bg-hover);
     border-color: var(--accent);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-lg);
 }
 
 .btn-generate,
@@ -540,16 +527,12 @@ h1 {
 .btn-generate:hover:not(:disabled),
 .btn-primary:hover {
     background: color-mix(in srgb, var(--isolation-accent) 80%, black);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-lg);
 }
 
 .btn-generate:disabled,
 .btn-preview:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
 }
 
 .btn-secondary {
@@ -575,7 +558,6 @@ h1 {
     text-align: center;
     font-size: 0.8125rem;
     color: var(--text-secondary);
-    backdrop-filter: blur(10px);
     font-family: 'SF Mono', Consolas, monospace;
 }
 
@@ -599,34 +581,35 @@ h1 {
     background: rgba(6, 182, 212, 0.1);
 }
 
-/* Modal */
+/* Modal - SIMPLIFIED: Only fade animation, no height/transform animations */
 .modal {
     display: none;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 100;
-    padding: 2rem;
-    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .modal.active {
     display: flex;
     align-items: center;
     justify-content: center;
+    opacity: 1;
 }
 
 .modal-content {
     background: var(--bg);
     border-radius: var(--radius);
-    width: 100%;
+    width: 90vw;
     max-width: 1400px;
-    height: 85vh; /* Fixed height */
+    height: 85vh;
     display: flex;
     flex-direction: column;
     box-shadow: var(--shadow-lg);
     border: 1px solid var(--border);
-    /* Remove any transitions that might cause weird animations */
+    margin: 0; /* Remove any default margins */
 }
 
 .modal-header {
@@ -636,6 +619,7 @@ h1 {
     justify-content: space-between;
     align-items: center;
     background: var(--bg-alt);
+    flex-shrink: 0;
 }
 
 .modal-header h2 {
@@ -663,7 +647,6 @@ h1 {
     align-items: center;
     justify-content: center;
     border-radius: var(--radius);
-    transition: all 0.15s ease;
 }
 
 .modal-close:hover {
@@ -674,11 +657,11 @@ h1 {
 .modal-body {
     flex: 1;
     display: flex;
-    overflow: visible; /* Content can expand */
-    min-height: 600px; /* Minimum height */
+    overflow: hidden;
+    min-height: 0;
 }
 
-/* Coordinate Controls - Enhanced */
+/* Coordinate Controls */
 .coordinate-section {
     margin-bottom: 1.5rem;
 }
@@ -702,8 +685,6 @@ h1 {
 
 .coordinate-section .btn-primary:hover {
     background: color-mix(in srgb, var(--isolation-accent) 85%, black);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-lg);
 }
 
 .coord-buttons {
@@ -719,7 +700,7 @@ h1 {
     font-weight: 500;
 }
 
-/* Advanced Options Section - Renamed from Debug Tools */
+/* Advanced Options Section - FIXED: Proper collapse with content hiding */
 .advanced-options {
     border-top: 1px solid var(--border);
     padding-top: 1rem;
@@ -730,7 +711,6 @@ h1 {
     background: var(--bg);
     color: var(--text-secondary);
     border: 1px solid var(--border);
-    transition: all 0.15s ease;
     font-size: 0.8125rem;
     font-weight: 500;
 }
@@ -749,13 +729,21 @@ h1 {
 
 #advanced-options-section {
     margin-top: 0.75rem;
-    padding: 1rem;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    animation: fadeIn 0.2s ease;
-    /* Ensure it doesn't cause layout shift */
-    box-sizing: border-box;
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.3s ease;
+    /* FIXED: Hide content when collapsed */
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.2s ease;
+}
+
+#advanced-options-section.expanded {
+    max-height: 2000px; /* Large enough for content */
+    padding: 1rem;
+    opacity: 1;
 }
 
 #advanced-options-section h3 {
@@ -779,7 +767,6 @@ h1 {
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 4px;
-    transition: background-color 0.2s;
     font-size: 0.8125rem;
 }
 
@@ -799,8 +786,8 @@ h1 {
     align-items: center;
     justify-content: center;
     border-right: 1px solid var(--border);
-    min-width: 0; /* Allow flexbox to shrink */
-    overflow: hidden; /* Prevent content from affecting size */
+    min-width: 0;
+    overflow: hidden;
 }
 
 #preview-canvas {
@@ -836,7 +823,6 @@ h1 {
     border-radius: var(--radius);
     font-size: 0.8125rem;
     cursor: pointer;
-    transition: all 0.15s ease;
     color: var(--text);
 }
 
@@ -851,6 +837,7 @@ h1 {
     padding: 1.5rem;
     background: var(--bg-alt);
     overflow-y: auto;
+    flex-shrink: 0;
 }
 
 .coordinate-section,
@@ -935,14 +922,13 @@ h1 {
     justify-content: flex-end;
     gap: 0.75rem;
     background: var(--bg-alt);
+    flex-shrink: 0;
 }
 
-/* ENHANCED: File Statistics - No Nested Scrolling + Removed Confusing Status Row */
+/* File Statistics - SIMPLIFIED: No nested scrolling */
 #operation-stats {
-    /* Remove max-height and overflow-y to eliminate nested scrolling */
     font-size: 0.75rem;
     color: var(--text-hint);
-    /* Let the content expand naturally */
 }
 
 #operation-stats > div {
@@ -951,7 +937,6 @@ h1 {
     background: var(--bg-hover);
     border-radius: 4px;
     border: 1px solid var(--border);
-    transition: all 0.15s ease;
 }
 
 #operation-stats > div:hover {
@@ -959,7 +944,7 @@ h1 {
     background: var(--bg-alt);
 }
 
-/* Loading States */
+/* Loading States - ONLY allowed animation */
 .loading-overlay {
     position: fixed;
     top: 0;
@@ -991,13 +976,12 @@ h1 {
     100% { transform: rotate(360deg); }
 }
 
-/* Operation Messages */
+/* Operation Messages - SIMPLIFIED: No animation */
 .operation-message {
     padding: 0.5rem;
     border-radius: var(--radius);
     font-size: 0.8125rem;
     margin: 0.5rem;
-    animation: fadeIn 0.3s ease;
 }
 
 .operation-error {
@@ -1018,82 +1002,6 @@ h1 {
     color: var(--warning);
 }
 
-/* Animations */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .container {
-        padding: 1rem;
-    }
-    
-    .machine-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .settings-panel {
-        grid-template-columns: 1fr;
-    }
-    
-    .gcode-settings {
-        grid-template-columns: 1fr;
-    }
-    
-    .modal {
-        padding: 0.5rem;
-    }
-    
-    .modal-content {
-        height: 95vh; /* More space on mobile */
-        max-height: none; /* Remove height cap on mobile */
-    }
-    
-    .modal-body {
-        flex-direction: column; /* Stack vertically on mobile */
-    }
-    
-    .preview-container {
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-        min-height: 300px; /* Ensure usable canvas height */
-        min-width: auto; /* Remove min-width constraint */
-        flex: 1; /* Take available space */
-    }
-    
-    .preview-sidebar {
-        width: 100%;
-        min-width: auto; /* Remove min-width constraint */
-        height: auto; /* Natural height */
-        max-height: 50vh; /* Limit height to 50% viewport */
-        flex: 0 0 auto; /* Don't grow, fixed height */
-    }
-    
-    .header-content {
-        flex-direction: column;
-        gap: 0.5rem;
-        text-align: center;
-    }
-    
-    .version-badge {
-        margin-left: 0;
-    }
-}
-
-/* Large screens - optimize for desktop use */
-@media (min-width: 1200px) {
-    .modal-content {
-        max-width: 1600px; /* Allow wider on large screens */
-    }
-    
-    .preview-sidebar {
-        width: 400px; /* Wider sidebar on large screens */
-        min-width: 400px;
-    }
-}
-
 /* Focus Indicators for Accessibility */
 button:focus-visible,
 input:focus-visible,
@@ -1109,5 +1017,18 @@ textarea:focus-visible {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
+    }
+    
+    /* Keep only essential transitions */
+    .modal {
+        transition: opacity 0.01ms !important;
+    }
+    
+    #advanced-options-section {
+        transition: none !important;
+    }
+    
+    .loading-spinner {
+        animation: none !important;
     }
 }

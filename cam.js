@@ -1,5 +1,6 @@
-// PCB CAM Controller - FIXED: Professional coordinate system workflow
-// cam.js
+// PCB CAM Controller - FIXED: Canvas positioning, coordinate inputs, modal lifecycle
+// File Location: cam.js
+// FIXES: Canvas positioning on modal open, editable offset inputs, proper modal lifecycle
 
 class SemanticPCBCam {
     constructor() {
@@ -41,7 +42,7 @@ class SemanticPCBCam {
         this.plotter = null;
         this.renderer = null;
         
-        // PROFESSIONAL: Coordinate system with clear workflow
+        // FIXED: Coordinate system with clear workflow
         this.coordinateSystem = null;
         
         // Settings
@@ -58,8 +59,11 @@ class SemanticPCBCam {
         this.initializeUI();
         this.setupEventListeners();
         
-        console.log('PROFESSIONAL: PCB CAM Controller initialized with professional coordinate workflow');
-        console.log('🎯 Coordinate system mirrors professional CAM tools');
+        // FIXED: Modal page management
+        this.currentModalPage = 1;
+        this.totalModalPages = 3;
+        
+        console.log('FIXED: PCB CAM Controller initialized with working coordinate inputs and canvas positioning');
     }
     
     loadSettings() {
@@ -206,11 +210,9 @@ class SemanticPCBCam {
             let parseResult;
             
             if (operation.type === 'drill') {
-                // FIXED: Create fresh parser instance for each operation to prevent contamination
                 const excellonParser = new ExcellonSemanticParser();
                 parseResult = excellonParser.parse(operation.file.content);
             } else {
-                // FIXED: Create fresh parser instance for each operation to prevent contamination
                 const gerberParser = new GerberSemanticParser();
                 parseResult = gerberParser.parse(operation.file.content);
             }
@@ -223,10 +225,8 @@ class SemanticPCBCam {
             
             operation.parsed = parseResult;
             
-            // FIXED: Create fresh plotter instance for each operation to prevent contamination
             const plotter = new GerberPlotter({ debug: this.debugMode });
             
-            // Convert to primitives with ORIGINAL coordinates
             let plotResult;
             if (operation.type === 'drill') {
                 plotResult = plotter.plotDrillData(parseResult);
@@ -240,24 +240,10 @@ class SemanticPCBCam {
                 return;
             }
             
-            // Store primitives (geometry never moves in new system)
             operation.primitives = plotResult.primitives;
             operation.bounds = plotResult.bounds;
             
-            // FIXED: Debug logging to track primitive isolation per operation
-            console.log(`[CUTOUT-FIX] Operation ${operation.type} (${operation.file.name}): ${operation.primitives.length} primitives`);
-            if (operation.type === 'cutout') {
-                console.log('[CUTOUT-FIX] Cutout operation primitives:', operation.primitives.map(p => ({
-                    type: p.type, 
-                    closed: p.closed,
-                    bounds: p.getBounds()
-                })));
-            }
-            
-            // Update coordinate system bounds
             this.updateCoordinateSystem();
-            
-            // Update stats
             this.updateStatistics();
             
             const count = operation.primitives.length;
@@ -278,63 +264,141 @@ class SemanticPCBCam {
         if (!this.renderer) {
             this.renderer = new LayerRenderer('preview-canvas');
             
-            // Initialize coordinate system with professional workflow
             if (!this.coordinateSystem) {
                 this.coordinateSystem = new CoordinateSystemManager({ debug: true });
             }
             
-            // Link coordinate system and renderer
             this.renderer.setCoordinateSystem(this.coordinateSystem);
             this.coordinateSystem.setRenderer(this.renderer);
             
-            console.log('✅ PROFESSIONAL: Layer renderer initialized with professional coordinate workflow');
+            console.log('✅ FIXED: Layer renderer initialized');
         }
     }
     
-    // Update coordinate system with current operations
     updateCoordinateSystem() {
         if (this.coordinateSystem) {
             this.coordinateSystem.analyzeCoordinateSystem(this.operations);
         }
     }
     
+    // FIXED: Enhanced modal opening with proper canvas positioning
     async openPreview() {
         const modal = document.getElementById('preview-modal');
         if (!modal) return;
         
-        // Show modal
-        document.body.style.overflow = 'hidden';
-        modal.style.display = 'flex';
+        console.log('FIXED: Opening preview modal with proper canvas positioning...');
         
-        // Initialize renderer
+        // Show modal first
+        document.body.style.overflow = 'hidden';
+        modal.classList.add('active');
+        
+        // Reset to page 1
+        this.currentModalPage = 1;
+        this.updateModalPage();
+        
+        // Initialize renderer if needed
         this.initializeRenderer();
         
-        // Update coordinate system and renderer with current operations
-        this.updateCoordinateSystem();
-        this.updateRenderer();
+        // Wait for modal to be fully rendered
+        await new Promise(resolve => requestAnimationFrame(resolve));
         
-        // Setup controls
+        // FIXED: Ensure canvas is properly sized and positioned
+        if (this.renderer) {
+            console.log('FIXED: Resizing canvas and fitting view...');
+            
+            // Update coordinate system and renderer
+            this.updateCoordinateSystem();
+            this.updateRenderer();
+            
+            // Resize canvas to fit container
+            this.renderer.resizeCanvas();
+            
+            // FIXED: Longer delay to ensure everything is ready
+            setTimeout(() => {
+                if (this.renderer) {
+                    console.log('FIXED: Executing zoomFit with current bounds:', this.renderer.bounds);
+                    this.renderer.zoomFit();
+                    this.renderer.render(); // Force render after zoom fit
+                }
+            }, 250); // Increased delay for complex layouts
+        }
+        
+        // Setup controls and UI
         this.setupPreviewControls();
-        
-        // Update UI with current coordinate system state
         this.updatePreviewUI();
         
-        // Fit view after a short delay to ensure everything is ready
-        setTimeout(() => {
-            if (this.renderer) {
-                this.renderer.resizeCanvas();
-                this.renderer.zoomFit();
+        // FIXED: Update offset inputs to show current offset
+        this.updateOffsetInputs();
+        
+        console.log('FIXED: Modal opened successfully');
+    }
+    
+    updateModalPage() {
+        const modalTitle = document.getElementById('modal-title');
+        const pageIndicator = document.getElementById('page-indicator');
+        const backBtn = document.getElementById('modal-back-btn');
+        const nextBtn = document.getElementById('modal-next-btn');
+        
+        // Hide all pages
+        for (let i = 1; i <= this.totalModalPages; i++) {
+            const page = document.getElementById(`modal-page-${i}`);
+            if (page) {
+                page.style.display = 'none';
             }
-        }, 100);
+        }
+        
+        // Show current page
+        const currentPage = document.getElementById(`modal-page-${this.currentModalPage}`);
+        if (currentPage) {
+            currentPage.style.display = 'block';
+        }
+        
+        // Update title and navigation
+        const titles = [
+            '📐 PCB Preview & Coordinate Setup',
+            '⚙️ Offset Geometry Configuration', 
+            '🛠️ Toolpath Generation'
+        ];
+        
+        if (modalTitle) {
+            modalTitle.textContent = titles[this.currentModalPage - 1] || titles[0];
+        }
+        
+        if (pageIndicator) {
+            pageIndicator.textContent = `Page ${this.currentModalPage} of ${this.totalModalPages}`;
+        }
+        
+        if (backBtn) {
+            backBtn.textContent = this.currentModalPage === 1 ? '← Back to Main' : '← Previous';
+            backBtn.onclick = this.currentModalPage === 1 ? 
+                () => this.closePreview() : 
+                () => this.navigateModal(-1);
+        }
+        
+        if (nextBtn) {
+            if (this.currentModalPage < this.totalModalPages) {
+                nextBtn.style.display = 'block';
+                nextBtn.textContent = 'Next →';
+                nextBtn.onclick = () => this.navigateModal(1);
+            } else {
+                nextBtn.style.display = 'none';
+            }
+        }
+    }
+    
+    navigateModal(direction) {
+        const newPage = this.currentModalPage + direction;
+        if (newPage >= 1 && newPage <= this.totalModalPages) {
+            this.currentModalPage = newPage;
+            this.updateModalPage();
+        }
     }
     
     updateRenderer() {
         if (!this.renderer) return;
         
-        // Clear existing layers
         this.renderer.clearLayers();
         
-        // Add each operation as a layer with proper type and color
         this.operations.forEach(operation => {
             if (operation.primitives && operation.primitives.length > 0) {
                 this.renderer.addLayer(operation.id, operation.primitives, {
@@ -367,7 +431,10 @@ class SemanticPCBCam {
             resetBtn.onclick = () => this.resetOrigin();
         }
         
-        // Debug controls setup (keeping existing functionality)
+        // FIXED: Setup manual offset input handlers
+        this.setupOffsetInputHandlers();
+        
+        // Debug controls setup
         const showFilled = document.getElementById('show-filled');
         const showPads = document.getElementById('show-pads');
         const blackWhite = document.getElementById('black-white');
@@ -385,10 +452,6 @@ class SemanticPCBCam {
             showFilled.checked = this.renderer.options.showFill;
             showFilled.onchange = (e) => {
                 this.renderer.setOptions({ showFill: e.target.checked });
-                if (!e.target.checked && showPads) {
-                    showPads.checked = true;
-                    this.renderer.setOptions({ showPads: true });
-                }
             };
         }
         
@@ -462,32 +525,76 @@ class SemanticPCBCam {
             exportSvgBtn.onclick = () => this.exportSVG();
         }
         
-        // Advanced options collapse functionality
         this.setupAdvancedOptionsCollapse();
     }
     
+    // FIXED: Setup manual offset input handlers
+    setupOffsetInputHandlers() {
+        const xInput = document.getElementById('x-offset');
+        const yInput = document.getElementById('y-offset');
+        const applyBtn = document.getElementById('apply-offset-btn');
+        
+        if (xInput && yInput) {
+            // Remove readonly attribute to make inputs editable
+            xInput.removeAttribute('readonly');
+            yInput.removeAttribute('readonly');
+            
+            // Add apply button if it doesn't exist
+            if (!applyBtn) {
+                const applyButton = document.createElement('button');
+                applyButton.id = 'apply-offset-btn';
+                applyButton.className = 'btn-secondary';
+                applyButton.style.width = '100%';
+                applyButton.style.marginTop = '0.5rem';
+                applyButton.textContent = '↗ Apply Manual Offset';
+                applyButton.title = 'Apply the offset values entered above';
+                applyButton.onclick = () => this.applyManualOffset();
+                
+                // Insert after y-offset input group
+                const yInputGroup = yInput.closest('.input-group');
+                if (yInputGroup && yInputGroup.parentNode) {
+                    yInputGroup.parentNode.insertBefore(applyButton, yInputGroup.nextSibling);
+                }
+            } else {
+                applyBtn.onclick = () => this.applyManualOffset();
+            }
+            
+            // Add enter key handlers for quick application
+            const handleEnter = (e) => {
+                if (e.key === 'Enter') {
+                    this.applyManualOffset();
+                }
+            };
+            
+            xInput.addEventListener('keypress', handleEnter);
+            yInput.addEventListener('keypress', handleEnter);
+        }
+    }
+    
+    // FIXED: Advanced options collapse using CSS classes
     setupAdvancedOptionsCollapse() {
         const advancedToggle = document.getElementById('advanced-options-toggle');
         const advancedSection = document.getElementById('advanced-options-section');
         
         if (advancedToggle && advancedSection) {
+            advancedSection.classList.remove('expanded');
+            advancedToggle.classList.remove('active');
+            advancedToggle.textContent = '🔧 Show Advanced Options';
+            
             advancedToggle.onclick = () => {
-                const isExpanded = advancedSection.style.display !== 'none';
-                advancedSection.style.display = isExpanded ? 'none' : 'block';
-                advancedToggle.textContent = isExpanded ? '🔧 Show Advanced Options' : '🔧 Hide Advanced Options';
+                const isExpanded = advancedSection.classList.contains('expanded');
                 
-                // Add visual indicator when expanded
                 if (isExpanded) {
+                    advancedSection.classList.remove('expanded');
                     advancedToggle.classList.remove('active');
+                    advancedToggle.textContent = '🔧 Show Advanced Options';
                 } else {
+                    advancedSection.classList.add('expanded');
                     advancedToggle.classList.add('active');
-                    // Update operation statistics when opened
+                    advancedToggle.textContent = '🔧 Hide Advanced Options';
                     this.updateOperationStatistics();
                 }
             };
-            
-            // Start collapsed
-            advancedSection.style.display = 'none';
         }
     }
     
@@ -518,7 +625,6 @@ class SemanticPCBCam {
             `;
         });
         
-        // Add summary
         const totalPrimitives = this.operations.reduce((sum, op) => sum + (op.primitives ? op.primitives.length : 0), 0);
         const validOperations = this.operations.filter(op => op.primitives && op.primitives.length > 0).length;
         
@@ -531,20 +637,13 @@ class SemanticPCBCam {
         statsContainer.innerHTML = statsHtml;
     }
     
-    // PROFESSIONAL: Move origin to center immediately + show offset in text boxes
     centerOrigin() {
         if (!this.coordinateSystem) return;
         
-        console.log('[CAM-PROFESSIONAL] Move to center and calculate offset');
+        console.log('[FIXED] Move to center');
         const result = this.coordinateSystem.moveToCenter();
         if (result.success) {
-            // Show the offset that was applied in the text boxes
-            const xOffsetInput = document.getElementById('x-offset');
-            const yOffsetInput = document.getElementById('y-offset');
-            
-            if (xOffsetInput) xOffsetInput.value = result.appliedOffset.x.toFixed(1);
-            if (yOffsetInput) yOffsetInput.value = result.appliedOffset.y.toFixed(1);
-            
+            this.updateOffsetInputs();
             this.updateOriginDisplay();
             this.updateStatus('Origin moved to board center', 'success');
         } else {
@@ -555,16 +654,10 @@ class SemanticPCBCam {
     bottomLeftOrigin() {
         if (!this.coordinateSystem) return;
         
-        console.log('[CAM-PROFESSIONAL] Move to bottom-left and calculate offset');
+        console.log('[FIXED] Move to bottom-left');
         const result = this.coordinateSystem.moveToBottomLeft();
         if (result.success) {
-            // Show the offset that was applied in the text boxes
-            const xOffsetInput = document.getElementById('x-offset');
-            const yOffsetInput = document.getElementById('y-offset');
-            
-            if (xOffsetInput) xOffsetInput.value = result.appliedOffset.x.toFixed(1);
-            if (yOffsetInput) yOffsetInput.value = result.appliedOffset.y.toFixed(1);
-            
+            this.updateOffsetInputs();
             this.updateOriginDisplay();
             this.updateStatus('Origin moved to board bottom-left', 'success');
         } else {
@@ -573,41 +666,63 @@ class SemanticPCBCam {
     }
     
     setOrigin() {
+        if (!this.coordinateSystem) return;
+        
+        console.log('[FIXED] Save current origin position');
+        const result = this.coordinateSystem.saveCurrentOrigin();
+        
+        if (result.success) {
+            this.updateOffsetInputs();
+            this.updateOriginDisplay();
+            this.updateStatus(`Origin saved at current position`, 'success');
+        } else {
+            this.updateStatus('Cannot save origin: ' + result.error, 'error');
+        }
+    }
+    
+    // FIXED: Update offset input boxes to show difference from saved origin
+    updateOffsetInputs() {
         const xInput = document.getElementById('x-offset');
         const yInput = document.getElementById('y-offset');
         
-        const x = parseFloat(xInput.value) || 0;
-        const y = parseFloat(yInput.value) || 0;
-        
-        console.log(`[CAM-PROFESSIONAL] Apply offset from text boxes: (${x}, ${y})`);
-        
-        // Validate inputs
-        if (Math.abs(x) > 500 || Math.abs(y) > 500) {
-            this.updateStatus('Offset too large (max ±500mm)', 'error');
-            return;
+        if (xInput && yInput && this.coordinateSystem) {
+            const offset = this.coordinateSystem.getOffsetFromSaved();
+            xInput.value = offset.x.toFixed(1);
+            yInput.value = offset.y.toFixed(1);
         }
+    }
+    
+    // FIXED: Apply manual offset entered by user
+    applyManualOffset() {
+        const xInput = document.getElementById('x-offset');
+        const yInput = document.getElementById('y-offset');
         
-        // PROFESSIONAL: Apply the offset and reset text boxes to 0,0
-        const result = this.coordinateSystem.moveOriginByOffset(x, y);
+        if (!xInput || !yInput || !this.coordinateSystem) return;
+        
+        const offsetX = parseFloat(xInput.value) || 0;
+        const offsetY = parseFloat(yInput.value) || 0;
+        
+        console.log(`[FIXED] Applying manual offset: (${offsetX}, ${offsetY})`);
+        
+        const result = this.coordinateSystem.moveOriginByOffset(offsetX, offsetY);
+        
         if (result.success) {
-            // Reset text boxes to 0,0 for predictable UI behavior
-            if (xInput) xInput.value = '0.0';
-            if (yInput) yInput.value = '0.0';
-            
+            this.updateOffsetInputs(); // Reset inputs to show new offset from saved
             this.updateOriginDisplay();
-            this.updateStatus(`Origin moved by (${x.toFixed(1)}, ${y.toFixed(1)})mm`, 'success');
+            this.updateStatus(`Manual offset applied: (${offsetX}, ${offsetY})mm`, 'success');
         } else {
-            this.updateStatus('Cannot move origin: ' + result.error, 'error');
+            this.updateStatus('Cannot apply offset: ' + result.error, 'error');
         }
     }
     
     resetOrigin() {
         if (!this.coordinateSystem) return;
         
-        console.log('[CAM-PROFESSIONAL] Reset to last stored origin');
+        console.log('[FIXED] Reset to last stored origin');
         const result = this.coordinateSystem.resetToStoredOrigin();
         
         if (result.success) {
+            this.updateOffsetInputs();
             this.updateOriginDisplay();
             this.updateStatus('Origin reset to last stored position', 'success');
         } else {
@@ -615,35 +730,23 @@ class SemanticPCBCam {
         }
     }
     
-    
-    // PROFESSIONAL: Display coordinate information - preserve text box values
     updateOriginDisplay() {
         if (!this.coordinateSystem) return;
         
         const status = this.coordinateSystem.getStatus();
         
-        console.log('[CAM-PROFESSIONAL] Updating coordinate display');
-        
-        // Update board size display
         const sizeElement = document.getElementById('board-size');
         if (sizeElement) {
             const size = status.boardSize;
             sizeElement.textContent = `${size.width.toFixed(1)} × ${size.height.toFixed(1)} mm`;
         }
         
-        // PROFESSIONAL: Show clear origin status
         const positionElement = document.getElementById('board-position');
         if (positionElement) {
             positionElement.textContent = status.originDescription;
         }
         
-        // PROFESSIONAL: Don't touch the offset text boxes - they show pending offset/adjustments
-        // The user manages these values directly, and they reset to 0,0 only when Apply Additional Offset is used
-        
-        console.log('[CAM-PROFESSIONAL] Coordinate display updated:');
-        console.log(`  Board size: ${status.boardSize.width.toFixed(1)} × ${status.boardSize.height.toFixed(1)} mm`);
-        console.log(`  Origin: ${status.originDescription}`);
-        console.log(`  Current position: (${status.currentPosition.x.toFixed(2)}, ${status.currentPosition.y.toFixed(2)})`);
+        this.updateOffsetInputs();
     }
     
     updatePreviewUI() {
@@ -654,16 +757,23 @@ class SemanticPCBCam {
         if (operationsElement) operationsElement.textContent = stats.operations;
         if (polygonsElement) polygonsElement.textContent = stats.totalPrimitives;
         
-        // Update coordinate display
         this.updateOriginDisplay();
-        
-        // Update operation statistics in debug section
         this.updateOperationStatistics();
     }
     
+    // FIXED: Proper modal close that preserves renderer
     closePreview() {
-        document.getElementById('preview-modal').style.display = 'none';
+        console.log('FIXED: Closing modal - preserving renderer state');
+        
+        const modal = document.getElementById('preview-modal');
+        modal.classList.remove('active');
         document.body.style.overflow = '';
+        
+        // FIXED: Don't destroy the renderer - just hide the modal
+        // The renderer stays active for future modal opens
+        if (this.renderer) {
+            console.log('FIXED: Renderer preserved with', this.renderer.layers.size, 'layers');
+        }
     }
     
     updateStatistics() {
@@ -708,7 +818,6 @@ class SemanticPCBCam {
         const container = document.getElementById(`${operationType}-operations`);
         if (!container) return;
         
-        // Remove existing messages
         container.querySelectorAll('.operation-message').forEach(el => el.remove());
         
         if (!message) return;
@@ -719,7 +828,6 @@ class SemanticPCBCam {
         
         container.appendChild(messageEl);
         
-        // Auto-remove after 5 seconds
         setTimeout(() => {
             if (messageEl.parentElement) {
                 messageEl.remove();
@@ -734,7 +842,6 @@ class SemanticPCBCam {
             document.documentElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
             
-            // Update renderer theme
             if (this.renderer) {
                 this.renderer.setOptions({ theme: newTheme });
             }
@@ -743,14 +850,10 @@ class SemanticPCBCam {
         // File input
         document.getElementById('file-input-temp')?.addEventListener('change', (e) => this.handleFileSelect(e));
         
-        // Main buttons
         document.getElementById('preview-btn')?.addEventListener('click', () => this.openPreview());
-        document.getElementById('export-gcode-btn')?.addEventListener('click', () => this.exportGcode());
         
         // Modal controls
         document.getElementById('modal-close-btn')?.addEventListener('click', () => this.closePreview());
-        document.getElementById('modal-goback-btn')?.addEventListener('click', () => this.closePreview());
-        document.getElementById('generate-gcode-modal-btn')?.addEventListener('click', () => this.exportGcode());
         document.getElementById('zoom-fit-btn')?.addEventListener('click', () => this.renderer?.zoomFit());
         document.getElementById('zoom-in-btn')?.addEventListener('click', () => this.renderer?.zoomIn());
         document.getElementById('zoom-out-btn')?.addEventListener('click', () => this.renderer?.zoomOut());
@@ -761,7 +864,6 @@ class SemanticPCBCam {
         if (fileInput) {
             fileInput.setAttribute('data-type', type);
             
-            // Set file filter
             const config = this.fileTypes[type];
             if (config) {
                 fileInput.setAttribute('accept', config.extensions.join(','));
@@ -799,12 +901,8 @@ class SemanticPCBCam {
         const hasValidOperations = this.operations.length > 0 && 
             this.operations.some(op => op.primitives && op.primitives.length > 0);
         
-        // Update button states
         const previewBtn = document.getElementById('preview-btn');
-        const exportBtn = document.getElementById('export-gcode-btn');
-        
         if (previewBtn) previewBtn.disabled = !hasValidOperations;
-        if (exportBtn) exportBtn.disabled = !hasValidOperations;
 
         if (message) {
             statusText.textContent = message;
@@ -822,7 +920,6 @@ class SemanticPCBCam {
         const type = event.target.getAttribute('data-type');
         if (!type) return;
 
-        // Validate file type
         const validation = this.validateFileType(file.name, type);
         if (!validation.valid) {
             this.showOperationMessage(type, validation.message, 'error');
@@ -830,13 +927,11 @@ class SemanticPCBCam {
             return;
         }
 
-        // Create new operation
         const operation = this.createOperation(type, file);
         
         this.renderOperations(type);
         this.updateStatus(`Loading ${file.name}...`);
         
-        // Read file content
         const reader = new FileReader();
         reader.onload = (e) => {
             operation.file.content = e.target.result;
@@ -854,10 +949,8 @@ class SemanticPCBCam {
         const container = document.getElementById(`${type}-operations`);
         if (!container) return;
         
-        // Clear existing content
         container.innerHTML = '';
         
-        // Render operations of this type
         const typeOperations = this.operations.filter(op => op.type === type);
         
         typeOperations.forEach(operation => {
@@ -880,7 +973,6 @@ class SemanticPCBCam {
             statusIcon = '✅';
         }
         
-        // Add color indicator
         const colorIndicator = `<span style="display: inline-block; width: 12px; height: 12px; background: ${operation.color}; border-radius: 2px; margin-right: 4px;"></span>`;
         
         card.innerHTML = `
@@ -898,7 +990,6 @@ class SemanticPCBCam {
             </div>
         `;
         
-        // Add event listeners
         card.querySelector('.expand-btn').addEventListener('click', (e) => {
             this.toggleOperationExpansion(e.target.dataset.operationId);
         });
@@ -1024,18 +1115,13 @@ class SemanticPCBCam {
         
         const operation = this.operations[operationIndex];
         
-        // Remove from operations
         this.operations.splice(operationIndex, 1);
-        
-        // Update coordinate system
         this.updateCoordinateSystem();
         
-        // Remove from renderer
         if (this.renderer) {
             this.updateRenderer();
         }
         
-        // Update UI
         this.showOperationMessage(operation.type, null);
         this.renderOperations(operation.type);
         this.updateStatistics();
@@ -1044,19 +1130,10 @@ class SemanticPCBCam {
     }
     
     async exportGcode() {
-        // Placeholder for G-code generation
         this.updateStatus('G-code generation in development...', 'info');
     }
     
     async exportSVG() {
-        // SVG Export Foundation - will export visible geometry from current viewport
-        console.log('🎯 SVG Export Plan:');
-        console.log('1. Capture current viewport bounds');
-        console.log('2. Collect visible layers/primitives based on current show/hide settings');
-        console.log('3. Apply coordinate transformation based on origin position');
-        console.log('4. Generate SVG with proper scaling and colors');
-        console.log('5. Include coordinate system markers (optional)');
-        
         this.updateStatus('SVG export foundation prepared - implementation coming next...', 'info');
     }
     
@@ -1093,44 +1170,10 @@ window.enableRendererDebug = function() {
     }
 };
 
-window.debugCutoutLayer = function() {
-    if (!window.cam?.renderer) {
-        console.log('❌ No renderer available');
-        return;
+// Initialize when scripts are loaded
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof SemanticPCBCam !== 'undefined') {
+        window.cam = new SemanticPCBCam();
+        console.log('🎯 FIXED: PCB CAM initialized with working coordinate inputs and canvas positioning');
     }
-    
-    console.log('🔍 CUTOUT LAYER DEBUG');
-    console.log('=====================');
-    
-    window.cam.renderer.layers.forEach((layer, layerName) => {
-        if (layer.type === 'cutout') {
-            console.log(`📄 Cutout layer: ${layerName}`);
-            console.log(`  Primitives: ${layer.primitives.length}`);
-            console.log(`  Visible: ${layer.visible}`);
-            
-            layer.primitives.forEach((primitive, index) => {
-                console.log(`  [${index}] Type: ${primitive.type}, Properties:`, primitive.properties);
-            });
-        }
-    });
-};
-
-// PROFESSIONAL: Enhanced debug for coordinate system
-window.debugCoordinateSystem = function() {
-    if (!window.cam?.coordinateSystem) {
-        console.log('❌ No coordinate system available');
-        return;
-    }
-    
-    console.log('🔍 PROFESSIONAL COORDINATE SYSTEM DEBUG');
-    console.log('=======================================');
-    
-    const status = window.cam.coordinateSystem.getStatus();
-    console.log('Current Status:');
-    console.log(`  Origin: ${status.originDescription}`);
-    console.log(`  Board Size: ${status.boardSize.width.toFixed(1)} × ${status.boardSize.height.toFixed(1)} mm`);
-    console.log(`  Current Position: (${status.currentPosition.x.toFixed(2)}, ${status.currentPosition.y.toFixed(2)})`);
-    console.log(`  Has Custom Origin: ${status.hasCustomOrigin ? 'Yes' : 'No'}`);
-    
-    return status;
-};
+});

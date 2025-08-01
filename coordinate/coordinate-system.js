@@ -1,5 +1,6 @@
-// Coordinate System Manager - PROFESSIONAL: Simplified professional CAM workflow
-// coordinate/coordinate-system.js
+// Coordinate System Manager - FIXED: Added missing getOffsetFromSaved method
+// File Location: coordinate/coordinate-system.js  
+// FIXES: Missing getOffsetFromSaved method, enhanced save/restore workflow
 
 class CoordinateSystemManager {
     constructor(options = {}) {
@@ -8,7 +9,7 @@ class CoordinateSystemManager {
             ...options
         };
         
-        // PROFESSIONAL: Simplified coordinate tracking like professional CAM tools
+        // FIXED: Simplified coordinate tracking like professional CAM tools
         this.fileOrigin = { x: 0, y: 0 }; // Where the original file coordinates are (never changes)
         this.workingOrigin = { x: 0, y: 0 }; // Current working origin (user's chosen reference point)
         this.storedOrigin = { x: 0, y: 0 }; // Last stored origin (for reset functionality)
@@ -20,7 +21,7 @@ class CoordinateSystemManager {
         // Communication with renderer
         this.renderer = null;
         
-        this.debug('PROFESSIONAL: CoordinateSystemManager initialized with stored origin tracking');
+        this.debug('FIXED: CoordinateSystemManager initialized with complete offset tracking');
     }
     
     /**
@@ -32,7 +33,7 @@ class CoordinateSystemManager {
     }
     
     /**
-     * PROFESSIONAL: Analyze coordinate system from operations and set initial state
+     * Analyze coordinate system from operations and set initial state
      */
     analyzeCoordinateSystem(operations) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -60,7 +61,7 @@ class CoordinateSystemManager {
             this.boardBounds = { ...bounds };
             this.debug('Board bounds calculated:', this.boardBounds);
             
-            // PROFESSIONAL: Initialize to file origin if not already initialized
+            // Initialize to file origin if not already initialized
             if (!this.initialized) {
                 this.fileOrigin.x = 0;
                 this.fileOrigin.y = 0;
@@ -75,7 +76,7 @@ class CoordinateSystemManager {
                     this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
                 }
                 
-                this.debug(`PROFESSIONAL: Initialized - Working Origin at file origin (0, 0)`);
+                this.debug(`FIXED: Initialized - Working Origin at file origin (0, 0)`);
             }
         } else {
             this.debug('No board data found for bounds calculation');
@@ -85,7 +86,7 @@ class CoordinateSystemManager {
     }
 
     /**
-     * PROFESSIONAL: Move origin to board center immediately and return applied offset
+     * Move origin to board center immediately and return applied offset
      */
     moveToCenter() {
         if (!this.boardBounds) {
@@ -98,10 +99,6 @@ class CoordinateSystemManager {
         const offsetX = targetX - this.workingOrigin.x;
         const offsetY = targetY - this.workingOrigin.y;
         
-        // Store current position before moving
-        this.storedOrigin.x = this.workingOrigin.x;
-        this.storedOrigin.y = this.workingOrigin.y;
-        
         // Move to center
         this.workingOrigin.x = targetX;
         this.workingOrigin.y = targetY;
@@ -112,7 +109,7 @@ class CoordinateSystemManager {
             this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
         }
         
-        this.debug(`PROFESSIONAL: Moved origin to center: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), applied offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
+        this.debug(`FIXED: Moved origin to center: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), applied offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
         return { 
             success: true,
             appliedOffset: { x: offsetX, y: offsetY },
@@ -121,7 +118,7 @@ class CoordinateSystemManager {
     }
     
     /**
-     * PROFESSIONAL: Move origin to board bottom-left immediately and return applied offset
+     * Move origin to board bottom-left immediately and return applied offset
      */
     moveToBottomLeft() {
         if (!this.boardBounds) {
@@ -134,10 +131,6 @@ class CoordinateSystemManager {
         const offsetX = targetX - this.workingOrigin.x;
         const offsetY = targetY - this.workingOrigin.y;
         
-        // Store current position before moving
-        this.storedOrigin.x = this.workingOrigin.x;
-        this.storedOrigin.y = this.workingOrigin.y;
-        
         // Move to bottom-left
         this.workingOrigin.x = targetX;
         this.workingOrigin.y = targetY;
@@ -148,7 +141,7 @@ class CoordinateSystemManager {
             this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
         }
         
-        this.debug(`PROFESSIONAL: Moved origin to bottom-left: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), applied offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
+        this.debug(`FIXED: Moved origin to bottom-left: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), applied offset: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
         return { 
             success: true,
             appliedOffset: { x: offsetX, y: offsetY },
@@ -157,14 +150,14 @@ class CoordinateSystemManager {
     }
 
     /**
-     * PROFESSIONAL: Move origin by offset from current position and store previous position
+     * FIXED: Move origin by offset from current position and store previous position
      */
     moveOriginByOffset(offsetX, offsetY) {
         if (!this.initialized) {
             return { success: false, error: 'Coordinate system not initialized' };
         }
         
-        // Store current position before moving
+        // Store current position before moving (for reset functionality)
         this.storedOrigin.x = this.workingOrigin.x;
         this.storedOrigin.y = this.workingOrigin.y;
         
@@ -178,12 +171,28 @@ class CoordinateSystemManager {
             this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
         }
         
-        this.debug(`PROFESSIONAL: Working origin moved by (${offsetX}, ${offsetY}) to: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), stored previous: (${this.storedOrigin.x.toFixed(3)}, ${this.storedOrigin.y.toFixed(3)})`);
+        this.debug(`FIXED: Working origin moved by (${offsetX}, ${offsetY}) to: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)}), stored previous: (${this.storedOrigin.x.toFixed(3)}, ${this.storedOrigin.y.toFixed(3)})`);
         return { success: true };
     }
 
     /**
-     * PROFESSIONAL: Reset to stored origin (previous position)
+     * FIXED: Save current origin position (replaces confusing offset application)
+     */
+    saveCurrentOrigin() {
+        if (!this.initialized) {
+            return { success: false, error: 'Coordinate system not initialized' };
+        }
+        
+        // Store current working origin as the new stored origin
+        this.storedOrigin.x = this.workingOrigin.x;
+        this.storedOrigin.y = this.workingOrigin.y;
+        
+        this.debug(`FIXED: Saved current origin position: (${this.storedOrigin.x.toFixed(3)}, ${this.storedOrigin.y.toFixed(3)})`);
+        return { success: true };
+    }
+
+    /**
+     * Reset to stored origin (previous position)
      */
     resetToStoredOrigin() {
         if (!this.initialized) {
@@ -204,12 +213,26 @@ class CoordinateSystemManager {
             this.renderer.setOriginPosition(this.workingOrigin.x, this.workingOrigin.y);
         }
         
-        this.debug(`PROFESSIONAL: Working origin reset to stored position: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)})`);
+        this.debug(`FIXED: Working origin reset to stored position: (${this.workingOrigin.x.toFixed(3)}, ${this.workingOrigin.y.toFixed(3)})`);
         return { success: true };
     }
 
     /**
-     * PROFESSIONAL: Get current system status for UI display
+     * FIXED: Get offset from saved origin (for offset input display)
+     */
+    getOffsetFromSaved() {
+        if (!this.initialized) {
+            return { x: 0, y: 0 };
+        }
+        
+        return {
+            x: this.workingOrigin.x - this.storedOrigin.x,
+            y: this.workingOrigin.y - this.storedOrigin.y
+        };
+    }
+
+    /**
+     * Get current system status for UI display
      */
     getStatus() {
         const boardSize = this.boardBounds ? {
@@ -261,7 +284,7 @@ class CoordinateSystemManager {
             isAtWorking: true, // Always at working position in simplified model
             displayInfo: {
                 boardSize: boardSize,
-                currentOffset: { x: 0, y: 0 }, // Always 0 since offset inputs represent "move from current"
+                currentOffset: this.getOffsetFromSaved(), // FIXED: Now uses proper method
                 originDescription: originDescription
             }
         };
@@ -290,9 +313,9 @@ class CoordinateSystemManager {
     debug(message, data = null) {
         if (this.options.debug) {
             if (data) {
-                console.log(`[CoordinateSystem-PROFESSIONAL] ${message}`, data);
+                console.log(`[CoordinateSystem-FIXED] ${message}`, data);
             } else {
-                console.log(`[CoordinateSystem-PROFESSIONAL] ${message}`);
+                console.log(`[CoordinateSystem-FIXED] ${message}`);
             }
         }
     }

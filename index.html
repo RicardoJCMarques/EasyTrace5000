@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PCB CAM</title>
+    <!-- 
+    Pipeline Position: Main HTML structure and entry point
+    FIXES: Editable offset inputs, apply button, mobile touch support
+    -->
     <link rel="stylesheet" href="cam.css">
+    <link rel="stylesheet" href="responsive.css">
 </head>
 <body>
     <div class="loading-overlay" id="loading-overlay">
@@ -18,7 +23,7 @@
             <div class="header-content">
                 <div>
                     <h1>PCB CAM</h1>
-                    <span class="version-badge">v7.12-professional</span>
+                    <span class="version-badge">v7.12-fixed</span>
                 </div>
                 <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                     <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -45,7 +50,7 @@
                     <h2>📁 PCB Operations</h2>
                     <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
                         Upload your PCB files. Each operation type has a distinct color for easy identification.
-                        <strong>v7.12-professional:</strong> Professional coordinate system workflow and fixed cutout filtering.
+                        <strong>v7.12-fixed:</strong> Working coordinate inputs, canvas positioning, mobile touch support.
                     </p>
                     
                     <!-- Isolation Routing -->
@@ -182,8 +187,7 @@ M2</textarea>
                 </section>
 
                 <div class="actions">
-                    <button class="btn-preview" id="preview-btn">🔍 Preview & Setup</button>
-                    <button class="btn-generate" id="export-gcode-btn" disabled>⚡ Generate G-code</button>
+                    <button class="btn-preview" id="preview-btn">🔍 Preview & Setup Coordinates</button>
                 </div>
             </div>
         </main>
@@ -193,11 +197,11 @@ M2</textarea>
         </div>
     </div>
 
-    <!-- Enhanced Professional Preview Modal -->
+    <!-- FIXED: Enhanced modal with working coordinate inputs -->
     <div class="modal" id="preview-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>📐 PCB Preview & Coordinate Setup</h2>
+                <h2 id="modal-title">📐 PCB Preview & Coordinate Setup</h2>
                 <div class="modal-header-controls">
                     <button class="modal-close" id="modal-close-btn">&times;</button>
                 </div>
@@ -211,12 +215,14 @@ M2</textarea>
                         <button id="zoom-out-btn" title="Zoom out">-</button>
                     </div>
                 </div>
-                <div class="preview-sidebar">
-                    <!-- Professional Origin Setup -->
+                
+                <!-- Page 1: Coordinate Setup -->
+                <div class="preview-sidebar" id="modal-page-1">
+                    <!-- FIXED: Working coordinate system with editable inputs -->
                     <div class="coordinate-section">
                         <h3>🎯 Work Coordinate System</h3>
                         <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Professional workflow: Move buttons act immediately. Apply Additional Offset for fine adjustments.
+                            Set your work origin. Move buttons position immediately. Set Origin saves current position.
                         </p>
                         
                         <div class="board-info">
@@ -235,24 +241,29 @@ M2</textarea>
                             <button class="btn-secondary" onclick="bottomLeftOrigin()" title="Move origin to board bottom-left immediately">📍 Move to Bottom-Left</button>
                         </div>
                         
-                        <!-- Professional offset input -->
+                        <!-- FIXED: Editable offset inputs with apply button -->
                         <div class="input-group">
-                            <label title="Additional X offset to apply (auto-filled by Move buttons or enter manually)">X Offset</label>
+                            <label title="Manual X offset from current saved origin">X Offset</label>
                             <div class="input-unit">
                                 <input type="number" id="x-offset" value="0" step="0.1" placeholder="0.0">
                                 <span>mm</span>
                             </div>
                         </div>
                         <div class="input-group">
-                            <label title="Additional Y offset to apply (auto-filled by Move buttons or enter manually)">Y Offset</label>
+                            <label title="Manual Y offset from current saved origin">Y Offset</label>
                             <div class="input-unit">
                                 <input type="number" id="y-offset" value="0" step="0.1" placeholder="0.0">
                                 <span>mm</span>
                             </div>
                         </div>
                         
-                        <button class="btn-primary" onclick="setOrigin()" style="width: 100%; margin-top: 0.5rem;" title="Apply the offset values shown above (resets boxes to 0,0)">📌 Apply Additional Offset</button>
-                        <button class="btn-secondary" onclick="resetOrigin()" style="width: 100%; margin-top: 0.25rem;" title="Reset to previous stored origin">↶ Reset to Previous</button>
+                        <!-- FIXED: Apply button for manual offsets -->
+                        <button class="btn-secondary" id="apply-offset-btn" style="width: 100%; margin-top: 0.5rem;" title="Apply the offset values entered above">
+                            ↗ Apply Manual Offset
+                        </button>
+                        
+                        <button class="btn-primary" onclick="setOrigin()" style="width: 100%; margin-top: 0.5rem;" title="Save current origin position">💾 Set Origin (Save Current Position)</button>
+                        <button class="btn-secondary" onclick="resetOrigin()" style="width: 100%; margin-top: 0.25rem;" title="Reset to previous saved origin">↶ Reset to Saved</button>
                     </div>
 
                     <!-- Simple Stats -->
@@ -270,13 +281,14 @@ M2</textarea>
                         </div>
                     </div>
 
-                    <!-- Collapsible Advanced Options -->
+                    <!-- FIXED: CSS-based Collapsible Advanced Options -->
                     <div class="advanced-options">
                         <button class="btn-secondary" id="advanced-options-toggle" style="width: 100%; margin-bottom: 0.5rem;">
                             🔧 Show Advanced Options
                         </button>
                         
-                        <div id="advanced-options-section" style="display: none;">
+                        <!-- FIXED: CSS class-based collapse instead of style.display -->
+                        <div id="advanced-options-section">
                             <h3>🔧 Advanced Display Options</h3>
                             
                             <!-- Geometry Type Controls -->
@@ -306,13 +318,13 @@ M2</textarea>
                                 </div>
                             </div>
                             
-                            <!-- Rendering Mode -->
+                            <!-- FIXED: Simplified rendering mode with wireframe toggle -->
                             <div style="margin-bottom: 1rem;">
                                 <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Rendering Mode</h4>
                                 <div class="debug-options" style="display: grid; gap: 0.5rem;">
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="show-filled" checked>
-                                        <span>Fill Mode (Solid)</span>
+                                        <span>Fill Mode (when off, shows wireframe perimeters)</span>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="black-white">
@@ -354,10 +366,48 @@ M2</textarea>
                         </div>
                     </div>
                 </div>
+                
+                <!-- Page 2: Offset Geometry (Future) -->
+                <div class="preview-sidebar" id="modal-page-2" style="display: none;">
+                    <div class="coordinate-section">
+                        <h3>⚙️ Offset Geometry</h3>
+                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                            Configure offset parameters for toolpath generation.
+                        </p>
+                        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+                            <p>🚧 Offset Geometry Configuration</p>
+                            <p style="font-size: 0.75rem; margin-top: 0.5rem;">Coming in next update...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Page 3: Toolpath Generation (Future) -->
+                <div class="preview-sidebar" id="modal-page-3" style="display: none;">
+                    <div class="coordinate-section">
+                        <h3>🛠️ Toolpath Generation</h3>
+                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                            Generate G-code from configured geometry and settings.
+                        </p>
+                        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+                            <p>🚧 Toolpath Configuration</p>
+                            <p style="font-size: 0.75rem; margin-top: 0.5rem;">Coming in next update...</p>
+                            
+                            <!-- G-code generation will be here -->
+                            <button class="btn-primary" style="width: 100%; margin-top: 2rem;" disabled>
+                                ⚡ Generate G-code
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
+            
+            <!-- FIXED: Multi-page footer with navigation -->
             <div class="modal-footer">
-                <button class="btn-secondary" onclick="closePreview()">← Back</button>
-                <button class="btn-primary" onclick="exportGcode()">⚡ Generate G-code</button>
+                <button class="btn-secondary" id="modal-back-btn" onclick="closePreview()">← Back to Main</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <span id="page-indicator" style="font-size: 0.75rem; color: var(--text-secondary); align-self: center;">Page 1 of 3</span>
+                    <button class="btn-primary" id="modal-next-btn" style="display: none;">Next →</button>
+                </div>
             </div>
         </div>
     </div>
@@ -366,7 +416,7 @@ M2</textarea>
     <input type="file" id="file-input-temp" style="display: none;">
 
     <script>
-        // Professional script loader with enhanced debugging functions
+        // FIXED: Professional script loader with enhanced error handling
         const scripts = [
             'geometry/clipper.min.js',
             'plotter/render-primitives.js',
@@ -426,7 +476,7 @@ M2</textarea>
         
         async function loadAllScripts() {
             try {
-                console.log('🚀 Loading PCB CAM v7.12-professional...');
+                console.log('🚀 Loading PCB CAM v7.12-fixed...');
                 loadingStartTime = Date.now();
                 updateLoadingProgress();
                 
@@ -438,11 +488,13 @@ M2</textarea>
                 
                 // Initialize the application
                 window.cam = new SemanticPCBCam();
-                console.log('🎯 PCB CAM v7.12-professional initialized');
-                console.log('✅ PROFESSIONAL: Immediate origin movement with predictable UI behavior');
-                console.log('✅ PROFESSIONAL: Fixed cutout layer contamination with surgical filtering');
-                console.log('✅ PROFESSIONAL: Apply Additional Offset resets to 0,0 for predictable state');
-                console.log('🔧 Debug Tools: Run debugCutoutLayer(), enableRendererDebug(), debugCoordinateSystem() in console');
+                console.log('🎯 FIXED: PCB CAM v7.12-fixed initialized');
+                console.log('✅ FIXED: Canvas positioning works properly on modal open');
+                console.log('✅ FIXED: Coordinate input boxes are editable with apply functionality');
+                console.log('✅ FIXED: Modal lifecycle preserves renderer state');
+                console.log('✅ FIXED: Fill mode toggle shows geometry perimeters in wireframe');
+                console.log('✅ FIXED: Mobile touch pan/zoom support enabled');
+                console.log('🔧 Debug Tools: Run debugCutoutLayer(), enableRendererDebug() in console');
                 
             } catch (error) {
                 console.error('💥 Error loading PCB CAM:', error);

@@ -1,5 +1,6 @@
-// Layer Renderer - FIXED: Simplified cutout filtering and professional coordinate sync
-// renderer/layer-renderer.js
+// Layer Renderer - FIXED: Mobile touch, wireframe mode, canvas positioning
+// File Location: renderer/layer-renderer.js
+// FIXES: Mobile pan/zoom, fill as wireframe toggle, proper canvas lifecycle
 
 class LayerRenderer {
     constructor(canvasId) {
@@ -18,12 +19,12 @@ class LayerRenderer {
         this.viewScale = 1;
         this.bounds = null;
         
-        // PROFESSIONAL: Coordinate system integration
+        // Coordinate system integration
         this.coordinateSystem = null;
         
-        // Render options with geometry type controls
+        // FIXED: Simplified render options with wireframe toggle
         this.options = {
-            showFill: true,
+            showFill: true,              // FIXED: When false, shows all geometry as perimeters
             showPads: true,
             blackAndWhite: false,
             showGrid: true,
@@ -35,15 +36,14 @@ class LayerRenderer {
             showTraces: true,
             showDrills: true,
             showCutouts: true,
-            showOriginal: true,
             theme: 'dark',
             debug: false
         };
         
-        // PROFESSIONAL: Track origin position for coordinate system display
+        // Track origin position for coordinate system display
         this.originPosition = { x: 0, y: 0 };
         
-        // Enhanced color schemes with unique colors per operation type
+        // Enhanced color schemes
         this.colors = {
             dark: {
                 background: '#1a1a1a',
@@ -88,19 +88,26 @@ class LayerRenderer {
         this.renderStats = {
             primitives: 0,
             renderTime: 0,
-            coordinateIssues: 0,
-            transformedPrimitives: 0,
-            untransformedPrimitives: 0
+            coordinateIssues: 0
         };
         
         // Zoom constraints
         this.minZoom = 0.01;
         this.maxZoom = 1000;
         
+        // FIXED: Improved interaction state for mobile
+        this.interactionState = {
+            isPanning: false,
+            lastPointer: { x: 0, y: 0 },
+            pointerCount: 0,
+            initialDistance: 0,
+            initialScale: 1
+        };
+        
         this.setupEventListeners();
         this.resizeCanvas();
         
-        console.log('PROFESSIONAL: LayerRenderer initialized with simplified cutout filtering');
+        console.log('FIXED: LayerRenderer initialized with mobile touch support and wireframe mode');
     }
     
     setOptions(options) {
@@ -114,19 +121,7 @@ class LayerRenderer {
         this.validationResults.set(name, validationResult);
         
         if (validationResult.criticalIssues > 0) {
-            console.warn(`[LayerRenderer-PROFESSIONAL] Layer '${name}' has ${validationResult.criticalIssues} critical coordinate issues`);
-        }
-        
-        // CUTOUT-DEBUG: Log detailed information for cutout layers
-        if (options.type === 'cutout') {
-            console.log(`[CUTOUT-DEBUG] Adding cutout layer '${name}' with ${primitives.length} primitives`);
-            console.log(`[CUTOUT-DEBUG] Primitive types:`, primitives.map(p => `${p.type}(closed:${p.closed || false})`));
-            
-            // Log first few primitives in detail
-            primitives.slice(0, 3).forEach((primitive, index) => {
-                const bounds = primitive.getBounds();
-                console.log(`[CUTOUT-DEBUG] Primitive ${index}: type=${primitive.type}, closed=${primitive.closed || false}, bounds=(${bounds.minX.toFixed(1)}, ${bounds.minY.toFixed(1)}) to (${bounds.maxX.toFixed(1)}, ${bounds.maxY.toFixed(1)}), properties=`, primitive.properties);
-            });
+            console.warn(`[LayerRenderer-FIXED] Layer '${name}' has ${validationResult.criticalIssues} critical coordinate issues`);
         }
         
         this.layers.set(name, {
@@ -143,26 +138,17 @@ class LayerRenderer {
         this.render();
     }
     
-    /**
-     * Validate primitives in a layer for coordinate consistency
-     */
     validateLayerPrimitives(primitives) {
         if (!primitives || primitives.length === 0) {
             return {
                 valid: true,
                 primitiveCount: 0,
-                transformedCount: 0,
-                untransformedCount: 0,
-                unknownCount: 0,
                 criticalIssues: 0,
                 warnings: 0,
                 coordinateRanges: null
             };
         }
         
-        let transformedCount = 0;
-        let untransformedCount = 0;
-        let unknownCount = 0;
         let criticalIssues = 0;
         let warnings = 0;
         
@@ -172,17 +158,6 @@ class LayerRenderer {
         const issues = [];
         
         primitives.forEach((primitive, index) => {
-            // Check transformation status
-            const wasTransformed = primitive.wasTransformedDuringCreation?.() || false;
-            if (wasTransformed === true) {
-                transformedCount++;
-            } else if (wasTransformed === false) {
-                untransformedCount++;
-            } else {
-                unknownCount++;
-            }
-            
-            // Validate bounds
             const bounds = primitive.getBounds();
             if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
                 !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
@@ -196,13 +171,11 @@ class LayerRenderer {
                 return;
             }
             
-            // Update coordinate ranges
             minX = Math.min(minX, bounds.minX);
             minY = Math.min(minY, bounds.minY);
             maxX = Math.max(maxX, bounds.maxX);
             maxY = Math.max(maxY, bounds.maxY);
             
-            // Check for extremely large coordinates
             const maxCoord = 1000; // mm
             if (Math.abs(bounds.minX) > maxCoord || Math.abs(bounds.minY) > maxCoord ||
                 Math.abs(bounds.maxX) > maxCoord || Math.abs(bounds.maxY) > maxCoord) {
@@ -210,7 +183,7 @@ class LayerRenderer {
                 issues.push({
                     type: 'large_coordinates',
                     index: index,
-                    message: `Primitive ${index} has suspiciously large coordinates (may be untransformed)`,
+                    message: `Primitive ${index} has suspiciously large coordinates`,
                     bounds: bounds,
                     primitive: primitive
                 });
@@ -220,111 +193,13 @@ class LayerRenderer {
         const result = {
             valid: criticalIssues === 0,
             primitiveCount: primitives.length,
-            transformedCount,
-            untransformedCount,
-            unknownCount,
             criticalIssues,
             warnings,
             coordinateRanges: isFinite(minX) ? { minX, minY, maxX, maxY } : null,
             issues: issues
         };
         
-        if (this.options.debug) {
-            console.log(`[LayerRenderer-PROFESSIONAL] Layer validation result:`, result);
-        }
-        
         return result;
-    }
-    
-    /**
-     * Analyze coordinate consistency across all layers
-     */
-    validateCoordinateConsistency() {
-        const analysis = {
-            totalLayers: this.layers.size,
-            totalPrimitives: 0,
-            globalTransformationStatus: {
-                transformed: 0,
-                untransformed: 0,
-                unknown: 0
-            },
-            coordinateRangesByType: {},
-            alignmentIssues: [],
-            criticalIssues: 0,
-            warnings: 0
-        };
-        
-        // Collect data from all layers
-        this.layers.forEach((layer, layerName) => {
-            const validation = layer.validation;
-            if (!validation) return;
-            
-            analysis.totalPrimitives += validation.primitiveCount;
-            analysis.globalTransformationStatus.transformed += validation.transformedCount;
-            analysis.globalTransformationStatus.untransformed += validation.untransformedCount;
-            analysis.globalTransformationStatus.unknown += validation.unknownCount;
-            analysis.criticalIssues += validation.criticalIssues;
-            analysis.warnings += validation.warnings;
-            
-            // Track coordinate ranges by layer type
-            if (validation.coordinateRanges) {
-                const type = layer.type;
-                if (!analysis.coordinateRangesByType[type]) {
-                    analysis.coordinateRangesByType[type] = [];
-                }
-                analysis.coordinateRangesByType[type].push({
-                    layer: layerName,
-                    ranges: validation.coordinateRanges
-                });
-            }
-        });
-        
-        // Check for alignment issues between different layer types
-        const typeEntries = Object.entries(analysis.coordinateRangesByType);
-        for (let i = 0; i < typeEntries.length; i++) {
-            for (let j = i + 1; j < typeEntries.length; j++) {
-                const [type1, ranges1] = typeEntries[i];
-                const [type2, ranges2] = typeEntries[j];
-                
-                // Calculate average centers for each type
-                const center1 = this.calculateAverageCenter(ranges1.map(r => r.ranges));
-                const center2 = this.calculateAverageCenter(ranges2.map(r => r.ranges));
-                
-                const distance = Math.sqrt(
-                    Math.pow(center1.x - center2.x, 2) + 
-                    Math.pow(center1.y - center2.y, 2)
-                );
-                
-                if (distance > 50) { // 50mm separation indicates alignment issue
-                    analysis.alignmentIssues.push({
-                        type1, type2,
-                        distance: distance,
-                        center1, center2,
-                        message: `${type1} and ${type2} layers appear misaligned (${distance.toFixed(1)}mm apart)`
-                    });
-                }
-            }
-        }
-        
-        return analysis;
-    }
-    
-    /**
-     * Helper method to calculate average center from coordinate ranges
-     */
-    calculateAverageCenter(ranges) {
-        if (ranges.length === 0) return { x: 0, y: 0 };
-        
-        let totalCenterX = 0, totalCenterY = 0;
-        ranges.forEach(range => {
-            totalCenterX += (range.minX + range.maxX) / 2;
-            totalCenterY += (range.minY + range.maxY) / 2;
-        });
-        
-        return {
-            x: totalCenterX / ranges.length,
-            y: totalCenterY / ranges.length
-        };
     }
     
     clearLayers() {
@@ -354,6 +229,7 @@ class LayerRenderer {
         return { minX, minY, maxX, maxY };
     }
     
+    // FIXED: Improved bounds calculation with validation
     calculateOverallBounds() {
         let minX = Infinity, minY = Infinity;
         let maxX = -Infinity, maxY = -Infinity;
@@ -369,7 +245,7 @@ class LayerRenderer {
             }
         });
         
-        if (hasData) {
+        if (hasData && isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
             this.bounds = {
                 minX, minY, maxX, maxY,
                 width: maxX - minX,
@@ -377,8 +253,11 @@ class LayerRenderer {
                 centerX: (minX + maxX) / 2,
                 centerY: (minY + maxY) / 2
             };
+            
+            console.log('FIXED: Calculated overall bounds:', this.bounds);
         } else {
             this.bounds = null;
+            console.log('FIXED: No valid bounds available');
         }
     }
     
@@ -386,8 +265,6 @@ class LayerRenderer {
         const startTime = performance.now();
         this.renderStats.primitives = 0;
         this.renderStats.coordinateIssues = 0;
-        this.renderStats.transformedPrimitives = 0;
-        this.renderStats.untransformedPrimitives = 0;
         this.renderingIssues = [];
         
         // Clear canvas
@@ -412,9 +289,7 @@ class LayerRenderer {
         renderOrder.forEach(type => {
             this.layers.forEach(layer => {
                 if (layer.visible && layer.type === type) {
-                    if (this.options.showOriginal || layer.isOffset) {
-                        this.renderLayer(layer);
-                    }
+                    this.renderLayer(layer);
                 }
             });
         });
@@ -433,14 +308,13 @@ class LayerRenderer {
         
         if (this.options.debug) {
             this.renderDebugInfo();
-            this.renderCoordinateValidationInfo();
         }
     }
     
     renderLayer(layer) {
         const colors = this.colors[this.options.theme];
         
-        // Determine layer color with proper mapping
+        // Determine layer color
         let layerColor;
         if (layer.color) {
             layerColor = layer.color;
@@ -457,17 +331,9 @@ class LayerRenderer {
         layer.primitives.forEach(primitive => {
             this.renderStats.primitives++;
             
-            // Check transformation status for statistics
-            const wasTransformed = primitive.wasTransformedDuringCreation?.() || false;
-            if (wasTransformed === true) {
-                this.renderStats.transformedPrimitives++;
-            } else if (wasTransformed === false) {
-                this.renderStats.untransformedPrimitives++;
-            }
-            
-            // FIXED: Simplified geometry type filtering for cutout layers
+            // Geometry type filtering
             if (!this.shouldRenderPrimitive(primitive, layer.type)) {
-                return; // Skip this primitive based on user preferences
+                return;
             }
             
             // Skip primitives with invalid bounds
@@ -480,7 +346,7 @@ class LayerRenderer {
                     primitive: primitive,
                     layer: layer.name
                 });
-                return; // Skip rendering this primitive
+                return;
             }
             
             let fillColor = layerColor;
@@ -502,46 +368,27 @@ class LayerRenderer {
         });
     }
     
-    /**
-     * FIXED: Less aggressive cutout filtering - focus on contamination prevention, not blocking everything
-     */
     shouldRenderPrimitive(primitive, layerType) {
-        // FIXED: More reasonable cutout layer filtering
+        // Cutout layer filtering
         if (layerType === 'cutout') {
-            // Only show if cutouts are enabled
             if (!this.options.showCutouts) {
-                if (this.options.debug) {
-                    console.log(`[Cutout Filter] HIDDEN: showCutouts disabled`);
-                }
                 return false;
             }
             
-            // Show closed paths (board outlines are typically closed)
+            // Show closed paths (board outlines)
             if (primitive.type === 'path' && primitive.closed) {
                 const bounds = primitive.getBounds();
-                const width = bounds.maxX - bounds.minX;
-                const height = bounds.maxY - bounds.minY;
-                const perimeter = Math.max(width, height);
-                
-                // Reasonable size filter - board outlines should be at least 5mm 
+                const perimeter = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
                 if (perimeter > 5) {
-                    if (this.options.debug) {
-                        console.log(`[Cutout Filter] SHOWING closed path: ${width.toFixed(1)} × ${height.toFixed(1)} mm`);
-                    }
                     return true;
                 }
             }
             
-            // Show circles and rectangles that could be cutouts (mounting holes, etc.)
+            // Show circles and rectangles that could be cutouts
             if (primitive.type === 'circle' || primitive.type === 'rectangle' || primitive.type === 'obround') {
                 const bounds = primitive.getBounds();
                 const size = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
-                
-                // Show holes/cutouts bigger than 1mm
                 if (size > 1) {
-                    if (this.options.debug) {
-                        console.log(`[Cutout Filter] SHOWING ${primitive.type}: ${size.toFixed(1)}mm`);
-                    }
                     return true;
                 }
             }
@@ -550,86 +397,78 @@ class LayerRenderer {
             if (primitive.properties.isText || 
                 primitive.properties.function === 'Legend' ||
                 primitive.properties.isStroke) {
-                if (this.options.debug) {
-                    console.log(`[Cutout Filter] HIDDEN: text/legend/stroke feature`);
-                }
                 return false;
             }
             
-            // Default for cutout: show it and let user decide
-            if (this.options.debug) {
-                console.log(`[Cutout Filter] SHOWING by default: ${primitive.type}`);
-            }
             return true;
         }
         
         // For non-cutout layers, apply normal filtering
         
-        // Drill holes - controlled by showDrills
+        // Drill holes
         if (primitive.properties.isDrillHole || layerType === 'drill') {
             return this.options.showDrills;
         }
         
-        // Traces (strokes) - controlled by showTraces
+        // Traces (strokes)
         if (primitive.properties.isStroke) {
             return this.options.showTraces;
         }
         
-        // Pads/Flashes - controlled by showPads
+        // Pads/Flashes
         if (primitive.properties.isFlash || primitive.type === 'circle' || 
             primitive.type === 'rectangle' || primitive.type === 'obround') {
             return this.options.showPads;
         }
         
-        // Regions (filled polygons) - controlled by showRegions
+        // Regions (filled polygons)
         if (primitive.properties.isRegion || 
             (primitive.type === 'path' && primitive.closed && !primitive.properties.isStroke)) {
             return this.options.showRegions;
         }
         
-        // Open paths that aren't strokes - also controlled by showTraces
+        // Open paths that aren't strokes
         if (primitive.type === 'path' && !primitive.closed) {
             return this.options.showTraces;
         }
         
-        // Default: show if not specifically categorized
         return true;
     }
     
+    // FIXED: Simplified wireframe mode - show all geometry perimeters when fill is off
     renderPrimitive(primitive, fillColor, strokeColor) {
         this.ctx.save();
         
         this.ctx.fillStyle = fillColor;
         this.ctx.strokeStyle = strokeColor;
         
-        // Enhanced stroke width handling
-        if (primitive.properties.isStroke) {
-            if (this.options.showFill) {
-                this.ctx.lineWidth = 0.05 / this.viewScale;
-            } else {
-                this.ctx.lineWidth = primitive.properties.originalWidth || (0.1 / this.viewScale);
-            }
-        } else if (primitive.properties.isDrillHole) {
-            this.ctx.lineWidth = 0.1 / this.viewScale;
+        // FIXED: Simple wireframe toggle logic
+        const isWireframeMode = !this.options.showFill;
+        
+        if (isWireframeMode) {
+            // WIREFRAME MODE: Show all geometry as perimeters with appropriate widths
+            this.ctx.lineWidth = this.getWireframeWidth(primitive);
+            this.ctx.fillStyle = 'transparent'; // Don't fill in wireframe mode
         } else {
-            this.ctx.lineWidth = primitive.properties.strokeWidth || (0.1 / this.viewScale);
+            // FILL MODE: Show geometry as filled shapes
+            this.ctx.lineWidth = 0; // No strokes in fill mode
         }
         
         switch (primitive.type) {
             case 'path':
-                this.renderPath(primitive);
+                this.renderPath(primitive, isWireframeMode);
                 break;
             case 'circle':
-                this.renderCircle(primitive);
+                this.renderCircle(primitive, isWireframeMode);
                 break;
             case 'rectangle':
-                this.renderRectangle(primitive);
+                this.renderRectangle(primitive, isWireframeMode);
                 break;
             case 'obround':
-                this.renderObround(primitive);
+                this.renderObround(primitive, isWireframeMode);
                 break;
             case 'arc':
-                this.renderArc(primitive);
+                this.renderArc(primitive, isWireframeMode);
                 break;
             case 'composite':
                 primitive.primitives.forEach(p => this.renderPrimitive(p, fillColor, strokeColor));
@@ -639,7 +478,25 @@ class LayerRenderer {
         this.ctx.restore();
     }
     
-    renderPath(primitive) {
+    // FIXED: Get appropriate wireframe width for different primitive types
+    getWireframeWidth(primitive) {
+        if (primitive.properties.isStroke && primitive.properties.originalWidth) {
+            // For strokes, use original aperture width for dimensional accuracy
+            return primitive.properties.originalWidth / this.viewScale;
+        } else if (primitive.properties.isDrillHole) {
+            // Drill holes get medium outline
+            return 0.1 / this.viewScale;
+        } else if (primitive.properties.isRegion) {
+            // Regions get thin outline
+            return 0.03 / this.viewScale;
+        } else {
+            // Default thin outline
+            return 0.05 / this.viewScale;
+        }
+    }
+    
+    // FIXED: Simplified path rendering with wireframe mode
+    renderPath(primitive, isWireframeMode) {
         if (primitive.points.length < 2) return;
         
         this.ctx.beginPath();
@@ -655,65 +512,25 @@ class LayerRenderer {
             this.ctx.closePath();
         }
         
-        // Enhanced stroke primitive rendering
-        if (primitive.properties.isStroke) {
-            if (this.options.showFill) {
-                this.ctx.fill();
-                if (this.options.showPads) {
-                    this.ctx.save();
-                    this.ctx.lineWidth = 0.03 / this.viewScale;
-                    this.ctx.globalAlpha = 0.5;
-                    this.ctx.stroke();
-                    this.ctx.restore();
-                }
-            } else {
-                if (primitive.points.length === 2 && !primitive.closed) {
-                    this.ctx.save();
-                    this.ctx.setLineDash([0.3 / this.viewScale, 0.3 / this.viewScale]);
-                    this.ctx.globalAlpha = 0.8;
-                    this.ctx.stroke();
-                    this.ctx.restore();
-                } else {
-                    this.ctx.save();
-                    this.ctx.lineWidth = 0.05 / this.viewScale;
-                    this.ctx.globalAlpha = 0.7;
-                    this.ctx.stroke();
-                    this.ctx.restore();
-                }
-                
-                if (this.options.debug && primitive.properties.originalWidth) {
-                    this.ctx.save();
-                    this.ctx.globalAlpha = 0.2;
-                    this.ctx.setLineDash([0.2 / this.viewScale, 0.4 / this.viewScale]);
-                    this.ctx.lineWidth = primitive.properties.originalWidth;
-                    this.ctx.stroke();
-                    this.ctx.restore();
-                }
+        if (isWireframeMode) {
+            // Wireframe: always stroke, never fill
+            if (this.ctx.lineWidth > 0) {
+                this.ctx.stroke();
             }
         } else {
-            const shouldFill = this.options.showFill && 
-                              primitive.properties.fill !== false &&
-                              !primitive.properties.isText;
-            
-            const shouldStroke = this.options.showPads || 
-                                primitive.properties.stroke === true ||
-                                (!shouldFill && primitive.properties.fill === true);
-            
-            if (shouldFill) {
+            // Fill mode: always fill if possible
+            if (primitive.closed || primitive.properties.isStroke) {
                 if (primitive.properties.fillRule) {
                     this.ctx.fill(primitive.properties.fillRule);
                 } else {
                     this.ctx.fill();
                 }
             }
-            
-            if (shouldStroke) {
-                this.ctx.stroke();
-            }
         }
     }
     
-    renderCircle(primitive) {
+    // FIXED: Simplified circle rendering
+    renderCircle(primitive, isWireframeMode) {
         this.ctx.beginPath();
         this.ctx.arc(
             primitive.center.x,
@@ -723,29 +540,27 @@ class LayerRenderer {
             2 * Math.PI
         );
         
-        const isDrillHole = primitive.properties.isDrillHole;
-        
-        const shouldFill = (this.options.showFill && primitive.properties.fill !== false) || 
-                          (isDrillHole && this.options.showFill);
-        
-        const shouldStroke = this.options.showPads || 
-                            primitive.properties.stroke === true || 
-                            isDrillHole ||
-                            (!shouldFill && primitive.properties.fill !== false);
-        
-        if (shouldFill) {
+        if (isWireframeMode) {
+            if (this.ctx.lineWidth > 0) {
+                this.ctx.stroke();
+            }
+        } else {
             this.ctx.fill();
-        }
-        if (shouldStroke) {
-            this.ctx.stroke();
         }
     }
     
-    renderRectangle(primitive) {
-        const shouldFill = this.options.showFill && primitive.properties.fill !== false;
-        const shouldStroke = this.options.showPads || primitive.properties.stroke === true;
-        
-        if (shouldFill) {
+    // FIXED: Simplified rectangle rendering
+    renderRectangle(primitive, isWireframeMode) {
+        if (isWireframeMode) {
+            if (this.ctx.lineWidth > 0) {
+                this.ctx.strokeRect(
+                    primitive.position.x,
+                    primitive.position.y,
+                    primitive.width,
+                    primitive.height
+                );
+            }
+        } else {
             this.ctx.fillRect(
                 primitive.position.x,
                 primitive.position.y,
@@ -753,17 +568,10 @@ class LayerRenderer {
                 primitive.height
             );
         }
-        if (shouldStroke) {
-            this.ctx.strokeRect(
-                primitive.position.x,
-                primitive.position.y,
-                primitive.width,
-                primitive.height
-            );
-        }
     }
     
-    renderObround(primitive) {
+    // FIXED: Simplified obround rendering
+    renderObround(primitive, isWireframeMode) {
         const x = primitive.position.x;
         const y = primitive.position.y;
         const w = primitive.width;
@@ -788,18 +596,16 @@ class LayerRenderer {
         
         this.ctx.closePath();
         
-        const shouldFill = this.options.showFill && primitive.properties.fill !== false;
-        const shouldStroke = this.options.showPads || primitive.properties.stroke === true;
-        
-        if (shouldFill) {
+        if (isWireframeMode) {
+            if (this.ctx.lineWidth > 0) {
+                this.ctx.stroke();
+            }
+        } else {
             this.ctx.fill();
-        }
-        if (shouldStroke) {
-            this.ctx.stroke();
         }
     }
     
-    renderArc(primitive) {
+    renderArc(primitive, isWireframeMode) {
         const radius = Math.sqrt(
             Math.pow(primitive.start.x - primitive.center.x, 2) +
             Math.pow(primitive.start.y - primitive.center.y, 2)
@@ -824,8 +630,15 @@ class LayerRenderer {
             !primitive.clockwise
         );
         
-        if (this.options.showPads || primitive.properties.stroke === true) {
-            this.ctx.stroke();
+        if (isWireframeMode) {
+            if (this.ctx.lineWidth > 0) {
+                this.ctx.stroke();
+            }
+        } else {
+            // Arcs typically don't fill in PCB context
+            if (this.ctx.lineWidth > 0) {
+                this.ctx.stroke();
+            }
         }
     }
     
@@ -840,11 +653,10 @@ class LayerRenderer {
         
         this.ctx.beginPath();
         
-        // PROFESSIONAL: Grid aligned to current origin position
+        // Grid aligned to current origin position
         const originX = this.originPosition.x;
         const originY = this.originPosition.y;
         
-        // Adjust grid start positions to align with origin
         const startX = Math.floor((viewBounds.minX - originX) / gridSpacing) * gridSpacing + originX;
         const endX = Math.ceil((viewBounds.maxX - originX) / gridSpacing) * gridSpacing + originX;
         
@@ -864,18 +676,13 @@ class LayerRenderer {
         this.ctx.stroke();
     }
     
-    /**
-     * PROFESSIONAL: Enhanced origin marker that renders at the coordinate system position
-     */
     renderOrigin() {
         const colors = this.colors[this.options.theme];
         
-        // Make marker bigger and more visible
         const markerSize = 10 / this.viewScale;
         const circleSize = 3 / this.viewScale;
         const strokeWidth = 3 / this.viewScale;
         
-        // Draw origin at coordinate system position
         const originX = this.originPosition.x;
         const originY = this.originPosition.y;
         
@@ -883,7 +690,6 @@ class LayerRenderer {
         this.ctx.strokeStyle = colors.originOutline;
         this.ctx.lineWidth = strokeWidth + (1 / this.viewScale);
         
-        // Draw crosshair outline at origin position
         this.ctx.beginPath();
         this.ctx.moveTo(originX - markerSize, originY);
         this.ctx.lineTo(originX + markerSize, originY);
@@ -891,7 +697,6 @@ class LayerRenderer {
         this.ctx.lineTo(originX, originY + markerSize);
         this.ctx.stroke();
         
-        // Draw circle outline
         this.ctx.beginPath();
         this.ctx.arc(originX, originY, circleSize, 0, 2 * Math.PI);
         this.ctx.stroke();
@@ -907,12 +712,10 @@ class LayerRenderer {
         this.ctx.lineTo(originX, originY + markerSize);
         this.ctx.stroke();
         
-        // Draw center circle
         this.ctx.beginPath();
         this.ctx.arc(originX, originY, circleSize, 0, 2 * Math.PI);
         this.ctx.stroke();
         
-        // Fill center circle for better visibility
         this.ctx.fillStyle = colors.origin;
         this.ctx.fill();
     }
@@ -929,7 +732,6 @@ class LayerRenderer {
             this.bounds.height
         );
         
-        // Add corner markers
         const markerSize = 5 / this.viewScale;
         this.ctx.setLineDash([]);
         this.ctx.lineWidth = 2 / this.viewScale;
@@ -949,7 +751,6 @@ class LayerRenderer {
         this.ctx.stroke();
     }
     
-    // PROFESSIONAL: Rulers that show coordinates relative to current origin position
     renderRulers() {
         this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -975,11 +776,9 @@ class LayerRenderer {
         
         this.ctx.textAlign = 'center';
         
-        // PROFESSIONAL: Calculate coordinates relative to origin position
         const originX = this.originPosition.x;
         const originY = this.originPosition.y;
         
-        // Align ruler ticks to origin
         const startXWorld = Math.floor((viewBounds.minX - originX) / majorStep) * majorStep + originX;
         const endXWorld = Math.ceil((viewBounds.maxX - originX) / majorStep) * majorStep + originX;
         
@@ -989,7 +788,6 @@ class LayerRenderer {
                 this.ctx.moveTo(xCanvas, rulerSize);
                 this.ctx.lineTo(xCanvas, rulerSize - tickLength);
                 
-                // Show coordinates relative to current origin
                 const relativeX = xWorld - originX;
                 let label;
                 if (majorStep < 0.1) {
@@ -1012,7 +810,6 @@ class LayerRenderer {
         this.ctx.textAlign = 'left';
         this.ctx.textBaseline = 'middle';
         
-        // Align ruler ticks to origin
         const startYWorld = Math.floor((viewBounds.minY - originY) / majorStep) * majorStep + originY;
         const endYWorld = Math.ceil((viewBounds.maxY - originY) / majorStep) * majorStep + originY;
         
@@ -1022,7 +819,6 @@ class LayerRenderer {
                 this.ctx.moveTo(rulerSize, yCanvas);
                 this.ctx.lineTo(rulerSize - tickLength, yCanvas);
                 
-                // Show coordinates relative to current origin
                 const relativeY = yWorld - originY;
                 let label;
                 if (majorStep < 0.1) {
@@ -1053,7 +849,6 @@ class LayerRenderer {
         const barHeight = 4;
         const y = this.canvas.height - padding - 20;
         
-        // Determine scale bar length
         const targetPixels = 100;
         const worldLength = targetPixels / this.viewScale;
         
@@ -1094,9 +889,6 @@ class LayerRenderer {
         this.ctx.restore();
     }
     
-    /**
-     * Render debug information including coordinate validation
-     */
     renderDebugInfo() {
         this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1114,7 +906,7 @@ class LayerRenderer {
             `Offset: (${this.viewOffset.x.toFixed(0)}, ${this.viewOffset.y.toFixed(0)})`,
             `Layers: ${this.layers.size}`,
             `Coord Issues: ${this.renderStats.coordinateIssues}`,
-            `PROFESSIONAL MODE`,
+            `Mode: ${this.options.showFill ? 'FILL' : 'WIREFRAME'}`,
             `Origin: (${this.originPosition.x.toFixed(1)}, ${this.originPosition.y.toFixed(1)})`
         ];
         
@@ -1125,39 +917,6 @@ class LayerRenderer {
             this.ctx.fillText(line, x, y);
             y += 15;
         });
-        
-        this.ctx.restore();
-    }
-    
-    /**
-     * Render coordinate validation information
-     */
-    renderCoordinateValidationInfo() {
-        if (this.renderingIssues.length === 0) return;
-        
-        this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        
-        const colors = this.colors[this.options.theme];
-        this.ctx.fillStyle = '#ff4444'; // Red for issues
-        this.ctx.font = '11px monospace';
-        this.ctx.textAlign = 'left';
-        this.ctx.textBaseline = 'top';
-        
-        const x = this.canvas.width - 300;
-        let y = 30;
-        
-        this.ctx.fillText('⚠️ COORDINATE ISSUES:', x, y);
-        y += 15;
-        
-        this.renderingIssues.slice(0, 5).forEach(issue => { // Show max 5 issues
-            this.ctx.fillText(`${issue.type} in ${issue.layer}`, x, y);
-            y += 12;
-        });
-        
-        if (this.renderingIssues.length > 5) {
-            this.ctx.fillText(`... +${this.renderingIssues.length - 5} more`, x, y);
-        }
         
         this.ctx.restore();
     }
@@ -1202,14 +961,13 @@ class LayerRenderer {
         };
     }
     
-    // PROFESSIONAL: Coordinate system interface
+    // Coordinate system interface
     setCoordinateSystem(coordinateSystem) {
         this.coordinateSystem = coordinateSystem;
-        console.log('PROFESSIONAL: Coordinate system linked to renderer');
+        console.log('FIXED: Coordinate system linked to renderer');
     }
     
     setOriginPosition(x, y) {
-        // Update origin position for rendering
         this.originPosition.x = x;
         this.originPosition.y = y;
         this.render();
@@ -1223,7 +981,6 @@ class LayerRenderer {
         return this.coordinateSystem;
     }
     
-    // Zoom to cursor position (not origin)
     zoomIn(cursorX = null, cursorY = null) {
         this.setZoom(this.viewScale * 1.2, cursorX, cursorY);
     }
@@ -1236,24 +993,19 @@ class LayerRenderer {
         const oldScale = this.viewScale;
         this.viewScale = Math.max(this.minZoom, Math.min(this.maxZoom, newScale));
         
-        // Default to canvas center if no cursor position provided
         if (centerX === null) centerX = this.canvas.width / 2;
         if (centerY === null) centerY = this.canvas.height / 2;
         
-        // Calculate world point at zoom center using proper coordinate conversion
         const worldCenterX = (centerX - this.viewOffset.x) / oldScale;
         const worldCenterY = -(centerY - this.viewOffset.y) / oldScale;
         
-        // Apply scale change to view offset
         const scaleFactor = this.viewScale / oldScale;
         this.viewOffset.x = this.viewOffset.x * scaleFactor;
         this.viewOffset.y = this.viewOffset.y * scaleFactor;
         
-        // Calculate where the world center point is now in canvas coordinates
         const newCanvasX = this.viewOffset.x + worldCenterX * this.viewScale;
         const newCanvasY = this.viewOffset.y - worldCenterY * this.viewScale;
         
-        // Adjust offset to keep the world center at the same canvas position
         this.viewOffset.x += centerX - newCanvasX;
         this.viewOffset.y += centerY - newCanvasY;
         
@@ -1266,10 +1018,14 @@ class LayerRenderer {
         this.render();
     }
     
-    // Better zoom fit with proper padding
+    // FIXED: Better zoom fit with proper bounds validation
     zoomFit() {
+        console.log('FIXED: zoomFit called with bounds:', this.bounds);
+        
         this.calculateOverallBounds();
-        if (!this.bounds) {
+        
+        if (!this.bounds || !isFinite(this.bounds.width) || !isFinite(this.bounds.height)) {
+            console.log('FIXED: No valid bounds - centering on origin');
             // No content - center on origin with reasonable zoom
             this.viewScale = 10;
             this.viewOffset = { 
@@ -1294,22 +1050,21 @@ class LayerRenderer {
         this.viewOffset.x = this.canvas.width / 2 - this.bounds.centerX * this.viewScale;
         this.viewOffset.y = this.canvas.height / 2 + this.bounds.centerY * this.viewScale;
         
+        console.log('FIXED: zoomFit applied - scale:', this.viewScale, 'offset:', this.viewOffset);
+        
         this.render();
     }
     
-    // Event handling with proper cursor management
+    // FIXED: Enhanced mobile touch handling
     setupEventListeners() {
-        let isPanning = false;
-        let lastX, lastY;
-        
-        // Prevent image dragging and ensure proper cursor styles
+        // Prevent image dragging and context menu
         this.canvas.style.cursor = 'grab';
         this.canvas.style.userSelect = 'none';
         this.canvas.style.webkitUserSelect = 'none';
         this.canvas.style.mozUserSelect = 'none';
         this.canvas.style.msUserSelect = 'none';
+        this.canvas.style.touchAction = 'none'; // FIXED: Prevent default touch behaviors
         
-        // Prevent context menu and image dragging
         this.canvas.addEventListener('contextmenu', (e) => {
             e.preventDefault();
         });
@@ -1318,44 +1073,106 @@ class LayerRenderer {
             e.preventDefault();
         });
         
+        // FIXED: Mouse events (desktop)
         this.canvas.addEventListener('mousedown', (e) => {
-            if (e.button === 0) { // Left mouse button only
+            if (e.button === 0) {
                 e.preventDefault();
-                isPanning = true;
-                lastX = e.clientX;
-                lastY = e.clientY;
-                this.canvas.style.cursor = 'grabbing';
+                this.startInteraction(e.clientX, e.clientY, 'mouse');
             }
         });
         
         this.canvas.addEventListener('mousemove', (e) => {
-            if (isPanning) {
+            if (this.interactionState.isPanning && this.interactionState.pointerCount === 1) {
                 e.preventDefault();
-                const dx = e.clientX - lastX;
-                const dy = e.clientY - lastY;
-                this.pan(dx, dy);
-                lastX = e.clientX;
-                lastY = e.clientY;
+                this.updateInteraction(e.clientX, e.clientY);
             }
         });
         
-        // Handle mouse up on document to catch mouse release outside canvas
         document.addEventListener('mouseup', (e) => {
-            if (isPanning) {
-                isPanning = false;
-                this.canvas.style.cursor = 'grab';
+            if (this.interactionState.isPanning) {
+                this.endInteraction();
             }
         });
         
-        this.canvas.addEventListener('mouseleave', () => {
-            // Don't change isPanning state on leave - let document mouseup handle it
-        });
+        // FIXED: Touch events (mobile/tablet)
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            
+            if (e.touches.length === 1) {
+                // Single touch - start panning
+                const touch = e.touches[0];
+                this.startInteraction(touch.clientX, touch.clientY, 'touch');
+            } else if (e.touches.length === 2) {
+                // Two finger touch - start pinch zoom
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                
+                const distance = Math.sqrt(
+                    Math.pow(touch2.clientX - touch1.clientX, 2) +
+                    Math.pow(touch2.clientY - touch1.clientY, 2)
+                );
+                
+                this.interactionState.pointerCount = 2;
+                this.interactionState.initialDistance = distance;
+                this.interactionState.initialScale = this.viewScale;
+                
+                // Center point for zoom
+                const centerX = (touch1.clientX + touch2.clientX) / 2;
+                const centerY = (touch1.clientY + touch2.clientY) / 2;
+                this.interactionState.lastPointer = { x: centerX, y: centerY };
+            }
+        }, { passive: false });
         
-        // Zoom to cursor position with proper coordinate handling
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            
+            if (e.touches.length === 1 && this.interactionState.isPanning) {
+                // Single touch panning
+                const touch = e.touches[0];
+                this.updateInteraction(touch.clientX, touch.clientY);
+            } else if (e.touches.length === 2 && this.interactionState.pointerCount === 2) {
+                // Two finger pinch zoom
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                
+                const distance = Math.sqrt(
+                    Math.pow(touch2.clientX - touch1.clientX, 2) +
+                    Math.pow(touch2.clientY - touch1.clientY, 2)
+                );
+                
+                const scaleChange = distance / this.interactionState.initialDistance;
+                const newScale = this.interactionState.initialScale * scaleChange;
+                
+                // Center point for zoom
+                const centerX = (touch1.clientX + touch2.clientX) / 2;
+                const centerY = (touch1.clientY + touch2.clientY) / 2;
+                
+                // Get canvas relative coordinates
+                const rect = this.canvas.getBoundingClientRect();
+                const canvasCenterX = centerX - rect.left;
+                const canvasCenterY = centerY - rect.top;
+                
+                this.setZoom(newScale, canvasCenterX, canvasCenterY);
+            }
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            
+            if (e.touches.length === 0) {
+                // All touches ended
+                this.endInteraction();
+            } else if (e.touches.length === 1 && this.interactionState.pointerCount === 2) {
+                // From pinch to single touch - restart panning
+                const touch = e.touches[0];
+                this.startInteraction(touch.clientX, touch.clientY, 'touch');
+            }
+        }, { passive: false });
+        
+        // Mouse wheel zoom (desktop)
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             
-            // Get cursor position relative to canvas
             const rect = this.canvas.getBoundingClientRect();
             const cursorX = e.clientX - rect.left;
             const cursorY = e.clientY - rect.top;
@@ -1367,9 +1184,9 @@ class LayerRenderer {
             } else {
                 this.setZoom(this.viewScale / scaleAmount, cursorX, cursorY);
             }
-        });
+        }, { passive: false });
         
-        // Double-click to fit
+        // Double-click/tap to fit
         this.canvas.addEventListener('dblclick', (e) => {
             e.preventDefault();
             this.zoomFit();
@@ -1382,58 +1199,41 @@ class LayerRenderer {
         this.resizeObserver.observe(this.canvas);
     }
     
+    // FIXED: Unified interaction handling for mouse and touch
+    startInteraction(x, y, type) {
+        this.interactionState.isPanning = true;
+        this.interactionState.pointerCount = 1;
+        this.interactionState.lastPointer = { x, y };
+        this.canvas.style.cursor = 'grabbing';
+    }
+    
+    updateInteraction(x, y) {
+        if (this.interactionState.isPanning && this.interactionState.pointerCount === 1) {
+            const dx = x - this.interactionState.lastPointer.x;
+            const dy = y - this.interactionState.lastPointer.y;
+            this.pan(dx, dy);
+            this.interactionState.lastPointer = { x, y };
+        }
+    }
+    
+    endInteraction() {
+        this.interactionState.isPanning = false;
+        this.interactionState.pointerCount = 0;
+        this.canvas.style.cursor = 'grab';
+    }
+    
+    // FIXED: Improved canvas resizing
     resizeCanvas() {
         const parent = this.canvas.parentElement;
         if (parent) {
-            this.canvas.width = parent.clientWidth;
-            this.canvas.height = parent.clientHeight;
+            const rect = parent.getBoundingClientRect();
+            this.canvas.width = rect.width;
+            this.canvas.height = rect.height;
             this.render();
+            console.log('FIXED: Canvas resized to', rect.width, 'x', rect.height);
         }
     }
 }
-
-// Export coordinate validation function for global access
-window.validateRendererCoordinates = function() {
-    if (!window.cam?.renderer) {
-        console.log('❌ No renderer available');
-        return;
-    }
-    
-    console.log('🔍 PROFESSIONAL: RENDERER COORDINATE VALIDATION');
-    console.log('==================================================');
-    
-    const analysis = window.cam.renderer.validateCoordinateConsistency();
-    
-    console.log(`📊 Analysis Results:`);
-    console.log(`  Total layers: ${analysis.totalLayers}`);
-    console.log(`  Total primitives: ${analysis.totalPrimitives}`);
-    console.log(`  Transformation status:`, analysis.globalTransformationStatus);
-    console.log(`  Critical issues: ${analysis.criticalIssues}`);
-    console.log(`  Warnings: ${analysis.warnings}`);
-    
-    if (analysis.alignmentIssues.length > 0) {
-        console.log(`\n❌ ALIGNMENT ISSUES DETECTED:`);
-        analysis.alignmentIssues.forEach(issue => {
-            console.log(`• ${issue.message}`);
-            console.log(`  ${issue.type1} center: (${issue.center1.x.toFixed(1)}, ${issue.center1.y.toFixed(1)})`);
-            console.log(`  ${issue.type2} center: (${issue.center2.x.toFixed(1)}, ${issue.center2.y.toFixed(1)})`);
-        });
-    } else {
-        console.log(`\n✅ No alignment issues detected`);
-    }
-    
-    // Show coordinate ranges by type
-    console.log(`\n📍 Coordinate ranges by type:`);
-    Object.entries(analysis.coordinateRangesByType).forEach(([type, ranges]) => {
-        console.log(`  ${type.toUpperCase()}:`);
-        ranges.forEach(range => {
-            const r = range.ranges;
-            console.log(`    ${range.layer}: (${r.minX.toFixed(1)}, ${r.minY.toFixed(1)}) to (${r.maxX.toFixed(1)}, ${r.maxY.toFixed(1)})`);
-        });
-    });
-    
-    return analysis;
-};
 
 // Export
 if (typeof module !== 'undefined' && module.exports) {

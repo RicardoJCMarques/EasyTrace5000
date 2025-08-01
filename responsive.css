@@ -1,0 +1,292 @@
+/* PCB CAM Responsive Design - Mobile and tablet optimizations
+ * Pipeline Position: Additional styling layer for responsive behavior
+ * Input: Base styles from cam.css
+ * Output: Mobile/tablet-friendly interface adaptations
+ * Dependencies: cam.css (must be loaded first)
+ */
+
+/* Tablet Portrait and Down (768px and below) */
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+    
+    .header-content {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+    
+    .version-badge {
+        margin-left: 0;
+    }
+    
+    /* Machine Settings */
+    .machine-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .settings-panel {
+        grid-template-columns: 1fr;
+    }
+    
+    .gcode-settings {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Modal Adaptations - FIXED: Preserve canvas interaction */
+    .modal {
+        padding: 0.5rem;
+    }
+    
+    .modal-content {
+        width: 95vw;
+        height: 95vh;
+    }
+    
+    .modal-body {
+        flex-direction: column;
+    }
+    
+    .preview-container {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        min-height: 40vh; /* FIXED: Ensure sufficient canvas height */
+        flex: 1 1 40vh; /* FIXED: Allow flexible but minimum height */
+        /* FIXED: Ensure proper touch/mouse event handling */
+        touch-action: none;
+        position: relative;
+    }
+    
+    .preview-sidebar {
+        width: 100%;
+        max-height: 50vh;
+        flex: 0 0 auto;
+        padding: 1rem;
+        /* FIXED: Prevent sidebar from interfering with canvas events */
+        pointer-events: auto;
+    }
+    
+    /* FIXED: Ensure canvas takes full container space */
+    #preview-canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+    }
+    
+    /* Coordinate Controls */
+    .coord-buttons {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    .coord-buttons button {
+        padding: 0.75rem;
+        min-height: 44px;
+    }
+    
+    /* Operation Groups */
+    .operation-group-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+    
+    .btn-add-file {
+        width: 100%;
+        min-height: 44px;
+    }
+    
+    /* Touch-friendly buttons */
+    .expand-btn,
+    .remove-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
+    }
+}
+
+/* Mobile Landscape and Down (480px and below) */
+@media (max-width: 480px) {
+    .container {
+        padding: 0.75rem;
+    }
+    
+    .section {
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .header-content {
+        padding: 0.75rem 1rem;
+    }
+    
+    h1 {
+        font-size: 1.125rem;
+    }
+    
+    /* Actions */
+    .actions {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .btn-preview,
+    .btn-generate {
+        width: 100%;
+        justify-content: center;
+        min-height: 44px;
+    }
+    
+    /* Modal on small screens */
+    .modal {
+        padding: 0.25rem;
+    }
+    
+    .modal-content {
+        width: 98vw;
+        height: 98vh;
+        border-radius: 4px;
+    }
+    
+    .modal-header {
+        padding: 1rem;
+    }
+    
+    .modal-header h2 {
+        font-size: 1rem;
+    }
+    
+    .preview-sidebar {
+        padding: 0.75rem;
+        max-height: 60vh;
+    }
+    
+    /* Coordinate section simplification */
+    .coordinate-section p {
+        font-size: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .input-group {
+        margin-bottom: 0.5rem;
+    }
+    
+    .input-unit span {
+        min-width: 32px;
+        font-size: 0.6875rem;
+    }
+    
+    /* Advanced options always start collapsed on mobile */
+    #advanced-options-section {
+        max-height: 0;
+    }
+    
+    /* Statistics */
+    .stat-row,
+    .info-row {
+        font-size: 0.75rem;
+        padding: 0.25rem 0;
+    }
+    
+    .board-info {
+        padding: 0.5rem;
+    }
+}
+
+/* Large Screens (1200px and up) - Optimizations */
+@media (min-width: 1200px) {
+    .modal-content {
+        max-width: 1600px;
+        width: 85vw;
+    }
+    
+    .preview-sidebar {
+        width: 400px;
+        min-width: 400px;
+    }
+    
+    .machine-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Print Styles - Hidden interface elements */
+@media print {
+    .header,
+    .actions,
+    .status,
+    .modal,
+    .btn-add-file,
+    .expand-btn,
+    .remove-btn,
+    .theme-toggle {
+        display: none !important;
+    }
+    
+    .main {
+        padding-bottom: 0;
+    }
+    
+    .section {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ccc;
+    }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+    :root {
+        --border: #ffffff;
+        --border-focus: #00ffff;
+        --accent: #00ffff;
+        --text: #ffffff;
+        --bg: #000000;
+        --bg-alt: #111111;
+    }
+    
+    [data-theme="light"] {
+        --border: #000000;
+        --border-focus: #0000ff;
+        --accent: #0000ff;
+        --text: #000000;
+        --bg: #ffffff;
+        --bg-alt: #f0f0f0;
+    }
+}
+
+/* Landscape orientation optimizations for tablets */
+@media (max-width: 1024px) and (orientation: landscape) {
+    .modal-body {
+        flex-direction: row;
+    }
+    
+    .preview-container {
+        border-right: 1px solid var(--border);
+        border-bottom: none;
+        min-height: auto;
+    }
+    
+    .preview-sidebar {
+        width: 300px;
+        max-height: none;
+        height: auto;
+    }
+}
+
+/* Ultra-wide screen optimizations */
+@media (min-width: 1600px) {
+    .container {
+        max-width: 1400px;
+    }
+    
+    .modal-content {
+        max-width: 1800px;
+    }
+    
+    .preview-sidebar {
+        width: 450px;
+    }
+}
