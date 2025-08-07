@@ -1,7 +1,7 @@
-/* PCB CAM CSS - SIMPLIFIED: Minimal animations, proper responsive design
+/* PCB CAM CSS - FIXED: Board size in header, better icons, consistent styling
  * Pipeline Position: Final styling layer for the entire UI
  * Input: HTML structure from index.html
- * Output: Styled interface with minimal performance overhead
+ * Output: Styled interface with working controls and consistent design
  * Dependencies: None (pure CSS)
  */
 
@@ -207,7 +207,7 @@ h1 {
     vertical-align: middle;
 }
 
-/* Buttons - SIMPLIFIED: No hover animations */
+/* Buttons */
 .btn-add-file {
     background: var(--accent);
     color: white;
@@ -229,7 +229,7 @@ h1 {
     min-height: 60px;
 }
 
-/* Operation Cards - SIMPLIFIED: No animations */
+/* Operation Cards */
 .operation-card {
     background: var(--bg-alt);
     border: 1px solid var(--border);
@@ -371,7 +371,7 @@ h1 {
     border-radius: 50%;
 }
 
-/* Input Groups - SIMPLIFIED: No animations */
+/* Input Groups */
 .input-group {
     margin-bottom: 0.75rem;
 }
@@ -482,7 +482,7 @@ h1 {
     box-shadow: 0 0 0 2px rgba(64, 128, 255, 0.1);
 }
 
-/* Action Buttons - SIMPLIFIED: No hover animations */
+/* Action Buttons */
 .actions {
     display: flex;
     gap: 1rem;
@@ -581,7 +581,7 @@ h1 {
     background: rgba(6, 182, 212, 0.1);
 }
 
-/* Modal - SIMPLIFIED: Only fade animation, no height/transform animations */
+/* Modal */
 .modal {
     display: none;
     position: fixed;
@@ -609,7 +609,7 @@ h1 {
     flex-direction: column;
     box-shadow: var(--shadow-lg);
     border: 1px solid var(--border);
-    margin: 0; /* Remove any default margins */
+    margin: 0;
 }
 
 .modal-header {
@@ -626,6 +626,32 @@ h1 {
     font-size: 1.125rem;
     font-weight: 600;
     margin: 0;
+}
+
+/* FIXED: Board size display in modal header */
+.board-size-display {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+    margin-right: 1rem;
+    padding: 0.375rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.board-size-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.board-size-value {
+    font-size: 0.875rem;
+    color: var(--text);
+    font-weight: 600;
+    font-family: 'SF Mono', Consolas, monospace;
 }
 
 .modal-header-controls {
@@ -661,7 +687,7 @@ h1 {
     min-height: 0;
 }
 
-/* Coordinate Controls */
+/* Coordinate Controls - Simplified and cleaner */
 .coordinate-section {
     margin-bottom: 1.5rem;
 }
@@ -700,7 +726,7 @@ h1 {
     font-weight: 500;
 }
 
-/* Advanced Options Section - FIXED: Proper collapse with content hiding */
+/* Advanced Options Section */
 .advanced-options {
     border-top: 1px solid var(--border);
     padding-top: 1rem;
@@ -734,14 +760,12 @@ h1 {
     border-radius: var(--radius);
     overflow: hidden;
     max-height: 0;
-    transition: max-height 0.3s ease;
-    /* FIXED: Hide content when collapsed */
-    opacity: 0;
     transition: max-height 0.3s ease, opacity 0.2s ease;
+    opacity: 0;
 }
 
 #advanced-options-section.expanded {
-    max-height: 2000px; /* Large enough for content */
+    max-height: 2000px;
     padding: 1rem;
     opacity: 1;
 }
@@ -762,12 +786,16 @@ h1 {
     letter-spacing: 0.05em;
 }
 
-/* Debug Options */
+/* Debug Options - Better styling for checkboxes */
 .debug-options label {
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 4px;
     font-size: 0.8125rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s ease;
 }
 
 .debug-options label:hover {
@@ -776,8 +804,46 @@ h1 {
 
 .debug-options input[type="checkbox"] {
     cursor: pointer;
+    width: auto;
+    margin: 0;
+    transform: scale(1.1);
 }
 
+/* Wireframe and fusion toggle highlighting */
+.debug-options label:has(#show-wireframe),
+.debug-options label:has(#fuse-geometry) {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem;
+    font-weight: 500;
+}
+
+.debug-options label:has(#show-wireframe):hover,
+.debug-options label:has(#fuse-geometry):hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+
+.debug-options label:has(#show-wireframe:checked),
+.debug-options label:has(#fuse-geometry:checked) {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: var(--isolation-accent);
+    color: var(--isolation-accent);
+}
+
+/* Disabled state for mutual exclusion */
+.debug-options label:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.debug-options label:has(input:disabled):hover {
+    background: var(--bg-alt);
+    border-color: var(--border);
+}
+
+/* Preview Container */
 .preview-container {
     flex: 1;
     position: relative;
@@ -797,6 +863,10 @@ h1 {
     background: var(--bg);
     cursor: grab;
     border-radius: var(--radius);
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 #preview-canvas:active {
@@ -852,39 +922,6 @@ h1 {
     margin-bottom: 0.75rem;
 }
 
-/* Board Information */
-.board-info {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 0.75rem;
-    margin-bottom: 1rem;
-}
-
-.info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.25rem 0;
-    font-size: 0.8125rem;
-    border-bottom: 1px solid var(--border);
-}
-
-.info-row:last-child {
-    border-bottom: none;
-}
-
-.info-row span:first-child {
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-.info-row span:last-child {
-    font-family: 'SF Mono', Consolas, monospace;
-    color: var(--text);
-    font-weight: 600;
-}
-
 /* Statistics */
 .stat-grid {
     display: grid;
@@ -919,13 +956,13 @@ h1 {
     padding: 1rem 1.5rem;
     border-top: 1px solid var(--border);
     display: flex;
-    justify-content: flex-end;
-    gap: 0.75rem;
+    justify-content: space-between;
+    align-items: center;
     background: var(--bg-alt);
     flex-shrink: 0;
 }
 
-/* File Statistics - SIMPLIFIED: No nested scrolling */
+/* File Statistics */
 #operation-stats {
     font-size: 0.75rem;
     color: var(--text-hint);
@@ -944,7 +981,7 @@ h1 {
     background: var(--bg-alt);
 }
 
-/* Loading States - ONLY allowed animation */
+/* Loading States */
 .loading-overlay {
     position: fixed;
     top: 0;
@@ -976,7 +1013,7 @@ h1 {
     100% { transform: rotate(360deg); }
 }
 
-/* Operation Messages - SIMPLIFIED: No animation */
+/* Operation Messages */
 .operation-message {
     padding: 0.5rem;
     border-radius: var(--radius);
@@ -1019,7 +1056,6 @@ textarea:focus-visible {
         transition-duration: 0.01ms !important;
     }
     
-    /* Keep only essential transitions */
     .modal {
         transition: opacity 0.01ms !important;
     }

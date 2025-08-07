@@ -1,4 +1,4 @@
-/* PCB CAM Responsive Design - Mobile and tablet optimizations
+/* PCB CAM Responsive Design - FIXED: Board size display in modal header
  * Pipeline Position: Additional styling layer for responsive behavior
  * Input: Base styles from cam.css
  * Output: Mobile/tablet-friendly interface adaptations
@@ -35,7 +35,7 @@
         grid-template-columns: 1fr;
     }
     
-    /* Modal Adaptations - FIXED: Preserve canvas interaction */
+    /* Modal Adaptations */
     .modal {
         padding: 0.5rem;
     }
@@ -45,6 +45,37 @@
         height: 95vh;
     }
     
+    /* FIXED: Modal header responsive layout */
+    .modal-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .modal-header h2 {
+        font-size: 1rem;
+        flex: 1 1 auto;
+    }
+    
+    /* FIXED: Board size display on mobile */
+    .board-size-display {
+        order: 2;
+        flex: 1 1 100%;
+        margin: 0;
+        justify-content: center;
+    }
+    
+    .board-size-label {
+        font-size: 0.7rem;
+    }
+    
+    .board-size-value {
+        font-size: 0.8125rem;
+    }
+    
+    .modal-header-controls {
+        order: 3;
+    }
+    
     .modal-body {
         flex-direction: column;
     }
@@ -52,9 +83,8 @@
     .preview-container {
         border-right: none;
         border-bottom: 1px solid var(--border);
-        min-height: 40vh; /* FIXED: Ensure sufficient canvas height */
-        flex: 1 1 40vh; /* FIXED: Allow flexible but minimum height */
-        /* FIXED: Ensure proper touch/mouse event handling */
+        min-height: 40vh;
+        flex: 1 1 40vh;
         touch-action: none;
         position: relative;
     }
@@ -64,11 +94,9 @@
         max-height: 50vh;
         flex: 0 0 auto;
         padding: 1rem;
-        /* FIXED: Prevent sidebar from interfering with canvas events */
         pointer-events: auto;
     }
     
-    /* FIXED: Ensure canvas takes full container space */
     #preview-canvas {
         width: 100% !important;
         height: 100% !important;
@@ -155,7 +183,13 @@
     }
     
     .modal-header h2 {
-        font-size: 1rem;
+        font-size: 0.875rem;
+    }
+    
+    /* FIXED: Board size on very small screens */
+    .board-size-display {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
     }
     
     .preview-sidebar {
@@ -189,10 +223,6 @@
         font-size: 0.75rem;
         padding: 0.25rem 0;
     }
-    
-    .board-info {
-        padding: 0.5rem;
-    }
 }
 
 /* Large Screens (1200px and up) - Optimizations */
@@ -210,6 +240,11 @@
     .machine-grid {
         grid-template-columns: repeat(4, 1fr);
     }
+    
+    /* FIXED: Board size display on large screens */
+    .board-size-display {
+        min-width: 200px;
+    }
 }
 
 /* Print Styles - Hidden interface elements */
@@ -221,7 +256,8 @@
     .btn-add-file,
     .expand-btn,
     .remove-btn,
-    .theme-toggle {
+    .theme-toggle,
+    .board-size-display {
         display: none !important;
     }
     
@@ -274,6 +310,11 @@
         max-height: none;
         height: auto;
     }
+    
+    /* FIXED: Compact board size in landscape tablet */
+    .board-size-display {
+        padding: 0.25rem 0.5rem;
+    }
 }
 
 /* Ultra-wide screen optimizations */
@@ -288,5 +329,50 @@
     
     .preview-sidebar {
         width: 450px;
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    /* Larger touch targets */
+    button,
+    input[type="checkbox"],
+    input[type="radio"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Better spacing for touch */
+    .input-group {
+        margin-bottom: 1rem;
+    }
+    
+    /* Larger click areas for small buttons */
+    .expand-btn,
+    .remove-btn {
+        padding: 0.75rem;
+    }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Dark mode adjustments for board size display */
+@media (prefers-color-scheme: dark) {
+    .board-size-display {
+        background: rgba(255, 255, 255, 0.05);
+    }
+}
+
+/* Light mode adjustments for board size display */
+@media (prefers-color-scheme: light) {
+    [data-theme="light"] .board-size-display {
+        background: rgba(0, 0, 0, 0.05);
     }
 }

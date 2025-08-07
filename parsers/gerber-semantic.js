@@ -1,4 +1,4 @@
-// Semantic Gerber Parser - Enhanced with coordinate validation and consistency
+// Semantic Gerber Parser - FIXED: Proper region handling without duplication
 // parsers/gerber-semantic.js
 
 class GerberSemanticParser {
@@ -20,6 +20,11 @@ class GerberSemanticParser {
         this.polarity = 'dark'; // D = dark, C = clear
         this.apertureFunction = null;
         
+        // FIXED: Enhanced region tracking to prevent duplication
+        this.currentRegion = null;
+        this.regionsProcessed = 0;
+        this.inRegionBlock = false; // Track if we're between G36 and G37
+        
         // ENHANCED: Coordinate validation tracking
         this.coordinateValidation = {
             validCoordinates: 0,
@@ -40,11 +45,20 @@ class GerberSemanticParser {
         
         this.errors = [];
         this.warnings = [];
+        
+        // FIXED: Debug tracking for duplicate prevention
+        this.debugStats = {
+            coordinatesInRegions: 0,
+            coordinatesAsDraws: 0,
+            regionsCreated: 0,
+            drawsCreated: 0,
+            flashesCreated: 0
+        };
     }
     
     parse(content) {
         try {
-            this.debug('Starting semantic Gerber parse with enhanced coordinate validation...');
+            this.debug('FIXED: Starting Gerber parse with proper region handling...');
             
             // Split into commands
             const blocks = this.splitIntoBlocks(content);
@@ -58,15 +72,16 @@ class GerberSemanticParser {
             // Finalize
             this.finalizeParse();
             
-            this.debug(`Parse complete: ${this.layers.objects.length} objects`);
-            this.debug(`Coordinate validation: ${this.coordinateValidation.validCoordinates} valid, ${this.coordinateValidation.invalidCoordinates} invalid`);
+            this.debug(`FIXED: Parse complete: ${this.layers.objects.length} objects`);
+            this.debug(`Debug stats:`, this.debugStats);
             
             return {
                 success: true,
                 layers: this.layers,
                 errors: this.errors,
                 warnings: this.warnings,
-                coordinateValidation: this.coordinateValidation
+                coordinateValidation: this.coordinateValidation,
+                debugStats: this.debugStats
             };
             
         } catch (error) {
@@ -176,13 +191,17 @@ class GerberSemanticParser {
             this.interpolationMode = 'G03'; // Counter-clockwise arc
         }
         
-        // Region mode
+        // FIXED: Region mode handling with proper state tracking
         else if (command === 'G36') {
             this.regionMode = true;
+            this.inRegionBlock = true;
             this.startRegion();
+            this.debug('FIXED: Started region mode (G36) - all coordinates will be added to region only');
         } else if (command === 'G37') {
             this.endRegion();
             this.regionMode = false;
+            this.inRegionBlock = false;
+            this.debug('FIXED: Ended region mode (G37) - region completed');
         }
         
         // Coordinate data
@@ -192,6 +211,13 @@ class GerberSemanticParser {
         
         // End of file
         else if (command === 'M02') {
+            // If we're still in a region, close it
+            if (this.inRegionBlock && this.currentRegion) {
+                this.debug('FIXED: Force closing region at end of file');
+                this.endRegion();
+                this.regionMode = false;
+                this.inRegionBlock = false;
+            }
             this.debug('End of file');
         }
     }
@@ -207,9 +233,6 @@ class GerberSemanticParser {
         }
     }
     
-    /**
-     * ENHANCED: Parse aperture definition with validation
-     */
     parseApertureDefinition(command) {
         const match = command.match(/ADD(\d+)([CROP]),(.+)/);
         if (!match) {
@@ -221,7 +244,6 @@ class GerberSemanticParser {
         const type = match[2];
         const paramString = match[3];
         
-        // ENHANCED: Validate aperture parameters
         const params = paramString.split('X').map(p => {
             const value = parseFloat(p);
             if (!isFinite(value) || value <= 0) {
@@ -238,7 +260,7 @@ class GerberSemanticParser {
             function: this.apertureFunction
         };
         
-        // ENHANCED: Validate aperture size ranges
+        // Validate aperture size ranges
         const primarySize = params[0] || 0;
         if (primarySize > 25.4) { // > 1 inch
             this.warnings.push(`Unusually large aperture ${code}: ${primarySize}mm`);
@@ -282,11 +304,13 @@ class GerberSemanticParser {
         if (this.currentPoint) {
             this.currentRegion.points.push({ ...this.currentPoint });
         }
+        
+        this.debug('FIXED: Started region collection');
     }
     
     endRegion() {
         if (this.currentRegion && this.currentRegion.points.length >= 3) {
-            // ENHANCED: Validate region points
+            // Validate region points
             const validPoints = this.currentRegion.points.filter(point => 
                 isFinite(point.x) && isFinite(point.y)
             );
@@ -315,14 +339,15 @@ class GerberSemanticParser {
             });
             
             this.layers.objects.push(this.currentRegion);
+            this.regionsProcessed++;
+            this.debugStats.regionsCreated++;
+            
+            this.debug(`FIXED: Completed region with ${this.currentRegion.points.length} points`);
         }
         
         this.currentRegion = null;
     }
     
-    /**
-     * ENHANCED: Calculate bounds from points array
-     */
     calculatePointsBounds(points) {
         if (points.length === 0) return null;
         
@@ -339,6 +364,9 @@ class GerberSemanticParser {
         return { minX, minY, maxX, maxY };
     }
     
+    /**
+     * FIXED: Coordinate processing that properly respects region mode
+     */
     processCoordinate(command) {
         const newPoint = this.parseCoordinates(command);
         const operation = this.parseOperation(command);
@@ -348,30 +376,33 @@ class GerberSemanticParser {
             return;
         }
         
-        if (this.regionMode && this.currentRegion) {
-            // Add point to current region
+        // CRITICAL FIX: If we're in a region block, ONLY add to region
+        if (this.inRegionBlock && this.currentRegion) {
             this.currentRegion.points.push(newPoint);
-        } else {
-            // Create appropriate object based on operation
-            switch (operation) {
-                case 'D01': // Draw
-                    this.createDraw(this.currentPoint, newPoint);
-                    break;
-                case 'D02': // Move
-                    // Just update position
-                    break;
-                case 'D03': // Flash
-                    this.createFlash(newPoint);
-                    break;
-            }
+            this.currentPoint = newPoint; // Update position tracking
+            this.debugStats.coordinatesInRegions++;
+            this.debug(`FIXED: Added point to region (${this.debugStats.coordinatesInRegions} total) - NO draw object created`);
+            return; // EXIT EARLY - DO NOT CREATE ANY OTHER OBJECTS
+        }
+        
+        // Only process as draw/flash if NOT in region block
+        this.debugStats.coordinatesAsDraws++;
+        
+        switch (operation) {
+            case 'D01': // Draw
+                this.createDraw(this.currentPoint, newPoint);
+                break;
+            case 'D02': // Move
+                // Just update position
+                break;
+            case 'D03': // Flash
+                this.createFlash(newPoint);
+                break;
         }
         
         this.currentPoint = newPoint;
     }
     
-    /**
-     * ENHANCED: Parse coordinates with comprehensive validation
-     */
     parseCoordinates(command) {
         const point = { ...this.currentPoint };
         
@@ -400,7 +431,7 @@ class GerberSemanticParser {
                 point.j = this.parseCoordinateValue(jMatch[1]);
             }
             
-            // ENHANCED: Validate parsed coordinates
+            // Validate parsed coordinates
             if (!this.validateCoordinates(point)) {
                 return null;
             }
@@ -418,9 +449,6 @@ class GerberSemanticParser {
         }
     }
     
-    /**
-     * ENHANCED: Validate coordinate values for consistency
-     */
     validateCoordinates(point) {
         // Check for finite values
         if (!isFinite(point.x) || !isFinite(point.y)) {
@@ -450,9 +478,6 @@ class GerberSemanticParser {
         return true;
     }
     
-    /**
-     * ENHANCED: Update coordinate range tracking
-     */
     updateCoordinateRange(point) {
         const range = this.coordinateValidation.coordinateRange;
         range.minX = Math.min(range.minX, point.x);
@@ -461,9 +486,6 @@ class GerberSemanticParser {
         range.maxY = Math.max(range.maxY, point.y);
     }
     
-    /**
-     * ENHANCED: Parse coordinate value with robust error handling
-     */
     parseCoordinateValue(value) {
         const format = this.options.format;
         const negative = value.startsWith('-');
@@ -516,6 +538,12 @@ class GerberSemanticParser {
     }
     
     createDraw(start, end) {
+        // FIXED: Additional check - never create draws if in region block
+        if (this.inRegionBlock) {
+            this.debug('FIXED: Skipping draw creation - in region block');
+            return;
+        }
+        
         if (!this.currentAperture) return;
         
         const aperture = this.apertures.get(this.currentAperture);
@@ -538,7 +566,7 @@ class GerberSemanticParser {
                 y: start.y + (end.j || 0)
             };
             
-            // ENHANCED: Validate arc center
+            // Validate arc center
             if (!isFinite(draw.center.x) || !isFinite(draw.center.y)) {
                 this.warnings.push(`Invalid arc center calculated: (${draw.center.x}, ${draw.center.y})`);
             }
@@ -557,9 +585,16 @@ class GerberSemanticParser {
         });
         
         this.layers.objects.push(draw);
+        this.debugStats.drawsCreated++;
     }
     
     createFlash(position) {
+        // FIXED: Additional check - never create flashes if in region block
+        if (this.inRegionBlock) {
+            this.debug('FIXED: Skipping flash creation - in region block');
+            return;
+        }
+        
         if (!this.currentAperture) return;
         
         const aperture = this.apertures.get(this.currentAperture);
@@ -587,13 +622,14 @@ class GerberSemanticParser {
         });
         
         this.layers.objects.push(flash);
+        this.debugStats.flashesCreated++;
     }
     
     finalizeParse() {
         // Calculate bounds with validation
         this.calculateBounds();
         
-        // ENHANCED: Validate coordinate consistency across all objects
+        // Validate coordinate consistency across all objects
         this.validateCoordinateConsistency();
         
         // Sort objects by type for better rendering
@@ -601,11 +637,20 @@ class GerberSemanticParser {
             const typeOrder = { region: 0, draw: 1, flash: 2 };
             return (typeOrder[a.type] || 3) - (typeOrder[b.type] || 3);
         });
+        
+        // FIXED: Report parsing statistics
+        this.debug('FIXED: Parsing Statistics:');
+        this.debug(`  Regions created: ${this.debugStats.regionsCreated}`);
+        this.debug(`  Draws created: ${this.debugStats.drawsCreated}`);
+        this.debug(`  Flashes created: ${this.debugStats.flashesCreated}`);
+        this.debug(`  Coordinates in regions: ${this.debugStats.coordinatesInRegions}`);
+        this.debug(`  Coordinates as draws: ${this.debugStats.coordinatesAsDraws}`);
+        
+        if (this.debugStats.coordinatesInRegions > 0 && this.debugStats.regionsCreated === 0) {
+            this.warnings.push('Coordinates were collected for regions but no regions were created');
+        }
     }
     
-    /**
-     * ENHANCED: Validate coordinate consistency across all objects
-     */
     validateCoordinateConsistency() {
         if (this.coordinateValidation.objectCoordinates.length === 0) return;
         
@@ -648,19 +693,9 @@ class GerberSemanticParser {
             const typeHeight = typeMaxY - typeMinY;
             
             this.debug(`${type} coordinate range: ${typeWidth.toFixed(1)} × ${typeHeight.toFixed(1)} mm`);
-            
-            // Check if this type's coordinates are way off from the main range
-            const centerDistance = Math.sqrt(
-                Math.pow((typeMinX + typeMaxX) / 2 - (range.minX + range.maxX) / 2, 2) +
-                Math.pow((typeMinY + typeMaxY) / 2 - (range.minY + range.maxY) / 2, 2)
-            );
-            
-            if (centerDistance > Math.max(width, height) * 0.1) { // More than 10% offset
-                this.warnings.push(`${type} objects appear offset from main coordinate system (${centerDistance.toFixed(1)}mm)`);
-            }
         });
         
-        this.debug(`Coordinate consistency check: ${width.toFixed(1)} × ${height.toFixed(1)} mm`);
+        this.debug(`FIXED: Coordinate consistency check complete`);
     }
     
     calculateBounds() {
@@ -709,7 +744,7 @@ class GerberSemanticParser {
         
         if (hasValidData && isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
             this.layers.bounds = { minX, minY, maxX, maxY };
-            this.debug(`Calculated bounds: (${minX.toFixed(3)}, ${minY.toFixed(3)}) to (${maxX.toFixed(3)}, ${maxY.toFixed(3)})`);
+            this.debug(`FIXED: Calculated bounds: (${minX.toFixed(3)}, ${minY.toFixed(3)}) to (${maxX.toFixed(3)}, ${maxY.toFixed(3)})`);
         } else {
             this.warnings.push('Unable to calculate valid bounds from layer data');
         }
@@ -718,9 +753,9 @@ class GerberSemanticParser {
     debug(message, data = null) {
         if (this.options.debug) {
             if (data) {
-                console.log(`[GerberSemantic] ${message}`, data);
+                console.log(`[GerberSemantic-FIXED] ${message}`, data);
             } else {
-                console.log(`[GerberSemantic] ${message}`);
+                console.log(`[GerberSemantic-FIXED] ${message}`);
             }
         }
     }
