@@ -464,122 +464,122 @@ class PCBCamUI {
         }
     }
     
-    // FIXED: Complete rewrite of updateRenderer to properly handle fusion
     updateRenderer() {
         if (!this.renderer) return;
         
-        console.log('FIXED: Starting renderer update...');
+        console.log('Updating renderer...');
         this.renderer.clearLayers();
         
         // Check if fusion is enabled
         if (this.renderer.options.fuseGeometry) {
-            console.log('FIXED: Fusion enabled, processing layers...');
+            console.log('Fusion enabled, processing geometry...');
             this.updateStatus('Applying fusion to isolation layer...', 'info');
             
             try {
-                // FIXED: Handle each operation type separately
-                // Only fuse isolation layer, others render as-is
-                let totalPrimitives = 0;
-                let fusedCount = 0;
+                // Separate isolation operations from others
+                const isolationOps = [];
+                const otherOps = [];
                 
                 this.core.operations.forEach(operation => {
                     if (!operation.primitives || operation.primitives.length === 0) return;
                     
                     if (operation.type === 'isolation') {
-                        // Fuse isolation layer
-                        totalPrimitives += operation.primitives.length;
-                        
-                        // Get only isolation primitives for fusion
-                        const isolationPrimitives = operation.primitives;
-                        console.log(`FIXED: Fusing ${isolationPrimitives.length} isolation primitives`);
-                        
-                        // Use the core's fusion method which uses the geometry processor
-                        const fused = this.core.fuseAllPrimitives();
-                        
-                        if (fused.length > 0) {
-                            // Ensure fused primitives have correct properties
-                            const validFused = fused.map(primitive => {
-                                if (!primitive.properties) {
-                                    primitive.properties = {};
-                                }
-                                primitive.properties.isFused = true;
-                                primitive.properties.isRegion = true;
-                                primitive.properties.fill = true;
-                                primitive.properties.stroke = false;
-                                primitive.properties.visible = true;
-                                primitive.properties.operationType = 'isolation';
-                                return primitive;
-                            });
-                            
-                            fusedCount += validFused.length;
-                            
-                            // Add fused isolation layer
-                            this.renderer.addLayer(`${operation.id}_fused`, validFused, {
-                                type: 'isolation',
-                                visible: true,
-                                isFused: true,
-                                color: operation.color
-                            });
-                            
-                            console.log(`FIXED: Added fused isolation layer with ${validFused.length} primitives`);
-                        }
+                        isolationOps.push(operation);
                     } else {
-                        // Add other layers without fusion
-                        totalPrimitives += operation.primitives.length;
-                        fusedCount += operation.primitives.length;
-                        
-                        // FIXED: Ensure primitives have their operation type
-                        const markedPrimitives = operation.primitives.map(p => {
-                            if (!p.properties) {
-                                p.properties = {};
-                            }
-                            p.properties.operationType = operation.type;
-                            p.properties.operationId = operation.id;
-                            return p;
-                        });
-                        
-                        this.renderer.addLayer(operation.id, markedPrimitives, {
-                            type: operation.type,
-                            visible: true,
-                            color: operation.color,
-                            bounds: operation.bounds
-                        });
-                        
-                        console.log(`FIXED: Added ${operation.type} layer with ${operation.primitives.length} primitives`);
+                        otherOps.push(operation);
                     }
                 });
                 
-                const reduction = totalPrimitives - fusedCount;
-                if (reduction > 0) {
-                    const percentage = ((reduction / totalPrimitives) * 100).toFixed(1);
-                    this.updateStatus(`Fusion complete: ${totalPrimitives} → ${fusedCount} primitives (${percentage}% reduction in isolation layer)`, 'success');
-                } else {
-                    this.updateStatus('Fusion complete: No overlapping geometry found in isolation layer', 'info');
+                // Fuse isolation layers
+                if (isolationOps.length > 0) {
+                    // Collect all isolation primitives
+                    const isolationPrimitives = [];
+                    isolationOps.forEach(op => {
+                        isolationPrimitives.push(...op.primitives);
+                    });
+                    
+                    console.log(`Fusing ${isolationPrimitives.length} isolation primitives...`);
+                    
+                    // Perform fusion
+                    const fused = this.core.geometryProcessor.fuseGeometry(isolationPrimitives);
+                    
+                    if (fused && fused.length > 0) {
+                        // Add fused layer
+                        this.renderer.addLayer('isolation_fused', fused, {
+                            type: 'isolation',
+                            visible: true,
+                            isFused: true,
+                            color: '#ff8844' // Orange for isolation
+                        });
+                        
+                        console.log(`Added fused isolation layer with ${fused.length} primitives`);
+                        
+                        const reduction = isolationPrimitives.length - fused.length;
+                        const percentage = reduction > 0 ? ((reduction / isolationPrimitives.length) * 100).toFixed(1) : 0;
+                        this.updateStatus(`Fusion complete: ${isolationPrimitives.length} → ${fused.length} primitives (${percentage}% reduction)`, 'success');
+                    } else {
+                        console.warn('Fusion produced no valid geometry');
+                        this.updateStatus('Fusion failed - no valid geometry produced', 'error');
+                        
+                        // Fall back to original primitives
+                        isolationOps.forEach(op => {
+                            this.renderer.addLayer(op.id, op.primitives, {
+                                type: op.type,
+                                visible: true,
+                                color: op.color
+                            });
+                        });
+                    }
                 }
                 
+                // Add other layers without fusion
+                otherOps.forEach(operation => {
+                    this.renderer.addLayer(operation.id, operation.primitives, {
+                        type: operation.type,
+                        visible: true,
+                        color: operation.color || this.getColorForType(operation.type)
+                    });
+                });
+                
             } catch (error) {
-                console.error('FIXED: Fusion error:', error);
+                console.error('Fusion error:', error);
                 this.updateStatus('Fusion failed: ' + error.message, 'error');
                 
                 // Fall back to individual layers
                 this.addIndividualLayers();
             }
         } else {
-            console.log('FIXED: Fusion disabled, adding individual layers...');
+            console.log('Fusion disabled, adding individual layers...');
             // Add individual operation layers
             this.addIndividualLayers();
         }
         
-        console.log(`FIXED: Renderer has ${this.renderer.layers.size} layer(s) before render`);
-        
-        // Log layer details
-        this.renderer.layers.forEach((layer, name) => {
-            console.log(`FIXED: Layer "${name}": ${layer.primitives.length} primitives, visible=${layer.visible}, type=${layer.type}`);
-        });
+        console.log(`Renderer has ${this.renderer.layers.size} layer(s)`);
         
         // Force render
         this.renderer.render();
-        console.log('FIXED: Renderer.render() completed');
+    }
+
+    // Helper method to get color for operation type
+    getColorForType(type) {
+        switch (type) {
+            case 'isolation': return '#ff8844';
+            case 'clear': return '#44ff88';
+            case 'drill': return '#4488ff';
+            case 'cutout': return '#ff00ff';
+            default: return '#ff8844';
+        }
+    }
+
+    // Helper method to get color for operation type
+    getColorForType(type) {
+        switch (type) {
+            case 'isolation': return '#ff8844';
+            case 'clear': return '#44ff88';
+            case 'drill': return '#4488ff';
+            case 'cutout': return '#ff00ff';
+            default: return '#ff8844';
+        }
     }
     
     addIndividualLayers() {

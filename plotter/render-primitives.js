@@ -67,7 +67,7 @@ class PathPrimitive extends RenderPrimitive {
     }
     
     calculateBounds() {
-        if (this.points.length === 0) {
+        if (!this.points || this.points.length === 0) {
             this.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
             return;
         }
@@ -75,16 +75,18 @@ class PathPrimitive extends RenderPrimitive {
         let minX = Infinity, minY = Infinity;
         let maxX = -Infinity, maxY = -Infinity;
         
+        // Handle compound paths with null separators
         this.points.forEach(point => {
-            minX = Math.min(minX, point.x);
-            minY = Math.min(minY, point.y);
-            maxX = Math.max(maxX, point.x);
-            maxY = Math.max(maxY, point.y);
+            if (point !== null && point !== undefined) {
+                minX = Math.min(minX, point.x);
+                minY = Math.min(minY, point.y);
+                maxX = Math.max(maxX, point.x);
+                maxY = Math.max(maxY, point.y);
+            }
         });
         
-        // For stroke primitives, bounds already include the stroke width
-        // For other primitives, add stroke width if present
-        if (!this.properties.isStroke && this.properties.strokeWidth) {
+        // For stroked paths, expand bounds by stroke width
+        if (this.properties.stroke && this.properties.strokeWidth) {
             const halfStroke = this.properties.strokeWidth / 2;
             minX -= halfStroke;
             minY -= halfStroke;
@@ -92,28 +94,113 @@ class PathPrimitive extends RenderPrimitive {
             maxY += halfStroke;
         }
         
-        this.bounds = { minX, minY, maxX, maxY };
+        // Validate bounds
+        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+            console.warn('PathPrimitive has invalid bounds, using defaults');
+            this.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+        } else {
+            this.bounds = { minX, minY, maxX, maxY };
+        }
     }
     
     /**
      * Get center point for path primitives
      */
     getCenter() {
-        if (this.points.length === 0) {
+        if (!this.points || this.points.length === 0) {
             return { x: 0, y: 0 };
         }
         
-        // For paths, calculate centroid
+        // For compound paths, calculate centroid of all non-null points
         let totalX = 0, totalY = 0;
+        let count = 0;
+        
         this.points.forEach(point => {
-            totalX += point.x;
-            totalY += point.y;
+            if (point !== null && point !== undefined) {
+                totalX += point.x;
+                totalY += point.y;
+                count++;
+            }
         });
         
+        if (count === 0) {
+            return { x: 0, y: 0 };
+        }
+        
         return {
-            x: totalX / this.points.length,
-            y: totalY / this.points.length
+            x: totalX / count,
+            y: totalY / count
         };
+    }
+    
+    /**
+     * Check if this path has holes (compound path)
+     */
+    hasHoles() {
+        return this.properties?.hasHoles === true || 
+               this.properties?.isCompound === true;
+    }
+    
+    /**
+     * Get the segments of a compound path
+     */
+    getSegments() {
+        if (!this.hasHoles()) {
+            return [this.points];
+        }
+        
+        const segments = [];
+        let currentSegment = [];
+        
+        this.points.forEach(point => {
+            if (point === null) {
+                if (currentSegment.length > 0) {
+                    segments.push(currentSegment);
+                    currentSegment = [];
+                }
+            } else {
+                currentSegment.push(point);
+            }
+        });
+        
+        if (currentSegment.length > 0) {
+            segments.push(currentSegment);
+        }
+        
+        return segments;
+    }
+    
+    /**
+     * Clone this primitive
+     */
+    clone() {
+        const clonedPoints = this.points.map(p => 
+            p === null ? null : { x: p.x, y: p.y }
+        );
+        
+        return new PathPrimitive(clonedPoints, {
+            ...this.properties,
+            closed: this.closed
+        });
+    }
+    
+    /**
+     * Transform this primitive
+     */
+    transform(matrix) {
+        if (!matrix) return;
+        
+        this.points = this.points.map(point => {
+            if (point === null) return null;
+            
+            return {
+                x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+                y: matrix.b * point.x + matrix.d * point.y + matrix.f
+            };
+        });
+        
+        // Invalidate cached bounds
+        this.bounds = null;
     }
 }
 

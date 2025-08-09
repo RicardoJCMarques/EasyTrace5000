@@ -247,7 +247,6 @@ class CanvasInteraction {
         const bounds = this.renderer.bounds;
         
         if (!bounds || !isFinite(bounds.width) || !isFinite(bounds.height)) {
-            console.log('No valid bounds - centering on origin');
             // No content - center on origin with reasonable zoom
             this.renderer.viewScale = 10;
             this.renderer.viewOffset = { 
@@ -272,7 +271,6 @@ class CanvasInteraction {
         this.renderer.viewOffset.x = this.canvas.width / 2 - bounds.centerX * this.renderer.viewScale;
         this.renderer.viewOffset.y = this.canvas.height / 2 + bounds.centerY * this.renderer.viewScale;
         
-        console.log('zoomFit applied - scale:', this.renderer.viewScale, 'offset:', this.renderer.viewOffset);
         
         this.renderer.render();
     }

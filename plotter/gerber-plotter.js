@@ -1,4 +1,4 @@
-// Gerber Plotter - FIXED: Enhanced region perimeter detection and deduplication
+// Gerber Plotter - FIXED: Strict region/trace separation, no stroke on regions
 // plotter/gerber-plotter.js
 
 class GerberPlotter {
@@ -11,17 +11,15 @@ class GerberPlotter {
         this.primitives = [];
         this.bounds = null;
         
-        // FIXED: Enhanced tracking for deduplication
         this.creationStats = {
             regionsFromRegionObjects: 0,
             drawsFromDrawObjects: 0,
             flashesFromFlashObjects: 0,
-            skippedDrawsInRegions: 0,
-            duplicatePerimetersRemoved: 0
+            connectedPathsProcessed: 0,
+            branchingNetworksProcessed: 0,
+            branchSegmentsCreated: 0,
+            primitivesCreated: 0
         };
-        
-        // Track regions for perimeter detection
-        this.regionData = [];
     }
     
     plot(gerberData) {
@@ -33,18 +31,19 @@ class GerberPlotter {
             };
         }
         
-        this.debug('FIXED: Starting Gerber plotting with enhanced deduplication...');
+        this.debug('Starting Gerber plotting with strict region/trace separation...');
         
         // Reset
         this.primitives = [];
         this.bounds = null;
-        this.regionData = [];
         this.creationStats = {
             regionsFromRegionObjects: 0,
             drawsFromDrawObjects: 0,
             flashesFromFlashObjects: 0,
-            skippedDrawsInRegions: 0,
-            duplicatePerimetersRemoved: 0
+            connectedPathsProcessed: 0,
+            branchingNetworksProcessed: 0,
+            branchSegmentsCreated: 0,
+            primitivesCreated: 0
         };
         
         // Store apertures for reference
@@ -53,83 +52,44 @@ class GerberPlotter {
             this.apertures.set(aperture.code, aperture);
         });
         
-        // DEBUG: Log gerber data structure
         this.debug(`Input gerber data: ${gerberData.layers.objects.length} objects, ${gerberData.layers.apertures.length} apertures`);
         
-        // Count objects by type for debugging
-        const objectTypes = {};
-        gerberData.layers.objects.forEach(obj => {
-            objectTypes[obj.type] = (objectTypes[obj.type] || 0) + 1;
-        });
-        this.debug('Object types from parser:', objectTypes);
-        
-        // First pass: collect all regions with detailed data
-        gerberData.layers.objects.forEach((obj, index) => {
-            if (obj.type === 'region') {
-                const regionInfo = this.extractRegionInfo(obj, index);
-                if (regionInfo) {
-                    this.regionData.push(regionInfo);
-                }
-            }
-        });
-        
-        this.debug(`Found ${this.regionData.length} regions for perimeter analysis`);
-        
-        // Process each object
+        // Process objects
         gerberData.layers.objects.forEach((obj, index) => {
             try {
-                this.debug(`Processing object ${index + 1}/${gerberData.layers.objects.length}: ${obj.type}`);
-                
-                // VALIDATION: Check coordinate validity before plotting
                 if (!this.validateObjectCoordinates(obj)) {
-                    console.warn(`[GerberPlotter-FIXED] Invalid coordinates in object ${index}:`, obj);
+                    console.warn(`Invalid coordinates in object ${index}:`, obj);
                     return;
                 }
                 
-                // FIXED: Enhanced perimeter detection
-                if (obj.type === 'draw' && this.regionData.length > 0) {
-                    if (this.isDrawPartOfRegionPerimeter(obj)) {
-                        this.creationStats.skippedDrawsInRegions++;
-                        this.debug(`FIXED: Skipping draw ${index} - matches region perimeter`);
-                        return;
-                    }
-                }
-                
-                const primitive = this.plotObject(obj);
-                if (primitive) {
-                    // VALIDATION: Check primitive coordinates after creation
-                    const bounds = primitive.getBounds();
-                    if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
-                        !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
-                        console.warn(`[GerberPlotter-FIXED] Primitive ${index} has invalid bounds:`, bounds);
-                        return;
-                    }
+                const primitives = this.plotObject(obj);
+                if (primitives) {
+                    const primArray = Array.isArray(primitives) ? primitives : [primitives];
                     
-                    this.primitives.push(primitive);
-                    this.debug(`FIXED: Created ${primitive.type} primitive`);
-                } else {
-                    this.debug(`No primitive created for object ${index}`);
+                    primArray.forEach(primitive => {
+                        const bounds = primitive.getBounds();
+                        if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
+                            !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
+                            console.warn(`Primitive has invalid bounds:`, bounds);
+                            return;
+                        }
+                        
+                        this.primitives.push(primitive);
+                        this.creationStats.primitivesCreated++;
+                    });
                 }
             } catch (error) {
                 console.error(`Error plotting object ${index}:`, error);
             }
         });
         
-        // FIXED: Post-process to remove any remaining duplicate perimeters
-        this.deduplicateRegionPerimeters();
-        
         // Calculate overall bounds
         this.calculateBounds();
         
-        // Report statistics
-        this.debug('FIXED: Plotting Statistics:');
-        this.debug(`  Regions created: ${this.creationStats.regionsFromRegionObjects}`);
-        this.debug(`  Draws created: ${this.creationStats.drawsFromDrawObjects}`);
-        this.debug(`  Flashes created: ${this.creationStats.flashesFromFlashObjects}`);
-        this.debug(`  Draws skipped (region perimeters): ${this.creationStats.skippedDrawsInRegions}`);
-        this.debug(`  Duplicate perimeters removed: ${this.creationStats.duplicatePerimetersRemoved}`);
-        
-        this.debug(`FIXED: Plotting complete: ${this.primitives.length} primitives created`);
+        this.debug('Plotting Statistics:');
+        this.debug(`  Regions: ${this.creationStats.regionsFromRegionObjects}`);
+        this.debug(`  Draws: ${this.creationStats.drawsFromDrawObjects}`);
+        this.debug(`  Total primitives: ${this.creationStats.primitivesCreated}`);
         
         return {
             success: true,
@@ -140,216 +100,30 @@ class GerberPlotter {
         };
     }
     
-    // FIXED: Extract detailed region information for perimeter matching
-    extractRegionInfo(region, index) {
-        if (!region.points || region.points.length < 3) return null;
-        
-        const segments = [];
-        for (let i = 0; i < region.points.length - 1; i++) {
-            segments.push({
-                start: { ...region.points[i] },
-                end: { ...region.points[i + 1] }
-            });
-        }
-        
-        // Add closing segment if not already closed
-        const first = region.points[0];
-        const last = region.points[region.points.length - 1];
-        if (Math.abs(first.x - last.x) > 0.001 || Math.abs(first.y - last.y) > 0.001) {
-            segments.push({
-                start: { ...last },
-                end: { ...first }
-            });
-        }
-        
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        
-        region.points.forEach(point => {
-            minX = Math.min(minX, point.x);
-            minY = Math.min(minY, point.y);
-            maxX = Math.max(maxX, point.x);
-            maxY = Math.max(maxY, point.y);
-        });
-        
-        return {
-            index: index,
-            bounds: { minX, minY, maxX, maxY },
-            segments: segments,
-            points: region.points.map(p => ({...p})), // FIXED: Include points for vertex checking
-            pointCount: region.points.length
-        };
-    }
-    
-    // FIXED: More aggressive check if a draw is part of any region perimeter
-    isDrawPartOfRegionPerimeter(draw) {
-        const tolerance = 0.05; // 50 micron tolerance - more aggressive
-        
-        for (const regionInfo of this.regionData) {
-            // Quick bounds check first
-            const drawMinX = Math.min(draw.start.x, draw.end.x);
-            const drawMaxX = Math.max(draw.start.x, draw.end.x);
-            const drawMinY = Math.min(draw.start.y, draw.end.y);
-            const drawMaxY = Math.max(draw.start.y, draw.end.y);
-            
-            // If draw is completely outside region bounds (with tolerance), skip
-            if (drawMaxX < regionInfo.bounds.minX - tolerance ||
-                drawMinX > regionInfo.bounds.maxX + tolerance ||
-                drawMaxY < regionInfo.bounds.minY - tolerance ||
-                drawMinY > regionInfo.bounds.maxY + tolerance) {
-                continue;
-            }
-            
-            // Check if draw matches any segment of this region
-            for (const segment of regionInfo.segments) {
-                // Check exact match
-                if (this.segmentsMatch(draw.start, draw.end, segment.start, segment.end, tolerance)) {
-                    this.debug(`Draw matches region ${regionInfo.index} segment exactly`);
-                    return true;
-                }
-                
-                // Check if draw is a subsegment of a region edge (partial perimeter)
-                if (this.isDrawOnSegment(draw.start, draw.end, segment.start, segment.end, tolerance)) {
-                    this.debug(`Draw is on region ${regionInfo.index} segment`);
-                    return true;
-                }
-                
-                // FIXED: Also check if draw endpoints are very close to region vertices
-                for (const point of regionInfo.points || []) {
-                    const distStart = Math.sqrt(
-                        Math.pow(draw.start.x - point.x, 2) + 
-                        Math.pow(draw.start.y - point.y, 2)
-                    );
-                    const distEnd = Math.sqrt(
-                        Math.pow(draw.end.x - point.x, 2) + 
-                        Math.pow(draw.end.y - point.y, 2)
-                    );
-                    
-                    // If both endpoints are near region vertices, likely a perimeter
-                    if (distStart < tolerance && distEnd < tolerance * 10) {
-                        this.debug(`Draw endpoints near region vertices`);
-                        return true;
-                    }
-                }
-            }
-        }
-        
-        return false;
-    }
-    
-    // Check if two segments match (considering both directions)
-    segmentsMatch(p1Start, p1End, p2Start, p2End, tolerance) {
-        // Forward direction
-        const forwardMatch = 
-            Math.abs(p1Start.x - p2Start.x) < tolerance &&
-            Math.abs(p1Start.y - p2Start.y) < tolerance &&
-            Math.abs(p1End.x - p2End.x) < tolerance &&
-            Math.abs(p1End.y - p2End.y) < tolerance;
-            
-        // Reverse direction
-        const reverseMatch = 
-            Math.abs(p1Start.x - p2End.x) < tolerance &&
-            Math.abs(p1Start.y - p2End.y) < tolerance &&
-            Math.abs(p1End.x - p2Start.x) < tolerance &&
-            Math.abs(p1End.y - p2Start.y) < tolerance;
-            
-        return forwardMatch || reverseMatch;
-    }
-    
-    // Check if a draw lies on a segment (for partial perimeter detection)
-    isDrawOnSegment(drawStart, drawEnd, segStart, segEnd, tolerance) {
-        // Check if both draw points are on the line defined by the segment
-        const crossProduct = (p1, p2, p3) => {
-            return (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
-        };
-        
-        // Check if drawStart is on the line
-        const cp1 = Math.abs(crossProduct(segStart, segEnd, drawStart));
-        if (cp1 > tolerance) return false;
-        
-        // Check if drawEnd is on the line
-        const cp2 = Math.abs(crossProduct(segStart, segEnd, drawEnd));
-        if (cp2 > tolerance) return false;
-        
-        // Check if draw points are within segment bounds
-        const minX = Math.min(segStart.x, segEnd.x) - tolerance;
-        const maxX = Math.max(segStart.x, segEnd.x) + tolerance;
-        const minY = Math.min(segStart.y, segEnd.y) - tolerance;
-        const maxY = Math.max(segStart.y, segEnd.y) + tolerance;
-        
-        return drawStart.x >= minX && drawStart.x <= maxX &&
-               drawStart.y >= minY && drawStart.y <= maxY &&
-               drawEnd.x >= minX && drawEnd.x <= maxX &&
-               drawEnd.y >= minY && drawEnd.y <= maxY;
-    }
-    
-    // FIXED: Post-processing to remove any duplicate perimeters that slipped through
-    deduplicateRegionPerimeters() {
-        const regions = this.primitives.filter(p => p.properties?.isRegion);
-        const strokes = this.primitives.filter(p => p.properties?.isStroke);
-        
-        if (regions.length === 0 || strokes.length === 0) {
-            return; // Nothing to deduplicate
-        }
-        
-        const indicesToRemove = new Set();
-        
-        regions.forEach(region => {
-            if (region.type !== 'path' || !region.points) return;
-            
-            // Create segments from region
-            const regionSegments = [];
-            for (let i = 0; i < region.points.length - 1; i++) {
-                regionSegments.push({
-                    start: region.points[i],
-                    end: region.points[i + 1]
-                });
-            }
-            
-            strokes.forEach((stroke, strokeIndex) => {
-                if (stroke.type === 'path' && stroke.points && stroke.points.length >= 2) {
-                    // Check if stroke path matches any part of region perimeter
-                    for (let i = 0; i < stroke.points.length - 1; i++) {
-                        const strokeSeg = {
-                            start: stroke.points[i],
-                            end: stroke.points[i + 1]
-                        };
-                        
-                        for (const regionSeg of regionSegments) {
-                            if (this.segmentsMatch(strokeSeg.start, strokeSeg.end, 
-                                                  regionSeg.start, regionSeg.end, 0.01)) {
-                                indicesToRemove.add(strokeIndex);
-                                break;
-                            }
-                        }
-                    }
-                }
-            });
-        });
-        
-        if (indicesToRemove.size > 0) {
-            // Filter out duplicate strokes
-            const originalCount = this.primitives.length;
-            this.primitives = this.primitives.filter((p, i) => {
-                if (indicesToRemove.has(i)) {
-                    this.creationStats.duplicatePerimetersRemoved++;
-                    return false;
-                }
-                return true;
-            });
-            
-            this.debug(`FIXED: Removed ${indicesToRemove.size} duplicate perimeter strokes in post-processing`);
-        }
-    }
-    
-    // Validate object coordinates for consistency
     validateObjectCoordinates(obj) {
-        switch (obj.type) {
+        const type = obj.subtype || obj.type;
+        
+        switch (type) {
             case 'region':
                 if (!obj.points || !Array.isArray(obj.points)) return false;
                 return obj.points.every(point => 
                     point && typeof point.x === 'number' && typeof point.y === 'number' &&
                     isFinite(point.x) && isFinite(point.y)
+                );
+                
+            case 'connected_path':
+                if (!obj.points || !Array.isArray(obj.points)) return false;
+                return obj.points.every(point => 
+                    point && typeof point.x === 'number' && typeof point.y === 'number' &&
+                    isFinite(point.x) && isFinite(point.y)
+                );
+                
+            case 'branching_network':
+                if (!obj.segments || !Array.isArray(obj.segments)) return false;
+                return obj.segments.every(segment => 
+                    segment.start && segment.end &&
+                    isFinite(segment.start.x) && isFinite(segment.start.y) &&
+                    isFinite(segment.end.x) && isFinite(segment.end.y)
                 );
                 
             case 'draw':
@@ -365,60 +139,183 @@ class GerberPlotter {
                        isFinite(obj.position.x) && isFinite(obj.position.y);
                 
             default:
-                return true; // Unknown types pass validation
+                return true;
         }
     }
     
     plotObject(obj) {
-        switch (obj.type) {
+        const type = obj.subtype || obj.type;
+        
+        switch (type) {
             case 'region':
                 this.creationStats.regionsFromRegionObjects++;
                 return this.plotRegion(obj);
+                
+            case 'connected_path':
+                this.creationStats.connectedPathsProcessed++;
+                return this.plotConnectedPath(obj);
+                
+            case 'branching_network':
+                this.creationStats.branchingNetworksProcessed++;
+                return this.plotBranchingNetwork(obj);
+                
             case 'draw':
                 this.creationStats.drawsFromDrawObjects++;
                 return this.plotDraw(obj);
+                
             case 'flash':
                 this.creationStats.flashesFromFlashObjects++;
                 return this.plotFlash(obj);
+                
             default:
-                this.debug(`Unknown object type: ${obj.type}`);
+                this.debug(`Unknown object type: ${type}`);
                 return null;
         }
     }
     
+    /**
+     * CRITICAL FIX: Plot region with ABSOLUTELY NO STROKE
+     */
     plotRegion(region) {
-        this.debug(`FIXED: Plotting region with ${region.points.length} points`);
+        this.debug(`Plotting region with ${region.points.length} points (FILL ONLY - NO STROKE EVER)`);
         
-        // Validate region
         if (!region.points || region.points.length < 3) {
-            console.warn('[GerberPlotter-FIXED] Region has too few points:', region);
+            console.warn('Region has too few points:', region);
             return null;
         }
         
-        // FIXED: Regions are ONLY filled polygons with NO stroke
+        // CRITICAL: Regions are ALWAYS and ONLY fill, NEVER stroke
         const properties = {
-            fill: true,
-            stroke: false,  // CRITICAL: No stroke for regions
-            polarity: region.polarity,
-            function: region.function,
-            fillRule: 'nonzero',
+            // Region identification
             isRegion: true,
-            isStroke: false,
-            noPerimeterStroke: true
+            regionType: 'filled_area',
+            
+            // CRITICAL: Fill properties
+            fill: true,
+            fillRule: 'nonzero', // Use nonzero for proper hole handling
+            
+            // CRITICAL: NO STROKE EVER
+            stroke: false,
+            strokeWidth: 0,
+            noStroke: true, // Extra flag to ensure no stroke
+            
+            // Other properties
+            polarity: region.polarity || 'dark',
+            function: region.function,
+            closed: true
         };
         
-        // Check if this is a non-conductor region
-        if (region.function === 'NonConductor' || region.function === 'Keepout') {
-            properties.isNonConductor = true;
-            this.debug('Region marked as non-conductor');
+        // Check if this might be text with holes
+        if (region.function === 'Legend' || this.mightBeTextWithHoles(region)) {
+            properties.fillRule = 'evenodd'; // Use evenodd for text with holes
+            properties.mightHaveHoles = true;
+            this.debug('Region might be text with holes, using evenodd fill rule');
         }
         
-        // Create primitive with original coordinates
         const primitive = new PathPrimitive(region.points, properties);
         
-        this.debug(`FIXED: Successfully created region primitive (fill-only, no stroke)`);
+        this.debug(`Created region primitive (fill-only, no stroke)`);
         
         return primitive;
+    }
+    
+    /**
+     * Check if a region might be text with holes (like B or a)
+     */
+    mightBeTextWithHoles(region) {
+        // Small regions near other small regions might be text
+        const bounds = this.calculatePointsBounds(region.points);
+        const area = (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY);
+        
+        // Text regions are typically small
+        return area < 10; // Less than 10mm²
+    }
+    
+    /**
+     * Plot branching network as multiple trace primitives
+     */
+    plotBranchingNetwork(network) {
+        const aperture = this.apertures.get(network.aperture);
+        if (!aperture) {
+            this.debug(`Missing aperture: ${network.aperture}`);
+            return null;
+        }
+        
+        this.debug(`Plotting branching network with ${network.segments.length} segments`);
+        
+        const apertureSize = aperture.parameters[0];
+        const primitives = [];
+        
+        // Create a trace for each segment
+        network.segments.forEach((segment, index) => {
+            this.creationStats.branchSegmentsCreated++;
+            
+            const properties = {
+                // Trace identification
+                isTrace: true,
+                isBranchSegment: true,
+                
+                // TRACES: No fill, only stroke
+                fill: false,
+                stroke: true,
+                strokeWidth: apertureSize,
+                
+                // Other properties
+                polarity: network.polarity,
+                function: network.function,
+                aperture: network.aperture,
+                branchIndex: index,
+                interpolation: segment.interpolation || 'G01',
+                closed: false
+            };
+            
+            const pathPrimitive = new PathPrimitive(
+                [segment.start, segment.end], 
+                properties
+            );
+            
+            primitives.push(pathPrimitive);
+        });
+        
+        this.debug(`Created ${primitives.length} trace primitives for branching network`);
+        return primitives;
+    }
+    
+    /**
+     * Plot connected path as trace
+     */
+    plotConnectedPath(path) {
+        const aperture = this.apertures.get(path.aperture);
+        if (!aperture) {
+            this.debug(`Missing aperture: ${path.aperture}`);
+            return null;
+        }
+        
+        this.debug(`Plotting connected path with ${path.points.length} points`);
+        
+        const apertureSize = aperture.parameters[0];
+        
+        // TRACES: Always stroke, never fill
+        const properties = {
+            // Trace identification
+            isTrace: true,
+            isConnectedPath: true,
+            
+            // TRACES: No fill, only stroke
+            fill: false,
+            stroke: true,
+            strokeWidth: apertureSize,
+            
+            // Other properties
+            polarity: path.polarity,
+            function: path.function,
+            aperture: path.aperture,
+            isBranching: false,
+            segmentCount: path.segmentCount || (path.points.length - 1),
+            closed: false
+        };
+        
+        return new PathPrimitive(path.points, properties);
     }
     
     plotDraw(draw) {
@@ -428,58 +325,47 @@ class GerberPlotter {
             return null;
         }
         
-        this.debug(`FIXED: Plotting draw from (${draw.start.x.toFixed(3)}, ${draw.start.y.toFixed(3)}) to (${draw.end.x.toFixed(3)}, ${draw.end.y.toFixed(3)})`);
+        this.debug(`Plotting draw from (${draw.start.x.toFixed(3)}, ${draw.start.y.toFixed(3)}) to (${draw.end.x.toFixed(3)}, ${draw.end.y.toFixed(3)})`);
         
-        // Determine if this is text or a regular trace
         const apertureSize = aperture.parameters[0];
-        const isText = draw.function === 'Legend' || 
-                      draw.function === 'NonConductor' ||
-                      draw.geometryClass === 'text' ||
-                      draw.geometryClass === 'legend' ||
-                      apertureSize < 0.15; // Very thin traces are likely text
         
+        // DRAWS/TRACES: Always stroke, never fill
         const properties = {
-            fill: true, // Always fill stroke primitives
-            stroke: false, // Don't add additional stroke
+            // Trace identification
+            isTrace: true,
+            isDraw: true,
+            
+            // TRACES: No fill, only stroke
+            fill: false,
+            stroke: true,
+            strokeWidth: apertureSize,
+            
+            // Other properties
             polarity: draw.polarity,
             function: draw.function || aperture.function,
             aperture: draw.aperture,
-            isStroke: true,
-            originalWidth: apertureSize,
-            isText: isText
+            interpolation: draw.interpolation,
+            closed: false
         };
         
         if (draw.interpolation === 'G01') {
-            // Linear interpolation
-            return PrimitiveFactory.createStroke(
-                draw.start,
-                draw.end,
-                apertureSize,
-                properties
-            );
+            // Simple line
+            return new PathPrimitive([draw.start, draw.end], properties);
         } else if (draw.interpolation === 'G02' || draw.interpolation === 'G03') {
-            // Arc interpolation
+            // Arc - create arc path points
             if (!draw.center) {
                 // Fallback to line if no center
-                return PrimitiveFactory.createStroke(
-                    draw.start,
-                    draw.end,
-                    apertureSize,
-                    properties
-                );
+                return new PathPrimitive([draw.start, draw.end], properties);
             }
             
-            this.debug(`FIXED: Plotting arc with center (${draw.center.x.toFixed(3)}, ${draw.center.y.toFixed(3)})`);
-            
-            // Create proper stroked arc
-            return this.createStrokedArc(
+            const arcPoints = this.createArcPoints(
                 draw.start,
                 draw.end,
                 draw.center,
-                draw.interpolation === 'G02', // G02 is clockwise
-                apertureSize,
-                properties
+                draw.interpolation === 'G02'
             );
+            
+            return new PathPrimitive(arcPoints, properties);
         }
         
         return null;
@@ -492,21 +378,28 @@ class GerberPlotter {
             return null;
         }
         
-        this.debug(`FIXED: Plotting flash at (${flash.position.x.toFixed(3)}, ${flash.position.y.toFixed(3)})`);
+        this.debug(`Plotting flash at (${flash.position.x.toFixed(3)}, ${flash.position.y.toFixed(3)})`);
         
+        // FLASHES/PADS: Always fill, no stroke
         const properties = {
+            // Flash identification
+            isFlash: true,
+            isPad: true,
+            
+            // FLASHES: Fill only, no stroke
             fill: true,
-            stroke: false, // FIXED: No stroke for flashes
+            stroke: false,
+            strokeWidth: 0,
+            
+            // Other properties
             polarity: flash.polarity,
             function: flash.function || aperture.function,
-            aperture: flash.aperture,
-            isFlash: true
+            aperture: flash.aperture
         };
         
         switch (aperture.type) {
             case 'circle':
                 const radius = aperture.parameters[0] / 2;
-                this.debug(`FIXED: Creating circle flash with radius ${radius.toFixed(3)}`);
                 return new CirclePrimitive(
                     flash.position,
                     radius,
@@ -516,7 +409,6 @@ class GerberPlotter {
             case 'rectangle':
                 const width = aperture.parameters[0];
                 const height = aperture.parameters[1] || width;
-                this.debug(`FIXED: Creating rectangle flash ${width.toFixed(3)} × ${height.toFixed(3)}`);
                 return new RectanglePrimitive(
                     {
                         x: flash.position.x - width / 2,
@@ -530,7 +422,6 @@ class GerberPlotter {
             case 'obround':
                 const oWidth = aperture.parameters[0];
                 const oHeight = aperture.parameters[1] || oWidth;
-                this.debug(`FIXED: Creating obround flash ${oWidth.toFixed(3)} × ${oHeight.toFixed(3)}`);
                 return new ObroundPrimitive(
                     {
                         x: flash.position.x - oWidth / 2,
@@ -544,8 +435,7 @@ class GerberPlotter {
             case 'polygon':
                 const sides = aperture.parameters[1] || 3;
                 const rotation = aperture.parameters[2] || 0;
-                this.debug(`FIXED: Creating polygon flash with ${sides} sides`);
-                return PrimitiveFactory.createPolygonAperture(
+                return this.createPolygonFlash(
                     flash.position,
                     aperture.parameters[0],
                     sides,
@@ -559,100 +449,72 @@ class GerberPlotter {
         }
     }
     
-    // Create stroked arc
-    createStrokedArc(start, end, center, clockwise, strokeWidth, properties) {
-        this.debug(`FIXED: Creating stroked arc`);
+    createPolygonFlash(center, diameter, sides, rotation, properties) {
+        const points = [];
+        const radius = diameter / 2;
         
+        for (let i = 0; i <= sides; i++) {
+            const angle = (i / sides) * 2 * Math.PI + rotation;
+            points.push({
+                x: center.x + radius * Math.cos(angle),
+                y: center.y + radius * Math.sin(angle)
+            });
+        }
+        
+        return new PathPrimitive(points, {
+            ...properties,
+            closed: true,
+            isPolygon: true
+        });
+    }
+    
+    createArcPoints(start, end, center, clockwise) {
         const radius = Math.sqrt(
             Math.pow(start.x - center.x, 2) +
             Math.pow(start.y - center.y, 2)
         );
         
-        const halfWidth = strokeWidth / 2;
-        const innerRadius = Math.max(0, radius - halfWidth);
-        const outerRadius = radius + halfWidth;
-        
-        // Calculate angles
         const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
         const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
         
-        // Generate points for stroked arc
-        const points = [];
-        const segments = Math.max(8, Math.floor(Math.abs(this.calculateAngleSpan(startAngle, endAngle, clockwise)) * 16 / Math.PI));
-        
-        // Calculate angle step
-        let totalAngle = endAngle - startAngle;
+        // Calculate angle span
+        let angleSpan = endAngle - startAngle;
         if (clockwise) {
-            if (totalAngle > 0) totalAngle -= 2 * Math.PI;
+            if (angleSpan > 0) angleSpan -= 2 * Math.PI;
         } else {
-            if (totalAngle < 0) totalAngle += 2 * Math.PI;
+            if (angleSpan < 0) angleSpan += 2 * Math.PI;
         }
-        const angleStep = totalAngle / segments;
         
-        // Outer arc
+        // Generate arc points
+        const segments = Math.max(8, Math.floor(Math.abs(angleSpan) * 16 / Math.PI));
+        const angleStep = angleSpan / segments;
+        const points = [];
+        
         for (let i = 0; i <= segments; i++) {
             const angle = startAngle + angleStep * i;
             points.push({
-                x: center.x + outerRadius * Math.cos(angle),
-                y: center.y + outerRadius * Math.sin(angle)
+                x: center.x + radius * Math.cos(angle),
+                y: center.y + radius * Math.sin(angle)
             });
         }
         
-        // End cap
-        if (innerRadius > 0) {
-            const endCapSegments = Math.max(4, Math.floor(halfWidth * 2));
-            for (let i = 0; i <= endCapSegments; i++) {
-                const t = i / endCapSegments;
-                const capAngle = endAngle + (clockwise ? -Math.PI : Math.PI) * t;
-                const r = outerRadius - (outerRadius - innerRadius) * t;
-                points.push({
-                    x: center.x + r * Math.cos(capAngle),
-                    y: center.y + r * Math.sin(capAngle)
-                });
-            }
-            
-            // Inner arc (reverse direction)
-            for (let i = segments; i >= 0; i--) {
-                const angle = startAngle + angleStep * i;
-                points.push({
-                    x: center.x + innerRadius * Math.cos(angle),
-                    y: center.y + innerRadius * Math.sin(angle)
-                });
-            }
-            
-            // Start cap
-            const startCapSegments = Math.max(4, Math.floor(halfWidth * 2));
-            for (let i = 0; i <= startCapSegments; i++) {
-                const t = i / startCapSegments;
-                const capAngle = startAngle + (clockwise ? Math.PI : -Math.PI) * t;
-                const r = innerRadius + (outerRadius - innerRadius) * t;
-                points.push({
-                    x: center.x + r * Math.cos(capAngle),
-                    y: center.y + r * Math.sin(capAngle)
-                });
-            }
-        } else {
-            // For very thin strokes, just close at center
-            points.push({ x: center.x, y: center.y });
-        }
-        
-        // FIXED: Ensure arc is filled, not stroked
-        return new PathPrimitive(points, { 
-            ...properties, 
-            closed: true,
-            fill: true,
-            stroke: false 
-        });
+        return points;
     }
     
-    calculateAngleSpan(startAngle, endAngle, clockwise) {
-        let span = endAngle - startAngle;
-        if (clockwise) {
-            if (span > 0) span -= 2 * Math.PI;
-        } else {
-            if (span < 0) span += 2 * Math.PI;
-        }
-        return span;
+    calculatePointsBounds(points) {
+        if (points.length === 0) return null;
+        
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+        
+        points.forEach(point => {
+            minX = Math.min(minX, point.x);
+            minY = Math.min(minY, point.y);
+            maxX = Math.max(maxX, point.x);
+            maxY = Math.max(maxY, point.y);
+        });
+        
+        return { minX, minY, maxX, maxY };
     }
     
     calculateBounds() {
@@ -667,10 +529,9 @@ class GerberPlotter {
         this.primitives.forEach((primitive, index) => {
             const bounds = primitive.getBounds();
             
-            // VALIDATION: Check for invalid bounds
             if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
                 !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
-                console.warn(`[GerberPlotter-FIXED] Primitive ${index} has invalid bounds:`, bounds);
+                console.warn(`Primitive ${index} has invalid bounds:`, bounds);
                 return;
             }
             
@@ -681,9 +542,12 @@ class GerberPlotter {
         });
         
         this.bounds = { minX, minY, maxX, maxY };
-        this.debug('FIXED: Calculated plotter bounds:', this.bounds);
+        this.debug('Calculated plotter bounds:', this.bounds);
     }
     
+    /**
+     * Plot drill data - drill holes are always fill-only
+     */
     plotDrillData(drillData) {
         if (!drillData || !drillData.drillData) {
             return {
@@ -693,43 +557,43 @@ class GerberPlotter {
             };
         }
         
-        this.debug('FIXED: Plotting drill data...');
+        this.debug('Plotting drill data...');
         
         const drillPrimitives = [];
         
         drillData.drillData.holes.forEach((hole, index) => {
-            // VALIDATION: Check hole data
             if (!hole.position || typeof hole.position.x !== 'number' || typeof hole.position.y !== 'number' ||
                 !isFinite(hole.position.x) || !isFinite(hole.position.y)) {
-                console.warn(`[GerberPlotter-FIXED] Invalid drill hole ${index}:`, hole);
+                console.warn(`Invalid drill hole ${index}:`, hole);
                 return;
             }
             
-            this.debug(`FIXED: Plotting drill hole ${index + 1} at (${hole.position.x.toFixed(3)}, ${hole.position.y.toFixed(3)})`);
-            
-            // Drill holes should be filled circles
+            // DRILL HOLES: Always fill, no stroke
             const primitive = new CirclePrimitive(
                 hole.position,
                 hole.diameter / 2,
                 {
+                    // Drill identification
+                    isDrillHole: true,
+                    
+                    // DRILLS: Fill only, no stroke
                     fill: true,
-                    stroke: true, // Keep stroke for drill visualization
-                    strokeWidth: 0.05, // Very thin outline
+                    stroke: false,
+                    strokeWidth: 0,
+                    
+                    // Other properties
                     type: 'drill',
                     tool: hole.tool,
                     plated: hole.plated,
-                    isDrillHole: true,
-                    diameter: hole.diameter,
-                    renderOnTop: true
+                    diameter: hole.diameter
                 }
             );
             
             drillPrimitives.push(primitive);
         });
         
-        this.debug(`FIXED: Plotted ${drillPrimitives.length} drill holes`);
+        this.debug(`Plotted ${drillPrimitives.length} drill holes`);
         
-        // Calculate bounds for drill data
         let bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
         if (drillPrimitives.length > 0) {
             let minX = Infinity, minY = Infinity;
@@ -746,8 +610,6 @@ class GerberPlotter {
             bounds = { minX, minY, maxX, maxY };
         }
         
-        this.debug('FIXED: Drill bounds:', bounds);
-        
         return {
             success: true,
             primitives: drillPrimitives,
@@ -760,9 +622,9 @@ class GerberPlotter {
     debug(message, data = null) {
         if (this.options.debug) {
             if (data) {
-                console.log(`[GerberPlotter-FIXED] ${message}`, data);
+                console.log(`[GerberPlotter] ${message}`, data);
             } else {
-                console.log(`[GerberPlotter-FIXED] ${message}`);
+                console.log(`[GerberPlotter] ${message}`);
             }
         }
     }

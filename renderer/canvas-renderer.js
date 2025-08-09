@@ -1,4 +1,4 @@
-// renderer/canvas-renderer.js - Canvas rendering engine - FIXED: Fusion and cutout rendering
+// renderer/canvas-renderer.js - Canvas rendering engine with FIXED SVG export
 // Handles pure rendering operations without interaction logic
 
 class CanvasRenderer {
@@ -81,19 +81,29 @@ class CanvasRenderer {
             primitives: 0,
             renderTime: 0,
             skippedPrimitives: 0,
-            renderedPrimitives: 0
+            renderedPrimitives: 0,
+            lastSignificantChange: null
         };
         
         this.resizeCanvas();
     }
     
     setOptions(options) {
+        const oldOptions = { ...this.options };
         Object.assign(this.options, options);
+        
+        // Log only if options actually changed
+        const changed = Object.keys(options).some(key => oldOptions[key] !== options[key]);
+        if (changed) {
+            console.log('Renderer options updated:', options);
+            this.renderStats.lastSignificantChange = 'options';
+        }
+        
         this.render();
     }
     
     addLayer(name, primitives, options = {}) {
-        console.log(`FIXED: Adding layer "${name}" with ${primitives.length} primitives`);
+        console.log(`Adding layer "${name}" with ${primitives.length} primitives`);
         
         this.layers.set(name, {
             name: name,
@@ -106,11 +116,16 @@ class CanvasRenderer {
         });
         
         this.calculateOverallBounds();
+        this.renderStats.lastSignificantChange = 'layer-added';
         this.render();
     }
     
     clearLayers() {
-        console.log(`FIXED: Clearing ${this.layers.size} layers`);
+        const layerCount = this.layers.size;
+        if (layerCount > 0) {
+            console.log(`Clearing ${layerCount} layers`);
+            this.renderStats.lastSignificantChange = 'layers-cleared';
+        }
         this.layers.clear();
         this.bounds = null;
         this.render();
@@ -163,6 +178,8 @@ class CanvasRenderer {
         }
     }
     
+    // [... keeping all the render, renderLayer, renderPrimitive methods unchanged ...]
+    
     render() {
         const startTime = performance.now();
         this.renderStats.primitives = 0;
@@ -188,11 +205,15 @@ class CanvasRenderer {
             this.ctx.translate(-this.rotationCenter.x, -this.rotationCenter.y);
         }
         
+        // Set line cap and join for better trace rendering
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        
         // Render background elements
         if (this.options.showGrid) this.renderGrid();
         if (this.options.showBounds && this.bounds) this.renderBounds();
         
-        // FIXED: Special handling for fused layers
+        // Separate fused and regular layers
         const fusedLayers = [];
         const regularLayers = [];
         
@@ -204,15 +225,14 @@ class CanvasRenderer {
             }
         });
         
-        if (fusedLayers.length > 0) {
-            // Render fused layers
-            console.log(`FIXED: Rendering ${fusedLayers.length} fused layer(s)`);
-            fusedLayers.forEach(layer => {
-                if (layer.visible) {
-                    this.renderLayerDirect(layer);
-                }
-            });
+        if (fusedLayers.length > 0 && this.renderStats.lastSignificantChange) {
+            console.log(`Rendering ${fusedLayers.length} fused layer(s)`);
         }
+        fusedLayers.forEach(layer => {
+            if (layer.visible) {
+                this.renderLayerDirect(layer);
+            }
+        });
         
         if (regularLayers.length > 0) {
             // Render regular layers in proper order
@@ -243,17 +263,589 @@ class CanvasRenderer {
         const endTime = performance.now();
         this.renderStats.renderTime = endTime - startTime;
         
-        console.log(`FIXED: Rendered ${this.renderStats.renderedPrimitives} primitives, skipped ${this.renderStats.skippedPrimitives}`);
+        // Only log on significant changes, not on every pan/zoom
+        if (this.renderStats.lastSignificantChange) {
+            console.log(`Rendered ${this.renderStats.renderedPrimitives} primitives (${this.renderStats.lastSignificantChange})`);
+            this.renderStats.lastSignificantChange = null;
+        }
     }
     
-    // FIXED: Direct rendering for fused layers without filtering
+    // [... keeping all other rendering methods unchanged until exportSVG ...]
+    
+    // FIXED: Optimized SVG Export with path combining
+    exportSVG(options = {}) {
+        console.log('Starting optimized SVG export...');
+        
+        if (!this.bounds || this.layers.size === 0) {
+            console.warn('No content to export');
+            return null;
+        }
+        
+        const padding = options.padding || 5;
+        const precision = options.precision || 2; // Reduced precision for smaller files
+        
+        // Calculate SVG dimensions - flip Y axis for SVG coordinate system
+        const svgWidth = this.bounds.width + (padding * 2);
+        const svgHeight = this.bounds.height + (padding * 2);
+        const viewBoxMinX = this.bounds.minX - padding;
+        const viewBoxMinY = -(this.bounds.maxY + padding); // Flip Y
+        
+        // Build SVG content
+        const svgParts = [];
+        
+        // Simplified SVG header without DOCTYPE for better compatibility
+        svgParts.push('<?xml version="1.0" encoding="UTF-8"?>');
+        svgParts.push('<svg');
+        svgParts.push('  xmlns="http://www.w3.org/2000/svg"');
+        svgParts.push('  version="1.1"');
+        svgParts.push(`  width="${svgWidth.toFixed(precision)}mm"`);
+        svgParts.push(`  height="${svgHeight.toFixed(precision)}mm"`);
+        svgParts.push(`  viewBox="${viewBoxMinX.toFixed(precision)} ${viewBoxMinY.toFixed(precision)} ${svgWidth.toFixed(precision)} ${svgHeight.toFixed(precision)}"`);
+        svgParts.push('  style="background-color: white">');
+        
+        // Add metadata
+        svgParts.push('  <title>PCB Layout</title>');
+        svgParts.push(`  <desc>PCB CAM Export ${new Date().toLocaleDateString()}</desc>`);
+        
+        // Define styles
+        svgParts.push('  <defs>');
+        svgParts.push('    <style type="text/css">');
+        svgParts.push('      .isolation { fill: #ff8844; stroke: none; }');
+        svgParts.push('      .clear { fill: #44ff88; stroke: none; }');
+        svgParts.push('      .drill { fill: none; stroke: #4488ff; stroke-width: 0.2; }');
+        svgParts.push('      .cutout { fill: none; stroke: #ff00ff; stroke-width: 0.1; }');
+        svgParts.push('      .trace { fill: none; stroke: #ff8844; stroke-linecap: round; stroke-linejoin: round; }');
+        svgParts.push('      .region { fill: #ff8844; stroke: none; }');
+        svgParts.push('      .pad { fill: #ff8844; stroke: none; }');
+        svgParts.push('    </style>');
+        svgParts.push('  </defs>');
+        
+        // Create main group with Y-axis flip transformation
+        svgParts.push('  <g transform="scale(1,-1)">');
+        
+        // Process layers and combine similar paths
+        this.layers.forEach((layer, layerName) => {
+            if (!layer.visible || !layer.primitives || layer.primitives.length === 0) return;
+            
+            const layerClass = this.getLayerClass(layer.type);
+            svgParts.push(`    <g id="${this.sanitizeId(layerName)}" class="${layerClass}">`);
+            
+            // Combine similar paths for optimization
+            const combinedPaths = this.combineSimilarPaths(layer.primitives, precision);
+            
+            combinedPaths.forEach(pathData => {
+                svgParts.push('      ' + pathData);
+            });
+            
+            svgParts.push('    </g>');
+        });
+        
+        // Close main group and SVG
+        svgParts.push('  </g>');
+        svgParts.push('</svg>');
+        
+        const svgString = svgParts.join('\n');
+        
+        // Download the file
+        this.downloadSVG(svgString);
+        
+        console.log(`SVG export complete (${(svgString.length / 1024).toFixed(1)} KB)`);
+        return svgString;
+    }
+    
+    // Helper: Combine similar paths for optimization
+    combineSimilarPaths(primitives, precision) {
+        const pathsByStyle = new Map();
+        
+        primitives.forEach(primitive => {
+            const style = this.getStyleKey(primitive);
+            
+            if (!pathsByStyle.has(style)) {
+                pathsByStyle.set(style, []);
+            }
+            
+            pathsByStyle.get(style).push(primitive);
+        });
+        
+        const combinedPaths = [];
+        
+        pathsByStyle.forEach((prims, styleKey) => {
+            const style = JSON.parse(styleKey);
+            
+            // Combine all paths with same style into one element
+            let pathData = '';
+            
+            prims.forEach(primitive => {
+                const data = this.primitiveToPathData(primitive, precision);
+                if (data) {
+                    pathData += (pathData ? ' ' : '') + data;
+                }
+            });
+            
+            if (pathData) {
+                const attrs = [];
+                attrs.push(`d="${pathData}"`);
+                
+                if (style.fill) {
+                    attrs.push(`fill="${style.fill}"`);
+                } else {
+                    attrs.push('fill="none"');
+                }
+                
+                if (style.stroke) {
+                    attrs.push(`stroke="${style.stroke}"`);
+                    attrs.push(`stroke-width="${style.strokeWidth || 0.1}"`);
+                    if (!style.closed) {
+                        attrs.push('stroke-linecap="round"');
+                        attrs.push('stroke-linejoin="round"');
+                    }
+                } else {
+                    attrs.push('stroke="none"');
+                }
+                
+                if (style.fillRule) {
+                    attrs.push(`fill-rule="${style.fillRule}"`);
+                }
+                
+                combinedPaths.push(`<path ${attrs.join(' ')} />`);
+            }
+        });
+        
+        return combinedPaths;
+    }
+    
+    // Helper: Get style key for grouping
+    getStyleKey(primitive) {
+        const props = primitive.properties || {};
+        const colors = this.colors[this.options.theme];
+        
+        const style = {
+            fill: null,
+            stroke: null,
+            strokeWidth: null,
+            fillRule: null,
+            closed: primitive.closed
+        };
+        
+        if (props.isRegion || (props.fill && !props.stroke)) {
+            style.fill = this.getColorForProperty(props);
+            if (props.hasHoles || props.isCompound) {
+                style.fillRule = 'evenodd';
+            }
+        } else if (props.isTrace || props.isBranchSegment || (props.stroke && !props.fill)) {
+            style.stroke = this.getColorForProperty(props);
+            style.strokeWidth = props.strokeWidth || 0.1;
+        } else if (props.isDrillHole) {
+            style.stroke = colors.drill;
+            style.strokeWidth = 0.2;
+        } else if (props.isFlash || props.isPad) {
+            style.fill = this.getColorForProperty(props);
+        } else {
+            // Default based on primitive type
+            if (primitive.type === 'circle' || primitive.type === 'rectangle' || primitive.type === 'obround') {
+                style.fill = this.getColorForProperty(props);
+            } else if (primitive.type === 'path') {
+                if (primitive.closed && props.fill !== false) {
+                    style.fill = this.getColorForProperty(props);
+                } else {
+                    style.stroke = this.getColorForProperty(props);
+                    style.strokeWidth = props.strokeWidth || 0.1;
+                }
+            }
+        }
+        
+        return JSON.stringify(style);
+    }
+    
+    // Helper: Convert primitive to path data only
+    primitiveToPathData(primitive, precision) {
+        const props = primitive.properties || {};
+        
+        switch (primitive.type) {
+            case 'path':
+                return this.pathToPathData(primitive, precision);
+                
+            case 'circle':
+                return this.circleToPathData(primitive, precision);
+                
+            case 'rectangle':
+                return this.rectangleToPathData(primitive, precision);
+                
+            case 'obround':
+                return this.obroundToPathData(primitive, precision);
+                
+            default:
+                return null;
+        }
+    }
+    
+    // Helper: Convert path to SVG path data
+    pathToPathData(primitive, precision) {
+        if (!primitive.points || primitive.points.length < 2) return null;
+        
+        let pathData = '';
+        
+        // Handle compound paths with holes
+        if (primitive.properties?.isCompound && primitive.properties?.hasHoles) {
+            let currentPath = [];
+            let isFirstSegment = true;
+            
+            primitive.points.forEach(point => {
+                if (point === null) {
+                    if (currentPath.length > 0) {
+                        if (isFirstSegment) {
+                            pathData += this.pointsToPathData(currentPath, primitive.closed, precision);
+                            isFirstSegment = false;
+                        } else {
+                            pathData += ' ' + this.pointsToPathData(currentPath, true, precision);
+                        }
+                        currentPath = [];
+                    }
+                } else {
+                    currentPath.push(point);
+                }
+            });
+            
+            if (currentPath.length > 0) {
+                if (isFirstSegment) {
+                    pathData += this.pointsToPathData(currentPath, primitive.closed, precision);
+                } else {
+                    pathData += ' ' + this.pointsToPathData(currentPath, true, precision);
+                }
+            }
+        } else {
+            pathData = this.pointsToPathData(primitive.points, primitive.closed, precision);
+        }
+        
+        return pathData;
+    }
+    
+    // Helper: Convert circle to path data
+    circleToPathData(primitive, precision) {
+        const cx = primitive.center.x;
+        const cy = primitive.center.y;
+        const r = primitive.radius;
+        
+        // Use two arc commands for a complete circle
+        return `M${(cx - r).toFixed(precision)},${cy.toFixed(precision)} ` +
+               `A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${(cx + r).toFixed(precision)},${cy.toFixed(precision)} ` +
+               `A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${(cx - r).toFixed(precision)},${cy.toFixed(precision)}`;
+    }
+    
+    // Helper: Convert rectangle to path data
+    rectangleToPathData(primitive, precision) {
+        const x = primitive.position.x;
+        const y = primitive.position.y;
+        const w = primitive.width;
+        const h = primitive.height;
+        
+        return `M${x.toFixed(precision)},${y.toFixed(precision)} ` +
+               `h${w.toFixed(precision)} v${h.toFixed(precision)} h${(-w).toFixed(precision)} Z`;
+    }
+    
+    // Helper: Convert obround to path data
+    obroundToPathData(primitive, precision) {
+        const x = primitive.position.x;
+        const y = primitive.position.y;
+        const w = primitive.width;
+        const h = primitive.height;
+        const r = Math.min(w, h) / 2;
+        
+        if (w > h) {
+            // Horizontal obround
+            return `M${(x + r).toFixed(precision)},${y.toFixed(precision)} ` +
+                   `L${(x + w - r).toFixed(precision)},${y.toFixed(precision)} ` +
+                   `A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${(x + w - r).toFixed(precision)},${(y + h).toFixed(precision)} ` +
+                   `L${(x + r).toFixed(precision)},${(y + h).toFixed(precision)} ` +
+                   `A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${(x + r).toFixed(precision)},${y.toFixed(precision)} Z`;
+        } else {
+            // Vertical obround
+            return `M${x.toFixed(precision)},${(y + r).toFixed(precision)} ` +
+                   `L${x.toFixed(precision)},${(y + h - r).toFixed(precision)} ` +
+                   `A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${(x + w).toFixed(precision)},${(y + h - r).toFixed(precision)} ` +
+                   `L${(x + w).toFixed(precision)},${(y + r).toFixed(precision)} ` +
+                   `A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${x.toFixed(precision)},${(y + r).toFixed(precision)} Z`;
+        }
+    }
+    
+    // Helper: Get layer class for SVG
+    getLayerClass(layerType) {
+        switch (layerType) {
+            case 'isolation': return 'isolation';
+            case 'clear': return 'clear';
+            case 'drill': return 'drill';
+            case 'cutout': return 'cutout';
+            default: return 'copper';
+        }
+    }
+    
+    // Helper: Sanitize ID for SVG
+    sanitizeId(str) {
+        return str.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    }
+    
+    // Helper: Group primitives for SVG rendering
+    groupPrimitivesForSVG(primitives) {
+        const groups = {
+            regions: [],
+            traces: [],
+            pads: [],
+            drills: [],
+            cutouts: []
+        };
+        
+        primitives.forEach(primitive => {
+            const props = primitive.properties || {};
+            
+            if (props.isDrillHole || primitive.type === 'drill') {
+                groups.drills.push(primitive);
+            } else if (props.isCutout) {
+                groups.cutouts.push(primitive);
+            } else if (props.isRegion || (props.fill && !props.stroke)) {
+                groups.regions.push(primitive);
+            } else if (props.isTrace || props.isBranchSegment || (props.stroke && !props.fill)) {
+                groups.traces.push(primitive);
+            } else if (props.isFlash || props.isPad) {
+                groups.pads.push(primitive);
+            } else {
+                // Default based on primitive type
+                if (primitive.type === 'circle' || primitive.type === 'rectangle') {
+                    groups.pads.push(primitive);
+                } else if (primitive.type === 'path') {
+                    if (primitive.closed && props.fill !== false) {
+                        groups.regions.push(primitive);
+                    } else {
+                        groups.traces.push(primitive);
+                    }
+                }
+            }
+        });
+        
+        return groups;
+    }
+    
+    // Helper: Convert primitive to SVG element
+    primitiveToSVGElement(primitive, precision = 3) {
+        const props = primitive.properties || {};
+        
+        switch (primitive.type) {
+            case 'path':
+                return this.pathToSVGElement(primitive, props, precision);
+                
+            case 'circle':
+                return this.circleToSVGElement(primitive, props, precision);
+                
+            case 'rectangle':
+                return this.rectangleToSVGElement(primitive, props, precision);
+                
+            case 'obround':
+                return this.obroundToSVGElement(primitive, props, precision);
+                
+            default:
+                return null;
+        }
+    }
+    
+    // Helper: Convert path primitive to SVG
+    pathToSVGElement(primitive, props, precision) {
+        if (!primitive.points || primitive.points.length < 2) return null;
+        
+        let pathData = '';
+        
+        // Handle compound paths with holes
+        if (props.isCompound && props.hasHoles) {
+            let currentPath = [];
+            let isFirstSegment = true;
+            
+            primitive.points.forEach((point, index) => {
+                if (point === null) {
+                    // End of current segment
+                    if (currentPath.length > 0) {
+                        if (isFirstSegment) {
+                            pathData += this.pointsToPathData(currentPath, primitive.closed, precision);
+                            isFirstSegment = false;
+                        } else {
+                            // Hole - add with space separator
+                            pathData += ' ' + this.pointsToPathData(currentPath, true, precision);
+                        }
+                        currentPath = [];
+                    }
+                } else {
+                    currentPath.push(point);
+                }
+            });
+            
+            // Handle last segment
+            if (currentPath.length > 0) {
+                if (isFirstSegment) {
+                    pathData += this.pointsToPathData(currentPath, primitive.closed, precision);
+                } else {
+                    pathData += ' ' + this.pointsToPathData(currentPath, true, precision);
+                }
+            }
+        } else {
+            // Simple path
+            pathData = this.pointsToPathData(primitive.points, primitive.closed, precision);
+        }
+        
+        if (!pathData) return null;
+        
+        // Build attributes
+        const attrs = [`d="${pathData}"`];
+        
+        // Fill and stroke
+        if (props.fill === false || props.isTrace) {
+            attrs.push('fill="none"');
+            const strokeColor = this.getColorForProperty(props);
+            const strokeWidth = props.strokeWidth || 0.1;
+            attrs.push(`stroke="${strokeColor}"`);
+            attrs.push(`stroke-width="${strokeWidth.toFixed(precision)}"`);
+            
+            if (!primitive.closed) {
+                attrs.push('stroke-linecap="round"');
+                attrs.push('stroke-linejoin="round"');
+            }
+        } else {
+            const fillColor = this.getColorForProperty(props);
+            attrs.push(`fill="${fillColor}"`);
+            attrs.push('stroke="none"');
+            
+            if (props.hasHoles || props.isCompound) {
+                attrs.push('fill-rule="evenodd"');
+            }
+        }
+        
+        return `<path ${attrs.join(' ')} />`;
+    }
+    
+    // Helper: Convert points to SVG path data
+    pointsToPathData(points, closed, precision) {
+        if (!points || points.length < 2) return '';
+        
+        let data = `M${points[0].x.toFixed(precision)},${points[0].y.toFixed(precision)}`;
+        
+        for (let i = 1; i < points.length; i++) {
+            data += ` L${points[i].x.toFixed(precision)},${points[i].y.toFixed(precision)}`;
+        }
+        
+        if (closed) {
+            data += ' Z';
+        }
+        
+        return data;
+    }
+    
+    // Helper: Convert circle to SVG element
+    circleToSVGElement(primitive, props, precision) {
+        const cx = primitive.center.x.toFixed(precision);
+        const cy = primitive.center.y.toFixed(precision);
+        const r = primitive.radius.toFixed(precision);
+        
+        const attrs = [`cx="${cx}"`, `cy="${cy}"`, `r="${r}"`];
+        
+        if (props.isDrillHole) {
+            attrs.push('fill="none"');
+            attrs.push('stroke="#4488ff"');
+            attrs.push('stroke-width="0.2"');
+        } else {
+            const fillColor = this.getColorForProperty(props);
+            attrs.push(`fill="${fillColor}"`);
+            attrs.push('stroke="none"');
+        }
+        
+        return `<circle ${attrs.join(' ')} />`;
+    }
+    
+    // Helper: Convert rectangle to SVG element
+    rectangleToSVGElement(primitive, props, precision) {
+        const x = primitive.position.x.toFixed(precision);
+        const y = primitive.position.y.toFixed(precision);
+        const width = primitive.width.toFixed(precision);
+        const height = primitive.height.toFixed(precision);
+        
+        const attrs = [`x="${x}"`, `y="${y}"`, `width="${width}"`, `height="${height}"`];
+        
+        const fillColor = this.getColorForProperty(props);
+        attrs.push(`fill="${fillColor}"`);
+        attrs.push('stroke="none"');
+        
+        return `<rect ${attrs.join(' ')} />`;
+    }
+    
+    // Helper: Convert obround to SVG path
+    obroundToSVGElement(primitive, props, precision) {
+        const x = primitive.position.x;
+        const y = primitive.position.y;
+        const w = primitive.width;
+        const h = primitive.height;
+        const r = Math.min(w, h) / 2;
+        
+        let pathData = '';
+        
+        if (w > h) {
+            // Horizontal obround
+            pathData = `M${(x + r).toFixed(precision)},${y.toFixed(precision)}`;
+            pathData += ` L${(x + w - r).toFixed(precision)},${y.toFixed(precision)}`;
+            pathData += ` A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${(x + w - r).toFixed(precision)},${(y + h).toFixed(precision)}`;
+            pathData += ` L${(x + r).toFixed(precision)},${(y + h).toFixed(precision)}`;
+            pathData += ` A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${(x + r).toFixed(precision)},${y.toFixed(precision)}`;
+        } else {
+            // Vertical obround
+            pathData = `M${x.toFixed(precision)},${(y + r).toFixed(precision)}`;
+            pathData += ` L${x.toFixed(precision)},${(y + h - r).toFixed(precision)}`;
+            pathData += ` A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${(x + w).toFixed(precision)},${(y + h - r).toFixed(precision)}`;
+            pathData += ` L${(x + w).toFixed(precision)},${(y + r).toFixed(precision)}`;
+            pathData += ` A${r.toFixed(precision)},${r.toFixed(precision)} 0 0,1 ${x.toFixed(precision)},${(y + r).toFixed(precision)}`;
+        }
+        
+        pathData += ' Z';
+        
+        const fillColor = this.getColorForProperty(props);
+        return `<path d="${pathData}" fill="${fillColor}" stroke="none" />`;
+    }
+    
+    // Helper: Get color based on properties
+    getColorForProperty(props) {
+        const colors = this.colors[this.options.theme];
+        
+        if (props.isDrillHole) return colors.drill;
+        if (props.isCutout) return colors.cutout;
+        if (props.operationType) {
+            switch (props.operationType) {
+                case 'isolation': return colors.isolation;
+                case 'clear': return colors.clear;
+                case 'drill': return colors.drill;
+                case 'cutout': return colors.cutout;
+            }
+        }
+        
+        // Default to copper color
+        return colors.copper;
+    }
+    
+    // Helper: Download SVG file
+    downloadSVG(svgString) {
+        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        
+        link.href = url;
+        link.download = `pcb-layout-${Date.now()}.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+    }
+    
+    // [... keeping all other methods unchanged ...]
+    
     renderLayerDirect(layer) {
         const colors = this.colors[this.options.theme];
         
         // Use the layer's specified color or default to fused color
         const layerColor = layer.color || colors.fused;
-        
-        console.log(`FIXED: Direct rendering fused layer with color ${layerColor}`);
         
         layer.primitives.forEach((primitive, index) => {
             this.renderStats.primitives++;
@@ -268,7 +860,7 @@ class CanvasRenderer {
                 strokeColor = bwColor;
             }
             
-            // Render primitive directly without filtering
+            // Render primitive directly
             this.renderPrimitive(primitive, fillColor, strokeColor);
         });
     }
@@ -290,30 +882,34 @@ class CanvasRenderer {
             }
         }
         
-        console.log(`FIXED: Rendering layer ${layer.name} (type: ${layer.type}): ${layer.primitives.length} primitives`);
-        
         layer.primitives.forEach((primitive, index) => {
             this.renderStats.primitives++;
             
-            // FIXED: Strict layer isolation - only render primitives that belong to this layer
+            // Check if primitive should be filtered
             if (primitive.properties?.operationType && primitive.properties.operationType !== layer.type) {
-                console.log(`Skipping primitive from wrong operation: ${primitive.properties.operationType} in ${layer.type} layer`);
                 this.renderStats.skippedPrimitives++;
                 return;
             }
             
-            // FIXED: Special handling for cutout layers - always render cutout primitives
+            // Special handling for cutout layers
             if (layer.type === 'cutout') {
+                if (!this.options.showCutouts) {
+                    this.renderStats.skippedPrimitives++;
+                    return;
+                }
+                
                 this.renderStats.renderedPrimitives++;
                 
-                let fillColor = 'transparent'; // Cutouts should not be filled
+                let fillColor = 'transparent';
                 let strokeColor = layerColor;
                 
-                // All cutout paths should be stroked outlines
                 this.ctx.save();
                 this.ctx.fillStyle = fillColor;
                 this.ctx.strokeStyle = strokeColor;
-                this.ctx.lineWidth = 0.15 / this.viewScale; // Visible line for cutout
+                
+                this.ctx.lineWidth = this.options.showWireframe ? 
+                    this.getWireframeStrokeWidth() : 
+                    this.getWireframeStrokeWidth();
                 
                 if (primitive.type === 'path' && primitive.points) {
                     this.ctx.beginPath();
@@ -329,7 +925,6 @@ class CanvasRenderer {
                     }
                     this.ctx.stroke();
                 } else {
-                    // Render other cutout primitives normally
                     this.renderPrimitive(primitive, fillColor, strokeColor);
                 }
                 
@@ -337,7 +932,7 @@ class CanvasRenderer {
                 return;
             }
             
-            // Regular geometry type filtering for non-cutout layers
+            // Regular geometry type filtering
             if (!this.shouldRenderPrimitive(primitive, layer.type)) {
                 this.renderStats.skippedPrimitives++;
                 return;
@@ -365,13 +960,8 @@ class CanvasRenderer {
     }
     
     shouldRenderPrimitive(primitive, layerType) {
-        // FIXED: Always render fused primitives
+        // Always render fused primitives
         if (primitive.properties?.isFused) {
-            return true;
-        }
-        
-        // FIXED: Always render cutout primitives
-        if (layerType === 'cutout') {
             return true;
         }
         
@@ -380,24 +970,27 @@ class CanvasRenderer {
             return this.options.showDrills;
         }
         
-        // Traces (strokes)
-        if (primitive.properties?.isStroke) {
+        // Traces (including branch segments)
+        if (primitive.properties?.isTrace || primitive.properties?.isBranchSegment) {
             return this.options.showTraces;
         }
         
         // Pads/Flashes
-        if (primitive.properties?.isFlash || primitive.type === 'circle' || 
-            primitive.type === 'rectangle' || primitive.type === 'obround') {
+        if (primitive.properties?.isFlash || 
+            primitive.properties?.isBranchJunction ||
+            (primitive.type === 'circle' && !primitive.properties?.isTrace) || 
+            (primitive.type === 'rectangle' && !primitive.properties?.isTrace) || 
+            primitive.type === 'obround') {
             return this.options.showPads;
         }
         
         // Regions (filled polygons)
         if (primitive.properties?.isRegion || 
-            (primitive.type === 'path' && primitive.closed && !primitive.properties?.isStroke)) {
+            (primitive.type === 'path' && primitive.closed && primitive.properties?.fill)) {
             return this.options.showRegions;
         }
         
-        // Open paths that aren't strokes
+        // Open paths (traces)
         if (primitive.type === 'path' && !primitive.closed) {
             return this.options.showTraces;
         }
@@ -412,16 +1005,142 @@ class CanvasRenderer {
         this.ctx.strokeStyle = strokeColor;
         
         if (this.options.showWireframe) {
-            // WIREFRAME MODE: Show all geometry as outlines only
+            // WIREFRAME MODE: Show all geometry as simple paths
             this.ctx.lineWidth = this.getWireframeStrokeWidth();
             this.renderPrimitiveWireframe(primitive);
         } else {
-            // FILL MODE: Show geometry as filled shapes WITHOUT stroke
-            this.ctx.lineWidth = 0;
-            this.renderPrimitiveFilled(primitive);
+            // NORMAL MODE: Render with proper fill/stroke
+            this.renderPrimitiveNormal(primitive, fillColor, strokeColor);
         }
         
         this.ctx.restore();
+    }
+    
+    renderPrimitiveNormal(primitive, fillColor, strokeColor) {
+        const props = primitive.properties || {};
+        
+        switch (primitive.type) {
+            case 'path':
+                // Handle compound paths with holes (like text)
+                if (props.isCompound && props.hasHoles) {
+                    this.ctx.fillStyle = fillColor;
+                    this.ctx.beginPath();
+                    
+                    let isNewSegment = true;
+                    primitive.points.forEach(point => {
+                        if (point === null) {
+                            // Path break - next point starts a new subpath (hole)
+                            isNewSegment = true;
+                        } else {
+                            if (isNewSegment) {
+                                this.ctx.moveTo(point.x, point.y);
+                                isNewSegment = false;
+                            } else {
+                                this.ctx.lineTo(point.x, point.y);
+                            }
+                        }
+                    });
+                    
+                    // Use evenodd fill rule for proper hole rendering
+                    this.ctx.fill('evenodd');
+                }
+                // FIXED: Explicit region handling - regions are ALWAYS fill-only
+                else if (props.isRegion) {
+                    // Region: Always fill, never stroke
+                    this.ctx.fillStyle = fillColor;
+                    this.ctx.beginPath();
+                    primitive.points.forEach((point, index) => {
+                        if (index === 0) {
+                            this.ctx.moveTo(point.x, point.y);
+                        } else {
+                            this.ctx.lineTo(point.x, point.y);
+                        }
+                    });
+                    if (primitive.closed) {
+                        this.ctx.closePath();
+                    }
+                    // Use appropriate fill rule
+                    if (props.fillRule === 'evenodd') {
+                        this.ctx.fill('evenodd');
+                    } else {
+                        this.ctx.fill();
+                    }
+                } 
+                // FIXED: More specific trace detection
+                else if (props.isTrace || props.isBranchSegment || props.isConnectedPath || 
+                        (props.stroke && props.strokeWidth && !props.fill)) {
+                    // Trace: Always stroke, never fill
+                    this.ctx.strokeStyle = strokeColor;
+                    this.ctx.lineWidth = props.strokeWidth || 0.1;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.lineJoin = 'round';
+                    
+                    this.ctx.beginPath();
+                    primitive.points.forEach((point, index) => {
+                        if (index === 0) {
+                            this.ctx.moveTo(point.x, point.y);
+                        } else {
+                            this.ctx.lineTo(point.x, point.y);
+                        }
+                    });
+                    if (primitive.closed) {
+                        this.ctx.closePath();
+                    }
+                    this.ctx.stroke();
+                } 
+                // Default path handling based on properties
+                else if (props.fill !== false) {
+                    // Default to fill for closed paths
+                    this.ctx.fillStyle = fillColor;
+                    this.ctx.beginPath();
+                    primitive.points.forEach((point, index) => {
+                        if (index === 0) {
+                            this.ctx.moveTo(point.x, point.y);
+                        } else {
+                            this.ctx.lineTo(point.x, point.y);
+                        }
+                    });
+                    if (primitive.closed) {
+                        this.ctx.closePath();
+                    }
+                    this.ctx.fill();
+                }
+                break;
+                
+            case 'circle':
+                this.ctx.beginPath();
+                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
+                
+                // Circles are typically pads or drill holes - always fill
+                if (props.isDrillHole || props.isBranchJunction || props.isFlash || props.fill !== false) {
+                    this.ctx.fill();
+                }
+                // Only stroke if explicitly requested and not a drill hole
+                if (props.stroke && !props.isDrillHole) {
+                    this.ctx.lineWidth = props.strokeWidth || 0.1;
+                    this.ctx.stroke();
+                }
+                break;
+                
+            case 'rectangle':
+                if (props.fill !== false) {
+                    this.ctx.fillRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
+                }
+                if (props.stroke) {
+                    this.ctx.lineWidth = props.strokeWidth || 0.1;
+                    this.ctx.strokeRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
+                }
+                break;
+                
+            case 'obround':
+                this.renderObroundNormal(primitive, props.fill !== false, props.stroke === true, props.strokeWidth || 0.1);
+                break;
+                
+            case 'arc':
+                this.ctx.lineWidth = props.strokeWidth || 0.1;
+                this.renderArcNormal(primitive);
+                break;
+        }
     }
     
     getWireframeStrokeWidth() {
@@ -436,43 +1155,42 @@ class CanvasRenderer {
     renderPrimitiveWireframe(primitive) {
         switch (primitive.type) {
             case 'path':
-                this.renderPathWireframe(primitive);
+                if (primitive.properties?.isTrace || primitive.properties?.isBranchSegment) {
+                    this.ctx.beginPath();
+                    primitive.points.forEach((point, index) => {
+                        if (index === 0) {
+                            this.ctx.moveTo(point.x, point.y);
+                        } else {
+                            this.ctx.lineTo(point.x, point.y);
+                        }
+                    });
+                    
+                    if (primitive.closed) {
+                        this.ctx.closePath();
+                    }
+                    
+                    this.ctx.stroke();
+                } else {
+                    this.renderPathWireframe(primitive);
+                }
                 break;
+                
             case 'circle':
                 this.ctx.beginPath();
                 this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
                 this.ctx.stroke();
                 break;
+                
             case 'rectangle':
                 this.ctx.strokeRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
                 break;
+                
             case 'obround':
                 this.renderObroundWireframe(primitive);
                 break;
+                
             case 'arc':
                 this.renderArcWireframe(primitive);
-                break;
-        }
-    }
-    
-    renderPrimitiveFilled(primitive) {
-        switch (primitive.type) {
-            case 'path':
-                this.renderPathFilled(primitive);
-                break;
-            case 'circle':
-                this.ctx.beginPath();
-                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
-                this.ctx.fill();
-                break;
-            case 'rectangle':
-                this.ctx.fillRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
-                break;
-            case 'obround':
-                this.renderObroundFilled(primitive);
-                break;
-            case 'arc':
-                this.renderArcWireframe(primitive); // Arcs are always stroked
                 break;
         }
     }
@@ -494,31 +1212,6 @@ class CanvasRenderer {
         }
         
         this.ctx.stroke();
-    }
-    
-    renderPathFilled(primitive) {
-        if (primitive.points.length < 2) return;
-        
-        this.ctx.beginPath();
-        primitive.points.forEach((point, index) => {
-            if (index === 0) {
-                this.ctx.moveTo(point.x, point.y);
-            } else {
-                this.ctx.lineTo(point.x, point.y);
-            }
-        });
-        
-        if (primitive.closed) {
-            this.ctx.closePath();
-            if (primitive.properties?.fillRule) {
-                this.ctx.fill(primitive.properties.fillRule);
-            } else {
-                this.ctx.fill();
-            }
-        } else if (primitive.properties?.isStroke) {
-            // For open paths that are strokes, we still fill them (stroke geometry is baked in)
-            this.ctx.fill();
-        }
     }
     
     renderObroundWireframe(primitive) {
@@ -550,7 +1243,7 @@ class CanvasRenderer {
         this.ctx.stroke();
     }
     
-    renderObroundFilled(primitive) {
+    renderObroundNormal(primitive, shouldFill, shouldStroke, strokeWidth) {
         const x = primitive.position.x;
         const y = primitive.position.y;
         const w = primitive.width;
@@ -576,10 +1269,44 @@ class CanvasRenderer {
         }
         
         this.ctx.closePath();
-        this.ctx.fill();
+        
+        if (shouldFill) {
+            this.ctx.fill();
+        }
+        if (shouldStroke) {
+            this.ctx.lineWidth = strokeWidth;
+            this.ctx.stroke();
+        }
     }
     
     renderArcWireframe(primitive) {
+        const radius = Math.sqrt(
+            Math.pow(primitive.start.x - primitive.center.x, 2) +
+            Math.pow(primitive.start.y - primitive.center.y, 2)
+        );
+        
+        const startAngle = Math.atan2(
+            primitive.start.y - primitive.center.y,
+            primitive.start.x - primitive.center.x
+        );
+        const endAngle = Math.atan2(
+            primitive.end.y - primitive.center.y,
+            primitive.end.x - primitive.center.x
+        );
+        
+        this.ctx.beginPath();
+        this.ctx.arc(
+            primitive.center.x,
+            primitive.center.y,
+            radius,
+            startAngle,
+            endAngle,
+            !primitive.clockwise
+        );
+        this.ctx.stroke();
+    }
+    
+    renderArcNormal(primitive) {
         const radius = Math.sqrt(
             Math.pow(primitive.start.x - primitive.center.x, 2) +
             Math.pow(primitive.start.y - primitive.center.y, 2)
@@ -925,245 +1652,6 @@ class CanvasRenderer {
             this.canvas.height = rect.height;
             this.render();
         }
-    }
-    
-    // SVG Export functionality
-    exportSVG(options = {}) {
-        if (this.layers.size === 0) {
-            console.warn('No layers to export');
-            return null;
-        }
-        
-        const rotateBackground = options.rotateBackground !== false;
-        
-        // Calculate export bounds
-        this.calculateOverallBounds();
-        const bounds = this.bounds;
-        
-        if (!bounds) {
-            console.warn('No valid bounds for SVG export');
-            return null;
-        }
-        
-        // Add some padding
-        const padding = Math.max(bounds.width, bounds.height) * 0.05;
-        const exportBounds = {
-            minX: bounds.minX - padding,
-            minY: bounds.minY - padding,
-            maxX: bounds.maxX + padding,
-            maxY: bounds.maxY + padding,
-            width: bounds.width + padding * 2,
-            height: bounds.height + padding * 2
-        };
-        
-        // Create SVG document
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const svg = document.createElementNS(svgNS, 'svg');
-        
-        svg.setAttribute('width', `${exportBounds.width}mm`);
-        svg.setAttribute('height', `${exportBounds.height}mm`);
-        svg.setAttribute('viewBox', `${exportBounds.minX} ${-exportBounds.maxY} ${exportBounds.width} ${exportBounds.height}`);
-        svg.setAttribute('xmlns', svgNS);
-        
-        // Add background
-        const background = document.createElementNS(svgNS, 'rect');
-        const colors = this.colors[this.options.theme];
-        background.setAttribute('x', exportBounds.minX);
-        background.setAttribute('y', -exportBounds.maxY);
-        background.setAttribute('width', exportBounds.width);
-        background.setAttribute('height', exportBounds.height);
-        background.setAttribute('fill', colors.background);
-        svg.appendChild(background);
-        
-        // Apply rotation if needed
-        let contentGroup = svg;
-        if (this.currentRotation !== 0) {
-            contentGroup = document.createElementNS(svgNS, 'g');
-            contentGroup.setAttribute('transform', 
-                `rotate(${-this.currentRotation} ${this.rotationCenter.x} ${-this.rotationCenter.y})`);
-            svg.appendChild(contentGroup);
-        }
-        
-        // Add layers
-        const renderOrder = ['cutout', 'clear', 'isolation', 'drill'];
-        
-        renderOrder.forEach(type => {
-            this.layers.forEach(layer => {
-                if (layer.visible && layer.type === type) {
-                    const layerGroup = this.createSVGLayerGroup(layer, exportBounds);
-                    if (layerGroup) {
-                        contentGroup.appendChild(layerGroup);
-                    }
-                }
-            });
-        });
-        
-        // Convert to string and download
-        const serializer = new XMLSerializer();
-        const svgString = serializer.serializeToString(svg);
-        
-        // Create download
-        const blob = new Blob([svgString], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = url;
-        const timestamp = Date.now();
-        const rotationSuffix = this.currentRotation !== 0 ? `-rot${this.currentRotation}deg` : '';
-        link.download = `pcb-export${rotationSuffix}-${timestamp}.svg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        
-        return svgString;
-    }
-    
-    createSVGLayerGroup(layer, bounds) {
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const group = document.createElementNS(svgNS, 'g');
-        group.setAttribute('id', `layer-${layer.name}`);
-        group.setAttribute('data-type', layer.type);
-        
-        // Determine layer color
-        const colors = this.colors[this.options.theme];
-        let layerColor = layer.color || colors[layer.type] || colors.copper;
-        
-        if (this.options.blackAndWhite) {
-            layerColor = this.options.theme === 'dark' ? '#ffffff' : '#000000';
-        }
-        
-        layer.primitives.forEach((primitive, index) => {
-            if (!this.shouldRenderPrimitive(primitive, layer.type)) {
-                return;
-            }
-            
-            const svgElement = this.convertPrimitiveToSVG(primitive, layerColor);
-            if (svgElement) {
-                group.appendChild(svgElement);
-            }
-        });
-        
-        return group.hasChildNodes() ? group : null;
-    }
-    
-    convertPrimitiveToSVG(primitive, color) {
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const isWireframeMode = this.options.showWireframe;
-        
-        switch (primitive.type) {
-            case 'path':
-                return this.createSVGPath(primitive, color, isWireframeMode);
-            case 'circle':
-                return this.createSVGCircle(primitive, color, isWireframeMode);
-            case 'rectangle':
-                return this.createSVGRectangle(primitive, color, isWireframeMode);
-            case 'obround':
-                return this.createSVGObround(primitive, color, isWireframeMode);
-            default:
-                return null;
-        }
-    }
-    
-    createSVGPath(primitive, color, isWireframeMode) {
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const path = document.createElementNS(svgNS, 'path');
-        
-        if (primitive.points.length < 2) return null;
-        
-        let pathData = `M ${primitive.points[0].x} ${-primitive.points[0].y}`;
-        for (let i = 1; i < primitive.points.length; i++) {
-            pathData += ` L ${primitive.points[i].x} ${-primitive.points[i].y}`;
-        }
-        
-        if (primitive.closed) {
-            pathData += ' Z';
-        }
-        
-        path.setAttribute('d', pathData);
-        
-        if (isWireframeMode) {
-            path.setAttribute('fill', 'none');
-            path.setAttribute('stroke', color);
-            path.setAttribute('stroke-width', '0.08');
-        } else {
-            path.setAttribute('fill', color);
-            path.setAttribute('stroke', 'none');
-        }
-        
-        return path;
-    }
-    
-    createSVGCircle(primitive, color, isWireframeMode) {
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const circle = document.createElementNS(svgNS, 'circle');
-        
-        circle.setAttribute('cx', primitive.center.x);
-        circle.setAttribute('cy', -primitive.center.y);
-        circle.setAttribute('r', primitive.radius);
-        
-        if (isWireframeMode) {
-            circle.setAttribute('fill', 'none');
-            circle.setAttribute('stroke', color);
-            circle.setAttribute('stroke-width', '0.08');
-        } else {
-            circle.setAttribute('fill', color);
-            circle.setAttribute('stroke', 'none');
-        }
-        
-        return circle;
-    }
-    
-    createSVGRectangle(primitive, color, isWireframeMode) {
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const rect = document.createElementNS(svgNS, 'rect');
-        
-        rect.setAttribute('x', primitive.position.x);
-        rect.setAttribute('y', -primitive.position.y - primitive.height);
-        rect.setAttribute('width', primitive.width);
-        rect.setAttribute('height', primitive.height);
-        
-        if (isWireframeMode) {
-            rect.setAttribute('fill', 'none');
-            rect.setAttribute('stroke', color);
-            rect.setAttribute('stroke-width', '0.08');
-        } else {
-            rect.setAttribute('fill', color);
-            rect.setAttribute('stroke', 'none');
-        }
-        
-        return rect;
-    }
-    
-    createSVGObround(primitive, color, isWireframeMode) {
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const path = document.createElementNS(svgNS, 'path');
-        
-        const x = primitive.position.x;
-        const y = -primitive.position.y - primitive.height;
-        const w = primitive.width;
-        const h = primitive.height;
-        const r = Math.min(w, h) / 2;
-        
-        let pathData;
-        if (w > h) {
-            pathData = `M ${x + r} ${y} L ${x + w - r} ${y} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} L ${x + r} ${y + h} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`;
-        } else {
-            pathData = `M ${x + w} ${y + r} L ${x + w} ${y + h - r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} L ${x} ${y + r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} Z`;
-        }
-        
-        path.setAttribute('d', pathData);
-        
-        if (isWireframeMode) {
-            path.setAttribute('fill', 'none');
-            path.setAttribute('stroke', color);
-            path.setAttribute('stroke-width', '0.08');
-        } else {
-            path.setAttribute('fill', color);
-            path.setAttribute('stroke', 'none');
-        }
-        
-        return path;
     }
 }
 
