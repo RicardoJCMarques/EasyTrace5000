@@ -1,6 +1,9 @@
 # Enable rewrite engine
 RewriteEngine On
 
+# Exclude the extras folder from URL rewriting
+RewriteCond %{REQUEST_URI} !^/extras/ [NC]
+
 # Remove .html extension from URLs
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME} !-f
