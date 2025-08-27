@@ -1,7 +1,7 @@
 /**
  * Clipper2 WASM Core Module
- * Handles module initialization, state management, and memory cleanup
- * Version 3.4 - Enhanced with tangency configuration
+ * Module initialization, state management, and memory cleanup
+ * Version 5.0 - State-driven initialization
  */
 
 class Clipper2Core {
@@ -11,19 +11,8 @@ class Clipper2Core {
         this.initialized = false;
         this.testResults = new Map();
         this.memoryTracker = new Set();
-        this.config = {
-            polygonResolution: 64,  // Increased for smoother curves
-            debugMode: false,
-            autoCleanup: true,
-            precision: 6,  // Decimal places for PathsD
-            scale: 1000,   // Scale factor for integer precision (preserves 3 decimal places)
-            // Tangency resolution configuration
-            tangencyStrategy: 'polygon', // 'polygon' or 'none'
-            tangencyEpsilon: 50,         // Default epsilon in scaled units (0.05 original)
-            tangencyThreshold: 10,        // Detection threshold in scaled units
-            validateGeometry: false,      // Enable geometry validation (performance impact)
-            visualizeDebug: false         // Show debug visualizations
-        };
+        this.defaults = Clipper2Defaults;
+        this.config = { ...this.defaults.config };
     }
 
     /**
@@ -54,11 +43,10 @@ class Clipper2Core {
             // Verify critical functions
             this.verifyFunctions();
             
-            // Log configuration
             console.log('[CONFIG] Tangency resolution:', {
-                strategy: this.config.tangencyStrategy,
-                epsilon: this.config.tangencyEpsilon,
-                threshold: this.config.tangencyThreshold
+                strategy: this.defaults.tangency.strategy,
+                epsilon: this.defaults.tangency.epsilon,
+                threshold: this.defaults.tangency.threshold
             });
             
             this.initialized = true;
@@ -86,14 +74,12 @@ class Clipper2Core {
             console.warn('[WARN] Missing functions:', missing);
         }
         
-        // Check for FillRule enum
         if (!this.clipper2.FillRule) {
             throw new Error('FillRule enum not found');
         }
         
         console.log('[OK] FillRule values:', Object.keys(this.clipper2.FillRule));
         
-        // Check for additional operations
         if (this.clipper2.PointInPolygon64) {
             console.log('[OK] PointInPolygon64 available');
         }
@@ -102,14 +88,12 @@ class Clipper2Core {
             console.log('[OK] MinkowskiSum64 available');
         }
         
-        // Check for UnionSelf64
         if (this.clipper2.UnionSelf64) {
-            console.log('[OK] UnionSelf64 available (optimized self-union)');
+            console.log('[OK] UnionSelf64 available');
         } else {
             console.log('[INFO] UnionSelf64 not available (will use Union64 fallback)');
         }
         
-        // Log available operations
         const ops = Object.keys(this.clipper2).filter(k => k.includes('64'));
         console.log('[OK] Available 64-bit operations:', ops.length);
     }
@@ -150,19 +134,11 @@ class Clipper2Core {
     }
 
     /**
-     * Debug logging with tangency info
+     * Debug logging
      */
     debug(message, data = null) {
         if (this.config.debugMode) {
-            // Add tangency context if relevant
-            if (message.includes('tangenc') || message.includes('epsilon')) {
-                const tangencyInfo = {
-                    strategy: this.config.tangencyStrategy,
-                    epsilon: this.config.tangencyEpsilon,
-                    threshold: this.config.tangencyThreshold
-                };
-                console.log(`[DEBUG] ${message}`, data || '', '[TANGENCY]', tangencyInfo);
-            } else if (data) {
+            if (data) {
                 console.log(`[DEBUG] ${message}`, data);
             } else {
                 console.log(`[DEBUG] ${message}`);
@@ -171,104 +147,7 @@ class Clipper2Core {
     }
 
     /**
-     * Convert Path64 to array of points (with descaling)
-     */
-    pathToArray(path) {
-        const points = [];
-        const scale = this.config.scale;
-        
-        for (let i = 0; i < path.size(); i++) {
-            const point = path.get(i);
-            points.push({
-                x: Number(point.x) / scale,
-                y: Number(point.y) / scale,
-                z: Number(point.z) // Z value doesn't need scaling
-            });
-        }
-        
-        return points;
-    }
-
-    /**
-     * Convert Paths64 to array of path arrays (with descaling)
-     */
-    pathsToArray(paths) {
-        const result = [];
-        const scale = this.config.scale;
-        
-        for (let i = 0; i < paths.size(); i++) {
-            const path = paths.get(i);
-            const points = [];
-            
-            for (let j = 0; j < path.size(); j++) {
-                const point = path.get(j);
-                points.push({
-                    x: Number(point.x) / scale,
-                    y: Number(point.y) / scale,
-                    z: Number(point.z)
-                });
-            }
-            
-            const area = this.calculateAreaFromPoints(points);
-            
-            result.push({
-                points: points,
-                area: area,
-                orientation: area > 0 ? 'outer' : 'hole',
-                bounds: this.getPathBounds(points)
-            });
-        }
-        
-        return result;
-    }
-
-    /**
-     * Calculate area from points array (already descaled)
-     */
-    calculateAreaFromPoints(points) {
-        let area = 0;
-        const n = points.length;
-        
-        for (let i = 0; i < n; i++) {
-            const j = (i + 1) % n;
-            area += points[i].x * points[j].y;
-            area -= points[j].x * points[i].y;
-        }
-        
-        return area / 2;
-    }
-
-    /**
-     * Calculate area of a Path64 (handles scaling internally)
-     */
-    calculateArea(path) {
-        const points = this.pathToArray(path);
-        return this.calculateAreaFromPoints(points);
-    }
-
-    /**
-     * Get bounding box of points
-     */
-    getPathBounds(points) {
-        if (points.length === 0) {
-            return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-        }
-        
-        let minX = points[0].x, minY = points[0].y;
-        let maxX = points[0].x, maxY = points[0].y;
-        
-        for (let i = 1; i < points.length; i++) {
-            minX = Math.min(minX, points[i].x);
-            minY = Math.min(minY, points[i].y);
-            maxX = Math.max(maxX, points[i].x);
-            maxY = Math.max(maxY, points[i].y);
-        }
-        
-        return { minX, minY, maxX, maxY };
-    }
-
-    /**
-     * Validate operation result with tangency info
+     * Validate operation result
      */
     validateResult(operation, input, output) {
         const inputPaths = input.size();
@@ -279,16 +158,21 @@ class Clipper2Core {
         let totalInputPoints = 0;
         let totalOutputPoints = 0;
         
+        // Calculate simple metrics
         for (let i = 0; i < inputPaths; i++) {
             const path = input.get(i);
-            totalInputArea += Math.abs(this.calculateArea(path));
             totalInputPoints += path.size();
+            if (this.clipper2.AreaPath64) {
+                totalInputArea += Math.abs(this.clipper2.AreaPath64(path));
+            }
         }
         
         for (let i = 0; i < outputPaths; i++) {
             const path = output.get(i);
-            totalOutputArea += Math.abs(this.calculateArea(path));
             totalOutputPoints += path.size();
+            if (this.clipper2.AreaPath64) {
+                totalOutputArea += Math.abs(this.clipper2.AreaPath64(path));
+            }
         }
         
         const validation = {
@@ -297,19 +181,19 @@ class Clipper2Core {
             outputPaths: outputPaths,
             inputPoints: totalInputPoints,
             outputPoints: totalOutputPoints,
-            inputArea: totalInputArea,
-            outputArea: totalOutputArea,
-            areaChange: totalOutputArea - totalInputArea,
+            inputArea: totalInputArea / (this.config.scale * this.config.scale),
+            outputArea: totalOutputArea / (this.config.scale * this.config.scale),
+            areaChange: (totalOutputArea - totalInputArea) / (this.config.scale * this.config.scale),
             pointReduction: totalInputPoints > 0 ? 
                 (1 - totalOutputPoints / totalInputPoints) * 100 : 0,
-            valid: outputPaths > 0 || operation === 'difference', // Difference can produce 0 paths
-            tangencyStrategy: this.config.tangencyStrategy,
-            tangencyEpsilon: this.config.tangencyEpsilon
+            valid: outputPaths > 0 || operation === 'difference',
+            tangencyStrategy: this.defaults.tangency.strategy,
+            tangencyEpsilon: this.defaults.tangency.epsilon
         };
         
         if (outputPaths === 0 && operation !== 'difference') {
             console.warn(`[WARN] ${operation} produced no output paths`);
-            if (this.config.tangencyStrategy === 'none') {
+            if (this.defaults.tangency.strategy === 'none') {
                 console.warn('[HINT] Consider enabling tangency resolution if paths are touching');
             }
         }
@@ -320,91 +204,15 @@ class Clipper2Core {
     }
 
     /**
-     * Create Path64 from array of points (with scaling)
-     */
-    createPath64FromPoints(points) {
-        const path = new this.clipper2.Path64();
-        const scale = this.config.scale;
-        
-        points.forEach(point => {
-            path.push_back(new this.clipper2.Point64(
-                BigInt(Math.round(point.x * scale)),
-                BigInt(Math.round(point.y * scale)),
-                BigInt(point.z || 0)
-            ));
-        });
-        
-        return this.trackObject(path);
-    }
-
-    /**
-     * Create Paths64 from array of paths
-     */
-    createPaths64FromArrays(pathArrays) {
-        const paths = new this.clipper2.Paths64();
-        
-        pathArrays.forEach(pointArray => {
-            const path = this.createPath64FromPoints(pointArray);
-            paths.push_back(path);
-        });
-        
-        return this.trackObject(paths);
-    }
-
-    /**
-     * Convert between coordinate systems
-     */
-    convertToScreenCoords(clipperPoint) {
-        return {
-            x: Number(clipperPoint.x) / this.config.scale,
-            y: Number(clipperPoint.y) / this.config.scale
-        };
-    }
-
-    /**
-     * Convert from screen to Clipper coordinates
-     */
-    convertToClipperCoords(screenPoint) {
-        return new this.clipper2.Point64(
-            BigInt(Math.round(screenPoint.x * this.config.scale)),
-            BigInt(Math.round(screenPoint.y * this.config.scale)),
-            BigInt(0)
-        );
-    }
-
-    /**
-     * Check if point is in polygon
-     */
-    isPointInPolygon(point, polygon) {
-        if (!this.clipper2.PointInPolygon64) {
-            console.warn('[WARN] PointInPolygon64 not available');
-            return null;
-        }
-        
-        const clipperPoint = this.convertToClipperCoords(point);
-        const result = this.clipper2.PointInPolygon64(clipperPoint, polygon);
-        
-        // Clean up temporary point
-        clipperPoint.delete();
-        
-        // Return interpreted result
-        // Result values: 0 = Outside, >0 = Inside, <0 = On Edge
-        if (result === 0) return 'outside';
-        if (result > 0) return 'inside';
-        return 'edge';
-    }
-
-    /**
      * Get memory usage info
      */
     getMemoryInfo() {
         const info = {
             trackedObjects: this.memoryTracker.size,
             testResults: this.testResults.size,
-            tangencyStrategy: this.config.tangencyStrategy
+            tangencyStrategy: this.defaults.tangency.strategy
         };
         
-        // Try to get WASM memory info if available
         if (this.clipper2 && this.clipper2.HEAP8) {
             info.wasmHeapSize = this.clipper2.HEAP8.length;
             info.wasmHeapUsed = this.clipper2.HEAP8.length - this.clipper2._malloc(1);
@@ -414,13 +222,12 @@ class Clipper2Core {
     }
 
     /**
-     * Set configuration with tangency validation
+     * Set configuration
      */
     setConfig(config) {
-        // Validate tangency epsilon if provided
         if (config.tangencyEpsilon !== undefined) {
-            const minEpsilon = 10;  // Minimum viable epsilon
-            const maxEpsilon = 1000; // Maximum before distortion
+            const minEpsilon = 10;
+            const maxEpsilon = 1000;
             
             if (config.tangencyEpsilon < minEpsilon) {
                 console.warn(`[CONFIG] Epsilon ${config.tangencyEpsilon} too small, using ${minEpsilon}`);
@@ -441,15 +248,6 @@ class Clipper2Core {
             console.log(`[CONFIG] Scale factor set to ${config.scale}`);
         }
         
-        if (config.tangencyStrategy !== undefined) {
-            console.log(`[CONFIG] Tangency strategy set to '${config.tangencyStrategy}'`);
-        }
-        
-        if (config.tangencyEpsilon !== undefined) {
-            const originalUnits = config.tangencyEpsilon / this.config.scale;
-            console.log(`[CONFIG] Tangency epsilon set to ${config.tangencyEpsilon} (${originalUnits.toFixed(3)} original units)`);
-        }
-        
         return this.config;
     }
 
@@ -461,20 +259,19 @@ class Clipper2Core {
     }
 
     /**
-     * Store test result with tangency info
+     * Store test result
      */
     storeTestResult(testName, result) {
         this.testResults.set(testName, {
             timestamp: Date.now(),
             result: result,
             tangencyConfig: {
-                strategy: this.config.tangencyStrategy,
-                epsilon: this.config.tangencyEpsilon,
-                threshold: this.config.tangencyThreshold
+                strategy: this.defaults.tangency.strategy,
+                epsilon: this.defaults.tangency.epsilon,
+                threshold: this.defaults.tangency.threshold
             }
         });
         
-        // Keep only last 50 results
         if (this.testResults.size > 50) {
             const firstKey = this.testResults.keys().next().value;
             this.testResults.delete(firstKey);
@@ -489,7 +286,7 @@ class Clipper2Core {
     }
 
     /**
-     * Clear all test results
+     * Clear test results
      */
     clearTestResults() {
         this.testResults.clear();
@@ -500,13 +297,8 @@ class Clipper2Core {
      * Perform full cleanup
      */
     destroy() {
-        // Clean up tracked objects
         const cleaned = this.cleanup();
-        
-        // Clear test results
         this.clearTestResults();
-        
-        // Reset state
         this.initialized = false;
         this.clipper2 = null;
         this.utils = null;
@@ -515,22 +307,22 @@ class Clipper2Core {
     }
 
     /**
-     * Get tangency resolution info for debugging
+     * Get tangency info
      */
     getTangencyInfo() {
         return {
-            strategy: this.config.tangencyStrategy,
-            epsilon: this.config.tangencyEpsilon,
-            epsilonOriginal: this.config.tangencyEpsilon / this.config.scale,
-            threshold: this.config.tangencyThreshold,
-            thresholdOriginal: this.config.tangencyThreshold / this.config.scale,
+            strategy: this.defaults.tangency.strategy,
+            epsilon: this.defaults.tangency.epsilon,
+            epsilonOriginal: this.defaults.tangency.epsilon / this.config.scale,
+            threshold: this.defaults.tangency.threshold,
+            thresholdOriginal: this.defaults.tangency.threshold / this.config.scale,
             scale: this.config.scale,
-            enabled: this.config.tangencyStrategy !== 'none'
+            enabled: this.defaults.tangency.enabled
         };
     }
 
     /**
-     * Log detailed tangency diagnostics
+     * Log tangency diagnostics
      */
     logTangencyDiagnostics() {
         const info = this.getTangencyInfo();

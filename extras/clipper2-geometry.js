@@ -1,465 +1,233 @@
 /**
  * Clipper2 Geometry Module
- * Creates various geometric shapes for testing
- * Version 3.4 - Fixed winding order normalization for all geometry
+ * Converts between coordinate arrays and Clipper2 objects
+ * Version 5.1 - Added polygon validation
  */
 
 class Clipper2Geometry {
     constructor(core) {
         this.core = core;
+        this.defaults = null; // Will be set during initialization
     }
 
     /**
-     * Ensure counter-clockwise winding for proper boolean operations
-     * Critical for union operations with FillRule.Positive
+     * Initialize with defaults reference
      */
-    ensureCounterClockwise(path) {
-        // Check if AreaPath64 is available
-        if (this.core.clipper2.AreaPath64) {
-            const area = this.core.clipper2.AreaPath64(path);
-            if (area < 0) {
-                // Negative area means clockwise, need to reverse
-                if (this.core.clipper2.ReversePath64) {
-                    this.core.clipper2.ReversePath64(path);
-                    this.core.debug('Reversed path from CW to CCW');
-                } else {
-                    // Fallback: manually reverse
-                    const reversed = new this.core.clipper2.Path64();
-                    for (let i = path.size() - 1; i >= 0; i--) {
-                        reversed.push_back(path.get(i));
-                    }
-                    // Clear original and copy reversed
-                    path.clear();
-                    for (let i = 0; i < reversed.size(); i++) {
-                        path.push_back(reversed.get(i));
-                    }
-                    reversed.delete();
-                    this.core.debug('Manually reversed path from CW to CCW');
-                }
-            }
-        } else {
-            // If AreaPath64 not available, calculate manually
-            let area = 0;
-            const n = path.size();
-            for (let i = 0; i < n; i++) {
-                const j = (i + 1) % n;
-                const pi = path.get(i);
-                const pj = path.get(j);
-                area += Number(pi.x * pj.y - pj.x * pi.y);
-            }
-            
-            if (area < 0) {
-                // Reverse path
-                const reversed = new this.core.clipper2.Path64();
-                for (let i = path.size() - 1; i >= 0; i--) {
-                    reversed.push_back(path.get(i));
-                }
-                path.clear();
-                for (let i = 0; i < reversed.size(); i++) {
-                    path.push_back(reversed.get(i));
-                }
-                reversed.delete();
-                this.core.debug('Manually calculated and reversed path from CW to CCW');
-            }
+    initialize(defaults) {
+        this.defaults = defaults;
+    }
+
+    /**
+     * Convert any geometry definition to Clipper2 Path64
+     */
+    toClipper2Path(definition, options = {}) {
+        // Handle direct coordinate arrays
+        if (Array.isArray(definition)) {
+            return this.coordinatesToPath64(definition);
         }
         
-        return path;
-    }
-
-    /**
-     * Create rectangle path with scaling and CCW winding
-     */
-    createRectangle(x, y, width, height) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        
-        // Create CCW rectangle (bottom-left, bottom-right, top-right, top-left)
-        path.push_back(new this.core.clipper2.Point64(
-            BigInt(Math.round(x * scale)), 
-            BigInt(Math.round(y * scale)), 
-            BigInt(0)
-        ));
-        path.push_back(new this.core.clipper2.Point64(
-            BigInt(Math.round((x + width) * scale)), 
-            BigInt(Math.round(y * scale)), 
-            BigInt(0)
-        ));
-        path.push_back(new this.core.clipper2.Point64(
-            BigInt(Math.round((x + width) * scale)), 
-            BigInt(Math.round((y + height) * scale)), 
-            BigInt(0)
-        ));
-        path.push_back(new this.core.clipper2.Point64(
-            BigInt(Math.round(x * scale)), 
-            BigInt(Math.round((y + height) * scale)), 
-            BigInt(0)
-        ));
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create circle path with configurable segments and scaling and CCW winding
-     */
-    createCircle(centerX, centerY, radius, segments = null) {
-        segments = segments || this.core.config.polygonResolution || 64;
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        
-        // Create CCW circle
-        for (let i = 0; i < segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            const x = centerX + radius * Math.cos(angle);
-            const y = centerY + radius * Math.sin(angle);
-            
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(x * scale)),
-                BigInt(Math.round(y * scale)),
-                BigInt(0)
-            ));
+        // Handle geometry definitions
+        switch (definition.type) {
+            case 'polygon':
+                return this.polygonToPath64(definition, options);
+            case 'parametric':
+                return this.parametricToPath64(definition, options);
+            case 'strokes':
+                return this.strokesToPath64(definition, options);
+            case 'svg':
+                return this.svgToPath64(definition, options);
+            case 'pcb':
+                return this.pcbToPath64(definition, options);
+            default:
+                throw new Error(`Unknown geometry type: ${definition.type}`);
         }
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
     }
 
     /**
-     * Create ellipse path with scaling and CCW winding
+     * Convert geometry definition to Clipper2 Paths64 (multiple paths)
      */
-    createEllipse(centerX, centerY, radiusX, radiusY, segments = null) {
-        segments = segments || this.core.config.polygonResolution || 64;
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        
-        for (let i = 0; i < segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            const x = centerX + radiusX * Math.cos(angle);
-            const y = centerY + radiusY * Math.sin(angle);
-            
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(x * scale)),
-                BigInt(Math.round(y * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create polygon from points array with scaling and CCW winding
-     */
-    createPolygon(points) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        
-        points.forEach(([x, y]) => {
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(x * scale)), 
-                BigInt(Math.round(y * scale)), 
-                BigInt(0)
-            ));
-        });
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create PCB trace (thick line with rounded ends) with scaling and CCW winding
-     */
-    createTrace(x1, y1, x2, y2, width) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        
-        // Calculate perpendicular offset
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        
-        // Handle zero-length trace as circle
-        if (len === 0) {
-            return this.createCircle((x1 + x2) / 2, (y1 + y2) / 2, width / 2);
-        }
-        
-        const nx = -dy / len * width / 2;
-        const ny = dx / len * width / 2;
-        
-        // Create trace with rounded ends in CCW order
-        const segments = Math.max(8, Math.floor(this.core.config.polygonResolution / 4));
-        
-        // Start cap (semicircle) - CCW from bottom to top
-        const startAngle = Math.atan2(ny, nx);
-        for (let i = 0; i <= segments; i++) {
-            const angle = startAngle + Math.PI - (i / segments) * Math.PI;
-            const px = x1 + (width / 2) * Math.cos(angle);
-            const py = y1 + (width / 2) * Math.sin(angle);
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(px * scale)),
-                BigInt(Math.round(py * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        // Top edge
-        path.push_back(new this.core.clipper2.Point64(
-            BigInt(Math.round((x2 + nx) * scale)),
-            BigInt(Math.round((y2 + ny) * scale)),
-            BigInt(0)
-        ));
-        
-        // End cap (semicircle) - CCW from top to bottom
-        for (let i = 0; i <= segments; i++) {
-            const angle = startAngle + (i / segments) * Math.PI;
-            const px = x2 + (width / 2) * Math.cos(angle);
-            const py = y2 + (width / 2) * Math.sin(angle);
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(px * scale)),
-                BigInt(Math.round(py * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        // Bottom edge (back to start)
-        path.push_back(new this.core.clipper2.Point64(
-            BigInt(Math.round((x1 - nx) * scale)),
-            BigInt(Math.round((y1 - ny) * scale)),
-            BigInt(0)
-        ));
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create PCB pad (circle) with CCW winding
-     */
-    createPad(x, y, radius) {
-        return this.createCircle(x, y, radius);
-    }
-
-    /**
-     * Create PCB via (annular ring - circle with optional hole) with CCW winding
-     */
-    createVia(x, y, outerRadius, innerRadius = 0) {
-        // For PCB boolean operations, we only care about the copper ring
-        // The drill hole is handled separately in manufacturing
-        // For now, just return the outer circle
-        return this.createCircle(x, y, outerRadius);
-    }
-
-    /**
-     * Create arc path with scaling and CCW winding
-     */
-    createArc(centerX, centerY, radius, startAngle, endAngle, strokeWidth = 1) {
-        const path = new this.core.clipper2.Path64();
-        const segments = this.core.config.polygonResolution || 64;
-        const scale = this.core.config.scale;
-        
-        if (strokeWidth > 1) {
-            // Create thick arc (for strokes) - ensure CCW
-            const innerRadius = radius - strokeWidth / 2;
-            const outerRadius = radius + strokeWidth / 2;
-            
-            // Outer arc (CCW)
-            for (let i = 0; i <= segments; i++) {
-                const t = i / segments;
-                const angle = startAngle + (endAngle - startAngle) * t;
-                const x = centerX + outerRadius * Math.cos(angle);
-                const y = centerY + outerRadius * Math.sin(angle);
-                
-                path.push_back(new this.core.clipper2.Point64(
-                    BigInt(Math.round(x * scale)),
-                    BigInt(Math.round(y * scale)),
-                    BigInt(0)
-                ));
-            }
-            
-            // Inner arc (reversed for closed shape to maintain CCW)
-            for (let i = segments; i >= 0; i--) {
-                const t = i / segments;
-                const angle = startAngle + (endAngle - startAngle) * t;
-                const x = centerX + innerRadius * Math.cos(angle);
-                const y = centerY + innerRadius * Math.sin(angle);
-                
-                path.push_back(new this.core.clipper2.Point64(
-                    BigInt(Math.round(x * scale)),
-                    BigInt(Math.round(y * scale)),
-                    BigInt(0)
-                ));
-            }
-        } else {
-            // Thin arc
-            for (let i = 0; i <= segments; i++) {
-                const t = i / segments;
-                const angle = startAngle + (endAngle - startAngle) * t;
-                const x = centerX + radius * Math.cos(angle);
-                const y = centerY + radius * Math.sin(angle);
-                
-                path.push_back(new this.core.clipper2.Point64(
-                    BigInt(Math.round(x * scale)),
-                    BigInt(Math.round(y * scale)),
-                    BigInt(0)
-                ));
-            }
-        }
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create star shape with scaling and CCW winding
-     */
-    createStar(centerX, centerY, outerRadius, innerRadius, points) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        
-        for (let i = 0; i < points * 2; i++) {
-            const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
-            const radius = i % 2 === 0 ? outerRadius : innerRadius;
-            const x = centerX + radius * Math.cos(angle);
-            const y = centerY + radius * Math.sin(angle);
-            
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(x * scale)),
-                BigInt(Math.round(y * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create regular polygon with scaling and CCW winding
-     */
-    createRegularPolygon(centerX, centerY, radius, sides, rotation = 0) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        
-        for (let i = 0; i < sides; i++) {
-            const angle = (i / sides) * Math.PI * 2 + rotation;
-            const x = centerX + radius * Math.cos(angle);
-            const y = centerY + radius * Math.sin(angle);
-            
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(x * scale)),
-                BigInt(Math.round(y * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create noisy path for simplification testing with scaling and CCW winding
-     */
-    createNoisyPath(centerX, centerY, baseRadius, noiseAmount, points) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        
-        for (let i = 0; i < points; i++) {
-            const angle = (i / points) * Math.PI * 2;
-            const noise = (Math.random() - 0.5) * noiseAmount;
-            const radius = baseRadius + noise;
-            const x = centerX + radius * Math.cos(angle);
-            const y = centerY + radius * Math.sin(angle);
-            
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(x * scale)),
-                BigInt(Math.round(y * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create spiral path with scaling and CCW winding
-     */
-    createSpiral(centerX, centerY, startRadius, endRadius, turns, pointsPerTurn = 32) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        const totalPoints = turns * pointsPerTurn;
-        
-        for (let i = 0; i <= totalPoints; i++) {
-            const t = i / totalPoints;
-            const angle = t * turns * Math.PI * 2;
-            const radius = startRadius + (endRadius - startRadius) * t;
-            const x = centerX + radius * Math.cos(angle);
-            const y = centerY + radius * Math.sin(angle);
-            
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(x * scale)),
-                BigInt(Math.round(y * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
-    }
-
-    /**
-     * Create grid of shapes
-     */
-    createGrid(shape, rows, cols, spacing, offsetX = 0, offsetY = 0) {
+    toClipper2Paths(definition, options = {}) {
         const paths = new this.core.clipper2.Paths64();
         
-        for (let row = 0; row < rows; row++) {
-            for (let col = 0; col < cols; col++) {
-                const x = offsetX + col * spacing;
-                const y = offsetY + row * spacing;
+        if (definition.type === 'strokes') {
+            // Each stroke becomes a separate path
+            definition.data.forEach(stroke => {
+                const polygon = this.defaults.generators.strokeToPolygon(
+                    stroke, 
+                    definition.strokeWidth
+                );
                 
-                let path;
-                switch(shape) {
-                    case 'circle':
-                        path = this.createCircle(x, y, spacing / 3);
-                        break;
-                    case 'square':
-                        path = this.createRectangle(
-                            x - spacing / 3, 
-                            y - spacing / 3, 
-                            spacing * 2 / 3, 
-                            spacing * 2 / 3
-                        );
-                        break;
-                    case 'hexagon':
-                        path = this.createRegularPolygon(x, y, spacing / 3, 6);
-                        break;
-                    default:
-                        path = this.createCircle(x, y, spacing / 4);
+                // Validate before adding
+                const validationResult = this.validatePolygon(polygon);
+                if (!validationResult.isValid) {
+                    console.warn(`[GEOMETRY] Invalid stroke polygon: ${validationResult.error}`);
                 }
                 
-                paths.push_back(path);
+                paths.push_back(this.coordinatesToPath64(polygon));
+            });
+        } else if (definition.type === 'pcb') {
+            // Convert traces
+            if (definition.traces) {
+                definition.traces.forEach(trace => {
+                    const polygon = this.defaults.generators.lineToPolygon(
+                        trace.from, 
+                        trace.to, 
+                        definition.traceWidth
+                    );
+                    
+                    // Validate before adding
+                    const validationResult = this.validatePolygon(polygon);
+                    if (!validationResult.isValid) {
+                        console.warn(`[GEOMETRY] Invalid trace polygon: ${validationResult.error}`);
+                    }
+                    
+                    paths.push_back(this.coordinatesToPath64(polygon));
+                });
             }
+            // Convert pads
+            if (definition.pads) {
+                definition.pads.forEach(pad => {
+                    const circle = this.defaults.generators.circle(
+                        pad.center[0], 
+                        pad.center[1], 
+                        pad.radius,
+                        this.defaults.config.polygonResolution
+                    );
+                    paths.push_back(this.coordinatesToPath64(circle));
+                });
+            }
+        } else {
+            // Single path
+            paths.push_back(this.toClipper2Path(definition, options));
         }
         
         return this.core.trackObject(paths);
     }
 
     /**
-     * Create random convex polygon with CCW winding
+     * Validate polygon geometry
+     * Checks for: proper closure, sufficient vertices, no self-intersection (basic check)
      */
-    createRandomConvexPolygon(centerX, centerY, avgRadius, variance, points) {
-        // Generate random angles and sort them
-        const angles = [];
-        for (let i = 0; i < points; i++) {
-            angles.push(Math.random() * Math.PI * 2);
+    validatePolygon(coords) {
+        const result = {
+            isValid: true,
+            error: null,
+            warnings: []
+        };
+        
+        // Check minimum vertices
+        if (coords.length < 3) {
+            result.isValid = false;
+            result.error = `Polygon has ${coords.length} vertices, minimum 3 required`;
+            return result;
         }
-        angles.sort((a, b) => a - b);
         
+        // Check for duplicate consecutive points
+        for (let i = 0; i < coords.length; i++) {
+            const curr = coords[i];
+            const next = coords[(i + 1) % coords.length];
+            
+            const dx = (Array.isArray(curr) ? curr[0] : curr.x) - (Array.isArray(next) ? next[0] : next.x);
+            const dy = (Array.isArray(curr) ? curr[1] : curr.y) - (Array.isArray(next) ? next[1] : next.y);
+            
+            if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
+                result.warnings.push(`Duplicate vertices at index ${i} and ${(i + 1) % coords.length}`);
+            }
+        }
+        
+        // Check for self-intersections (simplified check - only adjacent edges)
+        const hasBasicSelfIntersection = this.checkBasicSelfIntersection(coords);
+        if (hasBasicSelfIntersection) {
+            result.warnings.push('Polygon may have self-intersections');
+        }
+        
+        // Calculate and check area
+        const area = this.calculateAreaFromCoords(coords);
+        if (Math.abs(area) < 0.001) {
+            result.isValid = false;
+            result.error = 'Polygon has zero or near-zero area';
+            return result;
+        }
+        
+        // Check winding order
+        if (area < 0) {
+            result.warnings.push('Polygon has clockwise winding (will be reversed for CCW)');
+        }
+        
+        // Log validation details in debug mode
+        if (this.core.config.debugMode && (result.warnings.length > 0 || !result.isValid)) {
+            console.log('[VALIDATE] Polygon validation:', result);
+        }
+        
+        return result;
+    }
+
+    /**
+     * Check for basic self-intersections (adjacent edges shouldn't intersect except at endpoints)
+     */
+    checkBasicSelfIntersection(coords) {
+        const n = coords.length;
+        
+        for (let i = 0; i < n; i++) {
+            const a1 = coords[i];
+            const a2 = coords[(i + 1) % n];
+            
+            // Check against non-adjacent edges
+            for (let j = i + 2; j < n; j++) {
+                if ((i === 0 && j === n - 1) || j === i) continue; // Skip adjacent edges
+                
+                const b1 = coords[j];
+                const b2 = coords[(j + 1) % n];
+                
+                if (this.doSegmentsIntersect(a1, a2, b1, b2)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Check if two line segments intersect
+     */
+    doSegmentsIntersect(p1, p2, p3, p4) {
+        const x1 = Array.isArray(p1) ? p1[0] : p1.x;
+        const y1 = Array.isArray(p1) ? p1[1] : p1.y;
+        const x2 = Array.isArray(p2) ? p2[0] : p2.x;
+        const y2 = Array.isArray(p2) ? p2[1] : p2.y;
+        const x3 = Array.isArray(p3) ? p3[0] : p3.x;
+        const y3 = Array.isArray(p3) ? p3[1] : p3.y;
+        const x4 = Array.isArray(p4) ? p4[0] : p4.x;
+        const y4 = Array.isArray(p4) ? p4[1] : p4.y;
+        
+        const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+        
+        if (Math.abs(denom) < 0.0001) return false; // Parallel lines
+        
+        const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+        const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+        
+        return t > 0 && t < 1 && u > 0 && u < 1;
+    }
+
+    /**
+     * Convert coordinate array to Path64
+     */
+    coordinatesToPath64(coords) {
         const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
+        const scale = this.defaults.config.scale;
         
-        angles.forEach(angle => {
-            const radiusVariance = (Math.random() - 0.5) * variance;
-            const radius = avgRadius + radiusVariance;
-            const x = centerX + radius * Math.cos(angle);
-            const y = centerY + radius * Math.sin(angle);
+        coords.forEach(point => {
+            const x = Array.isArray(point) ? point[0] : point.x;
+            const y = Array.isArray(point) ? point[1] : point.y;
+            const z = Array.isArray(point) && point[2] !== undefined ? point[2] : 
+                     (point.z !== undefined ? point.z : 0);
             
             path.push_back(new this.core.clipper2.Point64(
                 BigInt(Math.round(x * scale)),
                 BigInt(Math.round(y * scale)),
-                BigInt(0)
+                BigInt(z)
             ));
         });
         
@@ -467,138 +235,404 @@ class Clipper2Geometry {
     }
 
     /**
-     * Create Bezier curve approximation with CCW winding check
+     * Convert Path64 to coordinate array
      */
-    createBezierCurve(p0, p1, p2, p3, segments = 32) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
+    path64ToCoordinates(path) {
+        const coords = [];
+        const scale = this.defaults.config.scale;
         
-        for (let i = 0; i <= segments; i++) {
-            const t = i / segments;
-            const t2 = t * t;
-            const t3 = t2 * t;
-            const mt = 1 - t;
-            const mt2 = mt * mt;
-            const mt3 = mt2 * mt;
-            
-            const x = mt3 * p0[0] + 3 * mt2 * t * p1[0] + 3 * mt * t2 * p2[0] + t3 * p3[0];
-            const y = mt3 * p0[1] + 3 * mt2 * t * p1[1] + 3 * mt * t2 * p2[1] + t3 * p3[1];
-            
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(x * scale)),
-                BigInt(Math.round(y * scale)),
-                BigInt(0)
-            ));
+        for (let i = 0; i < path.size(); i++) {
+            const point = path.get(i);
+            coords.push([
+                Number(point.x) / scale,
+                Number(point.y) / scale
+            ]);
         }
         
-        return this.core.trackObject(this.ensureCounterClockwise(path));
+        return coords;
     }
 
     /**
-     * Create rounded rectangle with CCW winding
+     * Convert Paths64 to array of coordinate arrays
      */
-    createRoundedRectangle(x, y, width, height, cornerRadius) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
-        const segments = Math.max(4, Math.floor(this.core.config.polygonResolution / 8));
+    paths64ToCoordinates(paths) {
+        const result = [];
         
-        // Create in CCW order
-        // Top-left corner
-        for (let i = 0; i <= segments; i++) {
-            const angle = Math.PI + (i / segments) * Math.PI / 2;
-            const px = x + cornerRadius + cornerRadius * Math.cos(angle);
-            const py = y + cornerRadius + cornerRadius * Math.sin(angle);
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(px * scale)),
-                BigInt(Math.round(py * scale)),
-                BigInt(0)
-            ));
+        for (let i = 0; i < paths.size(); i++) {
+            const path = paths.get(i);
+            result.push({
+                coords: this.path64ToCoordinates(path),
+                area: this.calculateArea(path),
+                orientation: null // Will be calculated if needed
+            });
         }
         
-        // Top-right corner
-        for (let i = 0; i <= segments; i++) {
-            const angle = -Math.PI / 2 + (i / segments) * Math.PI / 2;
-            const px = x + width - cornerRadius + cornerRadius * Math.cos(angle);
-            const py = y + cornerRadius + cornerRadius * Math.sin(angle);
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(px * scale)),
-                BigInt(Math.round(py * scale)),
-                BigInt(0)
-            ));
-        }
+        // Determine orientation based on area
+        result.forEach(item => {
+            item.orientation = item.area > 0 ? 'outer' : 'hole';
+        });
         
-        // Bottom-right corner
-        for (let i = 0; i <= segments; i++) {
-            const angle = (i / segments) * Math.PI / 2;
-            const px = x + width - cornerRadius + cornerRadius * Math.cos(angle);
-            const py = y + height - cornerRadius + cornerRadius * Math.sin(angle);
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(px * scale)),
-                BigInt(Math.round(py * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        // Bottom-left corner
-        for (let i = 0; i <= segments; i++) {
-            const angle = Math.PI / 2 + (i / segments) * Math.PI / 2;
-            const px = x + cornerRadius + cornerRadius * Math.cos(angle);
-            const py = y + height - cornerRadius + cornerRadius * Math.sin(angle);
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(px * scale)),
-                BigInt(Math.round(py * scale)),
-                BigInt(0)
-            ));
-        }
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
+        return result;
     }
 
     /**
-     * Create arrow shape with CCW winding
+     * Convert polygon definition to Path64
      */
-    createArrow(x1, y1, x2, y2, headLength = 20, headWidth = 15, shaftWidth = 8) {
-        const path = new this.core.clipper2.Path64();
-        const scale = this.core.config.scale;
+    polygonToPath64(definition, options = {}) {
+        let coords = definition.data;
         
-        // Calculate direction
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.sqrt(dx * dx + dy * dy);
+        // Handle relative positioning
+        if (options.position) {
+            coords = coords.map(point => [
+                point[0] + options.position[0],
+                point[1] + options.position[1]
+            ]);
+        }
         
-        if (len === 0) return this.createCircle((x1 + x2) / 2, (y1 + y2) / 2, 5);
+        return this.coordinatesToPath64(coords);
+    }
+
+    /**
+     * Convert parametric definition to Path64
+     */
+    parametricToPath64(definition, options = {}) {
+        const pos = options.position || definition.center || definition.initialPos || [0, 0];
+        let coords;
         
-        const dirX = dx / len;
-        const dirY = dy / len;
-        const perpX = -dirY;
-        const perpY = dirX;
+        switch (definition.shape) {
+            case 'circle':
+                coords = this.defaults.generators.circle(
+                    pos[0], pos[1], 
+                    definition.radius,
+                    this.defaults.config.polygonResolution
+                );
+                break;
+                
+            case 'star':
+                coords = this.defaults.generators.star(
+                    pos[0], pos[1],
+                    definition.outerRadius,
+                    definition.innerRadius,
+                    definition.points
+                );
+                break;
+                
+            case 'random':
+                coords = options.randomShape || 
+                    this.defaults.generators.randomConvex(
+                        pos[0], pos[1],
+                        definition.avgRadius,
+                        definition.variance,
+                        definition.points
+                    );
+                break;
+                
+            case 'flower':
+                coords = this.defaults.generators.flower(
+                    definition.center[0],
+                    definition.center[1],
+                    definition.baseRadius,
+                    definition.noiseFrequency,
+                    definition.noiseAmplitude,
+                    definition.segments
+                );
+                break;
+                
+            default:
+                throw new Error(`Unknown parametric shape: ${definition.shape}`);
+        }
         
-        // Arrow points in CCW order
-        const points = [
-            // Shaft start bottom
-            [x1 - perpX * shaftWidth / 2, y1 - perpY * shaftWidth / 2],
-            // Shaft start top
-            [x1 + perpX * shaftWidth / 2, y1 + perpY * shaftWidth / 2],
-            // Shaft to head transition top
-            [x2 - dirX * headLength + perpX * shaftWidth / 2, y2 - dirY * headLength + perpY * shaftWidth / 2],
-            // Head side top
-            [x2 - dirX * headLength + perpX * headWidth / 2, y2 - dirY * headLength + perpY * headWidth / 2],
-            // Arrow tip
-            [x2, y2],
-            // Head side bottom
-            [x2 - dirX * headLength - perpX * headWidth / 2, y2 - dirY * headLength - perpY * headWidth / 2],
-            // Shaft to head transition bottom
-            [x2 - dirX * headLength - perpX * shaftWidth / 2, y2 - dirY * headLength - perpY * shaftWidth / 2]
+        return this.coordinatesToPath64(coords);
+    }
+
+    /**
+     * Convert strokes definition to Path64
+     */
+    strokesToPath64(definition, options = {}) {
+        // Combine all strokes into single path (for single path requirement)
+        console.warn('[GEOMETRY] Converting multiple strokes to single path - may not produce expected result');
+        
+        // Instead, just convert the first stroke
+        if (definition.data.length > 0) {
+            const polygon = this.defaults.generators.strokeToPolygon(
+                definition.data[0], 
+                definition.strokeWidth
+            );
+            return this.coordinatesToPath64(polygon);
+        }
+        
+        return this.coordinatesToPath64([]);
+    }
+
+    /**
+     * Convert SVG path to Path64
+     */
+    svgToPath64(definition, options = {}) {
+        const pos = options.position || definition.initialPos || [0, 0];
+        const scale = definition.scale || 1;
+        const coords = this.parseSVGPath(definition.path, scale, pos);
+        return this.coordinatesToPath64(coords);
+    }
+
+    /**
+     * Convert PCB definition to Path64
+     */
+    pcbToPath64(definition, options = {}) {
+        // Return first trace or pad as single path
+        if (definition.traces && definition.traces.length > 0) {
+            const trace = definition.traces[0];
+            const polygon = this.defaults.generators.lineToPolygon(
+                trace.from, 
+                trace.to, 
+                definition.traceWidth
+            );
+            return this.coordinatesToPath64(polygon);
+        }
+        
+        if (definition.pads && definition.pads.length > 0) {
+            const pad = definition.pads[0];
+            const circle = this.defaults.generators.circle(
+                pad.center[0], 
+                pad.center[1], 
+                pad.radius,
+                this.defaults.config.polygonResolution
+            );
+            return this.coordinatesToPath64(circle);
+        }
+        
+        return this.coordinatesToPath64([]);
+    }
+
+    /**
+     * Parse SVG path data to coordinates
+     */
+    parseSVGPath(pathData, scale = 1.0, offset = [0, 0]) {
+        const coords = [];
+        const commands = pathData.match(/[mlhvcsqtaz][^mlhvcsqtaz]*/gi);
+        
+        let currentX = 0, currentY = 0;
+        let startX = 0, startY = 0;
+        
+        commands?.forEach(cmd => {
+            const type = cmd[0].toLowerCase();
+            const numbers = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat);
+            const isRelative = cmd[0] === cmd[0].toLowerCase();
+            
+            switch(type) {
+                case 'm': // Move to
+                    if (isRelative) {
+                        currentX += numbers[0];
+                        currentY += numbers[1];
+                    } else {
+                        currentX = numbers[0];
+                        currentY = numbers[1];
+                    }
+                    startX = currentX;
+                    startY = currentY;
+                    
+                    // Handle subsequent coordinates as line-to
+                    for (let i = 2; i < numbers.length; i += 2) {
+                        if (isRelative) {
+                            currentX += numbers[i];
+                            currentY += numbers[i + 1];
+                        } else {
+                            currentX = numbers[i];
+                            currentY = numbers[i + 1];
+                        }
+                        coords.push([
+                            currentX * scale + offset[0],
+                            currentY * scale + offset[1]
+                        ]);
+                    }
+                    break;
+                    
+                case 'l': // Line to
+                    for (let i = 0; i < numbers.length; i += 2) {
+                        if (isRelative) {
+                            currentX += numbers[i];
+                            currentY += numbers[i + 1];
+                        } else {
+                            currentX = numbers[i];
+                            currentY = numbers[i + 1];
+                        }
+                        coords.push([
+                            currentX * scale + offset[0],
+                            currentY * scale + offset[1]
+                        ]);
+                    }
+                    break;
+                    
+                case 'h': // Horizontal line
+                    for (let i = 0; i < numbers.length; i++) {
+                        currentX = isRelative ? currentX + numbers[i] : numbers[i];
+                        coords.push([
+                            currentX * scale + offset[0],
+                            currentY * scale + offset[1]
+                        ]);
+                    }
+                    break;
+                    
+                case 'v': // Vertical line
+                    for (let i = 0; i < numbers.length; i++) {
+                        currentY = isRelative ? currentY + numbers[i] : numbers[i];
+                        coords.push([
+                            currentX * scale + offset[0],
+                            currentY * scale + offset[1]
+                        ]);
+                    }
+                    break;
+                    
+                case 'z': // Close path
+                    currentX = startX;
+                    currentY = startY;
+                    break;
+                    
+                // Simplified curve handling - just use endpoints
+                case 'c': case 's': case 'q': case 't': case 'a':
+                    const lastIdx = numbers.length - 2;
+                    if (lastIdx >= 0) {
+                        if (isRelative) {
+                            currentX += numbers[lastIdx];
+                            currentY += numbers[lastIdx + 1];
+                        } else {
+                            currentX = numbers[lastIdx];
+                            currentY = numbers[lastIdx + 1];
+                        }
+                        coords.push([
+                            currentX * scale + offset[0],
+                            currentY * scale + offset[1]
+                        ]);
+                    }
+                    break;
+            }
+        });
+        
+        return coords;
+    }
+
+    /**
+     * Ensure counter-clockwise winding
+     */
+    ensureCounterClockwise(path) {
+        const area = this.calculateArea(path);
+        if (area < 0) {
+            // Negative area means clockwise, need to reverse
+            const reversed = new this.core.clipper2.Path64();
+            for (let i = path.size() - 1; i >= 0; i--) {
+                reversed.push_back(path.get(i));
+            }
+            path.clear();
+            for (let i = 0; i < reversed.size(); i++) {
+                path.push_back(reversed.get(i));
+            }
+            reversed.delete();
+            
+            if (this.core.config.debugMode) {
+                console.log('[GEOMETRY] Reversed path from CW to CCW');
+            }
+        }
+        return path;
+    }
+
+    /**
+     * Calculate area of a Path64
+     */
+    calculateArea(path) {
+        let area = 0;
+        const n = path.size();
+        
+        for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            const pi = path.get(i);
+            const pj = path.get(j);
+            area += Number(pi.x * pj.y - pj.x * pi.y);
+        }
+        
+        return area / 2;
+    }
+
+    /**
+     * Calculate area from coordinate array
+     */
+    calculateAreaFromCoords(coords) {
+        let area = 0;
+        const n = coords.length;
+        
+        for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            const pi = coords[i];
+            const pj = coords[j];
+            const xi = Array.isArray(pi) ? pi[0] : pi.x;
+            const yi = Array.isArray(pi) ? pi[1] : pi.y;
+            const xj = Array.isArray(pj) ? pj[0] : pj.x;
+            const yj = Array.isArray(pj) ? pj[1] : pj.y;
+            
+            area += xi * yj - xj * yi;
+        }
+        
+        return area / 2;
+    }
+
+    /**
+     * Get geometry from defaults by name
+     */
+    getGeometry(name) {
+        const parts = name.split('.');
+        let def = this.defaults.geometries;
+        
+        for (const part of parts) {
+            def = def[part];
+            if (!def) return null;
+        }
+        
+        return def;
+    }
+
+    /**
+     * Create shape for testing (backwards compatibility)
+     */
+    createRectangle(x, y, width, height) {
+        const coords = [
+            [x, y],
+            [x + width, y],
+            [x + width, y + height],
+            [x, y + height]
         ];
-        
-        points.forEach(([px, py]) => {
-            path.push_back(new this.core.clipper2.Point64(
-                BigInt(Math.round(px * scale)),
-                BigInt(Math.round(py * scale)),
-                BigInt(0)
-            ));
-        });
-        
-        return this.core.trackObject(this.ensureCounterClockwise(path));
+        return this.coordinatesToPath64(coords);
+    }
+    
+    createCircle(cx, cy, r, segments = null) {
+        segments = segments || this.defaults.config.polygonResolution;
+        const coords = this.defaults.generators.circle(cx, cy, r, segments);
+        return this.coordinatesToPath64(coords);
+    }
+    
+    createStar(cx, cy, outerR, innerR, points) {
+        const coords = this.defaults.generators.star(cx, cy, outerR, innerR, points);
+        return this.coordinatesToPath64(coords);
+    }
+    
+    createPolygon(points) {
+        return this.coordinatesToPath64(points);
+    }
+    
+    createRandomConvexPolygon(cx, cy, avgRadius, variance, points) {
+        const coords = this.defaults.generators.randomConvex(cx, cy, avgRadius, variance, points);
+        return this.coordinatesToPath64(coords);
+    }
+
+    // Legacy methods for compatibility
+    createTrace(x1, y1, x2, y2, width) {
+        const coords = this.defaults.generators.lineToPolygon([x1, y1], [x2, y2], width);
+        return this.coordinatesToPath64(coords);
+    }
+    
+    createPad(x, y, radius) {
+        return this.createCircle(x, y, radius);
+    }
+    
+    createArc(cx, cy, radius, startAngle, endAngle, strokeWidth) {
+        const coords = this.defaults.generators.arcToPolygon([cx, cy], radius, startAngle, endAngle, strokeWidth);
+        return this.coordinatesToPath64(coords);
     }
 }

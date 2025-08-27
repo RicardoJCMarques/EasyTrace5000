@@ -7,29 +7,29 @@
     <link rel="stylesheet" href="clipper2testpage.css">
 </head>
 <body>
-    <!-- Loading Screen -->
-    <div id="loading" class="loading-screen">
-        <h2>Loading Clipper2 WASM...</h2>
-        <div class="spinner"></div>
-    </div>
+    <div class="container">
+        <h1>
+            Clipper2 WASM Test Suite
+            <span class="version-badge">v5.0</span>
+        </h1>
 
-    <!-- Header -->
-    <header>
-        <h1>Clipper2 WASM Test Suite</h1>
-        <p>Interactive testing of boolean operations, offsets, and path manipulations</p>
-    </header>
-
-    <!-- Main Container -->
-    <main class="container">
+        <!-- Core Boolean Operations -->
+        <h2 class="test-group-header">Core Boolean Operations</h2>
         
-        <!-- Consolidated Boolean Operations -->
-        <section class="test-section">
-            <h2>Boolean Operations</h2>
-            
-            <!-- Unified Boolean Test -->
-            <div class="test-card">
-                <h3>Interactive Boolean Operations</h3>
-                <p class="test-description">Drag shapes to test different boolean operations</p>
+        <div class="test-grid">
+            <!-- Boolean Operations Test -->
+            <div class="test-card" data-test="boolean">
+                <div class="test-header">
+                    <h3 class="test-title">Boolean Operations</h3>
+                </div>
+                <p class="test-description">Test union, intersection, difference, and XOR operations with draggable shapes</p>
+                
+                <div class="canvas-container">
+                    <div class="canvas-wrapper">
+                        <canvas id="boolean-canvas" width="400" height="400"></canvas>
+                        <span id="boolean-label" class="canvas-label">Input Geometry</span>
+                    </div>
+                </div>
                 
                 <div class="controls">
                     <div class="control">
@@ -42,110 +42,120 @@
                         </select>
                     </div>
                     <div class="control">
-                        <label for="boolean-clip-shape">Red Shape:</label>
-                        <select id="boolean-clip-shape" onchange="ui.onShapeChange('boolean-clip-shape')">
+                        <label for="boolean-clip-shape">Clip Shape:</label>
+                        <select id="boolean-clip-shape">
                             <option value="circle">Circle</option>
                             <option value="triangle">Triangle</option>
                             <option value="square">Square</option>
-                            <option value="star">5-Point Star</option>
-                            <option value="random">Random Shape</option>
+                            <option value="star">Star</option>
+                            <option value="random">Random</option>
                             <option value="rabbit">Rabbit (SVG)</option>
                         </select>
                     </div>
+                    <button class="btn btn-primary" onclick="tests.testBooleanOperation()">Run Operation</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('boolean')">Reset</button>
+                    <button class="btn btn-success" onclick="tests.exportSVG('boolean')">Export SVG</button>
                 </div>
                 
-                <div class="canvas-container">
-                    <div class="canvas-wrapper">
-                        <canvas id="boolean-canvas" width="400" height="400"></canvas>
-                        <span id="boolean-label" class="canvas-label">Input Geometry</span>
-                    </div>
-                </div>
-                
-                <div class="button-group">
-                    <button onclick="tests.testBooleanOperation()" class="btn btn-primary">Run Operation</button>
-                    <button onclick="ui.resetView('boolean')" class="btn btn-secondary">Reset</button>
-                    <button onclick="tests.exportSVG('boolean')" class="btn btn-secondary">Export SVG</button>
-                </div>
                 <div id="boolean-result" class="result">Ready to run test</div>
-                <pre id="boolean-info" class="info"></pre>
+                <div id="boolean-info" class="geometry-info"></div>
             </div>
-        </section>
-
-        <!-- Complex Boolean Operations -->
-        <section class="test-section">
-            <h2>Complex Operations</h2>
 
             <!-- Letter B Test -->
-            <div class="test-card">
-                <h3>Letter 'B' with Holes</h3>
-                <p class="test-description">Union of strokes creating letter B with proper holes</p>
+            <div class="test-card" data-test="letter-b">
+                <div class="test-header">
+                    <h3 class="test-title">Letter B Creation<span class="badge">Hole Detection</span></h3>
+                </div>
+                <p class="test-description">Union strokes to form the letter B with proper CCW holes</p>
+                
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="letter-b-canvas" width="400" height="400"></canvas>
                         <span id="letter-b-label" class="canvas-label">Input Strokes</span>
                     </div>
                 </div>
-                <div class="button-group">
-                    <button onclick="tests.testLetterB()" class="btn btn-primary">Create Letter B</button>
-                    <button onclick="ui.resetView('letter-b')" class="btn btn-secondary">Reset</button>
-                    <button onclick="tests.exportSVG('letter-b')" class="btn btn-secondary">Export SVG</button>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="tests.testLetterB()">Create Letter B</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('letter-b')">Reset</button>
+                    <button class="btn btn-success" onclick="tests.exportSVG('letter-b')">Export SVG</button>
                 </div>
+                
                 <div id="letter-b-result" class="result">Ready to run test</div>
-                <pre id="letter-b-info" class="info"></pre>
+                <div id="letter-b-info" class="geometry-info"></div>
             </div>
 
             <!-- Nested Structure Test -->
-            <div class="test-card">
-                <h3>Nested Structure (Island-in-Hole)</h3>
-                <p class="test-description">Frame with hole containing draggable islands - drag the colored islands!</p>
+            <div class="test-card" data-test="nested">
+                <div class="test-header">
+                    <h3 class="test-title">Nested Structure</h3>
+                </div>
+                <p class="test-description">Create complex nested shapes with draggable islands</p>
+                
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="nested-canvas" width="400" height="400"></canvas>
                         <span id="nested-label" class="canvas-label">Input Geometry</span>
                     </div>
                 </div>
-                <div class="button-group">
-                    <button onclick="tests.testNestedStructure()" class="btn btn-primary">Union Structures</button>
-                    <button onclick="ui.resetView('nested')" class="btn btn-secondary">Reset</button>
-                    <button onclick="tests.exportSVG('nested')" class="btn btn-secondary">Export SVG</button>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="tests.testNestedStructure()">Create Structure</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('nested')">Reset</button>
+                    <button class="btn btn-success" onclick="tests.exportSVG('nested')">Export SVG</button>
                 </div>
+                
                 <div id="nested-result" class="result">Ready to run test</div>
-                <pre id="nested-info" class="info"></pre>
+                <div id="nested-info" class="geometry-info"></div>
             </div>
 
-            <!-- PCB Trace Fusion -->
-            <div class="test-card">
-                <h3>PCB Trace Fusion</h3>
-                <p class="test-description">Merge PCB traces and pads into unified copper regions</p>
+            <!-- PCB Trace Fusion Test -->
+            <div class="test-card" data-test="pcb-fusion">
+                <div class="test-header">
+                    <h3 class="test-title">PCB Trace Fusion<span class="badge new">Tangency</span></h3>
+                </div>
+                <p class="test-description">Merge PCB traces and pads into unified regions with holes</p>
+                
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="pcb-fusion-canvas" width="400" height="400"></canvas>
                         <span id="pcb-fusion-label" class="canvas-label">PCB Components</span>
                     </div>
                 </div>
-                <div class="button-group">
-                    <button onclick="tests.testPCBFusion()" class="btn btn-primary">Fuse Components</button>
-                    <button onclick="ui.resetView('pcb-fusion')" class="btn btn-secondary">Reset</button>
-                    <button onclick="tests.exportSVG('pcb-fusion')" class="btn btn-secondary">Export SVG</button>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="tests.testPCBFusion()">Fuse Components</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('pcb-fusion')">Reset</button>
+                    <button class="btn btn-success" onclick="tests.exportSVG('pcb-fusion')">Export SVG</button>
                 </div>
+                
                 <div id="pcb-fusion-result" class="result">Ready to run test</div>
-                <pre id="pcb-fusion-info" class="info"></pre>
+                <div id="pcb-fusion-info" class="geometry-info"></div>
             </div>
-        </section>
+        </div>
 
-        <!-- Offset Operations -->
-        <section class="test-section">
-            <h2>Offset Operations</h2>
-
-            <!-- Advanced Offset Test -->
-            <div class="test-card">
-                <h3>Path Offset (Inflate/Deflate)</h3>
-                <p class="test-description">Create multiple offset paths with configurable settings</p>
+        <!-- Path Operations -->
+        <h2 class="test-group-header">Path Operations</h2>
+        
+        <div class="test-grid">
+            <!-- Offset Test -->
+            <div class="test-card" data-test="offset">
+                <div class="test-header">
+                    <h3 class="test-title">Path Offsetting</h3>
+                </div>
+                <p class="test-description">Create internal and external offsets with various join types</p>
+                
+                <div class="canvas-container">
+                    <div class="canvas-wrapper">
+                        <canvas id="offset-canvas" width="400" height="400"></canvas>
+                        <span id="offset-label" class="canvas-label">Base Shape</span>
+                    </div>
+                </div>
                 
                 <div class="controls">
                     <div class="control">
                         <label for="offset-shape">Shape:</label>
-                        <select id="offset-shape" onchange="ui.onShapeChange('offset-shape')">
+                        <select id="offset-shape">
                             <option value="star">Star</option>
                             <option value="circle">Circle</option>
                             <option value="square">Square</option>
@@ -155,18 +165,18 @@
                     </div>
                     <div class="control">
                         <label for="offset-type">Type:</label>
-                        <select id="offset-type" onchange="ui.onOffsetTypeChange()">
-                            <option value="external">External (Inflate)</option>
-                            <option value="internal">Internal (Deflate)</option>
+                        <select id="offset-type">
+                            <option value="external">External</option>
+                            <option value="internal">Internal</option>
                         </select>
                     </div>
                     <div class="control">
                         <label for="offset-count">Count:</label>
-                        <input type="number" id="offset-count" value="3" min="1" max="10" step="1">
+                        <input type="number" id="offset-count" value="3" min="1" max="10">
                     </div>
                     <div class="control">
                         <label for="offset-distance">Distance:</label>
-                        <input type="number" id="offset-distance" value="10" min="5" max="30" step="5">
+                        <input type="number" id="offset-distance" value="10" min="1" max="50">
                     </div>
                     <div class="control">
                         <label for="offset-join">Join Type:</label>
@@ -176,188 +186,162 @@
                             <option value="Square">Square</option>
                         </select>
                     </div>
-                </div>
-                
-                <div class="canvas-container">
-                    <div class="canvas-wrapper">
-                        <canvas id="offset-canvas" width="400" height="400"></canvas>
-                        <span id="offset-label" class="canvas-label">Input Shape</span>
+                    <div class="control">
+                        <label for="offset-miter-limit">Miter Limit:</label>
+                        <input type="number" id="offset-miter-limit" value="10" min="1" max="20" step="0.5">
                     </div>
                 </div>
                 
-                <div class="button-group">
-                    <button onclick="tests.testOffset()" class="btn btn-primary">Apply Offset</button>
-                    <button onclick="ui.resetView('offset')" class="btn btn-secondary">Reset</button>
-                    <button onclick="tests.exportSVG('offset')" class="btn btn-secondary">Export SVG</button>
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="tests.testOffset()">Apply Offset</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('offset')">Reset</button>
+                    <button class="btn btn-success" onclick="tests.exportSVG('offset')">Export SVG</button>
                 </div>
+                
                 <div id="offset-result" class="result">Ready to run test</div>
-                <pre id="offset-info" class="info"></pre>
+                <div id="offset-info" class="geometry-info"></div>
             </div>
 
             <!-- Simplify Test -->
-            <div class="test-card">
-                <h3>Path Simplification</h3>
-                <p class="test-description">Reduce path complexity while maintaining shape</p>
+            <div class="test-card" data-test="simplify">
+                <div class="test-header">
+                    <h3 class="test-title">Path Simplification</h3>
+                </div>
+                <p class="test-description">Reduce vertices while preserving shape</p>
+                
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="simplify-canvas" width="400" height="400"></canvas>
-                        <span id="simplify-label" class="canvas-label">Complex Path</span>
+                        <span id="simplify-label" class="canvas-label">Original Path</span>
                     </div>
                 </div>
+                
                 <div class="controls">
                     <div class="control">
                         <label for="simplify-tolerance">Tolerance:</label>
-                        <input type="number" id="simplify-tolerance" value="5" step="1" min="1" max="20">
+                        <input type="range" id="simplify-tolerance" min="0.5" max="20" value="5" step="0.5">
                     </div>
+                    <button class="btn btn-primary" onclick="tests.testSimplify()">Simplify Path</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('simplify')">Reset</button>
+                    <button class="btn btn-success" onclick="tests.exportSVG('simplify')">Export SVG</button>
                 </div>
-                <div class="button-group">
-                    <button onclick="tests.testSimplify()" class="btn btn-primary">Simplify Path</button>
-                    <button onclick="ui.resetView('simplify')" class="btn btn-secondary">Reset</button>
-                    <button onclick="tests.exportSVG('simplify')" class="btn btn-secondary">Export SVG</button>
-                </div>
+                
                 <div id="simplify-result" class="result">Ready to run test</div>
-                <pre id="simplify-info" class="info"></pre>
+                <div id="simplify-info" class="geometry-info"></div>
             </div>
-        </section>
+        </div>
 
-        <!-- Analysis Operations -->
-        <section class="test-section">
-            <h2>Analysis Operations</h2>
-
-            <!-- Area & Orientation Test -->
-            <div class="test-card">
-                <h3>Area & Orientation</h3>
-                <p class="test-description">Calculate polygon area and winding orientation</p>
-                <div class="canvas-container">
-                    <div class="canvas-wrapper">
-                        <canvas id="area-canvas" width="400" height="400"></canvas>
-                        <span id="area-label" class="canvas-label">Draw Polygon</span>
-                    </div>
-                </div>
-                <div class="button-group">
-                    <button onclick="tests.testArea()" class="btn btn-primary">Initialize Test</button>
-                </div>
-                <div id="area-result" class="result">Click to add points, then Calculate Area</div>
-                <pre id="area-info" class="info"></pre>
-            </div>
-
+        <!-- Analysis Tools -->
+        <h2 class="test-group-header">Analysis Tools</h2>
+        
+        <div class="test-grid">
             <!-- Point in Polygon Test -->
-            <div class="test-card">
-                <h3>Point in Polygon</h3>
-                <p class="test-description">Test if points are inside, outside, or on polygon edge</p>
+            <div class="test-card" data-test="pip">
+                <div class="test-header">
+                    <h3 class="test-title">Point in Polygon</h3>
+                </div>
+                <p class="test-description">Test if points are inside, outside, or on polygon edges</p>
+                
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="pip-canvas" width="400" height="400"></canvas>
                         <span id="pip-label" class="canvas-label">Test Polygon</span>
                     </div>
                 </div>
-                <div class="button-group">
-                    <button onclick="tests.testPointInPolygon()" class="btn btn-primary">Initialize Test</button>
-                    <button onclick="tests.checkPointLocations()" class="btn btn-success">Check Locations</button>
-                    <button onclick="ui.resetView('pip')" class="btn btn-secondary">Reset</button>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="tests.checkPointLocations()">Check Locations</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('pip')">Reset</button>
                 </div>
+                
                 <div id="pip-result" class="result">Click to add test points</div>
-                <pre id="pip-info" class="info"></pre>
+                <div id="pip-info" class="geometry-info"></div>
             </div>
-        </section>
 
-    </main>
+            <!-- Area Test -->
+            <div class="test-card" data-test="area">
+                <div class="test-header">
+                    <h3 class="test-title">Area Calculation</h3>
+                </div>
+                <p class="test-description">Draw a polygon and calculate its area and winding direction</p>
+                
+                <div class="canvas-container">
+                    <div class="canvas-wrapper">
+                        <canvas id="area-canvas" width="400" height="400"></canvas>
+                        <span id="area-label" class="canvas-label">Draw Polygon</span>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="tests.testArea()">New Polygon</button>
+                </div>
+                
+                <div id="area-result" class="result">Click points to draw polygon</div>
+                <div id="area-info" class="geometry-info"></div>
+            </div>
+        </div>
+    </div>
 
-    <!-- Footer -->
-    <footer>
-        <p>Clipper2 WASM Test Suite - Version 3.6</p>
-        <p>Using Clipper2Z library with BigInt support</p>
-    </footer>
+    <!-- Loading indicator -->
+    <div id="loading" class="loading active">
+        <div class="spinner"></div>
+    </div>
 
-    <!-- Load WASM modules first -->
+    <!-- Scripts -->
     <script src="clipper2z.js"></script>
     <script src="clipper2z-utils.js"></script>
-    
-    <!-- Load Clipper2 modules -->
+    <script src="clipper2-defaults.js"></script>
     <script src="clipper2-core.js"></script>
     <script src="clipper2-geometry.js"></script>
     <script src="clipper2-operations.js"></script>
     <script src="clipper2-rendering.js"></script>
     <script src="clipper2-tests.js"></script>
     <script src="clipper2-ui.js"></script>
-
-    <!-- Initialize application -->
     <script>
-        // Global instances
+        // Global test instance
         let tests = null;
         let ui = null;
 
         // Initialize on page load
-        window.addEventListener('DOMContentLoaded', async () => {
+        async function initializeApp() {
             try {
-                console.log('[INIT] Starting Clipper2 Test Suite...');
-                
-                // Create test instance
+                // Create test system
                 tests = new Clipper2Tests();
+                await tests.initialize();
                 
-                // Initialize test system (loads WASM)
-                const success = await tests.initialize();
-                
-                if (!success) {
-                    throw new Error('Failed to initialize test system');
-                }
+                // Initialize operations and geometry with defaults
+                tests.operations.initialize(Clipper2Defaults);
+                tests.geometry.initialize(Clipper2Defaults);
+                tests.rendering.initialize(Clipper2Defaults);
                 
                 // Create and initialize UI
                 ui = new Clipper2UI(tests);
                 await ui.initialize();
                 
-                // Enable debug mode for development
-                tests.core.setConfig({ debugMode: true });
-                
-                console.log('[OK] Clipper2 Test Suite ready!');
-                
-                // Auto-cleanup on page unload
-                window.addEventListener('beforeunload', () => {
-                    if (tests && tests.core) {
-                        tests.core.destroy();
-                    }
-                });
+                console.log('[APP] Initialization complete');
                 
             } catch (error) {
-                console.error('[ERROR] Failed to initialize:', error);
-                
-                // Show error to user
+                console.error('[APP] Failed to initialize:', error);
                 const loading = document.getElementById('loading');
                 if (loading) {
                     loading.innerHTML = `
                         <div style="color: #ef4444; text-align: center; padding: 2rem;">
                             <h2>⚠️ Initialization Error</h2>
                             <p>${error.message}</p>
-                            <p style="margin-top: 1rem; font-size: 0.875rem;">
-                                Please ensure all required files are loaded:
-                                <br>• clipper2z.js
-                                <br>• clipper2z-utils.js (optional)
-                                <br>• All clipper2-*.js modules
-                            </p>
-                            <button onclick="location.reload()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            <button onclick="location.reload()" class="btn btn-primary">
                                 Reload Page
                             </button>
                         </div>
                     `;
                 }
             }
-        });
-
-        // Utility function for manual cleanup
-        function cleanup() {
-            if (tests && tests.core) {
-                const cleaned = tests.core.cleanup();
-                console.log(`Manual cleanup: ${cleaned} objects freed`);
-            }
         }
 
-        // Utility function to get memory info
-        function memoryInfo() {
-            if (tests && tests.core) {
-                const info = tests.core.getMemoryInfo();
-                console.table(info);
-                return info;
-            }
+        // Start initialization when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            initializeApp();
         }
     </script>
 </body>
