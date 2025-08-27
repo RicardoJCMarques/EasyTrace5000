@@ -166,16 +166,18 @@ class Clipper2Rendering {
         const outers = pathData.filter(p => p.orientation === 'outer');
         const holes = pathData.filter(p => p.orientation === 'hole');
         
-        // Draw fill (all paths at once for proper holes)
+        // Draw fill (all paths at once for proper holes with even-odd rule)
         if (options.fillOuter && options.fillOuter !== 'none') {
             ctx.fillStyle = options.fillOuter;
             ctx.beginPath();
             
+            // Add all paths to the same context
             pathData.forEach(item => {
                 this.addPathToContext(ctx, item.coords);
             });
             
-            ctx.fill(options.fillRule);
+            // Use evenodd fill rule to properly render holes
+            ctx.fill('evenodd');
         }
         
         // Draw strokes
@@ -196,8 +198,8 @@ class Clipper2Rendering {
         }
         
         // Draw hole strokes with different style
-        if (holes.length > 0 && options.strokeHole && options.strokeHole !== options.strokeOuter) {
-            ctx.strokeStyle = options.strokeHole;
+        if (holes.length > 0 && options.strokeHole) {
+            ctx.strokeStyle = options.strokeHole || options.strokeOuter;
             ctx.setLineDash([5, 5]);
             
             holes.forEach(item => {

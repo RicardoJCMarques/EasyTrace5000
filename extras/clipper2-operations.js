@@ -590,8 +590,8 @@ class Clipper2Operations {
         endType = endType || EndType.Polygon;
         miterLimit = miterLimit || this.defaults.config.miterLimit;
         
-        const isAlreadyScaled = Math.abs(delta) > 1;
-        const scaledDelta = isAlreadyScaled ? delta : delta * this.defaults.config.scale;
+        // Delta needs to be scaled
+        const scaledDelta = delta * this.defaults.config.scale;
         
         this.core.debug(`Performing OFFSET: delta=${delta} (scaled=${scaledDelta}), miterLimit=${miterLimit}`);
         

@@ -19,10 +19,10 @@ const Clipper2Defaults = {
     
     // Tangency resolution settings - Algorithm parameters
     tangency: {
-        strategy: 'polygon',
+        strategy: 'none',
         epsilon: 50,        // In scaled units (0.05 original)
         threshold: 10,      // Detection threshold in scaled units
-        enabled: true
+        enabled: false
     },
     
     // Geometry definitions - Pure coordinate data
@@ -183,7 +183,7 @@ const Clipper2Defaults = {
             noiseFrequency: 5,
             noiseAmplitude: 30,
             segments: 100,
-            defaultTolerance: 5
+            defaultTolerance: 2
         },
         
         // Point in polygon test
@@ -442,8 +442,8 @@ const Clipper2Defaults = {
         },
         
         /**
-         * Convert arc to thick polygon - FIXED VERSION
-         * Creates proper CCW wound thick arc segment
+         * Convert arc to thick polygon - simple approach without caps
+         * For stroked arcs, caps are handled by adjacent line segments
          */
         arcToPolygon(center, radius, startDeg, endDeg, width) {
             const points = [];
@@ -453,7 +453,7 @@ const Clipper2Defaults = {
             const startRad = startDeg * Math.PI / 180;
             const endRad = endDeg * Math.PI / 180;
             
-            // Build in CCW order:
+            // Build continuous polygon in CCW order:
             
             // 1. Inner arc (from start to end)
             for (let i = 0; i <= segments; i++) {
@@ -465,7 +465,7 @@ const Clipper2Defaults = {
                 ]);
             }
             
-            // 2. Connect to outer arc with straight line (implicit)
+            // 2. Connect to outer arc (straight line at end)
             
             // 3. Outer arc (from end to start - reversed)
             for (let i = segments; i >= 0; i--) {
@@ -477,7 +477,8 @@ const Clipper2Defaults = {
                 ]);
             }
             
-            // 4. Polygon is automatically closed by Clipper2
+            // 4. Connect back to start (straight line at start)
+            // Polygon is automatically closed
             
             return points;
         }

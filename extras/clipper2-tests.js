@@ -20,7 +20,7 @@ class Clipper2Tests {
                 operation: 'union',
                 clipShape: 'circle',
                 subjectPos: { x: 200, y: 200 }, // Fixed at center
-                clipPos: { x: 150, y: 150 }, // Start at top-left of subject
+                clipPos: { x: 100, y: 100 }, // Top-left corner of subject
                 randomShape: null,
                 rabbitPath: null // Store parsed rabbit path
             },
@@ -43,7 +43,7 @@ class Clipper2Tests {
                 miterLimit: 10
             },
             simplify: {
-                tolerance: 5
+                tolerance: 2
             },
             area: {
                 points: []
@@ -97,11 +97,16 @@ class Clipper2Tests {
      */
     initializeRabbitPath() {
         const rabbitDef = this.defaults.geometries.boolean.clips.rabbit;
-        this.testState.boolean.rabbitPath = this.geometry.parseSVGPath(
-            rabbitDef.path, 
-            rabbitDef.scale, 
-            [0, 0] // Parse at origin, will be positioned later
-        );
+        if (rabbitDef && rabbitDef.path) {
+            this.testState.boolean.rabbitPath = this.geometry.parseSVGPath(
+                rabbitDef.path, 
+                rabbitDef.scale, 
+                [0, 0] // Parse at origin, will be positioned later
+            );
+            console.log('[TESTS] Rabbit path initialized with', this.testState.boolean.rabbitPath?.length, 'points');
+        } else {
+            console.warn('[TESTS] Rabbit definition not found');
+        }
     }
 
     /**
@@ -151,10 +156,7 @@ class Clipper2Tests {
             const subjectDef = this.defaults.geometries.boolean.subject;
             const subjectPaths = new this.core.clipper2.Paths64();
             
-            const subjectCoords = subjectDef.data.map(pt => [
-                pt[0] - 100 + subjectPos.x,
-                pt[1] - 100 + subjectPos.y
-            ]);
+            const subjectCoords = subjectDef.data;
             subjectPaths.push_back(this.geometry.coordinatesToPath64(subjectCoords));
             
             // Create clip from defaults using state position
@@ -526,19 +528,18 @@ class Clipper2Tests {
             const joinTypeEnum = this.getJoinTypeEnum(joinType);
             const endTypeEnum = this.core.clipper2.EndType.Polygon;
             
-            // Perform offsets
+            // Perform offsets - use operations.offset which handles scaling
             const actualDistance = type === 'internal' ? -Math.abs(distance) : Math.abs(distance);
             const offsetResults = [];
             
             for (let i = 1; i <= count; i++) {
                 const delta = actualDistance * i;
-                const result = this.core.clipper2.InflatePaths64(
+                const result = this.operations.offset(
                     paths,
                     delta,
                     joinTypeEnum,
                     endTypeEnum,
-                    miterLimit,
-                    0
+                    miterLimit
                 );
                 
                 offsetResults.push(result);
@@ -850,14 +851,14 @@ class Clipper2Tests {
                 const path = this.geometry.coordinatesToPath64(coordArray);
                 
                 const area = this.geometry.calculateArea(path);
-                // FIX: Detect actual winding direction properly
+                // FIX: CCW polygons have positive area, CW have negative
                 const actualArea = area / (this.core.config.scale * this.core.config.scale);
                 const orientation = area > 0 ? 'COUNTER-CLOCKWISE' : 'CLOCKWISE';
                 
                 // Use correct color based on actual winding
                 ctx.fillStyle = area > 0 ? 
-                    getComputedStyle(document.documentElement).getPropertyValue('--shape-fill') : 
-                    'rgba(239, 68, 68, 0.25)';
+                    'rgba(16, 185, 129, 0.25)' : // Green for CCW
+                    'rgba(239, 68, 68, 0.25)';    // Red for CW
                 ctx.beginPath();
                 this.testState.area.points.forEach((p, i) => {
                     if (i === 0) ctx.moveTo(p.x, p.y);

@@ -1,7 +1,7 @@
 /**
  * Clipper2 UI Module
  * UI interactions and state management
- * Version 6.0 - State-driven architecture
+ * Version 6.1 - Fixed rabbit loading, nested holes, simplify control
  */
 
 class Clipper2UI {
@@ -126,12 +126,28 @@ class Clipper2UI {
             });
         }
         
-        // Simplify test controls
-        const simplifyTolerance = document.getElementById('simplify-tolerance');
-        if (simplifyTolerance) {
-            simplifyTolerance.addEventListener('input', (e) => {
-                this.tests.updateTestState('simplify', 'tolerance', parseFloat(e.target.value));
-            });
+        // Fix simplify control - change from slider to text input
+        const simplifyCard = document.querySelector('[data-test="simplify"]');
+        if (simplifyCard) {
+            const controlDiv = simplifyCard.querySelector('#simplify-tolerance')?.parentElement?.parentElement;
+            if (controlDiv) {
+                // Replace slider with text input
+                controlDiv.innerHTML = `
+                    <div class="control">
+                        <label for="simplify-tolerance">Tolerance:</label>
+                        <input type="number" id="simplify-tolerance" min="0.5" max="50" value="2" step="0.5">
+                    </div>
+                    <button class="btn btn-primary" onclick="tests.testSimplify()">Simplify Path</button>
+                `;
+                
+                // Add event listener to new input
+                const simplifyTolerance = document.getElementById('simplify-tolerance');
+                if (simplifyTolerance) {
+                    simplifyTolerance.addEventListener('input', (e) => {
+                        this.tests.updateTestState('simplify', 'tolerance', parseFloat(e.target.value));
+                    });
+                }
+            }
         }
         
         // Setup draggable shapes
@@ -162,8 +178,8 @@ class Clipper2UI {
             <div class="control-group">
                 <label>Resolution Strategy:</label>
                 <select id="tangency-strategy">
-                    <option value="polygon" ${this.defaults.tangency.strategy === 'polygon' ? 'selected' : ''}>Polygon-level</option>
                     <option value="none" ${this.defaults.tangency.strategy === 'none' ? 'selected' : ''}>Disabled</option>
+                    <option value="polygon" ${this.defaults.tangency.strategy === 'polygon' ? 'selected' : ''}>Polygon-level</option>
                 </select>
             </div>
             
@@ -302,18 +318,10 @@ class Clipper2UI {
         const state = this.tests.getTestState(testName);
         
         if (testName === 'boolean') {
-            // Check if clicking on subject
-            if (x >= state.subjectPos.x && x <= state.subjectPos.x + 200 &&
-                y >= state.subjectPos.y && y <= state.subjectPos.y + 200) {
-                this.dragInfo = {
-                    isDragging: true,
-                    shape: 'subject',
-                    offset: { x: x - state.subjectPos.x, y: y - state.subjectPos.y }
-                };
-            }
-            // Check if clicking on clip
-            else if (Math.sqrt(Math.pow(x - state.clipPos.x, 2) + 
-                              Math.pow(y - state.clipPos.y, 2)) <= 90) {
+            // Only drag the clip shape (subject is fixed)
+            const clipRadius = 90; // Approximate radius for hit detection
+            if (Math.sqrt(Math.pow(x - state.clipPos.x, 2) + 
+                         Math.pow(y - state.clipPos.y, 2)) <= clipRadius) {
                 this.dragInfo = {
                     isDragging: true,
                     shape: 'clip',
@@ -361,9 +369,8 @@ class Clipper2UI {
             let hovering = false;
             
             if (testName === 'boolean') {
-                if ((x >= state.subjectPos.x && x <= state.subjectPos.x + 200 &&
-                     y >= state.subjectPos.y && y <= state.subjectPos.y + 200) ||
-                    Math.sqrt(Math.pow(x - state.clipPos.x, 2) + 
+                // Only check clip shape (subject is fixed)
+                if (Math.sqrt(Math.pow(x - state.clipPos.x, 2) + 
                              Math.pow(y - state.clipPos.y, 2)) <= 90) {
                     hovering = true;
                 }
@@ -378,9 +385,7 @@ class Clipper2UI {
         const newY = Math.max(20, Math.min(380, y - this.dragInfo.offset.y));
         
         if (testName === 'boolean') {
-            if (this.dragInfo.shape === 'subject') {
-                this.tests.updateTestState('boolean', 'subjectPos', { x: newX, y: newY });
-            } else if (this.dragInfo.shape === 'clip') {
+            if (this.dragInfo.shape === 'clip') {
                 this.tests.updateTestState('boolean', 'clipPos', { x: newX, y: newY });
             }
         } else if (testName === 'nested') {
@@ -419,67 +424,71 @@ class Clipper2UI {
         const state = this.tests.getTestState(testName);
         
         if (testName === 'nested') {
+            // Create proper nested structure with holes
             const nestedDef = this.defaults.geometries.nested;
-            const shapes = [];
             
-            // Frame
-            shapes.push({
-                type: 'rect',
-                x: 50, y: 50,
-                width: 300, height: 300,
-                color: 'var(--shape-stroke)'
-            });
-            shapes.push({
-                type: 'rect',
-                x: 100, y: 100,
-                width: 200, height: 200,
-                color: 'var(--shape-stroke)'
-            });
+            // Clear canvas
+            this.tests.rendering.clearCanvas(canvas);
+            const ctx = canvas.getContext('2d');
             
-            // Islands
-            shapes.push({
-                type: 'rect',
-                x: state.island1Pos.x, y: state.island1Pos.y,
-                width: 100, height: 100,
-                color: '#10b981'
-            });
-            shapes.push({
-                type: 'rect',
-                x: state.island1Pos.x + 30, y: state.island1Pos.y + 30,
-                width: 40, height: 40,
-                color: '#10b981'
-            });
+            // Draw main frame with hole
+            ctx.fillStyle = this.tests.rendering.resolveStyleValue('var(--shape-fill)');
+            ctx.strokeStyle = this.tests.rendering.resolveStyleValue('var(--shape-stroke)');
+            ctx.lineWidth = 2;
             
-            shapes.push({
-                type: 'rect',
-                x: state.island2Pos.x, y: state.island2Pos.y,
-                width: 80, height: 80,
-                color: '#f59e0b'
-            });
-            shapes.push({
-                type: 'rect',
-                x: state.island2Pos.x + 20, y: state.island2Pos.y + 20,
-                width: 40, height: 40,
-                color: '#f59e0b'
-            });
+            // Use even-odd fill rule for proper holes
+            ctx.beginPath();
+            // Outer frame
+            ctx.rect(50, 50, 300, 300);
+            // Inner hole (drawn in opposite direction)
+            ctx.rect(100, 100, 200, 200);
+            ctx.fill('evenodd');
+            ctx.stroke();
             
-            this.tests.rendering.drawShapePreview(shapes, canvas);
+            // Draw islands with holes
+            // Island 1
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.4)';
+            ctx.strokeStyle = '#10b981';
+            ctx.beginPath();
+            // Outer
+            ctx.rect(state.island1Pos.x, state.island1Pos.y, 100, 100);
+            // Inner hole
+            ctx.rect(state.island1Pos.x + 30, state.island1Pos.y + 30, 40, 40);
+            ctx.fill('evenodd');
+            ctx.stroke();
+            
+            // Island 2
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.4)';
+            ctx.strokeStyle = '#f59e0b';
+            ctx.beginPath();
+            // Outer
+            ctx.rect(state.island2Pos.x, state.island2Pos.y, 80, 80);
+            // Inner hole
+            ctx.rect(state.island2Pos.x + 20, state.island2Pos.y + 20, 40, 40);
+            ctx.fill('evenodd');
+            ctx.stroke();
+            
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#6b7280';
+            ctx.textAlign = 'center';
+            ctx.fillText('Drag smaller frames to position', 200, 380);
             
         } else if (testName === 'boolean') {
             const shapes = {};
             
+            // Subject is fixed at center   
             shapes.subject = {
                 type: 'rect',
-                x: state.subjectPos.x,
-                y: state.subjectPos.y,
+                x: state.subjectPos.x - 100,
+                y: state.subjectPos.y - 100,
                 width: 200,
                 height: 200,
                 color: 'var(--subject-stroke)'
             };
             
-            const clipDef = this.defaults.geometries.boolean.clips[state.clipShape];
+            const clipShape = state.clipShape;
             
-            if (state.clipShape === 'circle') {
+            if (clipShape === 'circle') {
                 shapes.clip = {
                     type: 'circle',
                     x: state.clipPos.x,
@@ -487,17 +496,30 @@ class Clipper2UI {
                     radius: 80,
                     color: 'var(--clip-stroke)'
                 };
+            } else if (clipShape === 'rabbit' && state.rabbitPath) {
+                // Draw rabbit shape
+                const coords = state.rabbitPath.map(pt => [
+                    pt[0] + state.clipPos.x,
+                    pt[1] + state.clipPos.y
+                ]);
+                shapes.clip = {
+                    type: 'polygon',
+                    coords: coords,
+                    color: 'var(--clip-stroke)'
+                };
             } else {
+                const clipDef = this.defaults.geometries.boolean.clips[clipShape];
                 let coords;
-                if (state.clipShape === 'triangle') {
+                
+                if (clipShape === 'triangle') {
                     coords = clipDef.data.map(pt => [pt[0] + state.clipPos.x, pt[1] + state.clipPos.y]);
-                } else if (state.clipShape === 'square') {
+                } else if (clipShape === 'square') {
                     coords = clipDef.data.map(pt => [pt[0] + state.clipPos.x, pt[1] + state.clipPos.y]);
-                } else if (state.clipShape === 'star') {
+                } else if (clipShape === 'star') {
                     coords = this.defaults.generators.star(
                         state.clipPos.x, state.clipPos.y, 80, 40, 5
                     );
-                } else if (state.clipShape === 'random' && state.randomShape) {
+                } else if (clipShape === 'random' && state.randomShape) {
                     coords = state.randomShape.map(pt => [pt[0] + state.clipPos.x, pt[1] + state.clipPos.y]);
                 }
                 
@@ -511,13 +533,13 @@ class Clipper2UI {
             }
             
             this.tests.rendering.drawShapePreview(shapes, canvas);
+            
+            const ctx = canvas.getContext('2d');
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#6b7280';
+            ctx.textAlign = 'center';
+            ctx.fillText('Drag red shape to position', 200, 380);
         }
-        
-        const ctx = canvas.getContext('2d');
-        ctx.font = '12px Arial';
-        ctx.fillStyle = '#6b7280';
-        ctx.textAlign = 'center';
-        ctx.fillText('Drag shapes to position', 200, 380);
     }
 
     /**
@@ -611,6 +633,9 @@ class Clipper2UI {
                     0, 0, randomDef.avgRadius, randomDef.variance, randomDef.points
                 );
                 this.tests.updateTestState('boolean', 'randomShape', randomShape);
+            } else if (state.clipShape === 'rabbit') {
+                // Rabbit path is already pre-parsed in tests initialization
+                // Just redraw
             } else {
                 this.tests.updateTestState('boolean', 'randomShape', null);
             }
@@ -654,7 +679,11 @@ class Clipper2UI {
         
         // Redraw defaults
         switch(testName) {
-            case 'boolean': this.drawDefaultBoolean(); break;
+            case 'boolean': 
+                // Reset clip position when resetting
+                this.tests.testState.boolean.clipPos = { x: 100, y: 100 };
+                this.drawDefaultBoolean(); 
+                break;
             case 'letter-b': this.drawDefaultLetterB(); break;
             case 'nested': this.drawDefaultNested(); break;
             case 'offset': this.drawDefaultOffset(); break;
