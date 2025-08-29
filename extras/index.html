@@ -112,7 +112,7 @@
             <!-- PCB Trace Fusion Test -->
             <div class="test-card" data-test="pcb-fusion">
                 <div class="test-header">
-                    <h3 class="test-title">PCB Trace Fusion<span class="badge new">Tangency</span></h3>
+                    <h3 class="test-title">PCB Trace Fusion</h3>
                 </div>
                 <p class="test-description">Merge PCB traces and pads into unified regions with holes</p>
                 
@@ -207,7 +207,7 @@
                 <div class="test-header">
                     <h3 class="test-title">Path Simplification</h3>
                 </div>
-                <p class="test-description">Reduce vertices while preserving shape</p>
+                <p class="test-description">Reduce vertices while preserving shape (using rabbit SVG)</p>
                 
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
@@ -219,7 +219,7 @@
                 <div class="controls">
                     <div class="control">
                         <label for="simplify-tolerance">Tolerance:</label>
-                        <input type="range" id="simplify-tolerance" min="0.5" max="20" value="2" step="0.5">
+                        <input type="number" id="simplify-tolerance" min="0.5" max="50" value="2" step="0.5">
                     </div>
                     <button class="btn btn-primary" onclick="tests.testSimplify()">Simplify Path</button>
                     <button class="btn btn-secondary" onclick="tests.resetTest('simplify')">Reset</button>
@@ -228,6 +228,59 @@
                 
                 <div id="simplify-result" class="result">Ready to run test</div>
                 <div id="simplify-info" class="geometry-info"></div>
+            </div>
+
+            <!-- Minkowski Test -->
+            <div class="test-card" data-test="minkowski">
+                <div class="test-header">
+                    <h3 class="test-title">Minkowski Operations<span class="badge">Sum/Diff</span></h3>
+                </div>
+                <p class="test-description">Compute Minkowski sum and difference of pattern and path</p>
+                
+                <div class="canvas-container">
+                    <div class="canvas-wrapper">
+                        <canvas id="minkowski-canvas" width="400" height="400"></canvas>
+                        <span id="minkowski-label" class="canvas-label">Pattern & Path</span>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <div class="control">
+                        <label for="minkowski-pattern">Pattern:</label>
+                        <select id="minkowski-pattern">
+                            <option value="circle">Circle</option>
+                            <option value="square">Square</option>
+                            <option value="diamond">Diamond</option>
+                        </select>
+                    </div>
+                    <div class="control">
+                        <label for="minkowski-path">Path:</label>
+                        <select id="minkowski-path">
+                            <option value="rectangle">Rectangle</option>
+                            <option value="triangle">Triangle</option>
+                            <option value="line">Line</option>
+                        </select>
+                    </div>
+                    <div class="control">
+                        <label for="minkowski-operation">Operation:</label>
+                        <select id="minkowski-operation">
+                            <option value="sum">Sum</option>
+                            <option value="diff">Difference</option>
+                        </select>
+                    </div>
+                    <div class="control">
+                        <label for="minkowski-closed">
+                            <input type="checkbox" id="minkowski-closed" checked>
+                            Path Closed
+                        </label>
+                    </div>
+                    <button class="btn btn-primary" onclick="tests.testMinkowski()">Run Operation</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('minkowski')">Reset</button>
+                    <button class="btn btn-success" onclick="tests.exportSVG('minkowski')">Export SVG</button>
+                </div>
+                
+                <div id="minkowski-result" class="result">Ready to run test</div>
+                <div id="minkowski-info" class="geometry-info"></div>
             </div>
         </div>
 
@@ -253,6 +306,11 @@
                     <button class="btn btn-primary" onclick="tests.checkPointLocations()">Check Locations</button>
                     <button class="btn btn-secondary" onclick="tests.resetTest('pip')">Reset</button>
                 </div>
+                <div class="control">
+                    <label for="pip-tolerance">Edge Tolerance:</label>
+                    <input type="number" id="pip-tolerance" value="3" min="1" max="20" step="0.5">
+                    <span>px</span>
+                </div>
                 
                 <div id="pip-result" class="result">Click to add test points</div>
                 <div id="pip-info" class="geometry-info"></div>
@@ -274,6 +332,7 @@
                 
                 <div class="controls">
                     <button class="btn btn-primary" onclick="tests.testArea()">New Polygon</button>
+                    <button class="btn btn-secondary" onclick="tests.resetTest('area')">Reset</button>
                 </div>
                 
                 <div id="area-result" class="result">Click points to draw polygon</div>

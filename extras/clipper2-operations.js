@@ -1,7 +1,7 @@
 /**
  * Clipper2 Operations Module
  * Boolean operations, offsets, and path manipulations
- * Version 5.0 - Compatible with state-driven architecture
+ * Version 5.2 - Fixed Minkowski diff, removed tangency
  */
 
 class Clipper2Operations {
@@ -17,14 +17,6 @@ class Clipper2Operations {
      */
     initialize(defaults) {
         this.defaults = defaults;
-        // Apply tangency settings from defaults
-        this.tangencyResolution = {
-            enabled: this.defaults.tangency.enabled,
-            minOffset: -this.defaults.tangency.epsilon,
-            maxOffset: this.defaults.tangency.epsilon,
-            threshold: this.defaults.tangency.threshold,
-            strategy: this.defaults.tangency.strategy
-        };
     }
 
     /**
@@ -32,24 +24,6 @@ class Clipper2Operations {
      */
     setGeometryModule(geometry) {
         this.geometry = geometry;
-    }
-
-    /**
-     * Validate and adjust epsilon based on defaults
-     */
-    validateEpsilon(epsilon) {
-        const minViable = 10;
-        const maxViable = 1000;
-        
-        if (Math.abs(epsilon) < minViable) {
-            this.core.debug(`Epsilon ${epsilon} below threshold, using ${minViable}`);
-            return Math.sign(epsilon) * minViable;
-        }
-        if (Math.abs(epsilon) > maxViable) {
-            this.core.debug(`Epsilon ${epsilon} may cause distortion, capping at ${maxViable}`);
-            return Math.sign(epsilon) * maxViable;
-        }
-        return epsilon;
     }
 
     /**
@@ -101,203 +75,7 @@ class Clipper2Operations {
     }
 
     /**
-     * Detect tangencies between paths
-     */
-    detectTangencies(paths) {
-        const tangentPaths = new Set();
-        const threshold = this.tangencyResolution.threshold;
-        const thresholdSq = threshold * threshold;
-        
-        const vertices = [];
-        for (let pathIdx = 0; pathIdx < paths.size(); pathIdx++) {
-            const path = paths.get(pathIdx);
-            for (let ptIdx = 0; ptIdx < path.size(); ptIdx++) {
-                const pt = path.get(ptIdx);
-                vertices.push({
-                    x: Number(pt.x),
-                    y: Number(pt.y),
-                    pathIdx: pathIdx,
-                    ptIdx: ptIdx
-                });
-            }
-        }
-        
-        // Check for close vertices
-        for (let i = 0; i < vertices.length; i++) {
-            for (let j = i + 1; j < vertices.length; j++) {
-                if (vertices[i].pathIdx === vertices[j].pathIdx) continue;
-                
-                const dx = vertices[i].x - vertices[j].x;
-                const dy = vertices[i].y - vertices[j].y;
-                const distSq = dx * dx + dy * dy;
-                
-                if (distSq <= thresholdSq) {
-                    tangentPaths.add(vertices[i].pathIdx);
-                    tangentPaths.add(vertices[j].pathIdx);
-                }
-            }
-        }
-        
-        // Check for collinear edges
-        for (let i = 0; i < paths.size(); i++) {
-            const path1 = paths.get(i);
-            for (let j = i + 1; j < paths.size(); j++) {
-                const path2 = paths.get(j);
-                if (this.hasCollinearEdges(path1, path2, threshold)) {
-                    tangentPaths.add(i);
-                    tangentPaths.add(j);
-                }
-            }
-        }
-        
-        if (tangentPaths.size > 0) {
-            this.core.debug(`Detected tangencies in ${tangentPaths.size} paths`);
-        }
-        
-        return tangentPaths;
-    }
-
-    /**
-     * Check if two paths have collinear edges
-     */
-    hasCollinearEdges(path1, path2, threshold) {
-        for (let i = 0; i < path1.size(); i++) {
-            const p1a = path1.get(i);
-            const p1b = path1.get((i + 1) % path1.size());
-            
-            for (let j = 0; j < path2.size(); j++) {
-                const p2a = path2.get(j);
-                const p2b = path2.get((j + 1) % path2.size());
-                
-                if (this.areEdgesCollinear(p1a, p1b, p2a, p2b, threshold)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Check if two edges are collinear
-     */
-    areEdgesCollinear(p1a, p1b, p2a, p2b, threshold) {
-        const dx1 = Number(p1b.x - p1a.x);
-        const dy1 = Number(p1b.y - p1a.y);
-        const dx2 = Number(p2b.x - p2a.x);
-        const dy2 = Number(p2b.y - p2a.y);
-        
-        const cross = Math.abs(dx1 * dy2 - dy1 * dx2);
-        const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
-        const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-        
-        if (len1 === 0 || len2 === 0) return false;
-        
-        const normalizedCross = cross / (len1 * len2);
-        
-        if (normalizedCross > 0.01) return false;
-        
-        return this.doEdgesOverlap(p1a, p1b, p2a, p2b, threshold);
-    }
-
-    /**
-     * Check if two collinear edges overlap
-     */
-    doEdgesOverlap(p1a, p1b, p2a, p2b, threshold) {
-        const x1min = Math.min(Number(p1a.x), Number(p1b.x)) - threshold;
-        const x1max = Math.max(Number(p1a.x), Number(p1b.x)) + threshold;
-        const y1min = Math.min(Number(p1a.y), Number(p1b.y)) - threshold;
-        const y1max = Math.max(Number(p1a.y), Number(p1b.y)) + threshold;
-        
-        const x2min = Math.min(Number(p2a.x), Number(p2b.x));
-        const x2max = Math.max(Number(p2a.x), Number(p2b.x));
-        const y2min = Math.min(Number(p2a.y), Number(p2b.y));
-        const y2max = Math.max(Number(p2a.y), Number(p2b.y));
-        
-        return !(x1max < x2min || x2max < x1min || y1max < y2min || y2max < y1min);
-    }
-
-    /**
-     * Resolve tangencies by applying micro-offsets
-     */
-    resolveTangencies(paths, tangentPathIndices) {
-        if (tangentPathIndices.size === 0) {
-            return paths;
-        }
-        
-        this.core.debug(`Resolving tangencies for ${tangentPathIndices.size} paths`);
-        
-        const resolvedPaths = new this.core.clipper2.Paths64();
-        const offsets = [];
-        let totalOffset = 0;
-        
-        for (let i = 0; i < paths.size(); i++) {
-            const path = paths.get(i);
-            
-            if (tangentPathIndices.has(i)) {
-                const range = this.tangencyResolution.maxOffset - this.tangencyResolution.minOffset;
-                let randomOffset = this.tangencyResolution.minOffset + Math.random() * range;
-                randomOffset = this.validateEpsilon(randomOffset);
-                
-                offsets.push(randomOffset);
-                totalOffset += randomOffset;
-                
-                const tempPaths = new this.core.clipper2.Paths64();
-                tempPaths.push_back(path);
-                
-                const offsetPath = this.offset(
-                    tempPaths,
-                    randomOffset,
-                    this.core.clipper2.JoinType.Round,
-                    this.core.clipper2.EndType.Polygon,
-                    this.defaults.config.miterLimit
-                );
-                
-                for (let j = 0; j < offsetPath.size(); j++) {
-                    resolvedPaths.push_back(offsetPath.get(j));
-                }
-                
-                this.core.debug(`Path ${i}: Applied micro-offset of ${randomOffset.toFixed(3)} units`);
-                
-                tempPaths.delete();
-                offsetPath.delete();
-                
-            } else {
-                resolvedPaths.push_back(path);
-            }
-        }
-        
-        if (offsets.length > 0) {
-            const avgOffset = totalOffset / offsets.length;
-            this.core.debug(`Average micro-offset: ${avgOffset.toFixed(4)} units`);
-        }
-        
-        return this.core.trackObject(resolvedPaths);
-    }
-
-    /**
-     * Set tangency resolution parameters
-     */
-    setTangencyResolution(settings) {
-        if (settings.minOffset !== undefined) {
-            settings.minOffset = this.validateEpsilon(settings.minOffset);
-        }
-        if (settings.maxOffset !== undefined) {
-            settings.maxOffset = this.validateEpsilon(settings.maxOffset);
-        }
-        
-        Object.assign(this.tangencyResolution, settings);
-        this.core.debug('Tangency resolution settings updated:', this.tangencyResolution);
-    }
-
-    /**
-     * Get tangency resolution settings
-     */
-    getTangencyResolution() {
-        return { ...this.tangencyResolution };
-    }
-
-    /**
-     * SELF-UNION operation with tangency resolution
+     * SELF-UNION operation
      */
     unionSelf(paths, fillRule = null, options = {}) {
         if (!this.core.initialized) {
@@ -305,15 +83,6 @@ class Clipper2Operations {
         }
         
         this.normalizePathsWinding(paths);
-        
-        let processedPaths = paths;
-        if (this.tangencyResolution.enabled && options.resolveTangencies !== false) {
-            const tangentPaths = this.detectTangencies(paths);
-            
-            if (tangentPaths.size > 0) {
-                processedPaths = this.resolveTangencies(paths, tangentPaths);
-            }
-        }
         
         fillRule = fillRule || this.core.clipper2.FillRule.NonZero;
         
@@ -326,13 +95,13 @@ class Clipper2Operations {
             
             if (this.core.clipper2.UnionSelf64) {
                 result = this.core.trackObject(
-                    this.core.clipper2.UnionSelf64(processedPaths, fillRule)
+                    this.core.clipper2.UnionSelf64(paths, fillRule)
                 );
             } else {
                 // Fallback to regular Union with empty clip
                 const emptyClip = new this.core.clipper2.Paths64();
                 result = this.core.trackObject(
-                    this.core.clipper2.Union64(processedPaths, emptyClip, fillRule)
+                    this.core.clipper2.Union64(paths, emptyClip, fillRule)
                 );
                 emptyClip.delete();
             }
@@ -340,22 +109,14 @@ class Clipper2Operations {
             const endTime = performance.now();
             const validation = this.core.validateResult('self-union', paths, result);
             validation.executionTime = endTime - startTime;
-            validation.tangenciesResolved = processedPaths !== paths;
             this.storeOperationStats('self-union', validation);
             
             this.core.debug(`Self-union completed: ${validation.inputPaths} paths -> ${validation.outputPaths} paths`);
-            
-            if (processedPaths !== paths) {
-                processedPaths.delete();
-            }
             
             return result;
             
         } catch (error) {
             console.error('[ERROR] Self-union failed:', error);
-            if (processedPaths !== paths) {
-                processedPaths.delete();
-            }
             throw error;
         }
     }
@@ -371,40 +132,6 @@ class Clipper2Operations {
         this.normalizePathsWinding(subjectPaths);
         this.normalizePathsWinding(clipPaths);
         
-        let processedSubjects = subjectPaths;
-        let processedClips = clipPaths;
-        
-        if (this.tangencyResolution.enabled && options.resolveTangencies !== false) {
-            const combined = new this.core.clipper2.Paths64();
-            for (let i = 0; i < subjectPaths.size(); i++) {
-                combined.push_back(subjectPaths.get(i));
-            }
-            for (let i = 0; i < clipPaths.size(); i++) {
-                combined.push_back(clipPaths.get(i));
-            }
-            
-            const tangentPaths = this.detectTangencies(combined);
-            
-            if (tangentPaths.size > 0) {
-                const resolved = this.resolveTangencies(combined, tangentPaths);
-                
-                processedSubjects = new this.core.clipper2.Paths64();
-                processedClips = new this.core.clipper2.Paths64();
-                
-                for (let i = 0; i < subjectPaths.size(); i++) {
-                    processedSubjects.push_back(resolved.get(i));
-                }
-                for (let i = 0; i < clipPaths.size(); i++) {
-                    processedClips.push_back(resolved.get(subjectPaths.size() + i));
-                }
-                
-                combined.delete();
-                resolved.delete();
-            } else {
-                combined.delete();
-            }
-        }
-        
         fillRule = fillRule || this.core.clipper2.FillRule.NonZero;
         
         this.core.debug('Performing TWO-INPUT UNION operation');
@@ -413,7 +140,7 @@ class Clipper2Operations {
         
         try {
             const result = this.core.trackObject(
-                this.core.clipper2.Union64(processedSubjects, processedClips, fillRule)
+                this.core.clipper2.Union64(subjectPaths, clipPaths, fillRule)
             );
             
             const endTime = performance.now();
@@ -430,30 +157,17 @@ class Clipper2Operations {
             validation.executionTime = endTime - startTime;
             validation.subjectCount = subjectPaths.size();
             validation.clipCount = clipPaths.size();
-            validation.tangenciesResolved = processedSubjects !== subjectPaths;
             
             this.storeOperationStats('union', validation);
             
             this.core.debug(`Union completed: ${validation.subjectCount} + ${validation.clipCount} paths -> ${validation.outputPaths} paths`);
             
             combinedInput.delete();
-            if (processedSubjects !== subjectPaths) {
-                processedSubjects.delete();
-            }
-            if (processedClips !== clipPaths) {
-                processedClips.delete();
-            }
             
             return result;
             
         } catch (error) {
             console.error('[ERROR] Union failed:', error);
-            if (processedSubjects !== subjectPaths) {
-                processedSubjects.delete();
-            }
-            if (processedClips !== clipPaths) {
-                processedClips.delete();
-            }
             throw error;
         }
     }
@@ -634,6 +348,124 @@ class Clipper2Operations {
             
         } catch (error) {
             console.error('[ERROR] Multi-offset failed:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * MINKOWSKI SUM operation
+     * @param {Path64} pattern - The pattern shape to sweep
+     * @param {Path64} path - The path to sweep the pattern along
+     * @param {boolean} pathIsClosed - Whether to treat the path as closed
+     * @returns {Paths64} The Minkowski sum result
+     */
+    minkowskiSum(pattern, path, pathIsClosed = true) {
+        if (!this.core.initialized) {
+            throw new Error('Clipper2 not initialized');
+        }
+        
+        if (!this.core.clipper2.MinkowskiSum64) {
+            throw new Error('MinkowskiSum64 not available in this Clipper2 build');
+        }
+        
+        this.core.debug('Performing MINKOWSKI SUM operation');
+        
+        const startTime = performance.now();
+        
+        try {
+            const result = this.core.trackObject(
+                this.core.clipper2.MinkowskiSum64(pattern, path, pathIsClosed)
+            );
+            
+            const endTime = performance.now();
+            
+            const validation = {
+                operation: 'minkowski-sum',
+                patternPoints: pattern.size(),
+                pathPoints: path.size(),
+                outputPaths: result.size(),
+                executionTime: endTime - startTime,
+                pathIsClosed: pathIsClosed
+            };
+            
+            // Validate at least one output path
+            if (result.size() === 0) {
+                console.warn('[WARN] Minkowski Sum produced no output paths');
+            } else {
+                let totalPoints = 0;
+                for (let i = 0; i < result.size(); i++) {
+                    totalPoints += result.get(i).size();
+                }
+                validation.totalOutputPoints = totalPoints;
+            }
+            
+            this.storeOperationStats('minkowski-sum', validation);
+            
+            this.core.debug(`Minkowski Sum completed: ${validation.outputPaths} path(s), ${validation.totalOutputPoints || 0} total points`);
+            
+            return result;
+            
+        } catch (error) {
+            console.error('[ERROR] Minkowski Sum failed:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * MINKOWSKI DIFFERENCE operation
+     * @param {Path64} pattern - The pattern shape to subtract
+     * @param {Path64} path - The path to subtract the pattern from
+     * @param {boolean} pathIsClosed - Whether to treat the path as closed
+     * @returns {Paths64} The Minkowski difference result
+     */
+    minkowskiDiff(pattern, path, pathIsClosed = true) {
+        if (!this.core.initialized) {
+            throw new Error('Clipper2 not initialized');
+        }
+        
+        if (!this.core.clipper2.MinkowskiDiff64) {
+            throw new Error('MinkowskiDiff64 not available in this Clipper2 build');
+        }
+        
+        this.core.debug('Performing MINKOWSKI DIFF operation');
+        
+        const startTime = performance.now();
+        
+        try {
+            const result = this.core.trackObject(
+                this.core.clipper2.MinkowskiDiff64(pattern, path, pathIsClosed)  // FIXED: Now correctly calls MinkowskiDiff64
+            );
+            
+            const endTime = performance.now();
+            
+            const validation = {
+                operation: 'minkowski-diff',
+                patternPoints: pattern.size(),
+                pathPoints: path.size(),
+                outputPaths: result.size(),
+                executionTime: endTime - startTime,
+                pathIsClosed: pathIsClosed
+            };
+            
+            // Validate at least one output path
+            if (result.size() === 0) {
+                console.warn('[WARN] Minkowski Diff produced no output paths');
+            } else {
+                let totalPoints = 0;
+                for (let i = 0; i < result.size(); i++) {
+                    totalPoints += result.get(i).size();
+                }
+                validation.totalOutputPoints = totalPoints;
+            }
+            
+            this.storeOperationStats('minkowski-diff', validation);
+            
+            this.core.debug(`Minkowski Diff completed: ${validation.outputPaths} path(s), ${validation.totalOutputPoints || 0} total points`);
+            
+            return result;
+            
+        } catch (error) {
+            console.error('[ERROR] Minkowski Diff failed:', error);
             throw error;
         }
     }

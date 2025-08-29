@@ -1,7 +1,7 @@
 /**
  * Clipper2 UI Module
  * UI interactions and state management
- * Version 6.1 - Fixed rabbit loading, nested holes, simplify control
+ * Version 6.4 - Fixed PIP, removed tangency controls
  */
 
 class Clipper2UI {
@@ -28,9 +28,6 @@ class Clipper2UI {
             // Initialize event handlers
             this.initializeEventHandlers();
             
-            // Initialize tangency controls
-            this.initializeTangencyControls();
-            
             // Draw all default shapes
             this.drawAllDefaults();
             
@@ -52,7 +49,7 @@ class Clipper2UI {
     initializeViewStates() {
         const testNames = [
             'boolean', 'letter-b', 'nested', 'offset',
-            'simplify', 'pcb-fusion', 'area', 'pip'
+            'simplify', 'pcb-fusion', 'area', 'pip', 'minkowski'
         ];
         
         testNames.forEach(name => {
@@ -126,132 +123,105 @@ class Clipper2UI {
             });
         }
         
-        // Fix simplify control - change from slider to text input
-        const simplifyCard = document.querySelector('[data-test="simplify"]');
-        if (simplifyCard) {
-            const controlDiv = simplifyCard.querySelector('#simplify-tolerance')?.parentElement?.parentElement;
-            if (controlDiv) {
-                // Replace slider with text input
-                controlDiv.innerHTML = `
-                    <div class="control">
-                        <label for="simplify-tolerance">Tolerance:</label>
-                        <input type="number" id="simplify-tolerance" min="0.5" max="50" value="2" step="0.5">
-                    </div>
-                    <button class="btn btn-primary" onclick="tests.testSimplify()">Simplify Path</button>
-                `;
-                
-                // Add event listener to new input
-                const simplifyTolerance = document.getElementById('simplify-tolerance');
-                if (simplifyTolerance) {
-                    simplifyTolerance.addEventListener('input', (e) => {
-                        this.tests.updateTestState('simplify', 'tolerance', parseFloat(e.target.value));
-                    });
+        // Simplify tolerance control
+        const simplifyTolerance = document.getElementById('simplify-tolerance');
+        if (simplifyTolerance) {
+            simplifyTolerance.addEventListener('input', (e) => {
+                this.tests.updateTestState('simplify', 'tolerance', parseFloat(e.target.value));
+                const value = e.target.value;
+                // Update display if there's a value indicator
+                const valueDisplay = document.getElementById('simplify-tolerance-value');
+                if (valueDisplay) {
+                    valueDisplay.textContent = value;
                 }
-            }
+            });
+        }
+        
+        // Minkowski test controls
+        const minkowskiPattern = document.getElementById('minkowski-pattern');
+        if (minkowskiPattern) {
+            minkowskiPattern.addEventListener('change', (e) => {
+                this.tests.updateTestState('minkowski', 'pattern', e.target.value);
+                this.drawDefaultMinkowski();
+                this.updateResult('minkowski-result', 'Pattern changed - click "Run Operation" to see result');
+            });
+        }
+        
+        const minkowskiPath = document.getElementById('minkowski-path');
+        if (minkowskiPath) {
+            minkowskiPath.addEventListener('change', (e) => {
+                this.tests.updateTestState('minkowski', 'path', e.target.value);
+                this.drawDefaultMinkowski();
+                this.updateResult('minkowski-result', 'Path changed - click "Run Operation" to see result');
+            });
+        }
+        
+        const minkowskiOp = document.getElementById('minkowski-operation');
+        if (minkowskiOp) {
+            minkowskiOp.addEventListener('change', (e) => {
+                this.tests.updateTestState('minkowski', 'operation', e.target.value);
+                this.updateResult('minkowski-result', 'Operation changed - click "Run Operation" to see result');
+            });
+        }
+        
+        const minkowskiClosed = document.getElementById('minkowski-closed');
+        if (minkowskiClosed) {
+            minkowskiClosed.addEventListener('change', (e) => {
+                this.tests.updateTestState('minkowski', 'pathClosed', e.target.checked);
+                this.updateResult('minkowski-result', 'Path closed setting changed - click "Run Operation" to see result');
+            });
+        }
+        
+        // PIP test controls
+        const pipTolerance = document.getElementById('pip-tolerance');
+        if (pipTolerance) {
+            pipTolerance.addEventListener('input', (e) => {
+                this.tests.updateTestState('pip', 'edgeTolerance', parseFloat(e.target.value));
+                this.updateResult('pip-result', `Edge tolerance updated to ${e.target.value}px`);
+            });
         }
         
         // Setup draggable shapes
         this.setupDraggableBoolean();
         this.setupDraggableNested();
+        
+        // Setup PIP canvas immediately
+        this.setupPIPCanvas();
     }
 
     /**
-     * Initialize tangency epsilon controls
+     * Setup PIP canvas click handler immediately - FIXED
      */
-    initializeTangencyControls() {
-        const controlsContainer = document.createElement('div');
-        controlsContainer.id = 'tangency-controls';
-        controlsContainer.className = 'tangency-controls';
+    setupPIPCanvas() {
+        const canvas = document.getElementById('pip-canvas');
+        if (!canvas) return;
         
-        controlsContainer.innerHTML = `
-            <h4>Tangency Resolution Settings</h4>
+        canvas.onclick = (event) => {
+            const polygon = this.tests.testData.get('pip-polygon');
             
-            <div class="control-group">
-                <label>Epsilon (scaled units):</label>
-                <div class="control-row">
-                    <input type="range" id="tangency-epsilon" 
-                           min="1" max="200" value="${this.defaults.tangency.epsilon}">
-                    <span id="epsilon-display">${this.defaults.tangency.epsilon} (0.050 units)</span>
-                </div>
-            </div>
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
             
-            <div class="control-group">
-                <label>Resolution Strategy:</label>
-                <select id="tangency-strategy">
-                    <option value="none" ${this.defaults.tangency.strategy === 'none' ? 'selected' : ''}>Disabled</option>
-                    <option value="polygon" ${this.defaults.tangency.strategy === 'polygon' ? 'selected' : ''}>Polygon-level</option>
-                </select>
-            </div>
+            this.tests.testState.pip.points.push({ x, y, status: 'unchecked' });
             
-            <div class="control-group">
-                <label>Detection Threshold:</label>
-                <div class="control-row">
-                    <input type="range" id="tangency-threshold" 
-                           min="1" max="50" value="${this.defaults.tangency.threshold}">
-                    <span id="threshold-display">${this.defaults.tangency.threshold}</span>
-                </div>
-            </div>
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = getComputedStyle(document.documentElement)
+                .getPropertyValue('--input-stroke');
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
+            ctx.fill();
             
-            <button id="apply-tangency-settings" class="btn btn-primary">Apply Settings</button>
-            
-            <div id="tangency-info" class="tangency-info"></div>
-        `;
-        
-        document.body.appendChild(controlsContainer);
-        
-        // Add event handlers
-        const epsilonSlider = document.getElementById('tangency-epsilon');
-        const thresholdSlider = document.getElementById('tangency-threshold');
-        const strategySelect = document.getElementById('tangency-strategy');
-        const applyButton = document.getElementById('apply-tangency-settings');
-        
-        epsilonSlider.addEventListener('input', (e) => {
-            const scaled = parseInt(e.target.value);
-            const original = scaled / this.tests.core.config.scale;
-            document.getElementById('epsilon-display').textContent = 
-                `${scaled} (${original.toFixed(3)} units)`;
-            
-            const info = document.getElementById('tangency-info');
-            if (scaled < 10) {
-                info.textContent = '⚠️ Too small - may fail to resolve tangencies';
-                info.className = 'tangency-info warning';
-            } else if (scaled > 100) {
-                info.textContent = '⚠️ Large value - may cause visible distortion';
-                info.className = 'tangency-info warning';
+            if (!polygon) {
+                this.updateResult('pip-result', 
+                    `${this.tests.testState.pip.points.length} point(s) added. Run test first, then click "Check Locations".`);
             } else {
-                info.textContent = '✓ Recommended range for most geometries';
-                info.className = 'tangency-info success';
+                this.updateResult('pip-result', 
+                    `${this.tests.testState.pip.points.length} point(s) added. Click "Check Locations" to test.`);
             }
-        });
-        
-        thresholdSlider.addEventListener('input', (e) => {
-            document.getElementById('threshold-display').textContent = e.target.value;
-        });
-        
-        applyButton.addEventListener('click', () => {
-            const epsilon = parseInt(epsilonSlider.value);
-            const threshold = parseInt(thresholdSlider.value);
-            const strategy = strategySelect.value;
-            
-            this.tests.operations.setTangencyResolution({
-                minOffset: -epsilon,
-                maxOffset: epsilon,
-                threshold: threshold,
-                strategy: strategy,
-                enabled: strategy !== 'none'
-            });
-            
-            const info = document.getElementById('tangency-info');
-            info.textContent = `✓ Settings applied`;
-            info.className = 'tangency-info success';
-            
-            setTimeout(() => {
-                info.textContent = '';
-                info.className = 'tangency-info';
-            }, 3000);
-            
-            console.log(`[UI] Tangency settings updated`);
-        });
+        };
     }
 
     /**
@@ -553,6 +523,9 @@ class Clipper2UI {
         this.drawDefaultSimplify();
         this.drawDefaultPCB();
         this.drawDefaultPIP();
+        this.drawDefaultMinkowski();
+        // Initialize area test to be interactive
+        this.tests.testArea();
     }
 
     drawDefaultBoolean() {
@@ -596,13 +569,25 @@ class Clipper2UI {
     }
 
     drawDefaultSimplify() {
-        const simplifyDef = this.defaults.geometries.simplify;
-        const coords = this.defaults.generators.flower(
-            simplifyDef.center[0], simplifyDef.center[1],
-            simplifyDef.baseRadius, simplifyDef.noiseFrequency,
-            simplifyDef.noiseAmplitude, simplifyDef.segments
-        );
-        this.tests.rendering.drawSimplePaths([coords], 'simplify-canvas', this.defaults.styles.default);
+        // Draw rabbit shape as the default for simplify test
+        const rabbitPath = this.tests.testState.boolean.rabbitPath;
+        if (rabbitPath && rabbitPath.length > 0) {
+            // Use the pre-loaded rabbit path, centered at canvas center
+            const coords = rabbitPath.map(pt => [
+                pt[0] + 200,  // Center at canvas center
+                pt[1] + 200
+            ]);
+            this.tests.rendering.drawSimplePaths([coords], 'simplify-canvas', this.defaults.styles.default);
+        } else {
+            // Fallback to flower if rabbit not loaded
+            const simplifyDef = this.defaults.geometries.simplify;
+            const coords = this.defaults.generators.flower(
+                simplifyDef.center[0], simplifyDef.center[1],
+                simplifyDef.baseRadius, simplifyDef.noiseFrequency,
+                simplifyDef.noiseAmplitude, simplifyDef.segments
+            );
+            this.tests.rendering.drawSimplePaths([coords], 'simplify-canvas', this.defaults.styles.default);
+        }
     }
 
     drawDefaultPCB() {
@@ -615,6 +600,48 @@ class Clipper2UI {
     drawDefaultPIP() {
         const pipDef = this.defaults.geometries.pip;
         this.tests.rendering.drawSimplePaths([pipDef.data], 'pip-canvas', this.defaults.styles.default);
+    }
+
+    drawDefaultMinkowski() {
+        const state = this.tests.getTestState('minkowski');
+        const patternDef = this.defaults.geometries.minkowski.patterns[state.pattern];
+        const pathDef = this.defaults.geometries.minkowski.paths[state.path];
+        
+        this.tests.rendering.clearCanvas('minkowski-canvas');
+        
+        // Draw path
+        if (pathDef.type === 'polygon' || pathDef.type === 'polyline') {
+            this.tests.rendering.drawSimplePaths([pathDef.data], 'minkowski-canvas', {
+                ...this.defaults.styles.default,
+                clear: false
+            });
+        }
+        
+        // Draw pattern reference at corner
+        let patternCoords;
+        if (patternDef.type === 'parametric' && patternDef.shape === 'circle') {
+            patternCoords = this.defaults.generators.circle(30, 30, patternDef.radius);
+        } else if (patternDef.type === 'polygon') {
+            patternCoords = patternDef.data.map(pt => [pt[0] + 30, pt[1] + 30]);
+        }
+        
+        if (patternCoords) {
+            this.tests.rendering.drawSimplePaths([patternCoords], 'minkowski-canvas', {
+                fillOuter: 'rgba(255, 0, 0, 0.3)',
+                strokeOuter: '#ff0000',
+                strokeWidth: 1,
+                clear: false
+            });
+        }
+        
+        // Add label
+        const canvas = document.getElementById('minkowski-canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.font = '10px Arial';
+            ctx.fillStyle = '#ff0000';
+            ctx.fillText('Pattern', 30, 60);
+        }
     }
 
     /**
@@ -689,14 +716,35 @@ class Clipper2UI {
             case 'offset': this.drawDefaultOffset(); break;
             case 'simplify': this.drawDefaultSimplify(); break;
             case 'pcb-fusion': this.drawDefaultPCB(); break;
-            case 'pip': this.drawDefaultPIP(); break;
+            case 'pip': 
+                this.tests.testState.pip.points = [];
+                this.drawDefaultPIP(); 
+                break;
             case 'area':
                 const areaCanvas = document.getElementById('area-canvas');
                 if (areaCanvas) {
-                    const btn = areaCanvas.parentNode.querySelector('button');
-                    if (btn) btn.remove();
+                    // Remove old buttons properly
+                    const calculateBtn = document.getElementById('area-calculate');
+                    const resetBtn = document.getElementById('area-reset');
+                    if (calculateBtn) calculateBtn.remove();
+                    if (resetBtn) resetBtn.remove();
+                    
                     this.tests.testArea();
                 }
+                break;
+            case 'minkowski':
+                // Reset minkowski controls to defaults
+                const patternSelect = document.getElementById('minkowski-pattern');
+                const pathSelect = document.getElementById('minkowski-path');
+                const opSelect = document.getElementById('minkowski-operation');
+                const closedCheck = document.getElementById('minkowski-closed');
+                
+                if (patternSelect) patternSelect.value = this.defaults.geometries.minkowski.defaults.pattern;
+                if (pathSelect) pathSelect.value = this.defaults.geometries.minkowski.defaults.path;
+                if (opSelect) opSelect.value = this.defaults.geometries.minkowski.defaults.operation;
+                if (closedCheck) closedCheck.checked = this.defaults.geometries.minkowski.defaults.pathClosed;
+                
+                this.drawDefaultMinkowski();
                 break;
         }
         

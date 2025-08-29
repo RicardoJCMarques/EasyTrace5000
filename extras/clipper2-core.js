@@ -43,12 +43,6 @@ class Clipper2Core {
             // Verify critical functions
             this.verifyFunctions();
             
-            console.log('[CONFIG] Tangency resolution:', {
-                strategy: this.defaults.tangency.strategy,
-                epsilon: this.defaults.tangency.epsilon,
-                threshold: this.defaults.tangency.threshold
-            });
-            
             this.initialized = true;
             console.log('[OK] Clipper2 initialization complete');
             
@@ -187,15 +181,10 @@ class Clipper2Core {
             pointReduction: totalInputPoints > 0 ? 
                 (1 - totalOutputPoints / totalInputPoints) * 100 : 0,
             valid: outputPaths > 0 || operation === 'difference',
-            tangencyStrategy: this.defaults.tangency.strategy,
-            tangencyEpsilon: this.defaults.tangency.epsilon
         };
         
         if (outputPaths === 0 && operation !== 'difference') {
             console.warn(`[WARN] ${operation} produced no output paths`);
-            if (this.defaults.tangency.strategy === 'none') {
-                console.warn('[HINT] Consider enabling tangency resolution if paths are touching');
-            }
         }
         
         this.debug(`${operation} validation:`, validation);
@@ -210,7 +199,6 @@ class Clipper2Core {
         const info = {
             trackedObjects: this.memoryTracker.size,
             testResults: this.testResults.size,
-            tangencyStrategy: this.defaults.tangency.strategy
         };
         
         if (this.clipper2 && this.clipper2.HEAP8) {
@@ -225,18 +213,6 @@ class Clipper2Core {
      * Set configuration
      */
     setConfig(config) {
-        if (config.tangencyEpsilon !== undefined) {
-            const minEpsilon = 10;
-            const maxEpsilon = 1000;
-            
-            if (config.tangencyEpsilon < minEpsilon) {
-                console.warn(`[CONFIG] Epsilon ${config.tangencyEpsilon} too small, using ${minEpsilon}`);
-                config.tangencyEpsilon = minEpsilon;
-            } else if (config.tangencyEpsilon > maxEpsilon) {
-                console.warn(`[CONFIG] Epsilon ${config.tangencyEpsilon} too large, using ${maxEpsilon}`);
-                config.tangencyEpsilon = maxEpsilon;
-            }
-        }
         
         Object.assign(this.config, config);
         
@@ -265,11 +241,6 @@ class Clipper2Core {
         this.testResults.set(testName, {
             timestamp: Date.now(),
             result: result,
-            tangencyConfig: {
-                strategy: this.defaults.tangency.strategy,
-                epsilon: this.defaults.tangency.epsilon,
-                threshold: this.defaults.tangency.threshold
-            }
         });
         
         if (this.testResults.size > 50) {
@@ -305,37 +276,5 @@ class Clipper2Core {
         
         console.log(`[DESTROY] Core module destroyed, cleaned ${cleaned} objects`);
     }
-
-    /**
-     * Get tangency info
-     */
-    getTangencyInfo() {
-        return {
-            strategy: this.defaults.tangency.strategy,
-            epsilon: this.defaults.tangency.epsilon,
-            epsilonOriginal: this.defaults.tangency.epsilon / this.config.scale,
-            threshold: this.defaults.tangency.threshold,
-            thresholdOriginal: this.defaults.tangency.threshold / this.config.scale,
-            scale: this.config.scale,
-            enabled: this.defaults.tangency.enabled
-        };
-    }
-
-    /**
-     * Log tangency diagnostics
-     */
-    logTangencyDiagnostics() {
-        const info = this.getTangencyInfo();
-        console.group('[TANGENCY DIAGNOSTICS]');
-        console.log('Strategy:', info.strategy);
-        console.log('Enabled:', info.enabled);
-        console.log('Epsilon (scaled):', info.epsilon);
-        console.log('Epsilon (original):', info.epsilonOriginal.toFixed(4));
-        console.log('Threshold (scaled):', info.threshold);
-        console.log('Threshold (original):', info.thresholdOriginal.toFixed(4));
-        console.log('Scale factor:', info.scale);
-        console.log('Recommendation:', info.epsilon < 30 ? 'Increase epsilon for better tangency resolution' : 
-                    info.epsilon > 100 ? 'Decrease epsilon to avoid distortion' : 'Settings in optimal range');
-        console.groupEnd();
-    }
+    
 }

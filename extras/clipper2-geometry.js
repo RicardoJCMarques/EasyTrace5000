@@ -1,7 +1,7 @@
 /**
  * Clipper2 Geometry Module
  * Converts between coordinate arrays and Clipper2 objects
- * Version 5.1 - Added polygon validation
+ * Version 5.2 - Improved SVG parsing
  */
 
 class Clipper2Geometry {
@@ -404,7 +404,7 @@ class Clipper2Geometry {
     }
 
     /**
-     * Parse SVG path data to coordinates
+     * Parse SVG path data to coordinates - IMPROVED
      */
     parseSVGPath(pathData, scale = 1.0, offset = [0, 0]) {
         const coords = [];
@@ -412,24 +412,36 @@ class Clipper2Geometry {
         
         let currentX = 0, currentY = 0;
         let startX = 0, startY = 0;
+        let isFirstMove = true;
+        let prevControlX = 0, prevControlY = 0; // For smooth curves
         
         commands?.forEach(cmd => {
             const type = cmd[0].toLowerCase();
-            const numbers = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat);
+            const numbers = cmd.slice(1).trim().split(/[\s,]+/)
+                .map(parseFloat)
+                .filter(n => !isNaN(n));
             const isRelative = cmd[0] === cmd[0].toLowerCase();
             
             switch(type) {
                 case 'm': // Move to
-                    if (isRelative) {
-                        currentX += numbers[0];
-                        currentY += numbers[1];
-                    } else {
+                    if (isFirstMove && isRelative) {
+                        // First 'm' is always treated as absolute
                         currentX = numbers[0];
                         currentY = numbers[1];
+                        isFirstMove = false;
+                    } else {
+                        if (isRelative) {
+                            currentX += numbers[0];
+                            currentY += numbers[1];
+                        } else {
+                            currentX = numbers[0];
+                            currentY = numbers[1];
+                        }
                     }
                     startX = currentX;
                     startY = currentY;
                     
+                    // First move doesn't create a point
                     // Handle subsequent coordinates as line-to
                     for (let i = 2; i < numbers.length; i += 2) {
                         if (isRelative) {
@@ -482,27 +494,157 @@ class Clipper2Geometry {
                     }
                     break;
                     
-                case 'z': // Close path
-                    currentX = startX;
-                    currentY = startY;
+                case 'c': // Cubic Bezier
+                    for (let i = 0; i < numbers.length; i += 6) {
+                        const cp1x = isRelative ? currentX + numbers[i] : numbers[i];
+                        const cp1y = isRelative ? currentY + numbers[i + 1] : numbers[i + 1];
+                        const cp2x = isRelative ? currentX + numbers[i + 2] : numbers[i + 2];
+                        const cp2y = isRelative ? currentY + numbers[i + 3] : numbers[i + 3];
+                        const endX = isRelative ? currentX + numbers[i + 4] : numbers[i + 4];
+                        const endY = isRelative ? currentY + numbers[i + 5] : numbers[i + 5];
+                        
+                        // Sample the cubic bezier curve
+                        const steps = 10;
+                        for (let t = 1; t <= steps; t++) {
+                            const s = t / steps;
+                            const s2 = s * s;
+                            const s3 = s2 * s;
+                            const t1 = 1 - s;
+                            const t2 = t1 * t1;
+                            const t3 = t2 * t1;
+                            
+                            const x = t3 * currentX + 3 * t2 * s * cp1x + 3 * t1 * s2 * cp2x + s3 * endX;
+                            const y = t3 * currentY + 3 * t2 * s * cp1y + 3 * t1 * s2 * cp2y + s3 * endY;
+                            
+                            coords.push([
+                                x * scale + offset[0],
+                                y * scale + offset[1]
+                            ]);
+                        }
+                        
+                        prevControlX = cp2x;
+                        prevControlY = cp2y;
+                        currentX = endX;
+                        currentY = endY;
+                    }
                     break;
                     
-                // Simplified curve handling - just use endpoints
-                case 'c': case 's': case 'q': case 't': case 'a':
-                    const lastIdx = numbers.length - 2;
-                    if (lastIdx >= 0) {
-                        if (isRelative) {
-                            currentX += numbers[lastIdx];
-                            currentY += numbers[lastIdx + 1];
-                        } else {
-                            currentX = numbers[lastIdx];
-                            currentY = numbers[lastIdx + 1];
+                case 's': // Smooth cubic Bezier
+                    for (let i = 0; i < numbers.length; i += 4) {
+                        // Reflect previous control point
+                        const cp1x = 2 * currentX - prevControlX;
+                        const cp1y = 2 * currentY - prevControlY;
+                        const cp2x = isRelative ? currentX + numbers[i] : numbers[i];
+                        const cp2y = isRelative ? currentY + numbers[i + 1] : numbers[i + 1];
+                        const endX = isRelative ? currentX + numbers[i + 2] : numbers[i + 2];
+                        const endY = isRelative ? currentY + numbers[i + 3] : numbers[i + 3];
+                        
+                        // Sample the curve
+                        const steps = 10;
+                        for (let t = 1; t <= steps; t++) {
+                            const s = t / steps;
+                            const s2 = s * s;
+                            const s3 = s2 * s;
+                            const t1 = 1 - s;
+                            const t2 = t1 * t1;
+                            const t3 = t2 * t1;
+                            
+                            const x = t3 * currentX + 3 * t2 * s * cp1x + 3 * t1 * s2 * cp2x + s3 * endX;
+                            const y = t3 * currentY + 3 * t2 * s * cp1y + 3 * t1 * s2 * cp2y + s3 * endY;
+                            
+                            coords.push([
+                                x * scale + offset[0],
+                                y * scale + offset[1]
+                            ]);
                         }
-                        coords.push([
-                            currentX * scale + offset[0],
-                            currentY * scale + offset[1]
-                        ]);
+                        
+                        prevControlX = cp2x;
+                        prevControlY = cp2y;
+                        currentX = endX;
+                        currentY = endY;
                     }
+                    break;
+                    
+                case 'q': // Quadratic Bezier
+                    for (let i = 0; i < numbers.length; i += 4) {
+                        const cpx = isRelative ? currentX + numbers[i] : numbers[i];
+                        const cpy = isRelative ? currentY + numbers[i + 1] : numbers[i + 1];
+                        const endX = isRelative ? currentX + numbers[i + 2] : numbers[i + 2];
+                        const endY = isRelative ? currentY + numbers[i + 3] : numbers[i + 3];
+                        
+                        // Sample the quadratic bezier curve
+                        const steps = 8;
+                        for (let t = 1; t <= steps; t++) {
+                            const s = t / steps;
+                            const t1 = 1 - s;
+                            
+                            const x = t1 * t1 * currentX + 2 * t1 * s * cpx + s * s * endX;
+                            const y = t1 * t1 * currentY + 2 * t1 * s * cpy + s * s * endY;
+                            
+                            coords.push([
+                                x * scale + offset[0],
+                                y * scale + offset[1]
+                            ]);
+                        }
+                        
+                        prevControlX = cpx;
+                        prevControlY = cpy;
+                        currentX = endX;
+                        currentY = endY;
+                    }
+                    break;
+                    
+                case 't': // Smooth quadratic Bezier
+                    for (let i = 0; i < numbers.length; i += 2) {
+                        // Reflect previous control point
+                        const cpx = 2 * currentX - prevControlX;
+                        const cpy = 2 * currentY - prevControlY;
+                        const endX = isRelative ? currentX + numbers[i] : numbers[i];
+                        const endY = isRelative ? currentY + numbers[i + 1] : numbers[i + 1];
+                        
+                        // Sample the curve
+                        const steps = 8;
+                        for (let t = 1; t <= steps; t++) {
+                            const s = t / steps;
+                            const t1 = 1 - s;
+                            
+                            const x = t1 * t1 * currentX + 2 * t1 * s * cpx + s * s * endX;
+                            const y = t1 * t1 * currentY + 2 * t1 * s * cpy + s * s * endY;
+                            
+                            coords.push([
+                                x * scale + offset[0],
+                                y * scale + offset[1]
+                            ]);
+                        }
+                        
+                        prevControlX = cpx;
+                        prevControlY = cpy;
+                        currentX = endX;
+                        currentY = endY;
+                    }
+                    break;
+                    
+                case 'a': // Arc - simplified handling
+                    for (let i = 0; i < numbers.length; i += 7) {
+                        const endX = isRelative ? currentX + numbers[i + 5] : numbers[i + 5];
+                        const endY = isRelative ? currentY + numbers[i + 6] : numbers[i + 6];
+                        
+                        // Simplified: just use a line for now
+                        // A proper implementation would convert SVG arc to center parameterization
+                        coords.push([
+                            endX * scale + offset[0],
+                            endY * scale + offset[1]
+                        ]);
+                        
+                        currentX = endX;
+                        currentY = endY;
+                    }
+                    break;
+                    
+                case 'z': // Close path
+                    // Don't add a point, just reset position
+                    currentX = startX;
+                    currentY = startY;
                     break;
             }
         });
