@@ -1,7 +1,7 @@
 /**
  * Clipper2 Rendering Module
  * Unified rendering pipeline using coordinate arrays
- * Version 5.1 - Unified stroke rendering via polygon generation
+ * Version 5.2 - Fixed minkowski visualization
  */
 
 class Clipper2Rendering {
@@ -184,7 +184,7 @@ class Clipper2Rendering {
         ctx.lineWidth = options.strokeWidth;
         
         // Draw outer strokes
-        if (outers.length > 0 && options.strokeOuter) {
+        if (outers.length > 0 && options.strokeOuter && options.strokeOuter !== 'none') {
             ctx.strokeStyle = options.strokeOuter;
             outers.forEach(item => {
                 ctx.beginPath();
@@ -263,7 +263,7 @@ class Clipper2Rendering {
             if (opts.fillOuter && opts.fillOuter !== 'none') {
                 ctx.fill();
             }
-            if (opts.strokeOuter) {
+            if (opts.strokeOuter && opts.strokeOuter !== 'none') {
                 ctx.stroke();
             }
         });
@@ -311,7 +311,7 @@ class Clipper2Rendering {
                 if (style.fillOuter && style.fillOuter !== 'none') {
                     ctx.fill();
                 }
-                if (style.strokeOuter) {
+                if (style.strokeOuter && style.strokeOuter !== 'none') {
                     ctx.stroke();
                 }
             });
@@ -365,7 +365,7 @@ class Clipper2Rendering {
                 if (style.fillOuter && style.fillOuter !== 'none') {
                     ctx.fill();
                 }
-                if (style.strokeOuter) {
+                if (style.strokeOuter && style.strokeOuter !== 'none') {
                     ctx.stroke();
                 }
             });

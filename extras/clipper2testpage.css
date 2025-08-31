@@ -190,20 +190,6 @@ h1 {
     overflow: hidden;
 }
 
-.canvas-label {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    z-index: var(--z-overlay);
-    animation: pulse 2s infinite;
-}
-
 canvas {
     display: block;
     width: 400px;

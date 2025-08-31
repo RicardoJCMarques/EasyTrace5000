@@ -1,7 +1,7 @@
 /**
  * Clipper2 UI Module
  * UI interactions and state management
- * Version 6.4 - Fixed PIP, removed tangency controls
+ * Version 6.9 - Added 3-button export system
  */
 
 class Clipper2UI {
@@ -25,6 +25,9 @@ class Clipper2UI {
             // Initialize view states
             this.initializeViewStates();
             
+            // Set default values in UI controls from defaults
+            this.setDefaultValues();
+            
             // Initialize event handlers
             this.initializeEventHandlers();
             
@@ -40,6 +43,91 @@ class Clipper2UI {
         } catch (error) {
             console.error('[ERROR] UI initialization failed:', error);
             this.showError('Failed to initialize UI system');
+        }
+    }
+
+    /**
+     * Set default values in UI controls from configuration
+     */
+    setDefaultValues() {
+        // Boolean test defaults
+        const booleanOp = document.getElementById('boolean-operation');
+        if (booleanOp) {
+            booleanOp.value = 'union';
+        }
+        
+        const booleanClip = document.getElementById('boolean-clip-shape');
+        if (booleanClip) {
+            booleanClip.value = 'circle';
+        }
+        
+        // Offset test defaults
+        const offsetShape = document.getElementById('offset-shape');
+        if (offsetShape) {
+            offsetShape.value = this.defaults.geometries.offset.defaults.shape;
+        }
+        
+        const offsetType = document.getElementById('offset-type');
+        if (offsetType) {
+            offsetType.value = this.defaults.geometries.offset.defaults.type;
+        }
+        
+        const offsetCount = document.getElementById('offset-count');
+        if (offsetCount) {
+            offsetCount.value = this.defaults.geometries.offset.defaults.count;
+        }
+        
+        const offsetDistance = document.getElementById('offset-distance');
+        if (offsetDistance) {
+            offsetDistance.value = this.defaults.geometries.offset.defaults.distance;
+        }
+        
+        const offsetJoin = document.getElementById('offset-join');
+        if (offsetJoin) {
+            offsetJoin.value = this.defaults.geometries.offset.defaults.joinType;
+        }
+        
+        const offsetMiter = document.getElementById('offset-miter-limit');
+        if (offsetMiter) {
+            offsetMiter.value = this.defaults.geometries.offset.defaults.miterLimit;
+        }
+        
+        // Simplify defaults
+        const simplifyTolerance = document.getElementById('simplify-tolerance');
+        if (simplifyTolerance) {
+            simplifyTolerance.value = this.defaults.geometries.simplify.defaultTolerance;
+        }
+        
+        // Minkowski defaults
+        const minkowskiPattern = document.getElementById('minkowski-pattern');
+        if (minkowskiPattern) {
+            minkowskiPattern.value = this.defaults.geometries.minkowski.defaults.pattern;
+        }
+        
+        const minkowskiPath = document.getElementById('minkowski-path');
+        if (minkowskiPath) {
+            minkowskiPath.value = this.defaults.geometries.minkowski.defaults.path;
+        }
+        
+        const minkowskiOp = document.getElementById('minkowski-operation');
+        if (minkowskiOp) {
+            minkowskiOp.value = this.defaults.geometries.minkowski.defaults.operation;
+        }
+        
+        const minkowskiSweep = document.getElementById('minkowski-sweep');
+        if (minkowskiSweep) {
+            minkowskiSweep.checked = this.defaults.geometries.minkowski.defaults.showSweep;
+        }
+        
+        const minkowskiOffset = document.getElementById('minkowski-offset');
+        if (minkowskiOffset) {
+            minkowskiOffset.checked = this.defaults.geometries.minkowski.defaults.showOffset;
+        }
+        
+        // PIP defaults
+        const pipTolerance = document.getElementById('pip-tolerance');
+        if (pipTolerance) {
+            pipTolerance.value = this.defaults.geometries.pip.edgeTolerance;
         }
     }
 
@@ -142,8 +230,7 @@ class Clipper2UI {
         if (minkowskiPattern) {
             minkowskiPattern.addEventListener('change', (e) => {
                 this.tests.updateTestState('minkowski', 'pattern', e.target.value);
-                this.drawDefaultMinkowski();
-                this.updateResult('minkowski-result', 'Pattern changed - click "Run Operation" to see result');
+                this.updateResult('minkowski-result', 'Pattern changed - click "Calculate" to see result');
             });
         }
         
@@ -151,8 +238,7 @@ class Clipper2UI {
         if (minkowskiPath) {
             minkowskiPath.addEventListener('change', (e) => {
                 this.tests.updateTestState('minkowski', 'path', e.target.value);
-                this.drawDefaultMinkowski();
-                this.updateResult('minkowski-result', 'Path changed - click "Run Operation" to see result');
+                this.updateResult('minkowski-result', 'Path changed - click "Calculate" to see result');
             });
         }
         
@@ -160,15 +246,23 @@ class Clipper2UI {
         if (minkowskiOp) {
             minkowskiOp.addEventListener('change', (e) => {
                 this.tests.updateTestState('minkowski', 'operation', e.target.value);
-                this.updateResult('minkowski-result', 'Operation changed - click "Run Operation" to see result');
+                this.updateResult('minkowski-result', 'Operation changed - click "Calculate" to see result');
             });
         }
         
-        const minkowskiClosed = document.getElementById('minkowski-closed');
-        if (minkowskiClosed) {
-            minkowskiClosed.addEventListener('change', (e) => {
-                this.tests.updateTestState('minkowski', 'pathClosed', e.target.checked);
-                this.updateResult('minkowski-result', 'Path closed setting changed - click "Run Operation" to see result');
+        const minkowskiSweep = document.getElementById('minkowski-sweep');
+        if (minkowskiSweep) {
+            minkowskiSweep.addEventListener('change', (e) => {
+                this.tests.updateTestState('minkowski', 'showSweep', e.target.checked);
+                this.updateResult('minkowski-result', 'Sweep visualization toggled - click "Calculate" to update');
+            });
+        }
+        
+        const minkowskiOffset = document.getElementById('minkowski-offset');
+        if (minkowskiOffset) {
+            minkowskiOffset.addEventListener('change', (e) => {
+                this.tests.updateTestState('minkowski', 'showOffset', e.target.checked);
+                this.updateResult('minkowski-result', 'Offset comparison toggled - click "Calculate" to update');
             });
         }
         
@@ -187,6 +281,20 @@ class Clipper2UI {
         
         // Setup PIP canvas immediately
         this.setupPIPCanvas();
+        
+        // Setup area test properly with separate buttons
+        this.setupAreaTest();
+    }
+
+    /**
+     * Setup area test - make canvas clickable from page load
+     */
+    setupAreaTest() {
+        const canvas = document.getElementById('area-canvas');
+        if (!canvas) return;
+        
+        // Initialize the area test immediately
+        this.tests.initializeAreaTest();
     }
 
     /**
@@ -222,6 +330,9 @@ class Clipper2UI {
                     `${this.tests.testState.pip.points.length} point(s) added. Click "Check Locations" to test.`);
             }
         };
+        
+        // Initially run the test to set up the polygon
+        this.tests.testPointInPolygon();
     }
 
     /**
@@ -524,8 +635,7 @@ class Clipper2UI {
         this.drawDefaultPCB();
         this.drawDefaultPIP();
         this.drawDefaultMinkowski();
-        // Initialize area test to be interactive
-        this.tests.testArea();
+        this.drawDefaultArea();
     }
 
     drawDefaultBoolean() {
@@ -569,24 +679,17 @@ class Clipper2UI {
     }
 
     drawDefaultSimplify() {
-        // Draw rabbit shape as the default for simplify test
-        const rabbitPath = this.tests.testState.boolean.rabbitPath;
-        if (rabbitPath && rabbitPath.length > 0) {
-            // Use the pre-loaded rabbit path, centered at canvas center
-            const coords = rabbitPath.map(pt => [
-                pt[0] + 200,  // Center at canvas center
-                pt[1] + 200
-            ]);
+        const simplifyDef = this.defaults.geometries.simplify;
+        const coords = this.tests.geometry.parseSVGPath(
+            simplifyDef.path,
+            simplifyDef.scale,
+            [85, 10] // Center on canvas
+        );
+        
+        if (coords && coords.length > 0) {
             this.tests.rendering.drawSimplePaths([coords], 'simplify-canvas', this.defaults.styles.default);
         } else {
-            // Fallback to flower if rabbit not loaded
-            const simplifyDef = this.defaults.geometries.simplify;
-            const coords = this.defaults.generators.flower(
-                simplifyDef.center[0], simplifyDef.center[1],
-                simplifyDef.baseRadius, simplifyDef.noiseFrequency,
-                simplifyDef.noiseAmplitude, simplifyDef.segments
-            );
-            this.tests.rendering.drawSimplePaths([coords], 'simplify-canvas', this.defaults.styles.default);
+            console.warn('[UI] Could not draw default for simplify test.');
         }
     }
 
@@ -603,44 +706,64 @@ class Clipper2UI {
     }
 
     drawDefaultMinkowski() {
+        const canvas = document.getElementById('minkowski-canvas');
+        if (!canvas) return;
+        
         const state = this.tests.getTestState('minkowski');
         const patternDef = this.defaults.geometries.minkowski.patterns[state.pattern];
         const pathDef = this.defaults.geometries.minkowski.paths[state.path];
         
-        this.tests.rendering.clearCanvas('minkowski-canvas');
+        // Clear canvas
+        this.tests.rendering.clearCanvas(canvas);
         
         // Draw path
-        if (pathDef.type === 'polygon' || pathDef.type === 'polyline') {
-            this.tests.rendering.drawSimplePaths([pathDef.data], 'minkowski-canvas', {
-                ...this.defaults.styles.default,
+        if (pathDef) {
+            this.tests.rendering.drawSimplePaths([pathDef.data], canvas, {
+                fillOuter: 'none',
+                strokeOuter: this.defaults.styles.minkowski.path.strokeOuter,
+                strokeWidth: 2,
                 clear: false
             });
         }
         
-        // Draw pattern reference at corner
-        let patternCoords;
-        if (patternDef.type === 'parametric' && patternDef.shape === 'circle') {
-            patternCoords = this.defaults.generators.circle(30, 30, patternDef.radius);
-        } else if (patternDef.type === 'polygon') {
-            patternCoords = patternDef.data.map(pt => [pt[0] + 30, pt[1] + 30]);
-        }
-        
-        if (patternCoords) {
-            this.tests.rendering.drawSimplePaths([patternCoords], 'minkowski-canvas', {
-                fillOuter: 'rgba(255, 0, 0, 0.3)',
-                strokeOuter: '#ff0000',
-                strokeWidth: 1,
+        // Draw pattern at default position
+        if (patternDef) {
+            let patternCoords;
+            if (patternDef.type === 'parametric') {
+                patternCoords = this.defaults.generators[patternDef.shape](
+                    100, 200, // Default position
+                    patternDef.radius || patternDef.outerRadius,
+                    patternDef.innerRadius,
+                    patternDef.points
+                );
+            } else {
+                patternCoords = patternDef.data.map(pt => [pt[0] + 100, pt[1] + 200]);
+            }
+            
+            this.tests.rendering.drawSimplePaths([patternCoords], canvas, {
+                fillOuter: 'none',
+                strokeOuter: this.defaults.styles.minkowski.pattern.strokeOuter,
+                strokeWidth: 2,
                 clear: false
             });
         }
         
-        // Add label
-        const canvas = document.getElementById('minkowski-canvas');
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx.font = '10px Arial';
-            ctx.fillStyle = '#ff0000';
-            ctx.fillText('Pattern', 30, 60);
+        // Add labels
+        const ctx = canvas.getContext('2d');
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#6b7280';
+        ctx.fillText('Click "Calculate" to see result', 10, 20);
+    }
+
+    drawDefaultArea() {
+        // Area test initializes itself in setupAreaTest
+        // Just ensure it's ready
+        const areaCanvas = document.getElementById('area-canvas');
+        if (areaCanvas) {
+            // The test should already be initialized, but if not, do it now
+            if (!this.tests.testState.area.isDrawing) {
+                this.tests.initializeAreaTest();
+            }
         }
     }
 
@@ -683,7 +806,7 @@ class Clipper2UI {
     }
 
     /**
-     * Reset view to default
+     * Reset view to default - FIXED area test cleanup
      */
     resetView(testName) {
         this.viewStates.set(testName, false);
@@ -721,28 +844,25 @@ class Clipper2UI {
                 this.drawDefaultPIP(); 
                 break;
             case 'area':
-                const areaCanvas = document.getElementById('area-canvas');
-                if (areaCanvas) {
-                    // Remove old buttons properly
-                    const calculateBtn = document.getElementById('area-calculate');
-                    const resetBtn = document.getElementById('area-reset');
-                    if (calculateBtn) calculateBtn.remove();
-                    if (resetBtn) resetBtn.remove();
-                    
-                    this.tests.testArea();
-                }
+                // Reset area test to initial clickable state
+                this.tests.testState.area.points = [];
+                this.tests.testState.area.isDrawing = false;
+                this.tests.testState.area.lastPolygonPath = null;
+                this.tests.initializeAreaTest();
                 break;
             case 'minkowski':
                 // Reset minkowski controls to defaults
                 const patternSelect = document.getElementById('minkowski-pattern');
                 const pathSelect = document.getElementById('minkowski-path');
                 const opSelect = document.getElementById('minkowski-operation');
-                const closedCheck = document.getElementById('minkowski-closed');
+                const sweepCheck = document.getElementById('minkowski-sweep');
+                const offsetCheck = document.getElementById('minkowski-offset');
                 
                 if (patternSelect) patternSelect.value = this.defaults.geometries.minkowski.defaults.pattern;
                 if (pathSelect) pathSelect.value = this.defaults.geometries.minkowski.defaults.path;
                 if (opSelect) opSelect.value = this.defaults.geometries.minkowski.defaults.operation;
-                if (closedCheck) closedCheck.checked = this.defaults.geometries.minkowski.defaults.pathClosed;
+                if (sweepCheck) sweepCheck.checked = this.defaults.geometries.minkowski.defaults.showSweep;
+                if (offsetCheck) offsetCheck.checked = this.defaults.geometries.minkowski.defaults.showOffset;
                 
                 this.drawDefaultMinkowski();
                 break;
@@ -750,6 +870,13 @@ class Clipper2UI {
         
         const label = document.getElementById(`${testName}-label`);
         if (label) label.textContent = this.defaults.labels.inputGeometry;
+    }
+
+    /**
+     * Handle export button clicks - NEW METHOD
+     */
+    handleExport(testName, dataType) {
+        this.tests.exportSVG(testName, dataType);
     }
 
     // Utility methods

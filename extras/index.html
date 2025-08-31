@@ -10,7 +10,7 @@
     <div class="container">
         <h1>
             Clipper2 WASM Test Suite
-            <span class="version-badge">v5.0</span>
+            <span class="version-badge">v5.2</span>
         </h1>
 
         <!-- Core Boolean Operations -->
@@ -230,17 +230,17 @@
                 <div id="simplify-info" class="geometry-info"></div>
             </div>
 
-            <!-- Minkowski Test -->
+            <!-- Minkowski Operations Test -->
             <div class="test-card" data-test="minkowski">
                 <div class="test-header">
-                    <h3 class="test-title">Minkowski Operations<span class="badge">Sum/Diff</span></h3>
+                    <h3 class="test-title">Minkowski vs Offset<span class="badge new">Comparison</span></h3>
                 </div>
-                <p class="test-description">Compute Minkowski sum and difference of pattern and path</p>
+                <p class="test-description">Compare Minkowski operations with standard offsets. Circle patterns produce identical results, while non-circular patterns reveal key differences in corner handling and sweep behavior.</p>
                 
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="minkowski-canvas" width="400" height="400"></canvas>
-                        <span id="minkowski-label" class="canvas-label">Pattern & Path</span>
+                        <span id="minkowski-label" class="canvas-label">Minkowski Result</span>
                     </div>
                 </div>
                 
@@ -248,35 +248,61 @@
                     <div class="control">
                         <label for="minkowski-pattern">Pattern:</label>
                         <select id="minkowski-pattern">
-                            <option value="circle">Circle</option>
+                            <option value="circle">Circle (≡ offset)</option>
                             <option value="square">Square</option>
+                            <option value="triangle">Triangle</option>
+                            <option value="star">Star</option>
                             <option value="diamond">Diamond</option>
+                            <option value="hex">Hexagon</option>
                         </select>
                     </div>
                     <div class="control">
                         <label for="minkowski-path">Path:</label>
                         <select id="minkowski-path">
-                            <option value="rectangle">Rectangle</option>
-                            <option value="triangle">Triangle</option>
                             <option value="line">Line</option>
+                            <option value="triangle">Triangle</option>
+                            <option value="square">Square</option>
+                            <option value="concave">Concave Shape</option>
+                            <option value="zigzag">Zigzag</option>
+                            <option value="lshape">L-Shape</option>
                         </select>
                     </div>
                     <div class="control">
                         <label for="minkowski-operation">Operation:</label>
                         <select id="minkowski-operation">
-                            <option value="sum">Sum</option>
-                            <option value="diff">Difference</option>
+                            <option value="sum">Sum (≈ external offset)</option>
+                            <option value="diff">Difference (≈ internal offset)</option>
                         </select>
                     </div>
+                </div>
+                
+                <div class="controls">
                     <div class="control">
-                        <label for="minkowski-closed">
-                            <input type="checkbox" id="minkowski-closed" checked>
-                            Path Closed
+                        <label for="minkowski-sweep">
+                            <input type="checkbox" id="minkowski-sweep">
+                            Show Sweep
                         </label>
                     </div>
-                    <button class="btn btn-primary" onclick="tests.testMinkowski()">Run Operation</button>
+                    <div class="control">
+                        <label for="minkowski-offset">
+                            <input type="checkbox" id="minkowski-offset">
+                            Compare with Offset
+                        </label>
+                    </div>
+                    <button class="btn btn-primary" onclick="tests.testMinkowski()">Calculate</button>
                     <button class="btn btn-secondary" onclick="tests.resetTest('minkowski')">Reset</button>
                     <button class="btn btn-success" onclick="tests.exportSVG('minkowski')">Export SVG</button>
+                </div>
+                
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(16, 185, 129, 0.3); border-color: #10b981;"></div>
+                        <span>Minkowski Result</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: none; border: 2px dashed #f59e0b;"></div>
+                        <span>Offset Result</span>
+                    </div>
                 </div>
                 
                 <div id="minkowski-result" class="result">Ready to run test</div>
@@ -331,13 +357,32 @@
                 </div>
                 
                 <div class="controls">
-                    <button class="btn btn-primary" onclick="tests.testArea()">New Polygon</button>
+                    <button class="btn btn-primary" onclick="tests.calculateArea()">Calculate Area</button>
                     <button class="btn btn-secondary" onclick="tests.resetTest('area')">Reset</button>
                 </div>
                 
-                <div id="area-result" class="result">Click points to draw polygon</div>
+                <div id="area-result" class="result">Click points to draw polygon (min 3)</div>
                 <div id="area-info" class="geometry-info"></div>
             </div>
+        </div>
+
+        <!-- Additional Information -->
+        <div style="margin-top: 3rem; padding: 2rem; background: var(--surface); border-radius: 8px;">
+            <h3 style="color: var(--primary); margin-bottom: 1rem;">Additional Clipper2 Functions</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                The Clipper2 WASM wrapper also provides access to these functions not demonstrated in the tests above:
+            </p>
+            <ul style="color: var(--text); line-height: 1.8;">
+                <li><strong>PolyTree/PolyPath structures:</strong> Hierarchical polygon representation with parent-child relationships, useful for complex nested geometries</li>
+                <li><strong>TrimCollinear:</strong> Removes redundant vertices on straight segments to optimize path definitions</li>
+                <li><strong>Z-coordinate callbacks:</strong> Allows custom metadata interpolation during clipping operations when new vertices are created at intersections</li>
+                <li><strong>RectClip operations:</strong> Extremely fast O(n) rectangular clipping for axis-aligned regions (viewport culling, etc.)</li>
+            </ul>
+            <p style="color: var(--text-secondary); margin-top: 1rem;">
+                These functions are available through the Clipper2 wrapper but require direct API usage. See the 
+                <a href="https://github.com/ErikSom/Clipper2-WASM/" style="color: var(--primary);">documentation</a> 
+                for implementation details.
+            </p>
         </div>
     </div>
 

@@ -1,7 +1,7 @@
 /**
  * Clipper2 Tests Module
  * Test implementations with state-driven architecture
- * Version 6.4 - Fixed PIP, Area, Minkowski, removed tangency
+ * Version 6.9 - Fixed Minkowski diff sweep & area ghost polygon
  */
 
 class Clipper2Tests {
@@ -35,29 +35,33 @@ class Clipper2Tests {
                 island2Pos: { x: 250, y: 250 }
             },
             offset: {
-                shape: this.defaults.geometries.offset.defaults?.shape ?? 'star',
-                type: this.defaults.geometries.offset.defaults?.type ?? 'external',
-                count: this.defaults.geometries.offset.defaults?.count ?? 3,
-                distance: this.defaults.geometries.offset.defaults?.distance ?? 10,
-                joinType: this.defaults.geometries.offset.defaults?.joinType ?? 'Round',
-                miterLimit: this.defaults.geometries.offset.defaults?.miterLimit ?? 10
+                shape: 'star',
+                type: 'external',
+                count: 3,
+                distance: 10,
+                joinType: 'Round',
+                miterLimit: 10
             },
             simplify: {
-                tolerance: this.defaults.geometries.simplify?.defaultTolerance ?? 4
+                tolerance: 2
             },
             area: {
                 points: [],
-                isDrawing: false
+                isDrawing: false,
+                lastPolygonPath: null // Store the last drawn polygon for cleanup
             },
             pip: {
                 points: [],
-                edgeTolerance: this.defaults.geometries.pip?.edgeTolerance ?? 3
+                edgeTolerance: 3
             },
             minkowski: {
-                pattern: this.defaults.geometries.minkowski.defaults?.pattern ?? 'circle',
-                path: this.defaults.geometries.minkowski.defaults?.path ?? 'rectangle',
-                operation: this.defaults.geometries.minkowski.defaults?.operation ?? 'sum',
-                pathClosed: this.defaults.geometries.minkowski.defaults?.pathClosed ?? true
+                pattern: 'circle',
+                path: 'square',
+                operation: 'sum',
+                pathClosed: true,
+                showSweep: false,
+                showOffset: false,
+                patternPos: { x: 100, y: 200 }  // Pattern starting position
             }
         };
         
@@ -177,7 +181,7 @@ class Clipper2Tests {
     updateTestState(testName, key, value) {
         if (this.testState[testName]) {
             this.testState[testName][key] = value;
-            console.log(`[STATE] ${testName}.${key} = ${value}`);
+            console.log(`[STATE] ${testName}.${key} = ${JSON.stringify(value)}`);
         }
     }
 
@@ -196,6 +200,334 @@ class Clipper2Tests {
         const card = document.querySelector(`[data-test="${testName}"]`);
         if (card) {
             card.dataset.status = status; // 'pending', 'success', 'error'
+        }
+    }
+
+    /**
+     * Test Minkowski operations with offset comparison
+     */
+    async testMinkowski() {
+        const testName = 'minkowski';
+        this.setTestStatus(testName, 'pending');
+        
+        try {
+            if (!this.core.clipper2.MinkowskiSum64 || !this.core.clipper2.MinkowskiDiff64) {
+                throw new Error('Minkowski operations not available in this build');
+            }
+            
+            // Read from centralized state
+            const state = this.getTestState(testName);
+            const { pattern, path: pathName, operation, pathClosed, showSweep, showOffset, patternPos } = state;
+            
+            // Get definitions from defaults
+            const patternDef = this.defaults.geometries.minkowski.patterns[pattern];
+            const pathDef = this.defaults.geometries.minkowski.paths[pathName];
+            
+            // Create pattern at position (for visualization)
+            let patternCoords;
+            if (patternDef.type === 'parametric') {
+                const centered = { ...patternDef, center: [0, 0] };
+                patternCoords = this.getParametricCoords(centered);
+            } else {
+                patternCoords = patternDef.data;
+            }
+            
+            // Create path
+            let pathCoords;
+            if (pathDef.type === 'parametric') {
+                pathCoords = this.getParametricCoords(pathDef);
+            } else {
+                pathCoords = pathDef.data;
+            }
+            
+            // Convert to Clipper2 paths
+            const patternPath = this.geometry.coordinatesToPath64(patternCoords);
+            const pathPath = this.geometry.coordinatesToPath64(pathCoords);
+            
+            // Store inputs
+            this.testData.set(`${testName}-pattern`, patternPath);
+            this.testData.set(`${testName}-path`, pathPath);
+            
+            // Perform Minkowski operation
+            const isPathClosed = pathDef.isClosed !== undefined ? pathDef.isClosed : pathClosed;
+            let minkowskiResult;
+            
+            if (operation === 'sum') {
+                minkowskiResult = this.operations.minkowskiSum(patternPath, pathPath, isPathClosed);
+            } else {
+                minkowskiResult = this.operations.minkowskiDiff(patternPath, pathPath, isPathClosed);
+            }
+            
+            // Store Minkowski result
+            this.testData.set(`${testName}-output`, minkowskiResult);
+            
+            // Calculate equivalent offset if requested
+            let offsetResult = null;
+            if (showOffset) {
+                const equivalentRadius = this.calculateEquivalentRadius(patternCoords, patternDef);
+                const pathPaths = new this.core.clipper2.Paths64();
+                pathPaths.push_back(pathPath);
+                
+                // Use positive radius for sum (external), negative for diff (internal)
+                const offsetDelta = operation === 'sum' ? equivalentRadius : -equivalentRadius;
+                
+                offsetResult = this.operations.offset(
+                    pathPaths,
+                    offsetDelta,
+                    this.core.clipper2.JoinType.Round,
+                    isPathClosed ? this.core.clipper2.EndType.Polygon : this.core.clipper2.EndType.Round
+                );
+                
+                this.testData.set(`${testName}-offset`, offsetResult);
+                pathPaths.delete();
+            }
+            
+            // Clear canvas
+            const canvas = document.getElementById('minkowski-canvas');
+            this.rendering.clearCanvas(canvas);
+            
+            // Draw sweep visualization if enabled (before other elements)
+            if (showSweep) {
+                this.drawMinkowskiSweep(canvas, patternCoords, pathCoords, operation);
+            }
+            
+            // Draw path (input geometry)
+            const pathPaths = new this.core.clipper2.Paths64();
+            pathPaths.push_back(pathPath);
+            this.rendering.render(pathPaths, canvas, {
+                fillOuter: 'none',
+                strokeOuter: this.defaults.styles.minkowski.path.strokeOuter,
+                strokeWidth: 2,
+                clear: false
+            });
+            
+            // Draw pattern at start position (visual reference)
+            const displayPattern = patternCoords.map(pt => [
+                pt[0] + patternPos.x,
+                pt[1] + patternPos.y
+            ]);
+            this.rendering.drawSimplePaths([displayPattern], canvas, {
+                fillOuter: 'none',
+                strokeOuter: this.defaults.styles.minkowski.pattern.strokeOuter,
+                strokeWidth: 2,
+                clear: false
+            });
+            
+            // Draw Minkowski result (solid fill, distinct color)
+            const resultStyle = operation === 'sum' ? 
+                this.defaults.styles.minkowski.sumResult : 
+                this.defaults.styles.minkowski.diffResult;
+            
+            this.rendering.render(minkowskiResult, canvas, {
+                ...resultStyle,
+                strokeWidth: 2,
+                clear: false
+            });
+            
+            // Draw offset result if calculated (dashed outline only)
+            if (offsetResult && showOffset) {
+                const ctx = canvas.getContext('2d');
+                ctx.save();
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                
+                for (let i = 0; i < offsetResult.size(); i++) {
+                    const path = offsetResult.get(i);
+                    ctx.beginPath();
+                    for (let j = 0; j < path.size(); j++) {
+                        const pt = path.get(j);
+                        const x = Number(pt.x) / this.core.config.scale;
+                        const y = Number(pt.y) / this.core.config.scale;
+                        if (j === 0) {
+                            ctx.moveTo(x, y);
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+            
+            // Add labels
+            const ctx = canvas.getContext('2d');
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#6b7280';
+            ctx.fillText(`Pattern: ${patternDef.displayName}`, 10, 20);
+            ctx.fillText(`Path: ${pathDef.displayName}`, 10, 35);
+            ctx.fillStyle = operation === 'sum' ? '#10b981' : '#ef4444';
+            ctx.fillText(`Minkowski ${operation.toUpperCase()}`, 10, 50);
+            
+            if (showOffset) {
+                ctx.fillStyle = '#f59e0b';
+                const radius = this.calculateEquivalentRadius(patternCoords, patternDef);
+                ctx.fillText(`Offset (r=${radius.toFixed(1)}px): - - -`, 10, 65);
+            }
+            
+            // Clean up temporary paths
+            pathPaths.delete();
+            
+            this.setTestStatus(testName, 'success');
+            
+            let resultMessage = `[OK] Minkowski ${operation}: ${minkowskiResult.size()} path(s)`;
+            if (showOffset && offsetResult) {
+                resultMessage += ` | Offset: ${offsetResult.size()} path(s)`;
+                
+                // Check if results are visually similar
+                if (pattern === 'circle' && minkowskiResult.size() === offsetResult.size()) {
+                    resultMessage += ' (equivalent for circle)';
+                }
+            }
+            
+            this.ui?.updateResult('minkowski-result', resultMessage);
+            this.ui?.updateInfo('minkowski-info', this.formatGeometryInfo(minkowskiResult));
+            
+            return { success: true, output: minkowskiResult.size() };
+            
+        } catch (error) {
+            console.error('[ERROR] Minkowski test failed:', error);
+            this.setTestStatus(testName, 'error');
+            this.ui?.updateResult('minkowski-result', `[ERROR] ${error.message}`, false);
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * Calculate equivalent radius for offset comparison
+     */
+    calculateEquivalentRadius(coords, definition) {
+        // If pre-calculated, use it
+        if (definition && definition.equivalentRadius) {
+            return definition.equivalentRadius;
+        }
+        
+        // Calculate max distance from center
+        let maxDist = 0;
+        let centerX = 0, centerY = 0;
+        
+        // Find centroid
+        coords.forEach(point => {
+            centerX += point[0];
+            centerY += point[1];
+        });
+        centerX /= coords.length;
+        centerY /= coords.length;
+        
+        // Find max distance from centroid
+        coords.forEach(point => {
+            const dx = point[0] - centerX;
+            const dy = point[1] - centerY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            maxDist = Math.max(maxDist, dist);
+        });
+        
+        return maxDist;
+    }
+
+    /**
+     * Draw Minkowski sweep visualization - FIXED for diff operation
+     */
+    drawMinkowskiSweep(canvas, patternCoords, pathCoords, operation) {
+        const ctx = canvas.getContext('2d');
+        const sweepSteps = this.testState.minkowski.sweepSteps || 8;
+        
+        // Much more subtle visualization
+        const isSumOperation = operation === 'sum';
+        const markerColor = isSumOperation ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+        const markerRadius = 1.5;
+        
+        ctx.save();
+        
+        // Draw pattern markers along the path
+        const markerPositions = [];
+        
+        if (this.testState.minkowski.pathClosed) {
+            // For closed paths, show pattern at vertices
+            pathCoords.forEach((vertex, i) => {
+                markerPositions.push(vertex);
+            });
+        } else {
+            // For open paths, interpolate along segments
+            for (let i = 0; i < pathCoords.length - 1; i++) {
+                const p1 = pathCoords[i];
+                const p2 = pathCoords[i + 1];
+                
+                for (let t = 0; t <= 1; t += 1 / sweepSteps) {
+                    markerPositions.push([
+                        p1[0] + (p2[0] - p1[0]) * t,
+                        p1[1] + (p2[1] - p1[1]) * t
+                    ]);
+                }
+            }
+        }
+        
+        // For difference operation, properly negate the pattern (flip both X and Y)
+        let visualPatternCoords = patternCoords;
+        if (!isSumOperation) {
+            // Negate both X and Y for proper Minkowski difference visualization
+            visualPatternCoords = patternCoords.map(pt => [-pt[0], -pt[1]]);
+        }
+        
+        // Draw very faint pattern shapes at each marker position
+        ctx.strokeStyle = markerColor;
+        ctx.fillStyle = markerColor;
+        ctx.lineWidth = 0.3;
+        
+        markerPositions.forEach((pos, idx) => {
+            // Draw a small dot
+            ctx.beginPath();
+            ctx.arc(pos[0], pos[1], markerRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw a very faint pattern outline every few positions
+            if (idx % 6 === 0) {  // Less frequent
+                ctx.save();
+                ctx.globalAlpha = 0.08; // Even more subtle
+                ctx.beginPath();
+                visualPatternCoords.forEach((pt, j) => {
+                    const x = pt[0] + pos[0];
+                    const y = pt[1] + pos[1];
+                    if (j === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.closePath();
+                ctx.stroke();
+                ctx.restore();
+            }
+        });
+        
+        ctx.restore();
+    }
+
+    /**
+     * Get parametric shape coordinates
+     */
+    getParametricCoords(definition) {
+        const pos = definition.center || [0, 0];
+        
+        switch (definition.shape) {
+            case 'circle':
+                return this.defaults.generators.circle(
+                    pos[0], pos[1], 
+                    definition.radius,
+                    32
+                );
+                
+            case 'star':
+                return this.defaults.generators.star(
+                    pos[0], pos[1],
+                    definition.outerRadius,
+                    definition.innerRadius,
+                    definition.points
+                );
+                
+            default:
+                return [];
         }
     }
 
@@ -527,63 +859,37 @@ class Clipper2Tests {
         
         try {
             const state = this.getTestState(testName);
+            const simplifyDef = this.defaults.geometries.simplify;
+
+            // Use the SVG definition directly from defaults
+            const coords = this.geometry.parseSVGPath(
+                simplifyDef.path,
+                simplifyDef.scale,
+                [85, 10] // Center on canvas
+            );
             
-            // Use rabbit path for simplification - perfect test case with many points
-            let coords;
-            if (this.testState.boolean.rabbitPath && this.testState.boolean.rabbitPath.length > 0) {
-                // Use the pre-loaded rabbit path, centered at canvas center
-                coords = this.testState.boolean.rabbitPath.map(pt => [
-                    pt[0] + 200,  // Center at canvas center
-                    pt[1] + 200
-                ]);
-            } else {
-                // Fallback: parse rabbit path directly if not initialized
-                const rabbitDef = this.defaults.geometries.boolean.clips.rabbit;
-                if (rabbitDef?.path) {
-                    coords = this.geometry.parseSVGPath(
-                        rabbitDef.path,
-                        0.5,  // Larger scale for simplify test
-                        [200, 200]  // Center position
-                    );
-                } else {
-                    // Last fallback: use flower shape
-                    const simplifyDef = this.defaults.geometries.simplify;
-                    coords = this.defaults.generators.flower(
-                        simplifyDef.center[0],
-                        simplifyDef.center[1],
-                        simplifyDef.baseRadius,
-                        simplifyDef.noiseFrequency,
-                        simplifyDef.noiseAmplitude,
-                        simplifyDef.segments
-                    );
-                }
+            if (!coords || coords.length === 0) {
+                throw new Error("Failed to parse SVG path for simplification test.");
             }
-            
-            // Create path from coordinates
+
             const path = this.geometry.coordinatesToPath64(coords);
             const paths = new this.core.clipper2.Paths64();
             paths.push_back(path);
             
-            // Store input with consistent key
             this.testData.set(`${testName}-input`, paths);
             
-            // Get tolerance from state
-            const tolerance = state.tolerance || 2;
+            const tolerance = state.tolerance || simplifyDef.defaultTolerance;
             
-            // Perform simplification
             const result = this.operations.simplify(paths, tolerance);
             
-            // Store result
             this.testData.set(`${testName}-output`, result);
             
-            // Count points
             const originalPoints = path.size();
             let simplifiedPoints = 0;
             for (let i = 0; i < result.size(); i++) {
                 simplifiedPoints += result.get(i).size();
             }
             
-            // Render both
             this.rendering.render(paths, 'simplify-canvas', this.defaults.styles.input);
             this.rendering.render(result, 'simplify-canvas', {
                 ...this.defaults.styles.output,
@@ -594,7 +900,7 @@ class Clipper2Tests {
             
             const reduction = originalPoints > 0 ? Math.round((1 - simplifiedPoints / originalPoints) * 100) : 0;
             this.ui?.updateResult('simplify-result', 
-                `[OK] Simplified rabbit: ${originalPoints} → ${simplifiedPoints} points (${reduction}% reduction)`);
+                `[OK] Simplified: ${originalPoints} → ${simplifiedPoints} points (${reduction}% reduction)`);
             this.ui?.updateInfo('simplify-info', this.formatGeometryInfo(result));
             
             return { success: true, original: originalPoints, simplified: simplifiedPoints };
@@ -636,8 +942,8 @@ class Clipper2Tests {
             // Store input with consistent key
             this.testData.set(`${testName}-input`, paths);
             
-            // Clear and draw original
-            this.rendering.render(paths, 'offset-canvas', this.defaults.styles.default);
+            // Clear canvas first
+            this.rendering.clearCanvas('offset-canvas');
             
             // Get join type enum
             const joinTypeEnum = this.getJoinTypeEnum(joinType);
@@ -658,18 +964,10 @@ class Clipper2Tests {
                 );
                 
                 offsetResults.push(result);
-                
-                // Draw with gradient
-                const hue = (i / count) * 120;
-                const alpha = 0.3 + (i / count) * 0.3;
-                
-                this.rendering.render(result, 'offset-canvas', {
-                    fillOuter: `hsla(${hue}, 70%, 50%, ${alpha})`,
-                    strokeOuter: `hsl(${hue}, 70%, 40%)`,
-                    strokeWidth: 1,
-                    clear: false
-                });
             }
+            
+            // Draw offsets with proper z-order based on type
+            this.rendering.drawOffsetPaths(offsetResults, 'offset-canvas', type, paths);
             
             // Store last result
             if (offsetResults.length > 0) {
@@ -691,136 +989,7 @@ class Clipper2Tests {
     }
 
     /**
-     * Test Minkowski operations - FIXED for better CAM visualization
-     */
-    async testMinkowski() {
-        const testName = 'minkowski';
-        this.setTestStatus(testName, 'pending');
-        
-        try {
-            // Check if Minkowski operations are available
-            if (!this.core.clipper2.MinkowskiSum64 || !this.core.clipper2.MinkowskiDiff64) {
-                throw new Error('Minkowski operations not available in this Clipper2 build');
-            }
-            
-            // Read from state
-            const state = this.getTestState(testName);
-            const { pattern: patternType, path: pathType, operation, pathClosed } = state;
-            
-            // Get definitions
-            const patternDef = this.defaults.geometries.minkowski.patterns[patternType];
-            const pathDef = this.defaults.geometries.minkowski.paths[pathType];
-            
-            // Create pattern
-            let pattern;
-            if (patternDef.type === 'parametric') {
-                pattern = this.geometry.parametricToPath64(patternDef);
-            } else if (patternDef.type === 'polygon') {
-                pattern = this.geometry.polygonToPath64(patternDef);
-            }
-            
-            // Create path
-            let path;
-            if (pathDef.type === 'polygon' || pathDef.type === 'polyline') {
-                path = this.geometry.coordinatesToPath64(pathDef.data);
-            }
-            
-            // Store inputs
-            this.testData.set(`${testName}-pattern`, pattern);
-            this.testData.set(`${testName}-path`, path);
-            
-            // Perform operation
-            let result;
-            if (operation === 'sum') {
-                result = this.operations.minkowskiSum(pattern, path, pathClosed);
-            } else {
-                result = this.operations.minkowskiDiff(pattern, path, pathClosed);
-            }
-            
-            // Store and render result
-            this.testData.set(`${testName}-output`, result);
-            
-            // Clear canvas and draw
-            this.rendering.clearCanvas('minkowski-canvas');
-            
-            // Draw original path (faded for reference)
-            const paths = new this.core.clipper2.Paths64();
-            paths.push_back(path);
-            this.rendering.render(paths, 'minkowski-canvas', {
-                fillOuter: 'rgba(150, 150, 150, 0.2)',
-                strokeOuter: '#999',
-                strokeWidth: 1,
-                clear: false
-            });
-            
-            // Draw pattern at origin for reference
-            const scale = this.core.config.scale;
-            const translatedPattern = this.core.clipper2.TranslatePath64(
-                pattern, 
-                BigInt(Math.round(30 * scale)),
-                BigInt(Math.round(30 * scale))
-            );
-            const refPatterns = new this.core.clipper2.Paths64();
-            refPatterns.push_back(translatedPattern);
-            this.rendering.render(refPatterns, 'minkowski-canvas', {
-                fillOuter: 'rgba(255, 0, 0, 0.3)',
-                strokeOuter: '#ff0000',
-                strokeWidth: 1,
-                clear: false
-            });
-            
-            // Draw result prominently
-            this.rendering.render(result, 'minkowski-canvas', {
-                fillOuter: operation === 'sum' ? 
-                    'rgba(16, 185, 129, 0.4)' :  // Green for sum (expansion)
-                    'rgba(59, 130, 246, 0.4)',    // Blue for diff (contraction)
-                strokeOuter: operation === 'sum' ? '#10b981' : '#3b82f6',
-                strokeWidth: 2,
-                clear: false
-            });
-            
-            // Add labels
-            const canvas = document.getElementById('minkowski-canvas');
-            if (canvas) {
-                const ctx = canvas.getContext('2d');
-                ctx.font = '10px Arial';
-                ctx.fillStyle = '#ff0000';
-                ctx.fillText('Tool', 30, 60);
-                ctx.fillStyle = '#999';
-                ctx.fillText('Original', 200, 15);
-                ctx.fillStyle = operation === 'sum' ? '#10b981' : '#3b82f6';
-                ctx.fillText(operation === 'sum' ? 'Sum (Expanded)' : 'Diff (Contracted)', 200, 390);
-            }
-            
-            // Clean up temporary objects
-            paths.delete();
-            translatedPattern.delete();
-            refPatterns.delete();
-            pattern.delete();
-            path.delete();
-            
-            this.setTestStatus(testName, 'success');
-            
-            const description = operation === 'sum' ? 
-                'Shows all areas the tool center can reach (tool swept along path)' :
-                'Shows valid tool center positions to stay within bounds';
-            
-            this.ui?.updateResult('minkowski-result', 
-                `[OK] Minkowski ${operation}: ${result.size()} path(s) - ${description}`);
-            this.ui?.updateInfo('minkowski-info', this.formatGeometryInfo(result));
-            
-            return { success: true, output: result.size() };
-            
-        } catch (error) {
-            console.error('[ERROR] Minkowski test failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('minkowski-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
-        }
-    }
-
-    /**
-     * Test point-in-polygon - FIXED: persist polygon
+     * Test point-in-polygon - FIXED: handle enum values properly
      */
     async testPointInPolygon() {
         const testName = 'pip';
@@ -832,7 +1001,7 @@ class Clipper2Tests {
             // Create test polygon
             const polygon = this.geometry.coordinatesToPath64(pipDef.data);
             
-            // Store for click handler - this is the key fix
+            // Store for click handler
             this.testData.set('pip-polygon', polygon);
             
             // Draw polygon
@@ -870,7 +1039,7 @@ class Clipper2Tests {
     }
 
     /**
-     * Check point locations for PIP test - FIXED
+     * Check point locations for PIP test - FIXED enum value handling
      */
     checkPointLocations() {
         const polygon = this.testData.get('pip-polygon');
@@ -910,6 +1079,12 @@ class Clipper2Tests {
         const results = [];
         const edgeTolerance = this.testState.pip.edgeTolerance;
         
+        // Get enum values from Clipper2
+        const { PointInPolygonResult } = this.core.clipper2;
+        const IsOn = PointInPolygonResult.IsOn.value;
+        const IsInside = PointInPolygonResult.IsInside.value;
+        const IsOutside = PointInPolygonResult.IsOutside.value;
+        
         points.forEach(point => {
             const testPoint = new this.core.clipper2.Point64(
                 BigInt(Math.round(point.x * scale)),
@@ -917,11 +1092,13 @@ class Clipper2Tests {
                 BigInt(0)
             );
             
-            const result = this.core.clipper2.PointInPolygon64(testPoint, polygon);
+            const resultObj = this.core.clipper2.PointInPolygon64(testPoint, polygon);
+            // Extract the numeric value from the enum object
+            const result = resultObj.value;
             
             // Check near edge - only if NOT already on edge
             let isNearEdge = false;
-            if (result !== 0) {  // 0 = IsOn
+            if (result !== IsOn) {
                 const offsets = [
                     [-edgeTolerance, 0], [edgeTolerance, 0],
                     [0, -edgeTolerance], [0, edgeTolerance]
@@ -936,32 +1113,33 @@ class Clipper2Tests {
                         BigInt(Math.round((point.y + dy) * scale)),
                         BigInt(0)
                     );
-                    const nearResult = this.core.clipper2.PointInPolygon64(nearPoint, polygon);
+                    const nearResultObj = this.core.clipper2.PointInPolygon64(nearPoint, polygon);
+                    const nearResult = nearResultObj.value;
                     nearPoint.delete();
                     
-                    if (nearResult === 1) insideCount++;  // 1 = IsInside
-                    else if (nearResult === 2) outsideCount++;  // 2 = IsOutside
+                    if (nearResult === IsInside) insideCount++;
+                    else if (nearResult === IsOutside) outsideCount++;
                 }
                 
                 isNearEdge = insideCount > 0 && outsideCount > 0;
             }
             
             let status, color;
-            if (result === 0 || isNearEdge) {  // 0 = IsOn
+            if (result === IsOn || isNearEdge) {
                 status = 'ON EDGE';
                 color = getComputedStyle(document.documentElement)
                     .getPropertyValue('--pip-edge');
-            } else if (result === 1) {  // 1 = IsInside
+            } else if (result === IsInside) {
                 status = 'INSIDE';
                 color = getComputedStyle(document.documentElement)
                     .getPropertyValue('--pip-inside');
-            } else if (result === 2) {  // 2 = IsOutside
+            } else if (result === IsOutside) {
                 status = 'OUTSIDE';
                 color = getComputedStyle(document.documentElement)
                     .getPropertyValue('--pip-outside');
             } else {
-                // Shouldn't happen
-                status = 'UNKNOWN';
+                // This shouldn't happen but provide fallback
+                status = `UNKNOWN (${result})`;
                 color = '#666';
             }
             
@@ -989,163 +1167,201 @@ class Clipper2Tests {
     }
 
     /**
-     * Test area calculation - FIXED: interactive on load, better button flow
+     * Initialize area test - make canvas immediately clickable like PIP
+     */
+    initializeAreaTest() {
+        const canvas = document.getElementById('area-canvas');
+        if (!canvas) return;
+        
+        const areaDef = this.defaults.geometries.area;
+        
+        // Clear and setup
+        this.rendering.clearCanvas(canvas);
+        this.rendering.drawGrid(canvas, areaDef.gridSize);
+        
+        // Clean up any existing polygon before starting new one
+        if (this.testState.area.lastPolygonPath) {
+            this.testState.area.lastPolygonPath = null;
+        }
+        
+        this.testState.area.points = [];
+        this.testState.area.isDrawing = true;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.font = '14px Arial';
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text');
+        ctx.fillText('Click to add points (min 3), then Calculate', 10, 25);
+        
+        // Set up click handler immediately
+        canvas.onclick = (event) => {
+            if (!this.testState.area.isDrawing) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+            
+            this.testState.area.points.push({ x, y });
+            
+            // Draw point
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--shape-stroke');
+            ctx.beginPath();
+            ctx.arc(x, y, areaDef.pointRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw connecting line
+            if (this.testState.area.points.length > 1) {
+                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--shape-stroke');
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                const prev = this.testState.area.points[this.testState.area.points.length - 2];
+                ctx.moveTo(prev.x, prev.y);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+            
+            this.ui?.updateResult('area-result', 
+                `${this.testState.area.points.length} points added. ${this.testState.area.points.length >= areaDef.minPoints ? 'Ready to calculate!' : `Need ${areaDef.minPoints - this.testState.area.points.length} more.`}`);
+        };
+        
+        this.ui?.updateResult('area-result', `Click points to draw polygon (min ${areaDef.minPoints})`);
+    }
+
+    /**
+     * Test area calculation - no longer needed as separate test
      */
     async testArea() {
+        // Just initialize the test
+        this.initializeAreaTest();
+        return { success: true };
+    }
+
+    /**
+     * Calculate area for drawn polygon - IMPROVED winding indicator
+     */
+    calculateArea() {
         const testName = 'area';
-        this.setTestStatus(testName, 'pending');
+        const areaDef = this.defaults.geometries.area;
         
-        try {
-            const canvas = document.getElementById('area-canvas');
-            if (!canvas) throw new Error('Canvas not found');
+        if (this.testState.area.points.length < areaDef.minPoints) {
+            this.ui?.updateResult('area-result', `Need at least ${areaDef.minPoints} points`);
+            return;
+        }
+        
+        // Stop drawing
+        this.testState.area.isDrawing = false;
+        const canvas = document.getElementById('area-canvas');
+        
+        // Store the polygon coordinates for later cleanup
+        const coordArray = this.testState.area.points.map(p => [p.x, p.y]);
+        this.testState.area.lastPolygonPath = coordArray;
+        
+        // Close the polygon visually
+        const ctx = canvas.getContext('2d');
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--shape-stroke');
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const lastPoint = this.testState.area.points[this.testState.area.points.length - 1];
+        const firstPoint = this.testState.area.points[0];
+        ctx.moveTo(lastPoint.x, lastPoint.y);
+        ctx.lineTo(firstPoint.x, firstPoint.y);
+        ctx.stroke();
+        
+        // Calculate area using shoelace formula
+        let area = 0;
+        const n = coordArray.length;
+        for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            area += coordArray[i][0] * coordArray[j][1];
+            area -= coordArray[j][0] * coordArray[i][1];
+        }
+        area = area / 2;
+        
+        // In screen coordinates (Y increases downward), CCW is negative, CW is positive
+        const orientation = area < 0 ? 'COUNTER-CLOCKWISE' : 'CLOCKWISE';
+        const actualArea = Math.abs(area);
+        
+        // Fill polygon with appropriate color
+        ctx.fillStyle = area < 0 ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+        ctx.beginPath();
+        coordArray.forEach((p, i) => i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]));
+        ctx.closePath();
+        ctx.fill();
+        
+        // Draw animated directional outline
+        ctx.strokeStyle = area < 0 ? '#10b981' : '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 5]);
+        
+        // Animate the dash offset to show direction
+        let dashOffset = 0;
+        const animateOutline = () => {
+            ctx.save();
+            ctx.lineDashOffset = area < 0 ? -dashOffset : dashOffset;
+            ctx.beginPath();
+            coordArray.forEach((p, i) => i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]));
+            ctx.closePath();
+            ctx.stroke();
+            ctx.restore();
             
-            const areaDef = this.defaults.geometries.area;
-            
-            // Clear and setup
-            this.rendering.clearCanvas(canvas);
-            this.rendering.drawGrid(canvas, areaDef.gridSize);
-            
-            // Reset points in state
-            this.testState.area.points = [];
-            this.testState.area.isDrawing = true;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.font = '14px Arial';
-            ctx.fillStyle = getComputedStyle(document.documentElement)
-                .getPropertyValue('--text');
-            ctx.fillText('Click to add points (min 3), then Calculate', 10, 25);
-            
-            // Get or create calculate button
-            let calculateBtn = document.getElementById('area-calculate');
-            
-            if (!calculateBtn) {
-                // Find the button marked as primary in the controls
-                const controlsDiv = canvas.parentNode.querySelector('.controls');
-                if (controlsDiv) {
-                    const buttons = controlsDiv.querySelectorAll('button.btn-primary');
-                    buttons.forEach(btn => {
-                        // Take over the first primary button that's not reset
-                        if (!btn.id || btn.id !== 'area-reset') {
-                            calculateBtn = btn;
-                            calculateBtn.id = 'area-calculate';
-                        }
-                    });
-                }
+            dashOffset = (dashOffset + 1) % 15;
+            if (dashOffset < 15) {
+                requestAnimationFrame(animateOutline);
             }
+        };
+        animateOutline();
+        
+        // Find bounding box for label placement
+        const bounds = this.getPathBounds(coordArray);
+        const labelX = (bounds.minX + bounds.maxX) / 2;
+        const labelY = bounds.minY - 15;
+        
+        // Draw winding direction label
+        ctx.setLineDash([]);
+        ctx.font = 'bold 14px Arial';
+        ctx.fillStyle = area < 0 ? '#10b981' : '#ef4444';
+        ctx.textAlign = 'center';
+        ctx.fillText(orientation, labelX, labelY);
+        
+        // Draw small directional arrows along the path
+        ctx.strokeStyle = area < 0 ? '#10b981' : '#ef4444';
+        ctx.fillStyle = area < 0 ? '#10b981' : '#ef4444';
+        ctx.lineWidth = 2;
+        
+        // Place arrows at a few points along the path
+        for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 4))) {
+            const curr = coordArray[i];
+            const next = coordArray[(i + 1) % n];
             
-            if (calculateBtn) {
-                calculateBtn.textContent = 'Calculate Area';
-                calculateBtn.disabled = true;
-                calculateBtn.style.display = 'inline-block';
-                // Clear any existing onclick to avoid conflicts
-                calculateBtn.onclick = null;
-            }
+            const midX = (curr[0] + next[0]) / 2;
+            const midY = (curr[1] + next[1]) / 2;
             
-            // Click handler for canvas
-            const clickHandler = (event) => {
-                if (!this.testState.area.isDrawing) return;
+            const dx = next[0] - curr[0];
+            const dy = next[1] - curr[1];
+            const len = Math.sqrt(dx * dx + dy * dy);
+            
+            if (len > 0) {
+                const ux = dx / len;
+                const uy = dy / len;
                 
-                const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-                const x = (event.clientX - rect.left) * scaleX;
-                const y = (event.clientY - rect.top) * scaleY;
+                ctx.save();
+                ctx.translate(midX, midY);
+                ctx.rotate(Math.atan2(uy, ux));
                 
-                this.testState.area.points.push({ x, y });
-                
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = getComputedStyle(document.documentElement)
-                    .getPropertyValue('--shape-stroke');
+                // Draw arrow
                 ctx.beginPath();
-                ctx.arc(x, y, areaDef.pointRadius, 0, Math.PI * 2);
+                ctx.moveTo(0, 0);
+                ctx.lineTo(-8, -4);
+                ctx.lineTo(-8, 4);
+                ctx.closePath();
                 ctx.fill();
                 
-                if (this.testState.area.points.length > 1) {
-                    ctx.strokeStyle = getComputedStyle(document.documentElement)
-                        .getPropertyValue('--shape-stroke');
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(this.testState.area.points[this.testState.area.points.length - 2].x, 
-                              this.testState.area.points[this.testState.area.points.length - 2].y);
-                    ctx.lineTo(x, y);
-                    ctx.stroke();
-                }
-                
-                if (this.testState.area.points.length >= areaDef.minPoints && calculateBtn) {
-                    calculateBtn.disabled = false;
-                }
-                
-                document.getElementById('area-result').textContent = 
-                    `${this.testState.area.points.length} points added. ${this.testState.area.points.length >= areaDef.minPoints ? 'Ready!' : `Need ${areaDef.minPoints - this.testState.area.points.length} more.`}`;
-            };
-            
-            // Set up canvas click handler
-            canvas.onclick = clickHandler;
-            
-            // Calculate button handler
-            if (calculateBtn) {
-                calculateBtn.onclick = () => {
-                    if (this.testState.area.points.length < areaDef.minPoints) return;
-                    
-                    this.testState.area.isDrawing = false;
-                    canvas.onclick = null; // Disable clicking
-                    
-                    const ctx = canvas.getContext('2d');
-                    ctx.strokeStyle = getComputedStyle(document.documentElement)
-                        .getPropertyValue('--shape-stroke');
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(this.testState.area.points[this.testState.area.points.length - 1].x, 
-                              this.testState.area.points[this.testState.area.points.length - 1].y);
-                    ctx.lineTo(this.testState.area.points[0].x, this.testState.area.points[0].y);
-                    ctx.stroke();
-                    
-                    const coordArray = this.testState.area.points.map(p => [p.x, p.y]);
-                    const path = this.geometry.coordinatesToPath64(coordArray);
-                    
-                    const area = this.geometry.calculateArea(path);
-                    const actualArea = area / (this.core.config.scale * this.core.config.scale);
-                    
-                    // In Y-down canvas coordinates:
-                    // Positive area = CCW, Negative area = CW
-                    const orientation = area > 0 ? 'COUNTER-CLOCKWISE' : 'CLOCKWISE';
-                    
-                    // Use correct color based on winding
-                    ctx.fillStyle = area > 0 ? 
-                        'rgba(16, 185, 129, 0.25)' : // Green for CCW
-                        'rgba(239, 68, 68, 0.25)';    // Red for CW
-                    ctx.beginPath();
-                    this.testState.area.points.forEach((p, i) => {
-                        if (i === 0) ctx.moveTo(p.x, p.y);
-                        else ctx.lineTo(p.x, p.y);
-                    });
-                    ctx.closePath();
-                    ctx.fill();
-                    
-                    this.setTestStatus(testName, 'success');
-                    this.ui?.updateResult('area-result', 
-                        `[OK] Area: ${Math.abs(actualArea).toFixed(0)} px² | Orientation: ${orientation}`);
-                    
-                    calculateBtn.textContent = 'New Polygon';
-                    calculateBtn.disabled = false;
-                    calculateBtn.onclick = () => {
-                        this.testArea();
-                    };
-                    
-                    path.delete();
-                };
+                ctx.restore();
             }
-            
-            this.ui?.updateResult('area-result', `Click points to draw. Need at least ${areaDef.minPoints}.`);
-            
-            return { success: true };
-            
-        } catch (error) {
-            console.error('[ERROR] Area test failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('area-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
         }
+        
+        this.setTestStatus(testName, 'success');
+        this.ui?.updateResult('area-result', 
+            `[OK] Area: ${actualArea.toFixed(0)} px² | Winding: ${orientation}`);
     }
 
     /**
@@ -1196,22 +1412,29 @@ class Clipper2Tests {
     /**
      * Export test result as SVG
      */
-    exportSVG(testName) {
-        // Check if output exists first
-        let dataToExport = this.testData.get(`${testName}-output`);
-        let filename = `clipper2-${testName}-output.svg`;
+    exportSVG(testName, dataType = 'output') {
+        let dataToExport;
+        let filename;
         
-        // If no output, try to get input
-        if (!dataToExport) {
+        if (dataType === 'raw') {
+            // Export raw geometry from defaults (unprocessed)
+            filename = `clipper2-${testName}-raw.svg`;
+            dataToExport = this.getRawGeometry(testName);
+        } else if (dataType === 'input') {
+            // Export processed input data
+            filename = `clipper2-${testName}-input.svg`;
             dataToExport = this.testData.get(`${testName}-input`) || 
                           this.testData.get(`${testName}-frame`) ||
                           this.testData.get('pip-polygon');
-            filename = `clipper2-${testName}-input.svg`;
-            
-            if (!dataToExport) {
-                alert('No data to export. Run the test first.');
-                return;
-            }
+        } else {
+            // Export output data (default)
+            filename = `clipper2-${testName}-output.svg`;
+            dataToExport = this.testData.get(`${testName}-output`);
+        }
+        
+        if (!dataToExport) {
+            alert(`No ${dataType} data to export. Run the test first.`);
+            return;
         }
         
         const svg = this.rendering.exportSVG(dataToExport);
@@ -1225,6 +1448,68 @@ class Clipper2Tests {
         URL.revokeObjectURL(url);
         
         console.log(`[EXPORT] Exported ${filename}`);
+    }
+    
+    /**
+     * Get raw geometry for export
+     */
+    getRawGeometry(testName) {
+        try {
+            // Get geometry definition from defaults
+            const geometries = this.defaults.geometries;
+            let rawPaths = new this.core.clipper2.Paths64();
+            
+            switch(testName) {
+                case 'boolean':
+                    // Export subject as raw
+                    const subjectDef = geometries.boolean.subject;
+                    rawPaths.push_back(this.geometry.coordinatesToPath64(subjectDef.data));
+                    break;
+                    
+                case 'letter-b':
+                    const letterBDef = geometries.letterB;
+                    rawPaths = this.geometry.toClipper2Paths(letterBDef);
+                    break;
+                    
+                case 'pcb-fusion':
+                    const pcbDef = geometries.pcbFusion;
+                    rawPaths = this.geometry.toClipper2Paths(pcbDef);
+                    break;
+                    
+                case 'offset':
+                    const offsetShape = this.testState.offset.shape;
+                    const shapeDef = geometries.offset.shapes[offsetShape];
+                    if (shapeDef.type === 'parametric') {
+                        rawPaths.push_back(this.geometry.parametricToPath64(shapeDef));
+                    } else {
+                        rawPaths.push_back(this.geometry.polygonToPath64(shapeDef));
+                    }
+                    break;
+                    
+                case 'simplify':
+                    const simplifyDef = geometries.simplify;
+                    const coords = this.geometry.parseSVGPath(
+                        simplifyDef.path,
+                        simplifyDef.scale,
+                        [85, 10]
+                    );
+                    rawPaths.push_back(this.geometry.coordinatesToPath64(coords));
+                    break;
+                    
+                case 'pip':
+                    const pipDef = geometries.pip;
+                    rawPaths.push_back(this.geometry.coordinatesToPath64(pipDef.data));
+                    break;
+                    
+                default:
+                    return null;
+            }
+            
+            return rawPaths;
+        } catch (error) {
+            console.error(`[ERROR] Failed to get raw geometry for ${testName}:`, error);
+            return null;
+        }
     }
 
     /**
@@ -1254,6 +1539,8 @@ class Clipper2Tests {
                 break;
             case 'area':
                 this.testState.area.points = [];
+                this.testState.area.isDrawing = false;
+                this.testState.area.lastPolygonPath = null; // Clear stored polygon
                 break;
             case 'minkowski':
                 // Reset to defaults from config
@@ -1261,6 +1548,9 @@ class Clipper2Tests {
                 this.testState.minkowski.path = this.defaults.geometries.minkowski.defaults.path;
                 this.testState.minkowski.operation = this.defaults.geometries.minkowski.defaults.operation;
                 this.testState.minkowski.pathClosed = this.defaults.geometries.minkowski.defaults.pathClosed;
+                this.testState.minkowski.showSweep = this.defaults.geometries.minkowski.defaults.showSweep;
+                this.testState.minkowski.showOffset = this.defaults.geometries.minkowski.defaults.showOffset;
+                this.testState.minkowski.patternPos = { x: 100, y: 200 };
                 break;
         }
         

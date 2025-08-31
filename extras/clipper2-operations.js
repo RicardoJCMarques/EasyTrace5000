@@ -1,7 +1,7 @@
 /**
  * Clipper2 Operations Module
  * Boolean operations, offsets, and path manipulations
- * Version 5.2 - Fixed Minkowski diff, removed tangency
+ * Version 5.3 - Fixed Minkowski diff bug
  */
 
 class Clipper2Operations {
@@ -412,7 +412,7 @@ class Clipper2Operations {
     }
 
     /**
-     * MINKOWSKI DIFFERENCE operation
+     * MINKOWSKI DIFFERENCE operation - FIXED
      * @param {Path64} pattern - The pattern shape to subtract
      * @param {Path64} path - The path to subtract the pattern from
      * @param {boolean} pathIsClosed - Whether to treat the path as closed
@@ -432,8 +432,9 @@ class Clipper2Operations {
         const startTime = performance.now();
         
         try {
+            // FIXED: Now correctly calls MinkowskiDiff64 instead of MinkowskiSum64
             const result = this.core.trackObject(
-                this.core.clipper2.MinkowskiDiff64(pattern, path, pathIsClosed)  // FIXED: Now correctly calls MinkowskiDiff64
+                this.core.clipper2.MinkowskiDiff64(pattern, path, pathIsClosed)
             );
             
             const endTime = performance.now();
