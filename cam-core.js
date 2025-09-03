@@ -1,11 +1,17 @@
-// cam-core.js - Core PCB CAM application logic - FIXED: State isolation and cutout filtering
-// Handles data management, parsing, and core operations
+// cam-core.js - Core PCB CAM application logic with Clipper2 integration
+// Handles async geometry processing and preserves geometric context
+// FIXED: Added validation and debug helpers for fusion operations
 
 class PCBCamCore {
-    constructor() {
+    constructor(options = {}) {
         // Core data
         this.operations = [];
         this.nextOperationId = 1;
+        
+        // FIXED: Add initialization control
+        this.skipInit = options.skipInit || false;
+        this.isInitializing = false;
+        this.isInitialized = false;
         
         // File type definitions with distinct colors
         this.fileTypes = {
@@ -13,30 +19,27 @@ class PCBCamCore {
                 extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs', '.gto', '.gbo', '.gtp', '.gbp'],
                 description: 'Gerber files for isolation routing',
                 icon: '📄',
-                color: '#ff8844' // Orange
+                color: '#ff8844'
             },
             clear: {
                 extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd'],
                 description: 'Gerber files for copper clearing',
                 icon: '📄',
-                color: '#44ff88' // Green
+                color: '#44ff88'
             },
             drill: {
                 extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'],
                 description: 'Excellon drill files',
                 icon: '🔧',
-                color: '#4488ff' // Blue
+                color: '#4488ff'
             },
             cutout: {
                 extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill'],
                 description: 'Gerber files for board cutout',
                 icon: '📄',
-                color: '#ff00ff' // Magenta
+                color: '#ff00ff'
             }
         };
-        
-        // FIXED: Don't share parser instances - create new ones for each operation
-        // This prevents state contamination between files
         
         // Settings
         this.settings = this.loadSettings();
@@ -46,45 +49,101 @@ class PCBCamCore {
             totalPrimitives: 0,
             operations: 0,
             layers: 0,
-            holes: 0
+            holes: 0,
+            holesDetected: 0,
+            analyticPrimitives: 0, // NEW: Track analytic shapes
+            polygonizedPrimitives: 0 // NEW: Track converted shapes
         };
         
         // Coordinate system (will be set by UI)
         this.coordinateSystem = null;
         
-        this.initializeProcessors();
+        // NEW: Async initialization flag
+        this.processorInitialized = false;
+        this.initializationPromise = null;
+        
+        // FIXED: Only initialize if not skipped
+        if (!this.skipInit) {
+            this.initializeProcessors();
+        }
     }
     
-    initializeProcessors() {
-        // FIXED: Only check if classes are available, don't create instances
-        // We'll create fresh instances for each parse operation
-        
-        if (typeof GerberSemanticParser !== 'undefined') {
-            console.log('✅ GerberSemanticParser available');
-        } else {
-            console.error('❌ GerberSemanticParser not available');
+    async initializeProcessors() {
+        // FIXED: Prevent double initialization
+        if (this.isInitializing || this.isInitialized) {
+            console.log('Processors already initializing or initialized, skipping...');
+            return this.initializationPromise || true;
         }
         
-        if (typeof ExcellonSemanticParser !== 'undefined') {
-            console.log('✅ ExcellonSemanticParser available');
-        } else {
-            console.error('❌ ExcellonSemanticParser not available');
+        this.isInitializing = true;
+        console.log('Initializing processors with Clipper2...');
+        
+        // Check for required classes
+        const requiredClasses = [
+            'GerberSemanticParser',
+            'ExcellonSemanticParser',
+            'GerberPlotter',
+            'GeometryProcessor'
+        ];
+        
+        let allAvailable = true;
+        requiredClasses.forEach(className => {
+            if (typeof window[className] !== 'undefined') {
+                console.log(`✅ ${className} available`);
+            } else {
+                console.error(`❌ ${className} not available`);
+                allAvailable = false;
+            }
+        });
+        
+        if (!allAvailable) {
+            console.error('Required classes not available');
+            this.isInitializing = false;
+            return false;
         }
         
-        if (typeof GerberPlotter !== 'undefined') {
-            console.log('✅ GerberPlotter available');
-        } else {
-            console.error('❌ GerberPlotter not available');
-        }
-        
+        // Initialize GeometryProcessor with Clipper2
         if (typeof GeometryProcessor !== 'undefined') {
-            this.geometryProcessor = new GeometryProcessor({ debug: false });
-            console.log('✅ GeometryProcessor initialized');
+            // Enable debug mode for better diagnosis
+            this.geometryProcessor = new GeometryProcessor({
+                debug: true, // FIXED: Enable debug for better diagnosis
+                scale: 1000, // Use micrometers for better precision
+                preserveOriginals: true // Always preserve for debug
+            });
+            
+            // Wait for Clipper2 WASM to initialize
+            this.initializationPromise = this.geometryProcessor.initPromise;
+            
+            try {
+                await this.initializationPromise;
+                this.processorInitialized = true;
+                this.isInitialized = true;
+                console.log('✅ Clipper2 GeometryProcessor initialized');
+                return true;
+            } catch (error) {
+                console.error('❌ Failed to initialize Clipper2:', error);
+                this.processorInitialized = false;
+                return false;
+            } finally {
+                this.isInitializing = false;
+            }
         } else {
             console.error('❌ GeometryProcessor not available');
+            this.isInitializing = false;
+            return false;
+        }
+    }
+    
+    // Ensure processor is ready before geometry operations
+    async ensureProcessorReady() {
+        if (!this.processorInitialized && this.initializationPromise) {
+            console.log('Waiting for Clipper2 initialization...');
+            await this.initializationPromise;
         }
         
-        console.log('PCBCamCore processors initialized');
+        if (!this.processorInitialized) {
+            throw new Error('Geometry processor not initialized');
+        }
     }
     
     loadSettings() {
@@ -104,7 +163,12 @@ class PCBCamCore {
                 endCode: 'M5\nG0 Z10\nM2', 
                 units: 'mm' 
             },
-            ui: { theme: 'dark', showTooltips: true }
+            ui: { theme: 'dark', showTooltips: true },
+            geometry: {
+                preserveArcs: true, // NEW: Preserve arc information
+                adaptiveSegmentation: true, // NEW: Use adaptive segmentation
+                targetSegmentLength: 0.1 // NEW: Target segment length in mm
+            }
         };
         
         try {
@@ -142,7 +206,8 @@ class PCBCamCore {
                         overlap: 50, 
                         strategy: 'offset',
                         direction: 'outside',
-                        cornerHandling: true
+                        cornerHandling: true,
+                        preserveArcs: true // NEW: Preserve arcs in isolation
                     }
                 };
             case 'clear':
@@ -182,7 +247,8 @@ class PCBCamCore {
                         direction: 'conventional',
                         stepDown: 0.2,
                         leadIn: 0.5,
-                        leadOut: 0.5
+                        leadOut: 0.5,
+                        preserveArcs: true // NEW: Preserve arcs in cutout
                     }
                 };
         }
@@ -207,7 +273,14 @@ class PCBCamCore {
             warnings: null,
             expanded: true,
             processed: false,
-            color: this.fileTypes[operationType].color
+            color: this.fileTypes[operationType].color,
+            // NEW: Geometric context tracking
+            geometricContext: {
+                hasArcs: false,
+                hasCircles: false,
+                analyticCount: 0,
+                preservedShapes: []
+            }
         };
         
         this.operations.push(operation);
@@ -220,18 +293,20 @@ class PCBCamCore {
             
             let parseResult;
             
-            // FIXED: Create fresh parser instances for each file to prevent state contamination
+            // Create parser instances with debug enabled
             if (operation.type === 'drill') {
                 if (typeof ExcellonSemanticParser === 'undefined') {
                     throw new Error('Excellon parser not available');
                 }
-                const excellonParser = new ExcellonSemanticParser({ debug: false });
+                const excellonParser = new ExcellonSemanticParser({ debug: true });
                 parseResult = excellonParser.parse(operation.file.content);
             } else {
                 if (typeof GerberSemanticParser === 'undefined') {
                     throw new Error('Gerber parser not available');
                 }
-                const gerberParser = new GerberSemanticParser({ debug: false });
+                const gerberParser = new GerberSemanticParser({ 
+                    debug: true // FIXED: Enable debug
+                });
                 parseResult = gerberParser.parse(operation.file.content);
             }
             
@@ -242,11 +317,13 @@ class PCBCamCore {
             
             operation.parsed = parseResult;
             
-            // FIXED: Create fresh plotter instance for each file
+            // Create plotter instance with debug
             if (typeof GerberPlotter === 'undefined') {
                 throw new Error('Plotter not available');
             }
-            const plotter = new GerberPlotter({ debug: false });
+            const plotter = new GerberPlotter({ 
+                debug: true // FIXED: Enable debug
+            });
             
             let plotResult;
             if (operation.type === 'drill') {
@@ -260,62 +337,53 @@ class PCBCamCore {
                 return false;
             }
             
-            // FIXED: Special handling for cutout - don't filter aggressively
+            // Process cutout primitives
             let primitives = plotResult.primitives;
             if (operation.type === 'cutout') {
-                // Just mark cutout primitives, don't filter them
                 primitives = this.processCutoutPrimitives(primitives);
-                console.log(`Cutout processing: ${plotResult.primitives.length} primitives retained`);
+                console.log(`Cutout processing: ${primitives.length} primitives`);
             }
             
-            // Validate primitive structure before storing
-            const validPrimitives = primitives.filter((primitive, index) => {
-                try {
-                    // Check if primitive has required methods
-                    if (typeof primitive.getBounds !== 'function') {
-                        console.warn(`Primitive ${index} missing getBounds method`);
-                        return false;
-                    }
-                    
-                    // Check if bounds are valid
-                    const bounds = primitive.getBounds();
-                    if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
-                        !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
-                        console.warn(`Primitive ${index} has invalid bounds:`, bounds);
-                        return false;
-                    }
-                    
-                    return true;
-                } catch (error) {
-                    console.warn(`Primitive ${index} validation failed:`, error);
-                    return false;
+            // CRITICAL: Add polarity to all primitives based on operation type
+            // Clear operations have 'clear' polarity, everything else is 'dark'
+            primitives = primitives.map(primitive => {
+                if (!primitive.properties) {
+                    primitive.properties = {};
                 }
+                // Set polarity based on operation type
+                primitive.properties.polarity = operation.type === 'clear' ? 'clear' : 'dark';
+                primitive.properties.operationType = operation.type;
+                primitive.properties.operationId = operation.id;
+                primitive.properties.layerType = operation.type === 'drill' ? 'drill' : operation.type;
+                
+                return primitive;
             });
             
-            if (validPrimitives.length !== primitives.length) {
-                console.warn(`Filtered out ${primitives.length - validPrimitives.length} invalid primitives`);
-            }
+            // NEW: Analyze geometric context
+            this.analyzeGeometricContext(operation, primitives);
+            
+            // Validate and optimize primitives
+            const validPrimitives = this.validateAndOptimizePrimitives(primitives);
+            
+            // FIXED: Additional validation for fusion
+            const fusionValidation = this.validatePrimitivesForFusion(validPrimitives, operation.type);
+            console.log(`Fusion validation for ${operation.file.name}:`, fusionValidation);
             
             operation.primitives = validPrimitives;
             operation.bounds = this.recalculateBounds(validPrimitives);
             
-            // Add operation type to all primitives
-            if (operation.primitives) {
-                operation.primitives.forEach(primitive => {
-                    if (!primitive.properties) {
-                        primitive.properties = {};
-                    }
-                    // FIXED: Ensure each primitive is marked with its operation type
-                    primitive.properties.operationType = operation.type;
-                    primitive.properties.operationId = operation.id;
-                    primitive.properties.layerType = operation.type === 'drill' ? 'drill' : operation.type;
-                });
-            }
-            
             this.updateStatistics();
             operation.processed = true;
             
-            console.log(`Successfully parsed ${operation.file.name}: ${operation.primitives.length} primitives`);
+            console.log(`Successfully parsed ${operation.file.name}: ${operation.primitives.length} primitives with ${operation.type === 'clear' ? 'clear' : 'dark'} polarity`);
+            
+            // Log geometric context
+            if (operation.geometricContext.analyticCount > 0) {
+                console.log(`  Analytic shapes: ${operation.geometricContext.analyticCount}`);
+                console.log(`  Has arcs: ${operation.geometricContext.hasArcs}`);
+                console.log(`  Has circles: ${operation.geometricContext.hasCircles}`);
+            }
+            
             return true;
             
         } catch (error) {
@@ -326,90 +394,221 @@ class PCBCamCore {
     }
     
     /**
-     * FIXED: Process cutout primitives without aggressive filtering
-     * Just mark them appropriately for rendering
+     * NEW: Validate primitives for fusion operation
      */
+    validatePrimitivesForFusion(primitives, operationType) {
+        const validation = {
+            totalPrimitives: primitives.length,
+            validPrimitives: 0,
+            invalidPrimitives: 0,
+            missingPolarity: 0,
+            incorrectPolarity: 0,
+            emptyGeometry: 0,
+            strokedPaths: 0,
+            filledPaths: 0,
+            circles: 0,
+            rectangles: 0,
+            obrounds: 0,
+            issues: []
+        };
+        
+        const expectedPolarity = operationType === 'clear' ? 'clear' : 'dark';
+        
+        primitives.forEach((primitive, index) => {
+            let isValid = true;
+            
+            // Check polarity
+            if (!primitive.properties || !primitive.properties.polarity) {
+                validation.missingPolarity++;
+                validation.issues.push(`Primitive ${index}: Missing polarity`);
+                isValid = false;
+            } else if (primitive.properties.polarity !== expectedPolarity) {
+                validation.incorrectPolarity++;
+                validation.issues.push(`Primitive ${index}: Wrong polarity (${primitive.properties.polarity} instead of ${expectedPolarity})`);
+            }
+            
+            // Check geometry based on type
+            switch (primitive.type) {
+                case 'path':
+                    if (!primitive.points || primitive.points.length < 2) {
+                        validation.emptyGeometry++;
+                        validation.issues.push(`Primitive ${index}: Path has ${primitive.points?.length || 0} points`);
+                        isValid = false;
+                    } else {
+                        if (primitive.properties?.stroke && !primitive.properties?.fill) {
+                            validation.strokedPaths++;
+                        } else {
+                            validation.filledPaths++;
+                        }
+                    }
+                    break;
+                    
+                case 'circle':
+                    validation.circles++;
+                    if (!primitive.center || !primitive.radius || primitive.radius <= 0) {
+                        validation.emptyGeometry++;
+                        validation.issues.push(`Primitive ${index}: Invalid circle geometry`);
+                        isValid = false;
+                    }
+                    break;
+                    
+                case 'rectangle':
+                    validation.rectangles++;
+                    if (!primitive.position || !primitive.width || !primitive.height) {
+                        validation.emptyGeometry++;
+                        validation.issues.push(`Primitive ${index}: Invalid rectangle geometry`);
+                        isValid = false;
+                    }
+                    break;
+                    
+                case 'obround':
+                    validation.obrounds++;
+                    if (!primitive.position || !primitive.width || !primitive.height) {
+                        validation.emptyGeometry++;
+                        validation.issues.push(`Primitive ${index}: Invalid obround geometry`);
+                        isValid = false;
+                    }
+                    break;
+            }
+            
+            if (isValid) {
+                validation.validPrimitives++;
+            } else {
+                validation.invalidPrimitives++;
+            }
+        });
+        
+        // Log summary
+        if (validation.issues.length > 0) {
+            console.warn(`Fusion validation found ${validation.issues.length} issues`);
+            if (validation.issues.length <= 10) {
+                validation.issues.forEach(issue => console.warn(`  ${issue}`));
+            } else {
+                console.warn(`  (Showing first 10 of ${validation.issues.length} issues)`);
+                validation.issues.slice(0, 10).forEach(issue => console.warn(`  ${issue}`));
+            }
+        }
+        
+        return validation;
+    }
+    
+    /**
+     * NEW: Analyze geometric context of primitives
+     */
+    analyzeGeometricContext(operation, primitives) {
+        let analyticCount = 0;
+        let hasArcs = false;
+        let hasCircles = false;
+        const preservedShapes = [];
+        
+        primitives.forEach(primitive => {
+            if (primitive.canOffsetAnalytically && primitive.canOffsetAnalytically()) {
+                analyticCount++;
+                preservedShapes.push({
+                    type: primitive.type,
+                    metadata: primitive.getGeometricMetadata()
+                });
+            }
+            
+            if (primitive.type === 'circle') {
+                hasCircles = true;
+            }
+            
+            if (primitive.type === 'arc' || 
+                (primitive.arcSegments && primitive.arcSegments.length > 0)) {
+                hasArcs = true;
+            }
+        });
+        
+        operation.geometricContext = {
+            hasArcs,
+            hasCircles,
+            analyticCount,
+            preservedShapes
+        };
+        
+        this.stats.analyticPrimitives += analyticCount;
+        this.stats.polygonizedPrimitives += primitives.length - analyticCount;
+    }
+    
+    /**
+     * NEW: Validate and optimize primitives with smart segmentation
+     */
+    validateAndOptimizePrimitives(primitives) {
+        const validPrimitives = [];
+        
+        primitives.forEach((primitive, index) => {
+            try {
+                // Validate bounds
+                if (typeof primitive.getBounds !== 'function') {
+                    console.warn(`Primitive ${index} missing getBounds method`);
+                    return;
+                }
+                
+                const bounds = primitive.getBounds();
+                if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
+                    !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
+                    console.warn(`Primitive ${index} has invalid bounds:`, bounds);
+                    return;
+                }
+                
+                // Optimize circles and arcs if adaptive segmentation is enabled
+                if (this.settings.geometry.adaptiveSegmentation) {
+                    if (primitive.type === 'circle' || primitive.type === 'arc') {
+                        // Keep as-is for now, convert to polygon only when needed for Clipper2
+                        // This preserves the analytic information
+                    }
+                }
+                
+                validPrimitives.push(primitive);
+                
+            } catch (error) {
+                console.warn(`Primitive ${index} validation failed:`, error);
+            }
+        });
+        
+        if (validPrimitives.length !== primitives.length) {
+            console.warn(`Filtered out ${primitives.length - validPrimitives.length} invalid primitives`);
+        }
+        
+        return validPrimitives;
+    }
+    
     processCutoutPrimitives(primitives) {
         if (!primitives || primitives.length === 0) return primitives;
         
         console.log(`Processing cutout primitives: ${primitives.length} total`);
         
-        // Count primitive types
-        const typeCount = {};
-        primitives.forEach(p => {
-            typeCount[p.type] = (typeCount[p.type] || 0) + 1;
-        });
-        console.log('Cutout primitive types:', typeCount);
-        
-        // Find all closed paths (these form the board outline)
-        const closedPaths = [];
-        const otherPrimitives = [];
+        const processedPrimitives = [];
         
         primitives.forEach(p => {
-            if (p.type === 'path' && p.closed && p.points && p.points.length >= 3) {
-                closedPaths.push(p);
-            } else {
-                otherPrimitives.push(p);
-            }
-        });
-        
-        console.log(`Found ${closedPaths.length} closed paths in cutout layer`);
-        
-        // Calculate areas for debugging
-        closedPaths.forEach((path, index) => {
-            const area = this.calculatePathArea(path.points);
-            console.log(`Path ${index}: ${path.points.length} points, area: ${area.toFixed(2)} mm²`);
-            
-            // Mark all closed paths as potential board outline components
-            if (!path.properties) {
-                path.properties = {};
-            }
-            path.properties.isBoardOutline = true;
-            path.properties.outlineArea = Math.abs(area);
-        });
-        
-        // FIXED: Return ALL primitives, not just the largest one
-        // The board outline might consist of multiple paths (e.g., rectangular with rounded corners)
-        const allCutoutPrimitives = [...closedPaths, ...otherPrimitives];
-        
-        // Mark all primitives as cutout type
-        allCutoutPrimitives.forEach(p => {
             if (!p.properties) {
                 p.properties = {};
             }
+            
+            // Mark as cutout
             p.properties.isCutout = true;
-            // Ensure cutout paths are stroked, not filled
+            
+            // Cutout paths should be stroked, not filled
             if (p.type === 'path') {
                 p.properties.fill = false;
                 p.properties.stroke = true;
                 p.properties.strokeWidth = 0.1;
             }
+            
+            // Preserve arc information in cutouts
+            if (p.geometricContext && p.geometricContext.containsArcs) {
+                p.properties.preserveArcs = true;
+            }
+            
+            processedPrimitives.push(p);
         });
         
-        console.log(`Cutout processing complete: ${allCutoutPrimitives.length} primitives retained`);
+        console.log(`Cutout processing complete: ${processedPrimitives.length} primitives`);
         
-        return allCutoutPrimitives;
+        return processedPrimitives;
     }
     
-    /**
-     * Calculate the area of a closed path (signed area)
-     */
-    calculatePathArea(points) {
-        if (!points || points.length < 3) return 0;
-        
-        let area = 0;
-        for (let i = 0; i < points.length; i++) {
-            const j = (i + 1) % points.length;
-            area += points[i].x * points[j].y;
-            area -= points[j].x * points[i].y;
-        }
-        
-        return area / 2; // Return signed area
-    }
-    
-    /**
-     * Recalculate bounds for filtered primitives
-     */
     recalculateBounds(primitives) {
         if (!primitives || primitives.length === 0) {
             return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
@@ -450,9 +649,6 @@ class PCBCamCore {
         return primitives;
     }
     
-    /**
-     * FIXED: Get primitives only from isolation operations for fusion
-     */
     getIsolationPrimitives() {
         const primitives = [];
         this.operations.forEach(op => {
@@ -510,32 +706,95 @@ class PCBCamCore {
         return this.operations.some(op => op.primitives && op.primitives.length > 0);
     }
     
-    // FIXED: Enhanced fusion operations that only fuse isolation layer
-    fuseAllPrimitives() {
+    /**
+     * Enhanced fusion with Clipper2 - async operation
+     * Now properly handles both isolation AND clear operations
+     * FIXED: Added pre-fusion validation
+     */
+    async fuseAllPrimitives() {
+        await this.ensureProcessorReady();
+        
         if (!this.geometryProcessor) {
             throw new Error('Geometry processor not available');
         }
         
-        // FIXED: Only fuse isolation layer primitives
-        const isolationPrimitives = this.getIsolationPrimitives();
+        // Get ALL primitives (both isolation and clear)
+        const allPrimitives = this.getAllPrimitives();
         
-        if (isolationPrimitives.length === 0) {
-            console.log('No isolation primitives to fuse');
+        if (allPrimitives.length === 0) {
+            console.log('No primitives to fuse');
             return [];
         }
         
-        console.log(`Fusing ${isolationPrimitives.length} isolation primitives...`);
+        // Pre-fusion validation
+        console.log('=== PRE-FUSION VALIDATION ===');
+        const validationResults = new Map();
+        
+        this.operations.forEach(op => {
+            if (op.primitives && op.primitives.length > 0) {
+                const validation = this.validatePrimitivesForFusion(op.primitives, op.type);
+                validationResults.set(op.file.name, validation);
+                
+                console.log(`${op.file.name} (${op.type}):`);
+                console.log(`  Total: ${validation.totalPrimitives}`);
+                console.log(`  Valid: ${validation.validPrimitives}`);
+                console.log(`  Invalid: ${validation.invalidPrimitives}`);
+                if (validation.strokedPaths > 0) {
+                    console.log(`  Stroked paths: ${validation.strokedPaths} (will be converted)`);
+                }
+            }
+        });
+        
+        // Separate by operation type
+        const isolationPrimitives = [];
+        const clearPrimitives = [];
+        
+        this.operations.forEach(op => {
+            if (op.primitives && op.primitives.length > 0) {
+                if (op.type === 'isolation') {
+                    isolationPrimitives.push(...op.primitives);
+                } else if (op.type === 'clear') {
+                    clearPrimitives.push(...op.primitives);
+                }
+            }
+        });
+        
+        console.log(`=== FUSION INPUT ===`);
+        console.log(`Isolation primitives: ${isolationPrimitives.length}`);
+        console.log(`Clear primitives: ${clearPrimitives.length}`);
+        
+        // Combine all primitives (isolation as dark, clear as clear)
+        const allPrimitivesForFusion = [...isolationPrimitives, ...clearPrimitives];
+        
+        // Count analytic shapes before fusion
+        let analyticShapes = 0;
+        allPrimitivesForFusion.forEach(p => {
+            if (p.canOffsetAnalytically && p.canOffsetAnalytically()) {
+                analyticShapes++;
+            }
+        });
+        
+        if (analyticShapes > 0) {
+            console.log(`Input contains ${analyticShapes} analytic shapes (circles/arcs)`);
+        }
         
         try {
-            const fused = this.geometryProcessor.fuseGeometry(isolationPrimitives);
-            console.log(`Fusion complete: ${fused.length} primitives`);
+            // Perform fusion with Clipper2 - geometry processor will handle polarity
+            console.log('=== STARTING CLIPPER2 FUSION ===');
+            const fused = await this.geometryProcessor.fuseGeometry(allPrimitivesForFusion);
+            console.log(`=== FUSION COMPLETE ===`);
+            console.log(`Result: ${fused.length} primitives`);
             
-            // Validate fusion result
-            if (typeof DimensionalValidator !== 'undefined') {
-                const validation = DimensionalValidator.validateFusionResult(isolationPrimitives, fused);
-                if (validation.ratio > 2.0) { // More than 200% area change is suspicious
-                    console.warn('Very large area change during fusion - check for geometry issues');
+            // Count preserved holes
+            let preservedHoles = 0;
+            fused.forEach(p => {
+                if (p.holes && p.holes.length > 0) {
+                    preservedHoles += p.holes.length;
                 }
+            });
+            
+            if (preservedHoles > 0) {
+                console.log(`Preserved ${preservedHoles} holes in fused geometry`);
             }
             
             return fused;
@@ -545,23 +804,114 @@ class PCBCamCore {
         }
     }
     
-    // Prepare geometry for offset generation
-    prepareForOffsetGeneration() {
+    /**
+     * NEW: Debug method to analyze primitives before fusion
+     */
+    analyzePrimitivesForFusion() {
+        console.log('=== PRIMITIVE ANALYSIS FOR FUSION ===');
+        
+        const analysis = {
+            byType: {},
+            byPolarity: { dark: 0, clear: 0, undefined: 0 },
+            byOperation: {},
+            issues: []
+        };
+        
+        this.operations.forEach(op => {
+            if (!op.primitives || op.primitives.length === 0) return;
+            
+            analysis.byOperation[op.type] = {
+                total: op.primitives.length,
+                byType: {},
+                byPolarity: { dark: 0, clear: 0, undefined: 0 }
+            };
+            
+            op.primitives.forEach((prim, index) => {
+                // Count by type
+                analysis.byType[prim.type] = (analysis.byType[prim.type] || 0) + 1;
+                analysis.byOperation[op.type].byType[prim.type] = 
+                    (analysis.byOperation[op.type].byType[prim.type] || 0) + 1;
+                
+                // Count by polarity
+                const polarity = prim.properties?.polarity;
+                if (polarity === 'dark') {
+                    analysis.byPolarity.dark++;
+                    analysis.byOperation[op.type].byPolarity.dark++;
+                } else if (polarity === 'clear') {
+                    analysis.byPolarity.clear++;
+                    analysis.byOperation[op.type].byPolarity.clear++;
+                } else {
+                    analysis.byPolarity.undefined++;
+                    analysis.byOperation[op.type].byPolarity.undefined++;
+                    analysis.issues.push(`${op.file.name}[${index}]: undefined polarity`);
+                }
+                
+                // Check for other issues
+                if (prim.type === 'path' && (!prim.points || prim.points.length < 2)) {
+                    analysis.issues.push(`${op.file.name}[${index}]: path with ${prim.points?.length || 0} points`);
+                }
+            });
+        });
+        
+        // Output analysis
+        console.log('Overall primitive types:', analysis.byType);
+        console.log('Overall polarity distribution:', analysis.byPolarity);
+        
+        Object.entries(analysis.byOperation).forEach(([opType, data]) => {
+            console.log(`\n${opType} operation:`);
+            console.log('  Types:', data.byType);
+            console.log('  Polarity:', data.byPolarity);
+        });
+        
+        if (analysis.issues.length > 0) {
+            console.warn(`\nFound ${analysis.issues.length} issues:`);
+            analysis.issues.slice(0, 10).forEach(issue => console.warn(`  - ${issue}`));
+            if (analysis.issues.length > 10) {
+                console.warn(`  ... and ${analysis.issues.length - 10} more`);
+            }
+        }
+        
+        return analysis;
+    }
+    
+    /**
+     * Prepare geometry for offset generation - async
+     */
+    async prepareForOffsetGeneration() {
+        await this.ensureProcessorReady();
+        
         if (!this.geometryProcessor) {
             throw new Error('Geometry processor not available');
         }
         
-        const fusedPrimitives = this.fuseAllPrimitives();
+        const fusedPrimitives = await this.fuseAllPrimitives();
+        
+        // Check for preserved analytic shapes
+        const analyticShapes = fusedPrimitives.filter(p => 
+            p.canOffsetAnalytically && p.canOffsetAnalytically()
+        );
+        
+        if (analyticShapes.length > 0) {
+            console.log(`${analyticShapes.length} shapes can be offset analytically`);
+        }
+        
         return this.geometryProcessor.prepareForOffset(fusedPrimitives);
     }
     
-    // Generate offset geometry for toolpaths
-    generateOffsetGeometry(offsetDistance, options = {}) {
+    /**
+     * Generate offset geometry for toolpaths - async
+     */
+    async generateOffsetGeometry(offsetDistance, options = {}) {
+        await this.ensureProcessorReady();
+        
         if (!this.geometryProcessor) {
             throw new Error('Geometry processor not available');
         }
         
-        const preparedGeometry = this.prepareForOffsetGeneration();
+        const preparedGeometry = await this.prepareForOffsetGeneration();
+        
+        // Future: Use Clipper2's offset capabilities
+        // For now, return placeholder
         return this.geometryProcessor.generateOffset(preparedGeometry, offsetDistance, options);
     }
     
@@ -582,7 +932,10 @@ class PCBCamCore {
         const stats = {
             core: this.getStats(),
             hasGeometryProcessor: !!this.geometryProcessor,
-            isolationPrimitiveCount: this.getIsolationPrimitives().length
+            processorInitialized: this.processorInitialized,
+            isolationPrimitiveCount: this.getIsolationPrimitives().length,
+            analyticPrimitives: this.stats.analyticPrimitives,
+            polygonizedPrimitives: this.stats.polygonizedPrimitives
         };
         
         if (this.geometryProcessor) {
@@ -592,66 +945,34 @@ class PCBCamCore {
         return stats;
     }
     
-    // FIXED: Debug function to check for layer contamination
-    checkLayerContamination() {
-        console.log('🔍 Checking for layer contamination...');
+    // Check for geometric context preservation
+    checkGeometricContextPreservation() {
+        console.log('🔍 Checking geometric context preservation...');
         console.log('=====================================');
         
-        const operationPrimitives = new Map();
-        
-        // Collect all primitives by operation
-        this.operations.forEach(op => {
-            if (op.primitives) {
-                operationPrimitives.set(op.id, {
-                    type: op.type,
-                    name: op.file.name,
-                    primitives: op.primitives,
-                    count: op.primitives.length
-                });
-            }
-        });
-        
-        // Check each operation's primitives
-        operationPrimitives.forEach((opData, opId) => {
-            console.log(`\n📄 Operation: ${opData.type} - ${opData.name}`);
-            console.log(`   Total primitives: ${opData.count}`);
-            
-            // Check if primitives are properly marked
-            const properlyMarked = opData.primitives.filter(p => 
-                p.properties?.operationType === opData.type
-            ).length;
-            
-            const wronglyMarked = opData.primitives.filter(p => 
-                p.properties?.operationType && p.properties.operationType !== opData.type
-            );
-            
-            console.log(`   ✅ Properly marked: ${properlyMarked}/${opData.count}`);
-            
-            if (wronglyMarked.length > 0) {
-                console.warn(`   ❌ CONTAMINATION: ${wronglyMarked.length} primitives with wrong operation type!`);
-                const wrongTypes = new Set(wronglyMarked.map(p => p.properties.operationType));
-                console.warn(`      Wrong types found: ${Array.from(wrongTypes).join(', ')}`);
-            }
-            
-            // Count primitive types
-            const typeCount = {};
-            opData.primitives.forEach(p => {
-                typeCount[p.type] = (typeCount[p.type] || 0) + 1;
-            });
-            console.log(`   Primitive types:`, typeCount);
-            
-            // Check for specific contamination patterns
-            if (opData.type === 'clear') {
-                const textPrimitives = opData.primitives.filter(p => 
-                    p.properties?.isText || p.properties?.function === 'Legend'
-                );
-                if (textPrimitives.length > 0) {
-                    console.warn(`   ⚠️ Found ${textPrimitives.length} text primitives in clear layer`);
+        this.operations.forEach((op, index) => {
+            if (op.geometricContext) {
+                console.log(`\n📄 Operation ${index + 1}: ${op.type} - ${op.file.name}`);
+                console.log(`   Analytic shapes: ${op.geometricContext.analyticCount}`);
+                console.log(`   Has arcs: ${op.geometricContext.hasArcs}`);
+                console.log(`   Has circles: ${op.geometricContext.hasCircles}`);
+                
+                if (op.geometricContext.preservedShapes.length > 0) {
+                    console.log(`   Preserved shape types:`);
+                    const types = {};
+                    op.geometricContext.preservedShapes.forEach(shape => {
+                        types[shape.type] = (types[shape.type] || 0) + 1;
+                    });
+                    Object.entries(types).forEach(([type, count]) => {
+                        console.log(`     ${type}: ${count}`);
+                    });
                 }
             }
         });
         
-        return operationPrimitives;
+        console.log(`\n📊 Global totals:`);
+        console.log(`   Analytic primitives: ${this.stats.analyticPrimitives}`);
+        console.log(`   Polygonized primitives: ${this.stats.polygonizedPrimitives}`);
     }
 }
 

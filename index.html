@@ -6,7 +6,6 @@
     <title>PCB CAM</title>
     <!-- 
     Pipeline Position: Main HTML structure and entry point
-    FIXES: Cross-type fusion compatibility, enhanced version info, updated descriptions
     -->
     <link rel="stylesheet" href="cam.css">
     <link rel="stylesheet" href="responsive.css">
@@ -23,7 +22,7 @@
             <div class="header-content">
                 <div>
                     <h1>PCB CAM</h1>
-                    <span class="version-badge">v7.5</span>
+                    <span class="version-badge">v7.6</span>
                 </div>
                 <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                     <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -47,10 +46,10 @@
         <main class="main">
             <div class="container">
                 <section class="section">
-                    <h2>📁 PCB Operations</h2>
+                    <h2>📂 PCB Operations</h2>
                     <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
                         Upload your PCB files. Each operation type has a distinct color for easy identification.
-                        <strong>v7.5:</strong> Cross-type fusion merges pads, traces & regions. Enhanced input handling. Background follows board orientation.
+                        <strong>v7.6:</strong> Consolidated rendering architecture with improved performance and maintainability.
                     </p>
                     
                     <!-- Isolation Routing -->
@@ -78,7 +77,7 @@
                     <!-- Copper Clearing -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>📄 Copper Clearing <span style="background: #44ff88; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
+                            <h3>🔄 Copper Clearing <span style="background: #44ff88; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
                             <button class="btn-add-file" onclick="addFile('clear')">+ Add File</button>
                         </div>
                         <div class="operation-list" id="clear-operations">
@@ -152,7 +151,7 @@
                 </section>
 
                 <section class="section">
-                    <h2>📝 G-code Configuration</h2>
+                    <h2>📐 G-code Configuration</h2>
                     <div class="gcode-config">
                         <div class="input-group">
                             <label>Post-Processor</label>
@@ -187,7 +186,7 @@ M2</textarea>
                 </section>
 
                 <div class="actions">
-                    <button class="btn-preview" id="preview-btn">🔍 Preview & Cross-Type Fusion Setup</button>
+                    <button class="btn-preview" id="preview-btn">🔍 Preview & Fusion Setup</button>
                 </div>
             </div>
         </main>
@@ -197,61 +196,58 @@ M2</textarea>
         </div>
     </div>
 
-    <!-- FIXED: Enhanced Preview Modal with cross-type fusion support -->
+    <!-- Preview Modal -->
     <div class="modal" id="preview-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="modal-title">📐 PCB Preview & Cross-Type Fusion Setup</h2>
+                <h2 id="modal-title">🔍 PCB Preview & Fusion Setup</h2>
                 <div class="board-size-display">
                     <span class="board-size-label">Board:</span>
                     <span id="board-size" class="board-size-value">-- × -- mm</span>
                 </div>
                 <div class="modal-header-controls">
-                    <button class="modal-close" id="modal-close-btn">&times;</button>
+                    <button class="modal-close" id="modal-close-btn">×</button>
                 </div>
             </div>
             <div class="modal-body">
                 <div class="preview-container">
                     <canvas id="preview-canvas"></canvas>
                     <div class="preview-tools">
-                        <button id="zoom-fit-btn" title="Fit to view (or double-click canvas)">📐 Fit</button>
+                        <button id="zoom-fit-btn" title="Fit to view (or double-click canvas)">🔍 Fit</button>
                         <button id="zoom-in-btn" title="Zoom in">🔍 +</button>
                         <button id="zoom-out-btn" title="Zoom out">🔍 -</button>
                     </div>
                 </div>
                 
-                <!-- Page 1: Enhanced Coordinate Setup with Cross-Type Fusion -->
+                <!-- Page 1: Coordinate Setup with Fusion -->
                 <div class="preview-sidebar" id="modal-page-1">
-                    <!-- FIXED: Enhanced coordinate system with value-change detection -->
+                    <!-- Coordinate system controls -->
                     <div class="coordinate-section">
                         <h3>🎯 Work Coordinate System</h3>
                         <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
                             Position buttons preview the origin. Offset inputs use value-change detection for smooth operation.
                         </p>
                         
-                        <!-- FIXED: Quick position buttons with enhanced feedback -->
                         <div class="coord-buttons">
                             <button class="btn-secondary" id="center-origin-btn" title="Preview origin at board center">🎯 Center</button>
                             <button class="btn-secondary" id="bottom-left-origin-btn" title="Preview origin at board bottom-left">↙️ Bottom-Left</button>
                         </div>
                         
-                        <!-- FIXED: Manual offset inputs with enhanced value-change detection -->
                         <div class="input-group">
-                            <label title="X offset from saved origin - uses value-change detection">X Offset</label>
+                            <label title="X offset from saved origin">X Offset</label>
                             <div class="input-unit">
                                 <input type="number" id="x-offset" value="0" step="0.1" placeholder="0.0" inputmode="decimal">
                                 <span>mm</span>
                             </div>
                         </div>
                         <div class="input-group">
-                            <label title="Y offset from saved origin - uses value-change detection">Y Offset</label>
+                            <label title="Y offset from saved origin">Y Offset</label>
                             <div class="input-unit">
                                 <input type="number" id="y-offset" value="0" step="0.1" placeholder="0.0" inputmode="decimal">
                                 <span>mm</span>
                             </div>
                         </div>
                         
-                        <!-- Set/Reset buttons -->
                         <button class="btn-primary" id="apply-set-origin-btn" style="width: 100%; margin-top: 0.5rem;" title="Save current preview as new origin">
                             📍 Set Origin
                         </button>
@@ -263,7 +259,7 @@ M2</textarea>
                     <div class="coordinate-section">
                         <h3>🔄 Board Rotation</h3>
                         <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Rotate board around its center. SVG exports now follow board orientation by default.
+                            Rotate board around its center. SVG exports follow board orientation.
                         </p>
                         
                         <div class="input-group">
@@ -295,7 +291,7 @@ M2</textarea>
                         </div>
                     </div>
 
-                    <!-- FIXED: Advanced Options with Cross-Type Fusion -->
+                    <!-- Advanced Options -->
                     <div class="advanced-options">
                         <button class="btn-secondary" id="advanced-options-toggle" style="width: 100%; margin-bottom: 0.5rem;">
                             🔧 Show Advanced Options
@@ -304,19 +300,18 @@ M2</textarea>
                         <div id="advanced-options-section">
                             <h3>🔧 Advanced Display Options</h3>
                             
-                            <!-- FIXED: Enhanced rendering mode options with cross-type fusion -->
                             <div style="margin-bottom: 1rem;">
                                 <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Rendering Mode</h4>
                                 <div class="debug-options" style="display: grid; gap: 0.5rem;">
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="show-wireframe">
                                         <span>Wireframe Mode</span>
-                                        <small style="color: var(--text-hint); margin-left: auto;">(Enhanced Adaptive)</small>
+                                        <small style="color: var(--text-hint); margin-left: auto;">Enhanced</small>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="fuse-geometry">
-                                        <span>Cross-Type Fusion</span>
-                                        <small style="color: var(--text-hint); margin-left: auto;">(Pads+Traces+Regions)</small>
+                                        <span>Geometry Fusion</span>
+                                        <small style="color: var(--text-hint); margin-left: auto;">Clipper2</small>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="black-white">
@@ -332,7 +327,6 @@ M2</textarea>
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="show-regions" checked>
                                         <span>Fill Regions</span>
-                                        <small style="color: var(--text-hint); margin-left: auto;">(No Duplicate Perimeters)</small>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                                         <input type="checkbox" id="show-traces" checked>
@@ -372,16 +366,15 @@ M2</textarea>
                                 </div>
                             </div>
                             
-                            <!-- FIXED: File Statistics with Cross-Type Fusion Info -->
                             <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                                <h4 style="font-size: 0.75rem; margin-bottom: 0.75rem; color: var(--text-secondary);">File Statistics & Cross-Type Fusion</h4>
+                                <h4 style="font-size: 0.75rem; margin-bottom: 0.75rem; color: var(--text-secondary);">File Statistics</h4>
                                 <div id="operation-stats">
                                     <p>Load PCB files to see statistics</p>
                                 </div>
                             </div>
                             
-                            <button class="btn-secondary" id="export-svg-btn" style="width: 100%; margin-top: 1rem;" title="Export SVG with enhanced background orientation">
-                                📁 Export SVG (Enhanced)
+                            <button class="btn-secondary" id="export-svg-btn" style="width: 100%; margin-top: 1rem;" title="Export SVG">
+                                📄 Export SVG
                             </button>
                         </div>
                     </div>
@@ -392,11 +385,10 @@ M2</textarea>
                     <div class="coordinate-section">
                         <h3>⚙️ Offset Geometry</h3>
                         <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Configure offset parameters for toolpath generation. Cross-type fusion creates unified copper areas for better offsets.
+                            Configure offset parameters for toolpath generation.
                         </p>
                         <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
                             <p>🚧 Offset Geometry Configuration</p>
-                            <p style="font-size: 0.75rem; margin-top: 0.5rem;">Cross-type fusion prepares geometry for efficient offset generation...</p>
                             <p style="font-size: 0.75rem; margin-top: 0.5rem;">Coming in next update...</p>
                         </div>
                     </div>
@@ -407,16 +399,14 @@ M2</textarea>
                     <div class="coordinate-section">
                         <h3>🛠️ Toolpath Generation</h3>
                         <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Generate G-code from cross-type fused geometry and configured settings.
+                            Generate G-code from geometry and settings.
                         </p>
                         <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
                             <p>🚧 Toolpath Configuration</p>
-                            <p style="font-size: 0.75rem; margin-top: 0.5rem;">Unified copper areas from cross-type fusion enable more efficient toolpaths...</p>
                             <p style="font-size: 0.75rem; margin-top: 0.5rem;">Coming in next update...</p>
                             
-                            <!-- G-code generation will be here -->
                             <button class="btn-primary" style="width: 100%; margin-top: 2rem;" disabled>
-                                ⚡ Generate G-code from Fused Geometry
+                                ⚡ Generate G-code
                             </button>
                         </div>
                     </div>
@@ -440,38 +430,46 @@ M2</textarea>
     <script>
         const scripts = [
             // Base dependencies first
-            'geometry/clipper.min.js',
+            'geometry/clipper2z.js',       // Clipper2 main WASM library
+            'geometry/clipper2z-utils.js', // Clipper2 complementary WASM library
+
+            // Primitive definitions
+            'parsers/primitives.js',
+
+            // Geometry processing
             'geometry/geometry-processor.js',
-            'plotter/render-primitives.js',
-            
+
             // Parsers
             'parsers/gerber-semantic.js',
             'parsers/excellon-semantic.js',
-            
+
             // Plotter
             'plotter/gerber-plotter.js',
-            
-            // Renderers (MUST be in order)
-            'renderer/canvas-renderer.js',        // FIRST
-            'renderer/canvas-interaction.js',     // SECOND (extends CanvasRenderer)
-            
+
+            // UPDATED: Single consolidated renderer module
+            'renderer/layer-renderer.js',
+
+            // Exporters
+            'export/svg-exporter.js',
+
             // Coordinate system
             'coordinate/coordinate-system.js',
-            
-            // CAM application (MUST be in order)
-            'cam-core.js',                        // FIRST (uses parsers/processors)
-            'cam-ui.js',                          // SECOND (uses LayerRenderer)
-            'cam-controller.js'                   // THIRD (uses Core + UI)
+
+            // CAM application
+            'cam-core.js',
+            'cam-ui.js',
+            'cam-controller.js'
         ];
-        
+
         let loadedCount = 0;
         const totalScripts = scripts.length;
         let loadingStartTime = Date.now();
-        
+
         function loadScript(src) {
             return new Promise((resolve, reject) => {
                 const script = document.createElement('script');
-                script.src = src;
+                // This is the key line. The browser will request the URL exactly as given in .src
+                script.src = src; 
                 script.async = false;
                 script.onload = () => {
                     console.log(`✅ Loaded: ${src}`);
@@ -487,20 +485,20 @@ M2</textarea>
                 document.head.appendChild(script);
             });
         }
-        
+
         function updateLoadingProgress(errorMessage = null) {
             const progress = Math.round((loadedCount / totalScripts) * 100);
             const progressElement = document.getElementById('loading-progress');
             const textElement = document.getElementById('loading-text');
-            
+
             if (errorMessage) {
                 textElement.textContent = errorMessage;
                 progressElement.textContent = 'Loading failed';
                 return;
             }
-            
+
             progressElement.textContent = `${progress}%`;
-            
+
             if (loadedCount === totalScripts) {
                 const loadTime = Date.now() - loadingStartTime;
                 textElement.textContent = `PCB CAM Ready (${loadTime}ms)`;
@@ -509,23 +507,23 @@ M2</textarea>
                 }, 500);
             }
         }
-        
+
         async function loadAllScripts() {
             try {
-                console.log('🚀 Loading PCB CAM...');
-                
+                console.log('🚀 Loading PCB CAM with consolidated renderer...');
+
                 for (const scriptPath of scripts) {
                     await loadScript(scriptPath);
                 }
-                
-                // Add class availability check with detailed logging
+
                 console.log('📦 Checking class availability...');
                 const requiredClasses = [
                     'PCBCamCore', 'PCBCamUI', 'GeometryProcessor',
-                    'GerberSemanticParser', 'ExcellonSemanticParser', 
-                    'GerberPlotter', 'LayerRenderer', 'CoordinateSystemManager'
+                    'GerberSemanticParser', 'ExcellonSemanticParser',
+                    'GerberPlotter', 'LayerRenderer', 'CoordinateSystemManager',
+                    'SVGExporter'
                 ];
-                
+
                 let missingClasses = [];
                 requiredClasses.forEach(className => {
                     const available = typeof window[className] !== 'undefined';
@@ -534,21 +532,22 @@ M2</textarea>
                         missingClasses.push(className);
                     }
                 });
-                
+
                 if (missingClasses.length > 0) {
                     console.error('💥 Missing required classes:', missingClasses);
                     document.getElementById('loading-text').textContent = `❌ Failed to load: ${missingClasses.join(', ')}`;
                     return;
                 }
-                
+
                 console.log('🎉 All scripts loaded successfully.');
-                
+                console.log('✨ Rendering system consolidated into single LayerRenderer module');
+
             } catch (error) {
                 console.error('💥 Error loading PCB CAM:', error);
                 document.getElementById('loading-text').textContent = `Error: ${error.message}`;
             }
         }
-        
+
         document.addEventListener('DOMContentLoaded', loadAllScripts);
     </script>
 

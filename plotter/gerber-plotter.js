@@ -1,5 +1,7 @@
-// Gerber Plotter - FIXED: Strict region/trace separation, no stroke on regions
 // plotter/gerber-plotter.js
+// Simplified Gerber plotter for Clipper2 pipeline
+// Creates basic primitives without hole preservation - Clipper2 handles it
+// FIXED: Proper region plotting and debug output
 
 class GerberPlotter {
     constructor(options = {}) {
@@ -12,13 +14,13 @@ class GerberPlotter {
         this.bounds = null;
         
         this.creationStats = {
-            regionsFromRegionObjects: 0,
-            drawsFromDrawObjects: 0,
-            flashesFromFlashObjects: 0,
-            connectedPathsProcessed: 0,
-            branchingNetworksProcessed: 0,
-            branchSegmentsCreated: 0,
-            primitivesCreated: 0
+            regionsCreated: 0,
+            tracesCreated: 0,
+            flashesCreated: 0,
+            drillsCreated: 0,
+            primitivesCreated: 0,
+            regionPointCounts: [],
+            traceLengths: []
         };
     }
     
@@ -31,55 +33,57 @@ class GerberPlotter {
             };
         }
         
-        this.debug('Starting Gerber plotting with strict region/trace separation...');
+        this.debug('Starting simplified Gerber plotting for Clipper2...');
         
         // Reset
         this.primitives = [];
         this.bounds = null;
         this.creationStats = {
-            regionsFromRegionObjects: 0,
-            drawsFromDrawObjects: 0,
-            flashesFromFlashObjects: 0,
-            connectedPathsProcessed: 0,
-            branchingNetworksProcessed: 0,
-            branchSegmentsCreated: 0,
-            primitivesCreated: 0
+            regionsCreated: 0,
+            tracesCreated: 0,
+            flashesCreated: 0,
+            drillsCreated: 0,
+            primitivesCreated: 0,
+            regionPointCounts: [],
+            traceLengths: []
         };
         
         // Store apertures for reference
         this.apertures = new Map();
-        gerberData.layers.apertures.forEach(aperture => {
-            this.apertures.set(aperture.code, aperture);
+        if (gerberData.layers.apertures) {
+            gerberData.layers.apertures.forEach(aperture => {
+                this.apertures.set(aperture.code, aperture);
+            });
+        }
+        
+        this.debug(`Input: ${gerberData.layers.objects.length} objects`);
+        
+        // Count object types for debugging
+        const objectTypes = {};
+        gerberData.layers.objects.forEach(obj => {
+            objectTypes[obj.type] = (objectTypes[obj.type] || 0) + 1;
         });
+        this.debug('Object types in input:', objectTypes);
         
-        this.debug(`Input gerber data: ${gerberData.layers.objects.length} objects, ${gerberData.layers.apertures.length} apertures`);
-        
-        // Process objects
+        // Process each object
         gerberData.layers.objects.forEach((obj, index) => {
             try {
-                if (!this.validateObjectCoordinates(obj)) {
-                    console.warn(`Invalid coordinates in object ${index}:`, obj);
-                    return;
-                }
-                
-                const primitives = this.plotObject(obj);
-                if (primitives) {
-                    const primArray = Array.isArray(primitives) ? primitives : [primitives];
+                const primitive = this.plotObject(obj);
+                if (primitive) {
+                    const primArray = Array.isArray(primitive) ? primitive : [primitive];
                     
-                    primArray.forEach(primitive => {
-                        const bounds = primitive.getBounds();
-                        if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
-                            !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
-                            console.warn(`Primitive has invalid bounds:`, bounds);
-                            return;
+                    primArray.forEach(prim => {
+                        if (this.validatePrimitive(prim)) {
+                            this.primitives.push(prim);
+                            this.creationStats.primitivesCreated++;
+                        } else {
+                            this.debug(`WARNING: Invalid primitive from object ${index} (${obj.type})`);
                         }
-                        
-                        this.primitives.push(primitive);
-                        this.creationStats.primitivesCreated++;
                     });
                 }
             } catch (error) {
-                console.error(`Error plotting object ${index}:`, error);
+                console.error(`Error plotting object ${index} (${obj.type}):`, error);
+                this.debug(`ERROR: Failed to plot object ${index}: ${error.message}`);
             }
         });
         
@@ -87,8 +91,18 @@ class GerberPlotter {
         this.calculateBounds();
         
         this.debug('Plotting Statistics:');
-        this.debug(`  Regions: ${this.creationStats.regionsFromRegionObjects}`);
-        this.debug(`  Draws: ${this.creationStats.drawsFromDrawObjects}`);
+        this.debug(`  Regions: ${this.creationStats.regionsCreated}`);
+        if (this.creationStats.regionPointCounts.length > 0) {
+            const avgPoints = this.creationStats.regionPointCounts.reduce((a, b) => a + b, 0) / this.creationStats.regionPointCounts.length;
+            this.debug(`    Average points per region: ${avgPoints.toFixed(1)}`);
+            this.debug(`    Min/Max points: ${Math.min(...this.creationStats.regionPointCounts)}/${Math.max(...this.creationStats.regionPointCounts)}`);
+        }
+        this.debug(`  Traces: ${this.creationStats.tracesCreated}`);
+        if (this.creationStats.traceLengths.length > 0) {
+            const avgLength = this.creationStats.traceLengths.reduce((a, b) => a + b, 0) / this.creationStats.traceLengths.length;
+            this.debug(`    Average trace length: ${avgLength.toFixed(3)}mm`);
+        }
+        this.debug(`  Flashes: ${this.creationStats.flashesCreated}`);
         this.debug(`  Total primitives: ${this.creationStats.primitivesCreated}`);
         
         return {
@@ -100,316 +114,199 @@ class GerberPlotter {
         };
     }
     
-    validateObjectCoordinates(obj) {
-        const type = obj.subtype || obj.type;
-        
-        switch (type) {
-            case 'region':
-                if (!obj.points || !Array.isArray(obj.points)) return false;
-                return obj.points.every(point => 
-                    point && typeof point.x === 'number' && typeof point.y === 'number' &&
-                    isFinite(point.x) && isFinite(point.y)
-                );
-                
-            case 'connected_path':
-                if (!obj.points || !Array.isArray(obj.points)) return false;
-                return obj.points.every(point => 
-                    point && typeof point.x === 'number' && typeof point.y === 'number' &&
-                    isFinite(point.x) && isFinite(point.y)
-                );
-                
-            case 'branching_network':
-                if (!obj.segments || !Array.isArray(obj.segments)) return false;
-                return obj.segments.every(segment => 
-                    segment.start && segment.end &&
-                    isFinite(segment.start.x) && isFinite(segment.start.y) &&
-                    isFinite(segment.end.x) && isFinite(segment.end.y)
-                );
-                
-            case 'draw':
-                if (!obj.start || !obj.end) return false;
-                return typeof obj.start.x === 'number' && typeof obj.start.y === 'number' &&
-                       typeof obj.end.x === 'number' && typeof obj.end.y === 'number' &&
-                       isFinite(obj.start.x) && isFinite(obj.start.y) &&
-                       isFinite(obj.end.x) && isFinite(obj.end.y);
-                
-            case 'flash':
-                if (!obj.position) return false;
-                return typeof obj.position.x === 'number' && typeof obj.position.y === 'number' &&
-                       isFinite(obj.position.x) && isFinite(obj.position.y);
-                
-            default:
-                return true;
-        }
-    }
-    
     plotObject(obj) {
-        const type = obj.subtype || obj.type;
-        
-        switch (type) {
+        switch (obj.type) {
             case 'region':
-                this.creationStats.regionsFromRegionObjects++;
                 return this.plotRegion(obj);
-                
-            case 'connected_path':
-                this.creationStats.connectedPathsProcessed++;
-                return this.plotConnectedPath(obj);
-                
-            case 'branching_network':
-                this.creationStats.branchingNetworksProcessed++;
-                return this.plotBranchingNetwork(obj);
-                
-            case 'draw':
-                this.creationStats.drawsFromDrawObjects++;
-                return this.plotDraw(obj);
-                
+            
+            case 'trace':
+                return this.plotTrace(obj);
+            
             case 'flash':
-                this.creationStats.flashesFromFlashObjects++;
                 return this.plotFlash(obj);
-                
+            
+            case 'draw': // Legacy support
+                return this.plotDraw(obj);
+            
             default:
-                this.debug(`Unknown object type: ${type}`);
+                this.debug(`Unknown object type: ${obj.type}`);
                 return null;
         }
     }
     
     /**
-     * CRITICAL FIX: Plot region with ABSOLUTELY NO STROKE
+     * Plot region - simplified without hole detection
+     * FIXED: Better validation and debug output
      */
     plotRegion(region) {
-        this.debug(`Plotting region with ${region.points.length} points (FILL ONLY - NO STROKE EVER)`);
-        
-        if (!region.points || region.points.length < 3) {
-            console.warn('Region has too few points:', region);
+        if (!region.points || !Array.isArray(region.points)) {
+            console.warn('Region has no points array:', region);
             return null;
         }
         
-        // CRITICAL: Regions are ALWAYS and ONLY fill, NEVER stroke
+        if (region.points.length < 3) {
+            console.warn(`Region has only ${region.points.length} points (need at least 3):`, region);
+            return null;
+        }
+        
+        this.debug(`Plotting region with ${region.points.length} points, polarity: ${region.polarity || 'dark'}`);
+        
+        // Check if region is closed
+        const first = region.points[0];
+        const last = region.points[region.points.length - 1];
+        const isClosed = Math.abs(first.x - last.x) < 0.001 && Math.abs(first.y - last.y) < 0.001;
+        
+        if (!isClosed) {
+            this.debug('  WARNING: Region is not closed, will be closed automatically');
+        }
+        
+        // Create simple filled path primitive
         const properties = {
             // Region identification
             isRegion: true,
             regionType: 'filled_area',
             
-            // CRITICAL: Fill properties
+            // Fill properties
             fill: true,
-            fillRule: 'nonzero', // Use nonzero for proper hole handling
+            fillRule: 'nonzero', // Let Clipper2 handle winding
             
-            // CRITICAL: NO STROKE EVER
+            // No stroke for regions
             stroke: false,
             strokeWidth: 0,
-            noStroke: true, // Extra flag to ensure no stroke
             
             // Other properties
             polarity: region.polarity || 'dark',
-            function: region.function,
-            closed: true
+            closed: true,
+            
+            // Debug info
+            originalPointCount: region.points.length
         };
         
-        // Check if this might be text with holes
-        if (region.function === 'Legend' || this.mightBeTextWithHoles(region)) {
-            properties.fillRule = 'evenodd'; // Use evenodd for text with holes
-            properties.mightHaveHoles = true;
-            this.debug('Region might be text with holes, using evenodd fill rule');
-        }
-        
+        // Create primitive - no holes needed, Clipper2 will detect them
         const primitive = new PathPrimitive(region.points, properties);
         
-        this.debug(`Created region primitive (fill-only, no stroke)`);
+        this.creationStats.regionsCreated++;
+        this.creationStats.regionPointCounts.push(region.points.length);
+        
+        // Calculate region area for debug
+        const area = this.calculateArea(region.points);
+        this.debug(`  Region area: ${Math.abs(area).toFixed(3)} mm²`);
+        this.debug(`  Region winding: ${area > 0 ? 'CCW' : 'CW'}`);
         
         return primitive;
     }
     
     /**
-     * Check if a region might be text with holes (like B or a)
+     * Plot trace - simple stroked path
+     * FIXED: Better debug output
      */
-    mightBeTextWithHoles(region) {
-        // Small regions near other small regions might be text
-        const bounds = this.calculatePointsBounds(region.points);
-        const area = (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY);
-        
-        // Text regions are typically small
-        return area < 10; // Less than 10mm²
-    }
-    
-    /**
-     * Plot branching network as multiple trace primitives
-     */
-    plotBranchingNetwork(network) {
-        const aperture = this.apertures.get(network.aperture);
-        if (!aperture) {
-            this.debug(`Missing aperture: ${network.aperture}`);
+    plotTrace(trace) {
+        if (!trace.start || !trace.end) {
+            console.warn('Invalid trace (missing start/end):', trace);
             return null;
         }
         
-        this.debug(`Plotting branching network with ${network.segments.length} segments`);
+        const length = Math.sqrt(
+            Math.pow(trace.end.x - trace.start.x, 2) + 
+            Math.pow(trace.end.y - trace.start.y, 2)
+        );
         
-        const apertureSize = aperture.parameters[0];
-        const primitives = [];
+        this.debug(`Plotting trace: (${trace.start.x.toFixed(3)}, ${trace.start.y.toFixed(3)}) to (${trace.end.x.toFixed(3)}, ${trace.end.y.toFixed(3)}), length: ${length.toFixed(3)}mm`);
         
-        // Create a trace for each segment
-        network.segments.forEach((segment, index) => {
-            this.creationStats.branchSegmentsCreated++;
+        const width = trace.width || 0.1;
+        
+        // Create trace as stroked path
+        const properties = {
+            // Trace identification
+            isTrace: true,
             
-            const properties = {
-                // Trace identification
-                isTrace: true,
-                isBranchSegment: true,
-                
-                // TRACES: No fill, only stroke
-                fill: false,
-                stroke: true,
-                strokeWidth: apertureSize,
-                
-                // Other properties
-                polarity: network.polarity,
-                function: network.function,
-                aperture: network.aperture,
-                branchIndex: index,
-                interpolation: segment.interpolation || 'G01',
-                closed: false
-            };
+            // No fill, only stroke
+            fill: false,
+            stroke: true,
+            strokeWidth: width,
             
-            const pathPrimitive = new PathPrimitive(
-                [segment.start, segment.end], 
-                properties
+            // Other properties
+            polarity: trace.polarity || 'dark',
+            aperture: trace.aperture,
+            interpolation: trace.interpolation || 'G01',
+            closed: false,
+            
+            // Debug info
+            traceLength: length
+        };
+        
+        let points;
+        
+        // Handle arc traces
+        if (trace.arc && (trace.interpolation === 'G02' || trace.interpolation === 'G03')) {
+            points = this.createArcPoints(
+                trace.start,
+                trace.end,
+                trace.arc,
+                trace.clockwise !== false
             );
-            
-            primitives.push(pathPrimitive);
-        });
-        
-        this.debug(`Created ${primitives.length} trace primitives for branching network`);
-        return primitives;
-    }
-    
-    /**
-     * Plot connected path as trace
-     */
-    plotConnectedPath(path) {
-        const aperture = this.apertures.get(path.aperture);
-        if (!aperture) {
-            this.debug(`Missing aperture: ${path.aperture}`);
-            return null;
-        }
-        
-        this.debug(`Plotting connected path with ${path.points.length} points`);
-        
-        const apertureSize = aperture.parameters[0];
-        
-        // TRACES: Always stroke, never fill
-        const properties = {
-            // Trace identification
-            isTrace: true,
-            isConnectedPath: true,
-            
-            // TRACES: No fill, only stroke
-            fill: false,
-            stroke: true,
-            strokeWidth: apertureSize,
-            
-            // Other properties
-            polarity: path.polarity,
-            function: path.function,
-            aperture: path.aperture,
-            isBranching: false,
-            segmentCount: path.segmentCount || (path.points.length - 1),
-            closed: false
-        };
-        
-        return new PathPrimitive(path.points, properties);
-    }
-    
-    plotDraw(draw) {
-        const aperture = this.apertures.get(draw.aperture);
-        if (!aperture) {
-            this.debug(`Missing aperture: ${draw.aperture}`);
-            return null;
-        }
-        
-        this.debug(`Plotting draw from (${draw.start.x.toFixed(3)}, ${draw.start.y.toFixed(3)}) to (${draw.end.x.toFixed(3)}, ${draw.end.y.toFixed(3)})`);
-        
-        const apertureSize = aperture.parameters[0];
-        
-        // DRAWS/TRACES: Always stroke, never fill
-        const properties = {
-            // Trace identification
-            isTrace: true,
-            isDraw: true,
-            
-            // TRACES: No fill, only stroke
-            fill: false,
-            stroke: true,
-            strokeWidth: apertureSize,
-            
-            // Other properties
-            polarity: draw.polarity,
-            function: draw.function || aperture.function,
-            aperture: draw.aperture,
-            interpolation: draw.interpolation,
-            closed: false
-        };
-        
-        if (draw.interpolation === 'G01') {
+            this.debug(`  Arc trace with ${points.length} interpolated points`);
+        } else {
             // Simple line
-            return new PathPrimitive([draw.start, draw.end], properties);
-        } else if (draw.interpolation === 'G02' || draw.interpolation === 'G03') {
-            // Arc - create arc path points
-            if (!draw.center) {
-                // Fallback to line if no center
-                return new PathPrimitive([draw.start, draw.end], properties);
-            }
-            
-            const arcPoints = this.createArcPoints(
-                draw.start,
-                draw.end,
-                draw.center,
-                draw.interpolation === 'G02'
-            );
-            
-            return new PathPrimitive(arcPoints, properties);
+            points = [trace.start, trace.end];
         }
         
-        return null;
+        const primitive = new PathPrimitive(points, properties);
+        
+        this.creationStats.tracesCreated++;
+        this.creationStats.traceLengths.push(length);
+        
+        return primitive;
     }
     
+    /**
+     * Plot flash (pad) - create appropriate shape
+     * FIXED: Better debug output
+     */
     plotFlash(flash) {
-        const aperture = this.apertures.get(flash.aperture);
-        if (!aperture) {
-            this.debug(`Missing aperture: ${flash.aperture}`);
+        if (!flash.position) {
+            console.warn('Invalid flash (missing position):', flash);
             return null;
         }
         
-        this.debug(`Plotting flash at (${flash.position.x.toFixed(3)}, ${flash.position.y.toFixed(3)})`);
+        this.debug(`Plotting flash at (${flash.position.x.toFixed(3)}, ${flash.position.y.toFixed(3)}), shape: ${flash.shape}`);
         
-        // FLASHES/PADS: Always fill, no stroke
+        // Flash/pad properties - always filled, no stroke
         const properties = {
             // Flash identification
             isFlash: true,
             isPad: true,
             
-            // FLASHES: Fill only, no stroke
+            // Fill only, no stroke
             fill: true,
             stroke: false,
             strokeWidth: 0,
             
             // Other properties
-            polarity: flash.polarity,
-            function: flash.function || aperture.function,
-            aperture: flash.aperture
+            polarity: flash.polarity || 'dark',
+            aperture: flash.aperture,
+            shape: flash.shape
         };
         
-        switch (aperture.type) {
+        // Create appropriate primitive based on shape
+        let primitive = null;
+        
+        switch (flash.shape) {
             case 'circle':
-                const radius = aperture.parameters[0] / 2;
-                return new CirclePrimitive(
+                const radius = flash.radius || (flash.parameters?.[0] / 2) || 0.5;
+                this.debug(`  Circle flash, radius: ${radius.toFixed(3)}mm`);
+                primitive = new CirclePrimitive(
                     flash.position,
                     radius,
                     properties
                 );
-                
+                break;
+            
             case 'rectangle':
-                const width = aperture.parameters[0];
-                const height = aperture.parameters[1] || width;
-                return new RectanglePrimitive(
+                const width = flash.width || flash.parameters?.[0] || 1.0;
+                const height = flash.height || flash.parameters?.[1] || width;
+                this.debug(`  Rectangle flash, size: ${width.toFixed(3)} x ${height.toFixed(3)}mm`);
+                primitive = new RectanglePrimitive(
                     {
                         x: flash.position.x - width / 2,
                         y: flash.position.y - height / 2
@@ -418,11 +315,13 @@ class GerberPlotter {
                     height,
                     properties
                 );
-                
+                break;
+            
             case 'obround':
-                const oWidth = aperture.parameters[0];
-                const oHeight = aperture.parameters[1] || oWidth;
-                return new ObroundPrimitive(
+                const oWidth = flash.width || flash.parameters?.[0] || 1.0;
+                const oHeight = flash.height || flash.parameters?.[1] || oWidth;
+                this.debug(`  Obround flash, size: ${oWidth.toFixed(3)} x ${oHeight.toFixed(3)}mm`);
+                primitive = new ObroundPrimitive(
                     {
                         x: flash.position.x - oWidth / 2,
                         y: flash.position.y - oHeight / 2
@@ -431,22 +330,75 @@ class GerberPlotter {
                     oHeight,
                     properties
                 );
-                
+                break;
+            
             case 'polygon':
-                const sides = aperture.parameters[1] || 3;
-                const rotation = aperture.parameters[2] || 0;
-                return this.createPolygonFlash(
+                const diameter = flash.diameter || flash.parameters?.[0] || 1.0;
+                const vertices = flash.vertices || flash.parameters?.[1] || 3;
+                const rotation = flash.rotation || flash.parameters?.[2] || 0;
+                this.debug(`  Polygon flash, diameter: ${diameter.toFixed(3)}mm, vertices: ${vertices}`);
+                primitive = this.createPolygonFlash(
                     flash.position,
-                    aperture.parameters[0],
-                    sides,
+                    diameter,
+                    vertices,
                     rotation,
                     properties
                 );
-                
+                break;
+            
             default:
-                this.debug(`Unknown aperture type: ${aperture.type}`);
-                return null;
+                // Fallback to circle
+                console.warn(`Unknown flash shape: ${flash.shape}, using circle`);
+                const defaultRadius = (flash.parameters?.[0] / 2) || 0.5;
+                primitive = new CirclePrimitive(
+                    flash.position,
+                    defaultRadius,
+                    properties
+                );
         }
+        
+        if (primitive) {
+            this.creationStats.flashesCreated++;
+        }
+        
+        return primitive;
+    }
+    
+    /**
+     * Legacy support for draw commands
+     */
+    plotDraw(draw) {
+        if (!draw.aperture) {
+            console.warn('Draw without aperture:', draw);
+            return null;
+        }
+        
+        const aperture = this.apertures.get(draw.aperture);
+        if (!aperture) {
+            console.warn(`Missing aperture: ${draw.aperture}`);
+            return null;
+        }
+        
+        // Convert to trace format
+        const trace = {
+            type: 'trace',
+            start: draw.start,
+            end: draw.end,
+            width: aperture.parameters[0] || 0.1,
+            aperture: draw.aperture,
+            polarity: draw.polarity,
+            interpolation: draw.interpolation
+        };
+        
+        if (draw.center) {
+            trace.arc = {
+                i: draw.center.x - draw.start.x,
+                j: draw.center.y - draw.start.y
+            };
+            trace.clockwise = draw.interpolation === 'G02';
+        }
+        
+        return this.plotTrace(trace);
     }
     
     createPolygonFlash(center, diameter, sides, rotation, properties) {
@@ -468,7 +420,13 @@ class GerberPlotter {
         });
     }
     
-    createArcPoints(start, end, center, clockwise) {
+    createArcPoints(start, end, arcData, clockwise) {
+        // Calculate center from arc data
+        const center = {
+            x: start.x + arcData.i,
+            y: start.y + arcData.j
+        };
+        
         const radius = Math.sqrt(
             Math.pow(start.x - center.x, 2) +
             Math.pow(start.y - center.y, 2)
@@ -501,52 +459,21 @@ class GerberPlotter {
         return points;
     }
     
-    calculatePointsBounds(points) {
-        if (points.length === 0) return null;
-        
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        
-        points.forEach(point => {
-            minX = Math.min(minX, point.x);
-            minY = Math.min(minY, point.y);
-            maxX = Math.max(maxX, point.x);
-            maxY = Math.max(maxY, point.y);
-        });
-        
-        return { minX, minY, maxX, maxY };
-    }
-    
-    calculateBounds() {
-        if (this.primitives.length === 0) {
-            this.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-            return;
+    /**
+     * Calculate area of a polygon (for debug)
+     */
+    calculateArea(points) {
+        let area = 0;
+        for (let i = 0; i < points.length; i++) {
+            const j = (i + 1) % points.length;
+            area += points[i].x * points[j].y;
+            area -= points[j].x * points[i].y;
         }
-        
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        
-        this.primitives.forEach((primitive, index) => {
-            const bounds = primitive.getBounds();
-            
-            if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
-                !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
-                console.warn(`Primitive ${index} has invalid bounds:`, bounds);
-                return;
-            }
-            
-            minX = Math.min(minX, bounds.minX);
-            minY = Math.min(minY, bounds.minY);
-            maxX = Math.max(maxX, bounds.maxX);
-            maxY = Math.max(maxY, bounds.maxY);
-        });
-        
-        this.bounds = { minX, minY, maxX, maxY };
-        this.debug('Calculated plotter bounds:', this.bounds);
+        return area / 2;
     }
     
     /**
-     * Plot drill data - drill holes are always fill-only
+     * Plot drill data - simple circles
      */
     plotDrillData(drillData) {
         if (!drillData || !drillData.drillData) {
@@ -561,39 +488,45 @@ class GerberPlotter {
         
         const drillPrimitives = [];
         
-        drillData.drillData.holes.forEach((hole, index) => {
-            if (!hole.position || typeof hole.position.x !== 'number' || typeof hole.position.y !== 'number' ||
-                !isFinite(hole.position.x) || !isFinite(hole.position.y)) {
-                console.warn(`Invalid drill hole ${index}:`, hole);
-                return;
-            }
+        if (drillData.drillData.holes) {
+            this.debug(`Processing ${drillData.drillData.holes.length} drill holes`);
             
-            // DRILL HOLES: Always fill, no stroke
-            const primitive = new CirclePrimitive(
-                hole.position,
-                hole.diameter / 2,
-                {
-                    // Drill identification
-                    isDrillHole: true,
-                    
-                    // DRILLS: Fill only, no stroke
-                    fill: true,
-                    stroke: false,
-                    strokeWidth: 0,
-                    
-                    // Other properties
-                    type: 'drill',
-                    tool: hole.tool,
-                    plated: hole.plated,
-                    diameter: hole.diameter
+            drillData.drillData.holes.forEach((hole, index) => {
+                if (!hole.position || !isFinite(hole.position.x) || !isFinite(hole.position.y)) {
+                    console.warn(`Invalid drill hole ${index}:`, hole);
+                    return;
                 }
-            );
-            
-            drillPrimitives.push(primitive);
-        });
+                
+                // Drill holes are always filled, no stroke
+                const primitive = new CirclePrimitive(
+                    hole.position,
+                    hole.diameter / 2,
+                    {
+                        // Drill identification
+                        isDrillHole: true,
+                        
+                        // Fill only, no stroke
+                        fill: true,
+                        stroke: false,
+                        strokeWidth: 0,
+                        
+                        // Other properties
+                        type: 'drill',
+                        tool: hole.tool,
+                        plated: hole.plated,
+                        diameter: hole.diameter,
+                        polarity: 'dark' // Drill holes are always dark
+                    }
+                );
+                
+                drillPrimitives.push(primitive);
+                this.creationStats.drillsCreated++;
+            });
+        }
         
         this.debug(`Plotted ${drillPrimitives.length} drill holes`);
         
+        // Calculate bounds
         let bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
         if (drillPrimitives.length > 0) {
             let minX = Infinity, minY = Infinity;
@@ -617,6 +550,72 @@ class GerberPlotter {
             units: drillData.drillData.units,
             creationStats: { drillHolesCreated: drillPrimitives.length }
         };
+    }
+    
+    validatePrimitive(primitive) {
+        try {
+            // Check if primitive has required methods
+            if (typeof primitive.getBounds !== 'function') {
+                console.warn('Primitive missing getBounds method:', primitive);
+                return false;
+            }
+            
+            // Check if bounds are valid
+            const bounds = primitive.getBounds();
+            if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
+                !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
+                console.warn('Primitive has invalid bounds:', bounds, primitive);
+                return false;
+            }
+            
+            // Check specific primitive types
+            if (primitive.type === 'path') {
+                if (!primitive.points || !Array.isArray(primitive.points) || primitive.points.length === 0) {
+                    console.warn('Path primitive has invalid points:', primitive);
+                    return false;
+                }
+            } else if (primitive.type === 'circle') {
+                if (!primitive.center || !isFinite(primitive.radius) || primitive.radius <= 0) {
+                    console.warn('Circle primitive has invalid geometry:', primitive);
+                    return false;
+                }
+            }
+            
+            return true;
+        } catch (error) {
+            console.warn('Primitive validation failed:', error, primitive);
+            return false;
+        }
+    }
+    
+    calculateBounds() {
+        if (this.primitives.length === 0) {
+            this.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+            return;
+        }
+        
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+        let validPrimitives = 0;
+        
+        this.primitives.forEach((primitive, index) => {
+            const bounds = primitive.getBounds();
+            
+            if (!isFinite(bounds.minX) || !isFinite(bounds.minY) || 
+                !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
+                console.warn(`Primitive ${index} has invalid bounds:`, bounds);
+                return;
+            }
+            
+            minX = Math.min(minX, bounds.minX);
+            minY = Math.min(minY, bounds.minY);
+            maxX = Math.max(maxX, bounds.maxX);
+            maxY = Math.max(maxY, bounds.maxY);
+            validPrimitives++;
+        });
+        
+        this.bounds = { minX, minY, maxX, maxY };
+        this.debug(`Calculated plotter bounds from ${validPrimitives}/${this.primitives.length} valid primitives:`, this.bounds);
     }
     
     debug(message, data = null) {

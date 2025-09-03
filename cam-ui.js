@@ -1,4 +1,4 @@
-// cam-ui.js - UI components and DOM manipulation - FIXED: Fusion pipeline
+// cam-ui2.js - UI components and DOM manipulation - FIXED async method names
 // Handles rendering, modal management, and user interface updates
 
 class PCBCamUI {
@@ -6,6 +6,7 @@ class PCBCamUI {
         this.core = core;
         this.renderer = null;
         this.coordinateSystem = null;
+        this.svgExporter = null;
         
         // Modal state
         this.currentModalPage = 1;
@@ -19,7 +20,7 @@ class PCBCamUI {
             lastOperation: null,
             totalReductions: 0,
             operationsWithFusion: 0,
-            fusionType: 'simple_union'
+            fusionType: 'clipper2_wasm'
         };
         
         // Input tracking for coordinate inputs
@@ -28,6 +29,18 @@ class PCBCamUI {
             lastYValue: '0',
             isUpdating: false
         };
+        
+        // ASYNC: Loading state management
+        this.loadingState = {
+            isLoading: false,
+            operation: null,
+            startTime: null,
+            message: ''
+        };
+        
+        // ASYNC: Operation queue for managing async operations
+        this.operationQueue = [];
+        this.isProcessingQueue = false;
     }
     
     initializeUI() {
@@ -35,12 +48,19 @@ class PCBCamUI {
         this.renderAllOperations();
         this.updateStatus();
         
-        console.log('PCBCamUI initialized');
+        console.log('PCBCamUI initialized with async support');
     }
     
     initializeRenderer() {
         if (!this.renderer && typeof LayerRenderer !== 'undefined') {
             this.renderer = new LayerRenderer('preview-canvas');
+            
+            if (typeof SVGExporter !== 'undefined') {
+                this.svgExporter = new SVGExporter(this.renderer);
+                console.log('SVG exporter initialized');
+            } else {
+                console.warn('SVGExporter not available - SVG export will be disabled');
+            }
             
             if (!this.coordinateSystem && typeof CoordinateSystemManager !== 'undefined') {
                 this.coordinateSystem = new CoordinateSystemManager({ debug: false });
@@ -51,6 +71,117 @@ class PCBCamUI {
             this.coordinateSystem.setRenderer(this.renderer);
             
             console.log('Layer renderer initialized with coordinate system');
+        }
+    }
+    
+    // ASYNC: Loading state management
+    showLoadingState(operation, message = '') {
+        this.loadingState.isLoading = true;
+        this.loadingState.operation = operation;
+        this.loadingState.startTime = performance.now();
+        this.loadingState.message = message || `Processing ${operation}...`;
+        
+        // Update UI to show loading
+        this.updateStatus(this.loadingState.message, 'info');
+        
+        // Add loading overlay to preview if modal is open
+        const modal = document.getElementById('preview-modal');
+        if (modal && modal.classList.contains('active')) {
+            this.showPreviewLoadingOverlay();
+        }
+    }
+    
+    hideLoadingState() {
+        const elapsed = this.loadingState.startTime ? 
+            performance.now() - this.loadingState.startTime : 0;
+        
+        this.loadingState.isLoading = false;
+        
+        // Log operation time if significant
+        if (elapsed > 100) {
+            console.log(`Operation '${this.loadingState.operation}' took ${elapsed.toFixed(0)}ms`);
+        }
+        
+        this.loadingState.operation = null;
+        this.loadingState.startTime = null;
+        this.loadingState.message = '';
+        
+        // Remove loading overlay
+        this.hidePreviewLoadingOverlay();
+    }
+    
+    showPreviewLoadingOverlay() {
+        const canvas = document.getElementById('preview-canvas');
+        if (!canvas) return;
+        
+        // Create or update loading overlay
+        let overlay = document.getElementById('preview-loading-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'preview-loading-overlay';
+            overlay.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 1000;
+            `;
+            
+            const spinner = document.createElement('div');
+            spinner.className = 'loading-spinner';
+            spinner.style.cssText = `
+                border: 3px solid rgba(255,255,255,0.3);
+                border-top: 3px solid white;
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                animation: spin 1s linear infinite;
+            `;
+            
+            const message = document.createElement('div');
+            message.id = 'preview-loading-message';
+            message.style.cssText = `
+                position: absolute;
+                bottom: 20px;
+                color: white;
+                font-size: 14px;
+            `;
+            message.textContent = this.loadingState.message;
+            
+            overlay.appendChild(spinner);
+            overlay.appendChild(message);
+            canvas.parentElement.appendChild(overlay);
+            
+            // Add spin animation if not exists
+            if (!document.getElementById('loading-spin-style')) {
+                const style = document.createElement('style');
+                style.id = 'loading-spin-style';
+                style.textContent = `
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        } else {
+            // Update message
+            const message = document.getElementById('preview-loading-message');
+            if (message) {
+                message.textContent = this.loadingState.message;
+            }
+        }
+    }
+    
+    hidePreviewLoadingOverlay() {
+        const overlay = document.getElementById('preview-loading-overlay');
+        if (overlay) {
+            overlay.remove();
         }
     }
     
@@ -332,7 +463,8 @@ class PCBCamUI {
             this.updateStatus();
             
             if (this.renderer) {
-                this.updateRenderer();
+                // ASYNC: Update renderer asynchronously
+                this.updateRendererAsync();
             }
         }
     }
@@ -363,7 +495,9 @@ class PCBCamUI {
             
             // Update coordinate system and renderer
             this.core.updateCoordinateSystem();
-            this.updateRenderer();
+            
+            // ASYNC: Update renderer with async fusion
+            await this.updateRendererAsync();
             
             // Resize canvas to fit container
             this.renderer.resizeCanvas();
@@ -425,7 +559,7 @@ class PCBCamUI {
         
         // Update title and navigation
         const titles = [
-            '📐 PCB Preview & Fusion Setup',
+            '🔍 PCB Preview & Fusion Setup',
             '⚙️ Offset Geometry Configuration', 
             '🛠️ Toolpath Generation'
         ];
@@ -464,16 +598,17 @@ class PCBCamUI {
         }
     }
     
-    updateRenderer() {
+    // ASYNC: Main renderer update method - now async
+    async updateRendererAsync() {
         if (!this.renderer) return;
         
-        console.log('Updating renderer...');
+        console.log('ASYNC: Updating renderer with Clipper2 fusion...');
         this.renderer.clearLayers();
         
         // Check if fusion is enabled
         if (this.renderer.options.fuseGeometry) {
-            console.log('Fusion enabled, processing geometry...');
-            this.updateStatus('Applying fusion to isolation layer...', 'info');
+            console.log('ASYNC: Fusion enabled, using Clipper2 WASM...');
+            this.showLoadingState('fusion', 'Applying Clipper2 fusion to isolation layer...');
             
             try {
                 // Separate isolation operations from others
@@ -490,7 +625,7 @@ class PCBCamUI {
                     }
                 });
                 
-                // Fuse isolation layers
+                // ASYNC: Use async fusion with Clipper2 WASM
                 if (isolationOps.length > 0) {
                     // Collect all isolation primitives
                     const isolationPrimitives = [];
@@ -498,10 +633,10 @@ class PCBCamUI {
                         isolationPrimitives.push(...op.primitives);
                     });
                     
-                    console.log(`Fusing ${isolationPrimitives.length} isolation primitives...`);
+                    console.log(`ASYNC: Fusing ${isolationPrimitives.length} isolation primitives with Clipper2...`);
                     
-                    // Perform fusion
-                    const fused = this.core.geometryProcessor.fuseGeometry(isolationPrimitives);
+                    // ASYNC: Call async fusion method - FIXED: Use correct method name
+                    const fused = await this.core.fuseAllPrimitives();
                     
                     if (fused && fused.length > 0) {
                         // Add fused layer
@@ -512,14 +647,23 @@ class PCBCamUI {
                             color: '#ff8844' // Orange for isolation
                         });
                         
-                        console.log(`Added fused isolation layer with ${fused.length} primitives`);
+                        console.log(`ASYNC: Added fused isolation layer with ${fused.length} primitives`);
                         
                         const reduction = isolationPrimitives.length - fused.length;
                         const percentage = reduction > 0 ? ((reduction / isolationPrimitives.length) * 100).toFixed(1) : 0;
-                        this.updateStatus(`Fusion complete: ${isolationPrimitives.length} → ${fused.length} primitives (${percentage}% reduction)`, 'success');
+                        this.updateStatus(`Clipper2 fusion complete: ${isolationPrimitives.length} → ${fused.length} primitives (${percentage}% reduction)`, 'success');
+                        
+                        // Update fusion stats
+                        this.fusionStats.lastOperation = {
+                            originalCount: isolationPrimitives.length,
+                            fusedCount: fused.length,
+                            reduction: reduction
+                        };
+                        this.fusionStats.totalReductions += reduction;
+                        
                     } else {
-                        console.warn('Fusion produced no valid geometry');
-                        this.updateStatus('Fusion failed - no valid geometry produced', 'error');
+                        console.warn('ASYNC: Fusion produced no valid geometry');
+                        this.updateStatus('Clipper2 fusion failed - no valid geometry produced', 'error');
                         
                         // Fall back to original primitives
                         isolationOps.forEach(op => {
@@ -542,33 +686,33 @@ class PCBCamUI {
                 });
                 
             } catch (error) {
-                console.error('Fusion error:', error);
-                this.updateStatus('Fusion failed: ' + error.message, 'error');
+                console.error('ASYNC: Fusion error:', error);
+                this.updateStatus('Clipper2 fusion failed: ' + error.message, 'error');
                 
                 // Fall back to individual layers
                 this.addIndividualLayers();
+            } finally {
+                this.hideLoadingState();
             }
         } else {
-            console.log('Fusion disabled, adding individual layers...');
+            console.log('ASYNC: Fusion disabled, adding individual layers...');
             // Add individual operation layers
             this.addIndividualLayers();
         }
         
-        console.log(`Renderer has ${this.renderer.layers.size} layer(s)`);
+        console.log(`ASYNC: Renderer has ${this.renderer.layers.size} layer(s)`);
         
         // Force render
         this.renderer.render();
     }
-
-    // Helper method to get color for operation type
-    getColorForType(type) {
-        switch (type) {
-            case 'isolation': return '#ff8844';
-            case 'clear': return '#44ff88';
-            case 'drill': return '#4488ff';
-            case 'cutout': return '#ff00ff';
-            default: return '#ff8844';
-        }
+    
+    // Keep synchronous wrapper for backwards compatibility with deprecation warning
+    updateRenderer() {
+        console.warn('DEPRECATED: updateRenderer() is synchronous. Use updateRendererAsync() instead.');
+        // Run async version without awaiting (fire and forget)
+        this.updateRendererAsync().catch(error => {
+            console.error('Error in async renderer update:', error);
+        });
     }
 
     // Helper method to get color for operation type
@@ -583,7 +727,6 @@ class PCBCamUI {
     }
     
     addIndividualLayers() {
-        // FIXED: Ensure each operation's primitives are properly isolated
         this.core.operations.forEach(operation => {
             if (operation.primitives && operation.primitives.length > 0) {
                 // Double-check that primitives are marked with their operation
@@ -630,8 +773,8 @@ class PCBCamUI {
         // Setup board rotation controls
         this.setupBoardRotationControls();
         
-        // Setup debug controls
-        this.setupDebugControls();
+        // Setup debug controls with async fusion toggle
+        this.setupDebugControlsAsync();
         
         // Setup advanced options
         this.setupAdvancedOptionsCollapse();
@@ -708,13 +851,14 @@ class PCBCamUI {
         }
     }
     
-    setupDebugControls() {
+    // ASYNC: Updated debug controls for async fusion
+    setupDebugControlsAsync() {
         // Wireframe toggle
         const showWireframe = document.getElementById('show-wireframe');
         if (showWireframe && this.renderer) {
             showWireframe.checked = this.renderer.options.showWireframe || false;
             
-            showWireframe.addEventListener('change', (e) => {
+            showWireframe.addEventListener('change', async (e) => {
                 if (e.target.checked) {
                     // Disable fusion when enabling wireframe
                     const fuseToggle = document.getElementById('fuse-geometry');
@@ -724,19 +868,19 @@ class PCBCamUI {
                 }
                 
                 this.renderer.setOptions({ showWireframe: e.target.checked });
-                this.updateRenderer();
+                await this.updateRendererAsync();
                 
                 const modeText = e.target.checked ? 'Wireframe mode enabled' : 'Fill mode enabled';
                 this.updateStatus(modeText, 'info');
             });
         }
         
-        // Fusion toggle
+        // Fusion toggle - now async
         const fuseToggle = document.getElementById('fuse-geometry');
         if (fuseToggle && this.renderer) {
             fuseToggle.checked = this.renderer.options.fuseGeometry || false;
             
-            fuseToggle.addEventListener('change', (e) => {
+            fuseToggle.addEventListener('change', async (e) => {
                 if (e.target.checked) {
                     // Disable wireframe when enabling fusion
                     const wireframeToggle = document.getElementById('show-wireframe');
@@ -744,7 +888,7 @@ class PCBCamUI {
                         wireframeToggle.checked = false;
                     }
                     
-                    this.updateStatus('Enabling fusion - combining overlapping geometry...', 'info');
+                    this.updateStatus('Enabling Clipper2 fusion - combining overlapping geometry...', 'info');
                 } else {
                     this.updateStatus('Fusion disabled', 'info');
                 }
@@ -753,7 +897,9 @@ class PCBCamUI {
                     fuseGeometry: e.target.checked,
                     showWireframe: false // Ensure wireframe is off for fusion
                 });
-                this.updateRenderer();
+                
+                // ASYNC: Update renderer with async fusion
+                await this.updateRendererAsync();
             });
         }
         
@@ -866,16 +1012,18 @@ class PCBCamUI {
                 const percentage = ((totalReduction / fusionStats.originalCount) * 100).toFixed(1);
                 statsHtml += `
                     <div style="margin-top: 0.75rem; padding: 0.5rem; background: rgba(34, 197, 94, 0.1); border: 1px solid var(--success); border-radius: 4px; font-size: 0.75rem;">
-                        <strong>🔗 Fusion Active:</strong><br>
+                        <strong>🔗 Clipper2 Fusion Active:</strong><br>
                         ${fusionStats.originalCount} → ${fusionStats.fusedCount} primitives<br>
-                        <span style="color: var(--success);">${totalReduction} primitives reduced (${percentage}%)</span>
+                        <span style="color: var(--success);">${totalReduction} primitives reduced (${percentage}%)</span><br>
+                        <small>✅ Automatic hole detection via PolyTree</small>
                     </div>
                 `;
             } else {
                 statsHtml += `
                     <div style="margin-top: 0.75rem; padding: 0.5rem; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); border-radius: 4px; font-size: 0.75rem;">
-                        <strong>🔗 Fusion Active:</strong><br>
-                        <span style="color: var(--warning);">No overlapping geometry found</span>
+                        <strong>🔗 Clipper2 Fusion Active:</strong><br>
+                        <span style="color: var(--warning);">No overlapping geometry found</span><br>
+                        <small>✅ WASM module loaded</small>
                     </div>
                 `;
             }
@@ -1014,25 +1162,70 @@ class PCBCamUI {
         this.updateOffsetInputsWithTracking();
     }
     
+    // ASYNC: Export SVG - now supports async fusion results
     async exportSVG() {
+        if (!this.svgExporter) {
+            this.updateStatus('SVG exporter not available', 'error');
+            return;
+        }
+        
         if (!this.renderer) {
             this.updateStatus('No renderer available for SVG export', 'error');
             return;
         }
         
-        console.log('Exporting SVG...');
+        console.log('ASYNC: Exporting SVG with Clipper2 fusion results...');
         
         try {
-            const svgString = this.renderer.exportSVG();
+            // Ensure renderer is up to date
+            if (this.renderer.options.fuseGeometry) {
+                this.showLoadingState('export', 'Preparing SVG export with fused geometry...');
+                await this.updateRendererAsync();
+                this.hideLoadingState();
+            }
+            
+            const svgString = this.svgExporter.exportSVG({
+                precision: 2,
+                padding: 5,
+                optimizePaths: true,
+                includeMetadata: true
+            });
+            
             if (svgString) {
-                this.updateStatus('SVG exported successfully', 'success');
+                this.updateStatus('SVG exported successfully with Clipper2 fusion', 'success');
             } else {
                 this.updateStatus('SVG export failed - no content to export', 'warning');
             }
         } catch (error) {
-            console.error('SVG export error:', error);
+            console.error('ASYNC: SVG export error:', error);
             this.updateStatus('SVG export failed: ' + error.message, 'error');
         }
+    }
+    
+    // ASYNC: Queue management for sequential operations
+    async processOperationQueue() {
+        if (this.isProcessingQueue || this.operationQueue.length === 0) {
+            return;
+        }
+        
+        this.isProcessingQueue = true;
+        
+        while (this.operationQueue.length > 0) {
+            const operation = this.operationQueue.shift();
+            try {
+                await operation();
+            } catch (error) {
+                console.error('Error processing queued operation:', error);
+            }
+        }
+        
+        this.isProcessingQueue = false;
+    }
+    
+    // Add operation to queue
+    queueOperation(operation) {
+        this.operationQueue.push(operation);
+        this.processOperationQueue();
     }
 }
 

@@ -1,32 +1,88 @@
-// cam-controller.js - Main application controller
-// Ties together core logic and UI components
+// cam-controller2.js - Main application controller - FIXED async method names
+// Ties together core logic and UI components with async WASM support
+// FIXED: Prevent double initialization of processors
 
 class SemanticPCBCam {
     constructor() {
-        // Initialize core and UI
-        this.core = new PCBCamCore();
+        // ASYNC: Track initialization state
+        this.initializationState = {
+            coreReady: false,
+            uiReady: false,
+            wasmReady: false,
+            fullyReady: false,
+            error: null
+        };
+        
+        // ASYNC: Operation queue for file processing
+        this.pendingFileOperations = [];
+        
+        // FIXED: Initialize core with skipInit to prevent double initialization
+        this.core = new PCBCamCore({ skipInit: true });
         this.ui = new PCBCamUI(this.core);
         
         // Debug mode
         this.debugMode = false;
         
+        // ASYNC: Start initialization chain
         this.initializeApp();
     }
     
-    initializeApp() {
+    // ASYNC: Main initialization method - now async
+    async initializeApp() {
+        console.log('🚀 Starting PCB CAM initialization with Clipper2 WASM...');
+        
         // Set theme
         const savedTheme = localStorage.getItem('theme') || 'dark';
         document.documentElement.setAttribute('data-theme', savedTheme);
         
-        // Initialize subsystems
+        // Initialize UI first (synchronous parts)
         this.ui.initializeUI();
         this.setupEventListeners();
+        this.initializationState.uiReady = true;
+        console.log('✅ UI initialized');
         
-        console.log('📐 PCB CAM Controller initialized');
-        console.log('✅ Simple union-all fusion system active');
-        console.log('✅ FIXED: Region duplication prevention active');
-        console.log('✅ Modular architecture: core, UI, controller');
-        console.log('📦 Ready for file import');
+        // FIXED: Single initialization of processors
+        try {
+            console.log('⏳ Loading Clipper2 WASM modules...');
+            
+            // Initialize processors once
+            const wasmInitialized = await this.core.initializeProcessors();
+            
+            if (wasmInitialized) {
+                this.initializationState.wasmReady = true;
+                console.log('✅ Clipper2 WASM modules loaded successfully');
+                
+                // Process any pending file operations
+                await this.processPendingFileOperations();
+                
+            } else {
+                throw new Error('Failed to initialize Clipper2 WASM modules');
+            }
+            
+            this.initializationState.coreReady = true;
+            this.initializationState.fullyReady = true;
+            
+            console.log('✅ PCB CAM fully initialized with Clipper2');
+            console.log('✅ Automatic hole detection via PolyTree active');
+            console.log('✅ Arc preservation metadata enabled');
+            console.log('📦 Ready for file import');
+            
+            // Update UI to show ready state
+            this.ui.updateStatus('Ready - Clipper2 WASM loaded', 'success');
+            
+        } catch (error) {
+            console.error('❌ Failed to initialize Clipper2 WASM:', error);
+            this.initializationState.error = error.message;
+            
+            // Show error in UI
+            this.ui.updateStatus('Warning: Clipper2 failed to load - fusion disabled', 'warning');
+            
+            // Still mark as ready but with limited functionality
+            this.initializationState.coreReady = true;
+            this.initializationState.fullyReady = true;
+            
+            console.warn('⚠️ Running in fallback mode without Clipper2 fusion');
+        }
     }
     
     setupEventListeners() {
@@ -44,8 +100,10 @@ class SemanticPCBCam {
         // File input
         document.getElementById('file-input-temp')?.addEventListener('change', (e) => this.handleFileSelect(e));
         
-        // Preview button
-        document.getElementById('preview-btn')?.addEventListener('click', () => this.ui.openPreview());
+        // Preview button - now async
+        document.getElementById('preview-btn')?.addEventListener('click', async () => {
+            await this.ui.openPreview();
+        });
         
         // Modal controls
         document.getElementById('modal-close-btn')?.addEventListener('click', () => this.ui.closePreview());
@@ -75,8 +133,10 @@ class SemanticPCBCam {
             if (input) input.value = '0';
         });
         
-        // Export controls
-        document.getElementById('export-svg-btn')?.addEventListener('click', () => this.ui.exportSVG());
+        // Export controls - now async
+        document.getElementById('export-svg-btn')?.addEventListener('click', async () => {
+            await this.ui.exportSVG();
+        });
         
         // Machine settings
         document.getElementById('pcb-thickness')?.addEventListener('change', (e) => {
@@ -133,17 +193,46 @@ class SemanticPCBCam {
         }
     }
     
+    // ASYNC: File handling - queue if WASM not ready
     async handleFileSelect(event) {
         const file = event.target.files[0];
         if (!file) return;
         
         const type = event.target.getAttribute('data-type');
         if (!type) return;
-
+        
+        // If WASM not ready, queue the operation
+        if (!this.initializationState.wasmReady) {
+            console.log('WASM not ready, queueing file operation...');
+            this.pendingFileOperations.push({ file, type, event });
+            this.ui.updateStatus('Loading Clipper2 WASM... File will be processed when ready', 'info');
+            event.target.value = '';
+            return;
+        }
+        
+        // Process file normally
+        await this.processFile(file, type, event);
+    }
+    
+    // ASYNC: Process pending file operations after WASM loads
+    async processPendingFileOperations() {
+        if (this.pendingFileOperations.length === 0) return;
+        
+        console.log(`Processing ${this.pendingFileOperations.length} pending file operations...`);
+        
+        for (const operation of this.pendingFileOperations) {
+            await this.processFile(operation.file, operation.type, operation.event);
+        }
+        
+        this.pendingFileOperations = [];
+    }
+    
+    // ASYNC: Main file processing logic
+    async processFile(file, type, event) {
         const validation = this.core.validateFileType(file.name, type);
         if (!validation.valid) {
             this.ui.showOperationMessage(type, validation.message, 'error');
-            event.target.value = '';
+            if (event) event.target.value = '';
             return;
         }
 
@@ -160,6 +249,13 @@ class SemanticPCBCam {
             
             if (success) {
                 const count = operation.primitives.length;
+                
+                // ARC RECONSTRUCTION TODO: Store original geometric data for arc reconstruction
+                if (operation.parsed?.hasArcs) {
+                    operation.originalArcs = operation.parsed.arcs;
+                    console.log(`Preserved ${operation.originalArcs.length} arcs for potential reconstruction`);
+                }
+                
                 this.ui.showOperationMessage(type, `Successfully loaded ${count} primitives`, 'success');
                 this.ui.updateStatus(`Loaded ${operation.file.name}: ${count} primitives`, 'success');
             } else {
@@ -170,7 +266,8 @@ class SemanticPCBCam {
             this.ui.renderOperations(type);
             
             if (this.ui.renderer) {
-                this.ui.updateRenderer();
+                // ASYNC: Update renderer with async fusion
+                await this.ui.updateRendererAsync();
             }
         };
         
@@ -181,14 +278,17 @@ class SemanticPCBCam {
         };
         
         reader.readAsText(file);
-        event.target.value = '';
+        if (event) event.target.value = '';
     }
     
     async exportGcode() {
         this.ui.updateStatus('G-code generation in development...', 'info');
+        
+        // ARC RECONSTRUCTION TODO: When generating G-code, we could use the preserved
+        // arc data to generate G02/G03 arc commands instead of many G01 segments.
     }
     
-    // FIXED: Enhanced debug utilities with region processing validation
+    // Debug utilities
     enableDebugMode() {
         this.debugMode = true;
         if (this.core.geometryProcessor) {
@@ -205,21 +305,28 @@ class SemanticPCBCam {
         console.log('Debug mode disabled');
     }
     
-    // FIXED: Enhanced testing utilities
+    // ASYNC: Test functions - now async
     async testBasicFusion() {
         const allPrimitives = this.core.getAllPrimitives();
-        console.log(`Testing fusion with ${allPrimitives.length} primitives`);
+        console.log(`Testing Clipper2 fusion with ${allPrimitives.length} primitives`);
         
         if (allPrimitives.length === 0) {
             console.error('No primitives loaded');
             return null;
         }
         
+        if (!this.initializationState.wasmReady) {
+            console.error('Clipper2 WASM not initialized');
+            return null;
+        }
+        
         try {
-            const fused = this.core.fuseAllPrimitives();
-            console.log(`Result: ${fused.length} fused primitives`);
+            this.ui.showLoadingState('test-fusion', 'Testing Clipper2 fusion...');
+            // Call fusion method
+            const fused = await this.core.fuseAllPrimitives();
+            console.log(`Result: ${fused.length} fused primitives with automatic hole detection`);
             
-            // FIXED: Validate dimensional accuracy
+            // Validate dimensional accuracy if validator available
             if (typeof DimensionalValidator !== 'undefined') {
                 const validation = DimensionalValidator.validateFusionResult(allPrimitives, fused);
                 console.log('Dimensional validation:', validation);
@@ -237,11 +344,14 @@ class SemanticPCBCam {
         } catch (error) {
             console.error('Fusion test failed:', error);
             return null;
+        } finally {
+            this.ui.hideLoadingState();
         }
     }
     
-    visualTestFusion() {
-        const fused = this.core.fuseAllPrimitives();
+    async visualTestFusion() {
+        // Call fusion method
+        const fused = await this.core.fuseAllPrimitives();
         if (!fused || fused.length === 0) {
             console.error('No fused primitives to display');
             return;
@@ -257,52 +367,40 @@ class SemanticPCBCam {
             });
             
             this.ui.renderer.render();
-            console.log('Fused geometry displayed in green');
+            console.log('Fused geometry displayed in green (with holes via PolyTree)');
         }
     }
     
-    testHolePreservation() {
-        // This should work automatically with proper union
-        // The letter 'B' or 'a' should maintain its holes
-        this.visualTestFusion();
+    async testHolePreservation() {
+        // With Clipper2, holes are automatically detected via PolyTree
+        await this.visualTestFusion();
         
-        // Log if there are any paths with holes
-        const fused = this.core.fuseAllPrimitives();
+        // Count holes in fused result
+        const fused = await this.core.fuseAllPrimitives();
         let holesFound = 0;
         
         fused.forEach((primitive, index) => {
-            if (primitive.type === 'path' && primitive.closed) {
-                // Check if this path represents a hole by checking its area sign
-                const area = this.core.geometryProcessor.calculateSignedArea(primitive.points);
-                if (area < 0) {
-                    holesFound++;
-                    console.log(`Hole found in primitive ${index}`);
-                }
+            if (primitive.holes && primitive.holes.length > 0) {
+                holesFound += primitive.holes.length;
+                console.log(`Path ${index} has ${primitive.holes.length} holes (via PolyTree)`);
             }
         });
         
-        console.log(`Total holes preserved: ${holesFound}`);
+        console.log(`Total holes preserved by Clipper2: ${holesFound}`);
     }
     
-    // FIXED: Test region processing to ensure no duplicates
+    // Test region processing
     testRegionProcessing() {
-        console.log('🔍 Testing region processing for duplicates...');
+        console.log('🔍 Testing region processing...');
         
         let regionCount = 0;
         let drawCount = 0;
-        let duplicateRegionPerimeters = 0;
         
         this.core.operations.forEach(operation => {
             if (operation.primitives) {
                 operation.primitives.forEach(primitive => {
                     if (primitive.properties?.isRegion) {
                         regionCount++;
-                        
-                        // Check if region has stroke (indicates duplication issue)
-                        if (primitive.properties.stroke) {
-                            duplicateRegionPerimeters++;
-                            console.warn(`⚠️ Region with stroke detected - possible perimeter duplication`);
-                        }
                     } else if (primitive.properties?.isStroke) {
                         drawCount++;
                     }
@@ -313,22 +411,14 @@ class SemanticPCBCam {
         console.log(`📊 Region Analysis:`);
         console.log(`  Regions (filled): ${regionCount}`);
         console.log(`  Draws (stroked): ${drawCount}`);
-        console.log(`  Duplicate perimeters: ${duplicateRegionPerimeters}`);
-        
-        if (duplicateRegionPerimeters === 0) {
-            console.log('✅ No region perimeter duplication detected');
-        } else {
-            console.warn(`❌ ${duplicateRegionPerimeters} regions have duplicate perimeters`);
-        }
         
         return {
             regionCount,
-            drawCount,
-            duplicateRegionPerimeters
+            drawCount
         };
     }
     
-    // FIXED: New debug function to analyze parsing output
+    // Analyze parsing output
     analyzeParsingOutput() {
         console.log('🔍 Analyzing parsing output...');
         console.log('================================');
@@ -371,12 +461,17 @@ class SemanticPCBCam {
                 console.log('   Plotted primitives:', primitiveTypes);
                 console.log('   Primitive properties:', propertyTypes);
             }
+            
+            // Check for preserved arcs
+            if (operation.originalArcs) {
+                console.log(`   Original arcs preserved: ${operation.originalArcs.length}`);
+            }
         });
     }
     
-    // FIXED: New debug function to analyze primitive types and duplicates
+    // Analyze primitive types and duplicates
     analyzePrimitiveTypes() {
-        console.log('🔍 Analyzing primitive types and potential duplicates...');
+        console.log('🔍 Analyzing primitive types...');
         console.log('==================================================');
         
         this.core.operations.forEach((operation, opIndex) => {
@@ -398,104 +493,41 @@ class SemanticPCBCam {
                     if (primitive.properties.isRegion) propertyCount.regions = (propertyCount.regions || 0) + 1;
                     if (primitive.properties.isStroke) propertyCount.strokes = (propertyCount.strokes || 0) + 1;
                     if (primitive.properties.isFlash) propertyCount.flashes = (propertyCount.flashes || 0) + 1;
-                    if (primitive.properties.fill && !primitive.properties.stroke) {
-                        propertyCount.fillOnly = (propertyCount.fillOnly || 0) + 1;
-                    }
-                    if (!primitive.properties.fill && primitive.properties.stroke) {
-                        propertyCount.strokeOnly = (propertyCount.strokeOnly || 0) + 1;
-                    }
-                    if (primitive.properties.fill && primitive.properties.stroke) {
-                        propertyCount.fillAndStroke = (propertyCount.fillAndStroke || 0) + 1;
-                    }
+                    if (primitive.properties.hasArcs) propertyCount.hasArcs = (propertyCount.hasArcs || 0) + 1;
                 }
             });
             
             console.log('   By primitive type:', typeCount);
             console.log('   By properties:', propertyCount);
-            
-            // Look for suspicious patterns
-            if (propertyCount.regions && propertyCount.strokes) {
-                const ratio = propertyCount.strokes / propertyCount.regions;
-                if (ratio > 0.8) {
-                    console.warn(`   ⚠️ High stroke-to-region ratio (${ratio.toFixed(2)}) - possible duplication`);
-                }
-            }
         });
         
         // Global analysis
         const allPrimitives = this.core.getAllPrimitives();
-        console.log(`\n🌍 GLOBAL TOTALS: ${allPrimitives.length} primitives`);
-        
-        // Check for overlapping geometry
-        this.detectOverlappingGeometry();
+        console.log(`\n🌐 GLOBAL TOTALS: ${allPrimitives.length} primitives`);
     }
     
-    // FIXED: Detect overlapping geometry that might cause fusion issues
-    detectOverlappingGeometry() {
-        console.log('\n🔍 Detecting overlapping geometry...');
-        
-        const allPrimitives = this.core.getAllPrimitives();
-        const regions = allPrimitives.filter(p => p.properties?.isRegion);
-        const strokes = allPrimitives.filter(p => p.properties?.isStroke);
-        
-        console.log(`   Checking ${regions.length} regions against ${strokes.length} strokes`);
-        
-        let overlaps = 0;
-        const tolerance = 0.01; // 10 micron tolerance
-        
-        regions.forEach((region, rIndex) => {
-            const regionBounds = region.getBounds();
-            
-            strokes.forEach((stroke, sIndex) => {
-                const strokeBounds = stroke.getBounds();
-                
-                // Quick bounds check
-                if (this.boundsOverlap(regionBounds, strokeBounds, tolerance)) {
-                    // Check if stroke might be region perimeter
-                    if (stroke.type === 'path' && region.type === 'path') {
-                        const strokeLen = stroke.points ? stroke.points.length : 0;
-                        const regionLen = region.points ? region.points.length : 0;
-                        
-                        if (Math.abs(strokeLen - regionLen) < 5) {
-                            overlaps++;
-                            if (overlaps < 5) { // Only log first few
-                                console.warn(`   ⚠️ Stroke ${sIndex} might be perimeter of region ${rIndex}`);
-                            }
-                        }
-                    }
-                }
-            });
-        });
-        
-        if (overlaps > 0) {
-            console.warn(`   ❌ Found ${overlaps} potential region/stroke duplicates`);
-        } else {
-            console.log(`   ✅ No obvious region/stroke duplicates detected`);
-        }
-    }
-    
-    boundsOverlap(bounds1, bounds2, tolerance = 0) {
-        return !(bounds1.maxX + tolerance < bounds2.minX - tolerance ||
-                 bounds1.minX - tolerance > bounds2.maxX + tolerance ||
-                 bounds1.maxY + tolerance < bounds2.minY - tolerance ||
-                 bounds1.minY - tolerance > bounds2.maxY + tolerance);
-    }
-    
-    // FIXED: Test offset generation pipeline
+    // ASYNC: Test offset generation
     async testOffsetGeneration(offsetDistance = -0.1) {
         console.log(`🧪 Testing offset generation: ${offsetDistance}mm`);
         
+        if (!this.initializationState.wasmReady) {
+            console.error('Clipper2 WASM not initialized');
+            return null;
+        }
+        
         try {
+            this.ui.showLoadingState('test-offset', 'Testing offset generation...');
+            
             // Test fusion first
-            const fusedPrimitives = this.core.fuseAllPrimitives();
+            const fusedPrimitives = await this.core.fuseAllPrimitives();
             console.log(`✅ Fusion complete: ${fusedPrimitives.length} primitives`);
             
             // Test offset preparation
-            const preparedGeometry = this.core.prepareForOffsetGeneration();
+            const preparedGeometry = await this.core.prepareForOffsetGeneration();
             console.log(`✅ Geometry prepared: ${preparedGeometry.length} primitives`);
             
             // Test offset generation
-            const offsetGeometry = this.core.generateOffsetGeometry(offsetDistance);
+            const offsetGeometry = await this.core.generateOffsetGeometry(offsetDistance);
             console.log(`✅ Offset generated: ${offsetGeometry.length} toolpaths`);
             
             // Visualize offset if renderer available
@@ -530,6 +562,8 @@ class SemanticPCBCam {
         } catch (error) {
             console.error('❌ Offset generation test failed:', error);
             return null;
+        } finally {
+            this.ui.hideLoadingState();
         }
     }
     
@@ -542,7 +576,8 @@ class SemanticPCBCam {
                 hasRenderer: !!this.ui.renderer
             },
             operations: this.core.operations.length,
-            debugMode: this.debugMode
+            debugMode: this.debugMode,
+            initialization: this.initializationState
         };
         
         // Add region processing stats if available
@@ -551,11 +586,17 @@ class SemanticPCBCam {
         
         return baseStats;
     }
+    
+    // ARC RECONSTRUCTION TODO: Future method for arc reconstruction
+    async reconstructArcsFromFusion(fusedPrimitives, originalOperations) {
+        console.log('Arc reconstruction not yet implemented');
+        return null;
+    }
 }
 
-// FIXED: Enhanced initialization with comprehensive validation
-function initializePCBCAM() {
-    console.log('🎯 Starting PCB CAM initialization...');
+// Enhanced initialization with async support
+async function initializePCBCAM() {
+    console.log('🎯 Starting PCB CAM initialization with Clipper2 WASM...');
     console.log('📊 Document state:', document.readyState);
     
     const requiredClasses = [
@@ -587,9 +628,9 @@ function initializePCBCAM() {
     }
     
     try {
-        console.log('🚀 Creating PCB CAM application...');
+        console.log('🚀 Creating PCB CAM application with Clipper2...');
         window.cam = new SemanticPCBCam();
-        console.log('✅ PCB CAM initialized successfully');
+        console.log('✅ PCB CAM controller created');
         
         // Test if cam object has triggerFileInput method
         if (window.cam && typeof window.cam.triggerFileInput === 'function') {
@@ -597,6 +638,9 @@ function initializePCBCAM() {
         } else {
             console.error('❌ cam.triggerFileInput method missing');
         }
+        
+        // Note: The actual WASM initialization happens asynchronously
+        // in the constructor, so the app might not be fully ready yet
         
         return true;
         
@@ -613,27 +657,27 @@ function initializePCBCAM() {
 
 // Try multiple initialization strategies
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('📍 DOMContentLoaded event fired');
+    console.log('🔍 DOMContentLoaded event fired');
     initializePCBCAM();
 });
 
 // Fallback: If document is already loaded
 if (document.readyState === 'loading') {
-    console.log('📍 Document still loading, waiting for DOMContentLoaded...');
+    console.log('🔍 Document still loading, waiting for DOMContentLoaded...');
 } else {
-    console.log('📍 Document already loaded, initializing immediately...');
+    console.log('🔍 Document already loaded, initializing immediately...');
     initializePCBCAM();
 }
 
 // Fallback: Initialize after a delay
 setTimeout(() => {
     if (!window.cam) {
-        console.log('📍 Delayed initialization attempt...');
+        console.log('🔍 Delayed initialization attempt...');
         initializePCBCAM();
     }
 }, 1000);
 
-// FIXED: Enhanced global function exposure for HTML compatibility
+// Global function exposure for HTML compatibility
 window.addFile = function(type) {
     console.log(`🎯 addFile('${type}') called`);
     
@@ -658,29 +702,29 @@ window.addFile = function(type) {
     }
 };
 
-// FIXED: Enhanced console test functions
-window.testBasicFusion = function() {
+// ASYNC: Updated console test functions to be async
+window.testBasicFusion = async function() {
     if (!window.cam) {
         console.error('CAM not initialized');
         return;
     }
-    return window.cam.testBasicFusion();
+    return await window.cam.testBasicFusion();
 };
 
-window.visualTestFusion = function() {
+window.visualTestFusion = async function() {
     if (!window.cam) {
         console.error('CAM not initialized');
         return;
     }
-    window.cam.visualTestFusion();
+    await window.cam.visualTestFusion();
 };
 
-window.testHolePreservation = function() {
+window.testHolePreservation = async function() {
     if (!window.cam) {
         console.error('CAM not initialized');
         return;
     }
-    window.cam.testHolePreservation();
+    await window.cam.testHolePreservation();
 };
 
 window.testRegionProcessing = function() {
@@ -707,12 +751,12 @@ window.analyzeParsingOutput = function() {
     return window.cam.analyzeParsingOutput();
 };
 
-window.testOffsetGeneration = function(offsetDistance = -0.1) {
+window.testOffsetGeneration = async function(offsetDistance = -0.1) {
     if (!window.cam) {
         console.error('CAM not initialized');
         return;
     }
-    return window.cam.testOffsetGeneration(offsetDistance);
+    return await window.cam.testOffsetGeneration(offsetDistance);
 };
 
 window.showCamStats = function() {
@@ -723,7 +767,7 @@ window.showCamStats = function() {
     console.log('PCB CAM Statistics:', window.cam.getStats());
 };
 
-// FIXED: New debug function to check layer contamination
+// Debug function to check layer contamination
 window.checkLayerContamination = function() {
     if (!window.cam || !window.cam.core) {
         console.error('CAM not initialized');
@@ -732,7 +776,7 @@ window.checkLayerContamination = function() {
     return window.cam.core.checkLayerContamination();
 };
 
-// FIXED: New debug function to inspect specific layer
+// Debug function to inspect specific layer
 window.inspectLayer = function(operationType) {
     if (!window.cam || !window.cam.core) {
         console.error('CAM not initialized');
@@ -793,18 +837,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
     
-    // Initialize the application
+    // Initialize the application (async initialization happens in constructor)
     window.cam = new SemanticPCBCam();
     
-    console.log('🎉 PCB CAM Ready!');
-    console.log('📋 Available commands:');
-    console.log('  testBasicFusion() - Test fusion with loaded primitives');
-    console.log('  visualTestFusion() - Display fused geometry in green');
-    console.log('  testHolePreservation() - Check if holes are preserved');
-    console.log('  testRegionProcessing() - Validate no region duplication');
-    console.log('  analyzePrimitiveTypes() - Analyze primitive types and duplicates');
-    console.log('  analyzeParsingOutput() - NEW: Debug parser output vs plotter output');
-    console.log('  testOffsetGeneration(distance) - Test offset toolpath generation');
+    console.log('🎉 PCB CAM Ready (Clipper2 WASM loading...)');
+    console.log('📋 Available commands (async functions marked with *)');
+    console.log('  testBasicFusion()* - Test Clipper2 fusion with loaded primitives');
+    console.log('  visualTestFusion()* - Display fused geometry with holes');
+    console.log('  testHolePreservation()* - Check automatic hole detection via PolyTree');
+    console.log('  testRegionProcessing() - Validate region processing');
+    console.log('  analyzePrimitiveTypes() - Analyze primitive types');
+    console.log('  analyzeParsingOutput() - Debug parser output');
+    console.log('  testOffsetGeneration(distance)* - Test offset toolpath generation');
     console.log('  showCamStats() - Display application statistics');
     console.log('  cam.enableDebugMode() - Enable debug logging');
     console.log('  cam.disableDebugMode() - Disable debug logging');

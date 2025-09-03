@@ -210,7 +210,7 @@ class ExcellonSemanticParser {
             number: toolNumber,
             diameter: diameter,
             originalUnits: this.options.units,
-            displayDiameter: diameter // Will be converted if needed
+            displayDiameter: diameter // Will be converted to mm if needed
         };
         
         // Convert to mm for internal storage with validation
@@ -297,7 +297,7 @@ class ExcellonSemanticParser {
             type: 'hole',
             position: coordinates,
             tool: this.currentTool,
-            diameter: tool.displayDiameter,
+            diameter: tool.displayDiameter, // This is always in mm
             plated: true // Assume plated unless specified otherwise
         };
         
@@ -463,6 +463,11 @@ class ExcellonSemanticParser {
         
         // Generate statistics
         this.generateStats();
+
+        // CHANGED: Enforce 'mm' units for output consistency, as all internal
+        // values (coordinates and diameters) have been normalized to millimeters.
+        this.drillData.units = 'mm';
+        this.debug(`Final output units normalized to: ${this.drillData.units}`);
     }
     
     /**
@@ -481,7 +486,7 @@ class ExcellonSemanticParser {
             this.warnings.push(`Board dimensions are unusually large: ${width.toFixed(1)} × ${height.toFixed(1)} mm`);
         }
         
-        if (width < 1 || height < 1) { // 1mm is very small
+        if (width < 1 && height < 1) { // 1mm is very small
             this.warnings.push(`Board dimensions are unusually small: ${width.toFixed(3)} × ${height.toFixed(3)} mm`);
         }
         
@@ -549,21 +554,22 @@ class ExcellonSemanticParser {
             toolUsage: Object.fromEntries(toolUsage)
         };
         
+        // CHANGED: Use the this.debug() helper for all logging to ensure consistency.
         if (this.options.debug) {
-            console.log('[ExcellonSemantic] Tool usage:');
+            this.debug('Tool usage:');
             toolUsage.forEach((count, tool) => {
                 const toolInfo = this.tools.get(tool);
-                console.log(`  ${tool}: ${count} holes, ⌀${toolInfo.displayDiameter.toFixed(3)}mm`);
+                this.debug(`  ${tool}: ${count} holes, ⌀${toolInfo.displayDiameter.toFixed(3)}mm`);
             });
             
-            console.log('[ExcellonSemantic] Coordinate validation summary:');
-            console.log(`  Valid coordinates: ${this.coordinateValidation.validCoordinates}`);
-            console.log(`  Invalid coordinates: ${this.coordinateValidation.invalidCoordinates}`);
-            console.log(`  Suspicious coordinates: ${this.coordinateValidation.suspiciousCoordinates.length}`);
+            this.debug('Coordinate validation summary:');
+            this.debug(`  Valid coordinates: ${this.coordinateValidation.validCoordinates}`);
+            this.debug(`  Invalid coordinates: ${this.coordinateValidation.invalidCoordinates}`);
+            this.debug(`  Suspicious coordinates: ${this.coordinateValidation.suspiciousCoordinates.length}`);
             
             const range = this.coordinateValidation.coordinateRange;
             if (isFinite(range.minX)) {
-                console.log(`  Coordinate range: (${range.minX.toFixed(3)}, ${range.minY.toFixed(3)}) to (${range.maxX.toFixed(3)}, ${range.maxY.toFixed(3)})`);
+                this.debug(`  Coordinate range: (${range.minX.toFixed(3)}, ${range.minY.toFixed(3)}) to (${range.maxX.toFixed(3)}, ${range.maxY.toFixed(3)})`);
             }
         }
     }

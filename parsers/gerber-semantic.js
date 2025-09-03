@@ -1,5 +1,6 @@
-// Semantic Gerber Parser - FIXED: Proper region handling, no duplicate perimeters
 // parsers/gerber-semantic.js
+// Simplified Gerber parser for Clipper2 pipeline
+// Fixed: No duplicate trace creation during region mode
 
 class GerberSemanticParser {
     constructor(options = {}) {
@@ -7,56 +8,19 @@ class GerberSemanticParser {
             units: 'mm',
             format: { integer: 3, decimal: 3 },
             debug: options.debug || false,
-            joinPaths: true,
-            joinTolerance: 0.001,
-            detectBranching: true,
-            autoFixDuplicates: true,
             ...options
         };
         
         // Parser state
-        this.commands = [];
         this.apertures = new Map();
         this.currentAperture = null;
         this.currentPoint = { x: 0, y: 0 };
         this.interpolationMode = 'G01';
         this.regionMode = false;
         this.polarity = 'dark';
-        this.apertureFunction = null;
         
-        // Region tracking
+        // Current region being built
         this.currentRegion = null;
-        this.regionsProcessed = 0;
-        this.inRegionBlock = false;
-        
-        // FIXED: Track region state more explicitly
-        this.regionState = {
-            active: false,
-            collectingPoints: false,
-            lastMove: null,
-            startedAt: null // Track where region started for debugging
-        };
-        
-        // Enhanced path tracking for branching detection
-        this.traceNetwork = new Map();
-        this.pathJoinStats = {
-            totalDraws: 0,
-            joinedIntoPath: 0,
-            standaloneDraws: 0,
-            pathsCreated: 0,
-            branchesDetected: 0,
-            complexPathsCreated: 0,
-            branchingNetworksCreated: 0
-        };
-        
-        // Coordinate validation tracking
-        this.coordinateValidation = {
-            validCoordinates: 0,
-            invalidCoordinates: 0,
-            coordinateRange: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-            suspiciousCoordinates: [],
-            objectCoordinates: []
-        };
         
         // Results
         this.layers = {
@@ -71,55 +35,44 @@ class GerberSemanticParser {
         this.warnings = [];
         
         this.debugStats = {
-            coordinatesInRegions: 0,
-            coordinatesAsDraws: 0,
             regionsCreated: 0,
             drawsCreated: 0,
             flashesCreated: 0,
-            pathsJoined: 0,
-            branchingPathsCreated: 0,
-            duplicatePerimetersAvoided: 0,
-            duplicatePerimetersRemoved: 0
+            tracesCreated: 0,
+            totalObjects: 0,
+            regionModeChanges: 0,
+            coordinatesInRegion: 0
         };
     }
     
     parse(content) {
         try {
-            this.debug('FIXED: Starting Gerber parse with improved command processing...');
+            this.debug('Starting simplified Gerber parse for Clipper2...');
             
-            // Split into commands
             const blocks = this.splitIntoBlocks(content);
             this.debug(`Processing ${blocks.length} command blocks`);
             
-            // Process each block
-            blocks.forEach((block, index) => {
-                this.processBlock(block, index);
+            blocks.forEach((block) => {
+                this.processBlock(block);
             });
             
-            // Validate region integrity before processing traces
-            if (this.options.autoFixDuplicates) {
-                this.validateRegionIntegrity();
+            // Finalize any open region
+            if (this.regionMode && this.currentRegion) {
+                this.debug('WARNING: File ended with open region, closing it');
+                this.endRegion();
             }
             
-            // Process trace network after all draws are collected
-            this.processTraceNetwork();
-            
-            // Finalize
             this.finalizeParse();
             
-            this.debug(`FIXED: Parse complete: ${this.layers.objects.length} objects`);
-            this.debug(`Region perimeter duplicates avoided: ${this.debugStats.duplicatePerimetersAvoided}`);
-            this.debug(`Region perimeter duplicates removed: ${this.debugStats.duplicatePerimetersRemoved}`);
-            this.debug(`Debug stats:`, this.debugStats);
+            this.debug(`Parse complete: ${this.layers.objects.length} objects created`);
+            this.debug(`Stats: ${JSON.stringify(this.debugStats)}`);
             
             return {
                 success: true,
                 layers: this.layers,
                 errors: this.errors,
                 warnings: this.warnings,
-                coordinateValidation: this.coordinateValidation,
-                debugStats: this.debugStats,
-                pathJoinStats: this.pathJoinStats
+                debugStats: this.debugStats
             };
             
         } catch (error) {
@@ -129,7 +82,7 @@ class GerberSemanticParser {
                 layers: this.layers,
                 errors: this.errors,
                 warnings: this.warnings,
-                coordinateValidation: this.coordinateValidation
+                debugStats: this.debugStats
             };
         }
     }
@@ -161,7 +114,7 @@ class GerberSemanticParser {
         return blocks;
     }
     
-    processBlock(block, index) {
+    processBlock(block) {
         if (block.type === 'extended') {
             this.processExtendedCommand(block.content);
         } else {
@@ -170,1078 +123,479 @@ class GerberSemanticParser {
     }
     
     processExtendedCommand(command) {
-        // Format specification
-        if (command.startsWith('FSLAX') || command.startsWith('FSLAY')) {
+        if (command.startsWith('FS')) {
             this.parseFormatSpec(command);
-        }
-        // Mode commands
-        else if (command === 'MOMM') {
-            this.options.units = 'mm';
-            this.layers.units = 'mm';
-            this.debug('Units set to metric');
-        }
-        else if (command === 'MOIN') {
-            this.options.units = 'inch';
-            this.layers.units = 'inch';
-            this.debug('Units set to imperial');
-        }
-        // Aperture definition
-        else if (command.startsWith('AD')) {
+        } else if (command.startsWith('MO')) {
+            this.options.units = command.includes('MM') ? 'mm' : 'inch';
+            this.layers.units = this.options.units;
+            this.debug(`Units: ${this.options.units}`);
+        } else if (command.startsWith('AD')) {
             this.parseApertureDefinition(command);
-        }
-        // Aperture macro
-        else if (command.startsWith('AM')) {
-            this.parseApertureMacro(command);
-        }
-        // Layer polarity
-        else if (command === 'LPD') {
-            this.polarity = 'dark';
-        }
-        else if (command === 'LPC') {
-            this.polarity = 'clear';
-        }
-        // Aperture attributes
-        else if (command.startsWith('TA.AperFunction')) {
-            this.apertureFunction = command.substring(16);
-        }
-        else if (command.startsWith('TD')) {
-            this.apertureFunction = null;
+        } else if (command.startsWith('LP')) {
+            this.polarity = command.includes('D') ? 'dark' : 'clear';
+            this.debug(`Polarity: ${this.polarity}`);
+        } else if (command.startsWith('AM')) {
+            // Aperture macros - simplified handling
+            this.debug('Aperture macro detected (simplified handling)');
         }
     }
-    
-    // FIXED: New helper methods for proper command parsing
-    extractCommandCodes(command) {
-        const codes = [];
-        
-        // Extract G codes
-        const gMatch = command.match(/G(\d+)/);
-        if (gMatch) codes.push(`G${gMatch[1]}`);
-        
-        // Extract D codes (aperture selection or operation)
-        const dMatch = command.match(/D(\d{2,})/);
-        if (dMatch && parseInt(dMatch[1]) >= 10) {
-            codes.push(`D${dMatch[1]}`);
-        }
-        
-        // Extract M codes
-        const mMatch = command.match(/M(\d+)/);
-        if (mMatch) codes.push(`M${mMatch[1]}`);
-        
-        return codes;
-    }
-    
-    hasCoordinates(command) {
-        return /[XYIJ][+-]?\d+/.test(command);
-    }
-    
-    processModalCommand(code) {
-        if (code.startsWith('G')) {
-            const value = parseInt(code.substring(1));
-            switch (value) {
-                case 1: 
-                    this.interpolationMode = 'G01'; 
-                    break;
-                case 2: 
-                    this.interpolationMode = 'G02'; 
-                    break;
-                case 3: 
-                    this.interpolationMode = 'G03'; 
-                    break;
-                case 36:
-                    this.regionMode = true;
-                    this.regionState.active = true;
-                    this.regionState.collectingPoints = true;
-                    this.regionState.lastMove = null;
-                    this.regionState.startedAt = Date.now();
-                    this.startRegion();
-                    this.debug('FIXED: Region mode started (G36) - will NOT create duplicate perimeter draws');
-                    break;
-                case 37:
-                    this.endRegion();
-                    this.regionMode = false;
-                    this.regionState.active = false;
-                    this.regionState.collectingPoints = false;
-                    this.regionState.lastMove = null;
-                    this.regionState.startedAt = null;
-                    this.debug('FIXED: Region mode ended (G37)');
-                    break;
-            }
-        } else if (code.startsWith('D')) {
-            const aperNum = parseInt(code.substring(1));
-            if (aperNum >= 10) {
-                this.currentAperture = code;
-            }
-        } else if (code === 'M02') {
-            if (this.regionState.active && this.currentRegion) {
-                this.debug('Force closing region at end of file');
-                this.endRegion();
-                this.regionMode = false;
-                this.regionState.active = false;
-                this.regionState.collectingPoints = false;
-            }
-        }
-    }
-    
-    // FIXED: Improved command processing that handles compound commands
+
     processStandardCommand(command) {
-        // Parse all command codes in the block FIRST
-        const commandCodes = this.extractCommandCodes(command);
+        // FIXED: Check for region mode first with proper parsing
+        if (command.includes('G36')) {
+            if (!this.regionMode) {
+                this.debugStats.regionModeChanges++;
+                this.regionMode = true;
+                this.startRegion();
+                this.debug(`G36: Entering region mode (change #${this.debugStats.regionModeChanges})`);
+            }
+            // Remove G36 from command for further processing
+            command = command.replace('G36', '').trim();
+            if (!command) return;
+        }
         
-        // Process modal commands before coordinates
-        commandCodes.forEach(code => {
-            this.processModalCommand(code);
-        });
+        if (command.includes('G37')) {
+            if (this.regionMode) {
+                this.debugStats.regionModeChanges++;
+                this.regionMode = false;
+                this.endRegion();
+                this.debug(`G37: Exiting region mode (change #${this.debugStats.regionModeChanges})`);
+            }
+            // Remove G37 from command for further processing
+            command = command.replace('G37', '').trim();
+            if (!command) return;
+        }
+
+        // Handle other G-codes
+        if (command.includes('G01')) {
+            this.interpolationMode = 'G01'; // Linear
+        } else if (command.includes('G02')) {
+            this.interpolationMode = 'G02'; // Clockwise arc
+        } else if (command.includes('G03')) {
+            this.interpolationMode = 'G03'; // Counter-clockwise arc
+        } else if (command.includes('G74')) {
+            this.quadrantMode = 'single';
+        } else if (command.includes('G75')) {
+            this.quadrantMode = 'multi';
+        }
+
+        // D-code for aperture selection
+        const dMatch = command.match(/D(\d{2,})/);
+        if (dMatch) {
+            const dCode = parseInt(dMatch[1]);
+            if (dCode >= 10) {
+                this.currentAperture = `D${dMatch[1]}`;
+                this.debug(`Selected aperture: ${this.currentAperture}`);
+            }
+        }
         
-        // Handle standalone D-codes for aperture selection
-        if (command.match(/^D\d+$/) && !commandCodes.length) {
-            const code = parseInt(command.substring(1));
-            if (code >= 10) {
-                this.currentAperture = command;
+        // M-code for end of file
+        if (command.startsWith('M02') || command.startsWith('M00')) {
+            if (this.regionMode) {
+                this.debug('WARNING: File ended in region mode, closing region');
+                this.endRegion();
             }
             return;
         }
-        
-        // Handle standalone G-codes
-        if (command.match(/^G\d+$/) && !commandCodes.length) {
-            this.processModalCommand(command);
-            return;
-        }
-        
-        // Handle M02 end of file
-        if (command === 'M02') {
-            this.processModalCommand('M02');
-            this.debug('End of file');
-            return;
-        }
-        
-        // Only process coordinates if present and after modal commands are set
-        if (this.hasCoordinates(command)) {
+
+        // Process coordinates if they exist
+        if (/[XY]/.test(command)) {
             this.processCoordinate(command);
         }
     }
-    
-    parseFormatSpec(command) {
-        const match = command.match(/FS([LT])([AI])X(\d)(\d)Y(\d)(\d)/);
-        if (match) {
-            this.options.format = {
-                integer: parseInt(match[3]),
-                decimal: parseInt(match[4])
-            };
-            this.debug(`Format: ${match[3]}.${match[4]}`);
-        }
-    }
-    
-    parseApertureDefinition(command) {
-        const match = command.match(/ADD(\d+)([CROP]),(.+)/);
-        if (!match) {
-            this.errors.push(`Invalid aperture definition: ${command}`);
-            return;
-        }
-        
-        const code = `D${match[1]}`;
-        const type = match[2];
-        const paramString = match[3];
-        
-        const params = paramString.split('X').map(p => {
-            const value = parseFloat(p);
-            if (!isFinite(value) || value <= 0) {
-                this.warnings.push(`Invalid aperture parameter: ${p} in ${command}`);
-                return 0.1;
-            }
-            return value;
-        });
-        
-        const aperture = {
-            code: code,
-            type: this.getApertureTypeName(type),
-            parameters: params,
-            function: this.apertureFunction
-        };
-        
-        const primarySize = params[0] || 0;
-        if (primarySize > 25.4) {
-            this.warnings.push(`Unusually large aperture ${code}: ${primarySize}mm`);
-        }
-        if (primarySize < 0.01) {
-            this.warnings.push(`Unusually small aperture ${code}: ${primarySize}mm`);
-        }
-        
-        this.apertures.set(code, aperture);
-        this.layers.apertures.push(aperture);
-        
-        this.debug(`Aperture ${code}: ${aperture.type} [${params.join(', ')}]`);
-    }
-    
-    parseApertureMacro(command) {
-        const name = command.substring(2, command.indexOf('*'));
-        this.debug(`Aperture macro: ${name} (stored for future use)`);
-    }
-    
-    getApertureTypeName(code) {
-        switch (code) {
-            case 'C': return 'circle';
-            case 'R': return 'rectangle';
-            case 'O': return 'obround';
-            case 'P': return 'polygon';
-            default: return 'unknown';
-        }
-    }
-    
+
     startRegion() {
         this.currentRegion = {
             type: 'region',
             polarity: this.polarity,
             points: [],
-            function: this.apertureFunction
+            interpolations: [] // Track interpolation mode for each segment
         };
         
-        this.debug('FIXED: Started region collection (points will be added from coordinates)');
+        // Add current point as start of region
+        if (this.currentPoint) {
+            this.currentRegion.points.push({ ...this.currentPoint });
+            this.debugStats.coordinatesInRegion++;
+        }
+        
+        this.debug(`Region started (G36) at (${this.currentPoint.x.toFixed(3)}, ${this.currentPoint.y.toFixed(3)})`);
     }
-    
+
     endRegion() {
         if (this.currentRegion && this.currentRegion.points.length >= 3) {
-            const validPoints = this.currentRegion.points.filter(point => 
-                isFinite(point.x) && isFinite(point.y)
-            );
-            
-            if (validPoints.length < 3) {
-                this.errors.push(`Region has insufficient valid points: ${validPoints.length}`);
-                this.currentRegion = null;
-                return;
-            }
-            
-            this.currentRegion.points = validPoints;
-            
-            // Ensure closed
+            // Ensure region is closed
             const first = this.currentRegion.points[0];
             const last = this.currentRegion.points[this.currentRegion.points.length - 1];
+            const tolerance = 0.001;
             
-            if (Math.abs(first.x - last.x) > 0.001 || Math.abs(first.y - last.y) > 0.001) {
+            if (Math.abs(first.x - last.x) > tolerance || Math.abs(first.y - last.y) > tolerance) {
                 this.currentRegion.points.push({ ...first });
+                this.debug('Region auto-closed by adding first point');
             }
             
-            this.coordinateValidation.objectCoordinates.push({
-                type: 'region',
-                pointCount: this.currentRegion.points.length,
-                bounds: this.calculatePointsBounds(this.currentRegion.points)
-            });
-            
+            // Add completed region to objects
             this.layers.objects.push(this.currentRegion);
-            this.regionsProcessed++;
             this.debugStats.regionsCreated++;
+            this.debugStats.totalObjects++;
             
-            this.debug(`FIXED: Completed region with ${this.currentRegion.points.length} points (no perimeter draws created)`);
+            this.debug(`Region completed with ${this.currentRegion.points.length} points, polarity: ${this.currentRegion.polarity}`);
+        } else if (this.currentRegion) {
+            this.warnings.push(`Region discarded with only ${this.currentRegion?.points?.length || 0} points`);
         }
         
         this.currentRegion = null;
+        this.debug('Region ended (G37)');
     }
-    
-    calculatePointsBounds(points) {
-        if (points.length === 0) return null;
-        
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        
-        points.forEach(point => {
-            minX = Math.min(minX, point.x);
-            minY = Math.min(minY, point.y);
-            maxX = Math.max(maxX, point.x);
-            maxY = Math.max(maxY, point.y);
-        });
-        
-        return { minX, minY, maxX, maxY };
-    }
-    
-    /**
-     * FIXED: Process coordinates with strict region isolation and validation
-     */
+
     processCoordinate(command) {
         const newPoint = this.parseCoordinates(command);
-        const operation = this.parseOperation(command);
-        
-        if (!newPoint) {
-            this.debug(`Failed to parse coordinates from: ${command}`);
-            return;
-        }
-        
-        // FIXED: Enhanced validation - triple-check region state
-        if (this.regionMode || this.regionState.active || this.currentRegion) {
-            // ANY of these conditions means we're in a region
-            if (!this.regionState.active) {
-                console.warn('Region mode inconsistency detected, forcing active state');
-                this.regionState.active = true;
-            }
-            
-            if (operation === 'D02') {
-                // Move operation in region - just update position
-                this.regionState.lastMove = newPoint;
-                this.currentPoint = newPoint;
-                this.debug('FIXED: D02 move in region - position updated, no draw');
-            } else {
-                // Any other operation in region - add point to region
-                if (this.currentRegion) {
-                    // If we had a D02 move and this is the first point, add the move point first
-                    if (this.regionState.lastMove && this.currentRegion.points.length === 0) {
-                        this.currentRegion.points.push(this.regionState.lastMove);
-                        this.regionState.lastMove = null;
-                    }
-                    
-                    this.currentRegion.points.push(newPoint);
-                    this.debugStats.coordinatesInRegions++;
-                    this.debugStats.duplicatePerimetersAvoided++;
-                    this.debug('FIXED: Added point to region (no duplicate draw created)');
+        if (!newPoint) return;
+
+        // Check for D codes (D01=draw, D02=move, D03=flash)
+        let operation = null;
+        if (command.includes('D01')) operation = 'D01';
+        else if (command.includes('D02')) operation = 'D02';
+        else if (command.includes('D03')) operation = 'D03';
+
+        // Store last command for arc data extraction
+        this.lastCommand = command;
+
+        // FIXED: Properly handle region mode
+        if (this.regionMode) {
+            if (this.currentRegion) {
+                // In region mode, D02 is move without adding to boundary
+                // D01 or no D-code adds to boundary
+                if (operation === 'D02') {
+                    // Just move, don't add point
+                    this.debug(`Region mode: Move to (${newPoint.x.toFixed(3)}, ${newPoint.y.toFixed(3)})`);
                 } else {
-                    this.debug('FIXED: Warning - coordinate in region mode but no active region object');
+                    // Add point to region boundary
+                    this.debugStats.coordinatesInRegion++;
+                    
+                    // Handle arcs in region mode
+                    if (this.interpolationMode === 'G02' || this.interpolationMode === 'G03') {
+                        const arcData = this.parseArcData(command);
+                        if (arcData) {
+                            const arcPoints = this.interpolateArc(
+                                this.currentPoint,
+                                newPoint,
+                                arcData,
+                                this.interpolationMode === 'G02'
+                            );
+                            // Add interpolated arc points (skip first as it's the current point)
+                            arcPoints.slice(1).forEach(pt => {
+                                this.currentRegion.points.push(pt);
+                                this.debugStats.coordinatesInRegion++;
+                            });
+                            this.debug(`Region mode: Added ${arcPoints.length - 1} arc points`);
+                        } else {
+                            // Fallback to line if arc data is invalid
+                            this.currentRegion.points.push(newPoint);
+                            this.debug(`Region mode: Added point (${newPoint.x.toFixed(3)}, ${newPoint.y.toFixed(3)})`);
+                        }
+                    } else {
+                        // Linear interpolation
+                        this.currentRegion.points.push(newPoint);
+                        this.debug(`Region mode: Added point (${newPoint.x.toFixed(3)}, ${newPoint.y.toFixed(3)})`);
+                    }
                 }
-                this.currentPoint = newPoint;
             }
-            
-            // CRITICAL: Always return early when in region mode
+            // Update position and return - NO trace creation in region mode
+            this.currentPoint = newPoint;
             return;
         }
         
-        // NOT in region mode - process normally as draw/flash
-        this.debugStats.coordinatesAsDraws++;
-        
-        switch (operation) {
-            case 'D01': // Draw
-                this.addToTraceNetwork(this.currentPoint, newPoint);
-                break;
-            case 'D02': // Move
-                // Move operation - no drawing
-                break;
-            case 'D03': // Flash
-                this.createFlash(newPoint);
-                break;
+        // Normal mode (not in region) - create traces/flashes
+        if (operation === 'D01') {
+            // Draw operation - create a trace
+            this.createTrace(this.currentPoint, newPoint);
+        } else if (operation === 'D03') {
+            // Flash operation - create a pad
+            this.createFlash(newPoint);
         }
+        // D02 is just a move, no geometry created
         
+        // Update current position
         this.currentPoint = newPoint;
     }
-    
-    /**
-     * FIXED: Validate region integrity and remove duplicate perimeters
-     */
-    validateRegionIntegrity() {
-        const regions = this.layers.objects.filter(obj => obj.type === 'region');
-        const draws = this.layers.objects.filter(obj => obj.type === 'draw');
-        
-        if (regions.length === 0 || draws.length === 0) {
-            return; // Nothing to validate
+
+    createTrace(start, end) {
+        if (!this.currentAperture) {
+            this.warnings.push('Draw operation without aperture selection');
+            return;
         }
-        
-        const tolerance = 0.01; // 10 micron tolerance
-        const removedDraws = [];
-        
-        regions.forEach((region, idx) => {
-            if (!region.points || region.points.length < 3) return;
-            
-            // Check if any draws match this region's perimeter
-            const suspiciousDraws = draws.filter(draw => {
-                if (removedDraws.includes(draw)) return false;
-                if (!draw.start || !draw.end) return false;
-                
-                // Check if draw endpoints are on region boundary
-                for (let i = 0; i < region.points.length - 1; i++) {
-                    const p1 = region.points[i];
-                    const p2 = region.points[i + 1];
-                    
-                    // Check if draw matches this segment
-                    if ((Math.abs(draw.start.x - p1.x) < tolerance && 
-                         Math.abs(draw.start.y - p1.y) < tolerance &&
-                         Math.abs(draw.end.x - p2.x) < tolerance && 
-                         Math.abs(draw.end.y - p2.y) < tolerance) ||
-                        (Math.abs(draw.start.x - p2.x) < tolerance && 
-                         Math.abs(draw.start.y - p2.y) < tolerance &&
-                         Math.abs(draw.end.x - p1.x) < tolerance && 
-                         Math.abs(draw.end.y - p1.y) < tolerance)) {
-                        return true;
-                    }
-                }
-                return false;
-            });
-            
-            if (suspiciousDraws.length > 0) {
-                this.debug(`VALIDATION: Region ${idx} has ${suspiciousDraws.length} duplicate perimeter draws - removing`);
-                
-                // Remove the duplicate draws
-                suspiciousDraws.forEach(draw => {
-                    const index = this.layers.objects.indexOf(draw);
-                    if (index > -1) {
-                        this.layers.objects.splice(index, 1);
-                        removedDraws.push(draw);
-                        this.debugStats.duplicatePerimetersRemoved++;
-                    }
-                });
-            }
-        });
-        
-        if (this.debugStats.duplicatePerimetersRemoved > 0) {
-            this.debug(`Removed ${this.debugStats.duplicatePerimetersRemoved} duplicate perimeter draws`);
-        }
-    }
-    
-    /**
-     * Add draw to trace network for branching analysis
-     */
-    addToTraceNetwork(start, end) {
-        if (!this.currentAperture) return;
-        
-        this.pathJoinStats.totalDraws++;
         
         const aperture = this.apertures.get(this.currentAperture);
-        if (!aperture) return;
-        
-        // Initialize aperture trace network if needed
-        if (!this.traceNetwork.has(this.currentAperture)) {
-            this.traceNetwork.set(this.currentAperture, {
-                draws: [],
-                aperture: aperture,
-                processed: false
-            });
+        if (!aperture) {
+            this.warnings.push(`Aperture ${this.currentAperture} not defined`);
+            return;
         }
         
-        const network = this.traceNetwork.get(this.currentAperture);
-        
-        // Store the draw operation
-        network.draws.push({
+        const trace = {
+            type: 'trace',
             start: { ...start },
             end: { ...end },
-            interpolation: this.interpolationMode,
+            width: aperture.parameters[0] || 0.1,
+            aperture: this.currentAperture,
             polarity: this.polarity,
-            function: this.apertureFunction || aperture.function
-        });
-    }
-    
-    /**
-     * Process trace network with proper branching support and duplicate filtering
-     */
-    processTraceNetwork() {
-        this.debug('Processing trace network for branching detection...');
-        
-        // FIXED: Pre-filter to remove traces that duplicate region perimeters
-        this.filterDuplicatePerimeterTraces();
-        
-        this.traceNetwork.forEach((network, apertureCode) => {
-            if (network.processed || network.draws.length === 0) return;
-            
-            this.debug(`Processing ${network.draws.length} draws for aperture ${apertureCode}`);
-            
-            // Build connectivity graph and detect branching
-            const branchingAnalysis = this.analyzeBranchingNetwork(network.draws);
-            
-            if (branchingAnalysis.isBranching) {
-                // Create branching network object
-                this.createBranchingNetwork(branchingAnalysis, apertureCode, network.draws[0]);
-                this.pathJoinStats.branchingNetworksCreated++;
-            } else {
-                // Process as regular connected paths
-                const paths = this.extractConnectedPaths(network.draws);
-                
-                paths.forEach((pathDraws, index) => {
-                    if (pathDraws.length === 1) {
-                        // Single draw
-                        const draw = pathDraws[0];
-                        this.layers.objects.push({
-                            type: 'draw',
-                            start: draw.start,
-                            end: draw.end,
-                            aperture: apertureCode,
-                            interpolation: draw.interpolation,
-                            polarity: draw.polarity,
-                            function: draw.function
-                        });
-                        this.debugStats.drawsCreated++;
-                        this.pathJoinStats.standaloneDraws++;
-                    } else {
-                        // Connected path (no branching)
-                        const pathPoints = this.convertDrawsToSimplePath(pathDraws);
-                        
-                        if (pathPoints.length >= 2) {
-                            this.layers.objects.push({
-                                type: 'draw',
-                                subtype: 'connected_path',
-                                points: pathPoints,
-                                aperture: apertureCode,
-                                interpolation: pathDraws[0].interpolation,
-                                polarity: pathDraws[0].polarity,
-                                function: pathDraws[0].function,
-                                segmentCount: pathDraws.length,
-                                isBranching: false
-                            });
-                            
-                            this.debugStats.drawsCreated++;
-                            this.pathJoinStats.pathsCreated++;
-                            this.pathJoinStats.joinedIntoPath += pathDraws.length;
-                        }
-                    }
-                });
-            }
-            
-            network.processed = true;
-        });
-        
-        this.debug(`Trace network processing complete: ${this.pathJoinStats.pathsCreated} paths, ${this.pathJoinStats.branchingNetworksCreated} branching networks`);
-    }
-    
-    /**
-     * FIXED: Filter out traces that duplicate region perimeters
-     */
-    filterDuplicatePerimeterTraces() {
-        const regions = this.layers.objects.filter(obj => obj.type === 'region');
-        
-        if (regions.length === 0) {
-            return; // No regions to check against
-        }
-        
-        const tolerance = 0.01; // 10 micron tolerance
-        let totalRemoved = 0;
-        
-        this.traceNetwork.forEach((network, apertureCode) => {
-            if (network.processed || !network.draws) return;
-            
-            const filteredDraws = [];
-            
-            network.draws.forEach(draw => {
-                let isDuplicate = false;
-                
-                // Check if this draw matches any region edge
-                for (const region of regions) {
-                    if (!region.points || region.points.length < 3) continue;
-                    
-                    // Check each edge of the region
-                    for (let i = 0; i < region.points.length - 1; i++) {
-                        const p1 = region.points[i];
-                        const p2 = region.points[i + 1];
-                        
-                        // Check if draw matches this edge (in either direction)
-                        if ((Math.abs(draw.start.x - p1.x) < tolerance && 
-                             Math.abs(draw.start.y - p1.y) < tolerance &&
-                             Math.abs(draw.end.x - p2.x) < tolerance && 
-                             Math.abs(draw.end.y - p2.y) < tolerance) ||
-                            (Math.abs(draw.start.x - p2.x) < tolerance && 
-                             Math.abs(draw.start.y - p2.y) < tolerance &&
-                             Math.abs(draw.end.x - p1.x) < tolerance && 
-                             Math.abs(draw.end.y - p1.y) < tolerance)) {
-                            isDuplicate = true;
-                            break;
-                        }
-                    }
-                    
-                    if (isDuplicate) break;
-                }
-                
-                if (!isDuplicate) {
-                    filteredDraws.push(draw);
-                } else {
-                    totalRemoved++;
-                    this.debugStats.duplicatePerimetersRemoved++;
-                    this.debugStats.duplicatePerimetersAvoided++;
-                }
-            });
-            
-            network.draws = filteredDraws;
-        });
-        
-        if (totalRemoved > 0) {
-            this.debug(`FIXED: Removed ${totalRemoved} duplicate perimeter traces before processing`);
-        }
-    }
-    
-    /**
-     * Analyze network for branching structure
-     */
-    analyzeBranchingNetwork(draws) {
-        const junctions = new Map();
-        const tolerance = this.options.joinTolerance;
-        
-        // Build junction map
-        draws.forEach((draw, index) => {
-            const startKey = `${draw.start.x.toFixed(6)},${draw.start.y.toFixed(6)}`;
-            const endKey = `${draw.end.x.toFixed(6)},${draw.end.y.toFixed(6)}`;
-            
-            if (!junctions.has(startKey)) {
-                junctions.set(startKey, {
-                    point: draw.start,
-                    connections: []
-                });
-            }
-            junctions.get(startKey).connections.push({ drawIndex: index, isStart: true });
-            
-            if (!junctions.has(endKey)) {
-                junctions.set(endKey, {
-                    point: draw.end,
-                    connections: []
-                });
-            }
-            junctions.get(endKey).connections.push({ drawIndex: index, isStart: false });
-        });
-        
-        // Find branch points (junctions with 3+ connections)
-        const branchPoints = [];
-        let maxConnections = 0;
-        
-        junctions.forEach((junction, key) => {
-            if (junction.connections.length > 2) {
-                branchPoints.push({
-                    point: junction.point,
-                    connectionCount: junction.connections.length,
-                    connections: junction.connections
-                });
-                maxConnections = Math.max(maxConnections, junction.connections.length);
-            }
-        });
-        
-        return {
-            isBranching: branchPoints.length > 0,
-            branchPoints: branchPoints,
-            junctions: junctions,
-            maxConnections: maxConnections,
-            draws: draws
-        };
-    }
-    
-    /**
-     * Create branching network object with multiple paths
-     */
-    createBranchingNetwork(analysis, apertureCode, sampleDraw) {
-        this.debug(`Creating branching network with ${analysis.branchPoints.length} branch points`);
-        
-        // Create a composite structure representing the branching network
-        const branchingNetwork = {
-            type: 'branching_network',
-            aperture: apertureCode,
-            polarity: sampleDraw.polarity,
-            function: sampleDraw.function,
-            branchPoints: analysis.branchPoints.map(bp => ({
-                x: bp.point.x,
-                y: bp.point.y,
-                connections: bp.connectionCount
-            })),
-            segments: []
+            interpolation: this.interpolationMode
         };
         
-        // Add all draw segments as separate paths
-        analysis.draws.forEach(draw => {
-            branchingNetwork.segments.push({
-                start: { ...draw.start },
-                end: { ...draw.end },
-                interpolation: draw.interpolation
+        // Handle arc traces
+        if (this.interpolationMode === 'G02' || this.interpolationMode === 'G03') {
+            const arcData = this.parseArcData(this.lastCommand);
+            if (arcData) {
+                trace.arc = arcData;
+                trace.clockwise = this.interpolationMode === 'G02';
+            }
+        }
+        
+        this.layers.objects.push(trace);
+        this.debugStats.tracesCreated++;
+        this.debugStats.totalObjects++;
+        
+        this.debug(`Trace created: (${start.x.toFixed(3)}, ${start.y.toFixed(3)}) to (${end.x.toFixed(3)}, ${end.y.toFixed(3)}), width: ${trace.width}`);
+    }
+
+    createFlash(position) {
+        if (!this.currentAperture) {
+            this.warnings.push('Flash operation without aperture selection');
+            return;
+        }
+        
+        const aperture = this.apertures.get(this.currentAperture);
+        if (!aperture) {
+            this.warnings.push(`Aperture ${this.currentAperture} not defined`);
+            return;
+        }
+        
+        const flash = {
+            type: 'flash',
+            position: { ...position },
+            shape: aperture.type,
+            parameters: [...aperture.parameters],
+            aperture: this.currentAperture,
+            polarity: this.polarity
+        };
+        
+        // Simplify shape information
+        if (aperture.type === 'circle') {
+            flash.radius = aperture.parameters[0] / 2;
+        } else if (aperture.type === 'rectangle') {
+            flash.width = aperture.parameters[0];
+            flash.height = aperture.parameters[1] || aperture.parameters[0];
+        } else if (aperture.type === 'obround') {
+            flash.width = aperture.parameters[0];
+            flash.height = aperture.parameters[1] || aperture.parameters[0];
+        } else if (aperture.type === 'polygon') {
+            flash.diameter = aperture.parameters[0];
+            flash.vertices = aperture.parameters[1] || 3;
+            flash.rotation = aperture.parameters[2] || 0;
+        }
+        
+        this.layers.objects.push(flash);
+        this.debugStats.flashesCreated++;
+        this.debugStats.totalObjects++;
+        
+        this.debug(`Flash created at (${position.x.toFixed(3)}, ${position.y.toFixed(3)}), shape: ${aperture.type}`);
+    }
+
+    parseArcData(command) {
+        // Parse I and J offsets for arc center
+        const iMatch = command.match(/I([+-]?\d+)/);
+        const jMatch = command.match(/J([+-]?\d+)/);
+        
+        if (iMatch || jMatch) {
+            return {
+                i: iMatch ? this.parseCoordinateValue(iMatch[1]) : 0,
+                j: jMatch ? this.parseCoordinateValue(jMatch[1]) : 0
+            };
+        }
+        
+        return null;
+    }
+
+    interpolateArc(start, end, arcData, clockwise) {
+        // Calculate arc center from offset
+        const center = {
+            x: start.x + arcData.i,
+            y: start.y + arcData.j
+        };
+        
+        // Calculate radius
+        const radius = Math.sqrt(
+            Math.pow(start.x - center.x, 2) + 
+            Math.pow(start.y - center.y, 2)
+        );
+        
+        // Calculate angles
+        const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+        const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+        
+        // Calculate angle span
+        let angleSpan = endAngle - startAngle;
+        if (clockwise) {
+            if (angleSpan > 0) angleSpan -= 2 * Math.PI;
+        } else {
+            if (angleSpan < 0) angleSpan += 2 * Math.PI;
+        }
+        
+        // Generate interpolated points
+        const points = [];
+        const segments = Math.max(8, Math.abs(angleSpan) * 10); // Adaptive segmentation
+        
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const angle = startAngle + angleSpan * t;
+            points.push({
+                x: center.x + radius * Math.cos(angle),
+                y: center.y + radius * Math.sin(angle)
             });
-        });
-        
-        this.layers.objects.push(branchingNetwork);
-        this.debugStats.branchingPathsCreated++;
-        this.pathJoinStats.branchesDetected++;
-        
-        this.debug(`Created branching network with ${branchingNetwork.segments.length} segments`);
-    }
-    
-    /**
-     * Extract connected paths using proper graph traversal
-     */
-    extractConnectedPaths(draws) {
-        const paths = [];
-        const visited = new Set();
-        const tolerance = this.options.joinTolerance;
-        
-        // Build adjacency list for connectivity
-        const adjacency = new Map();
-        draws.forEach((draw, index) => {
-            adjacency.set(index, []);
-        });
-        
-        // Find connections between draws
-        for (let i = 0; i < draws.length; i++) {
-            for (let j = i + 1; j < draws.length; j++) {
-                if (this.drawsConnect(draws[i], draws[j], tolerance)) {
-                    adjacency.get(i).push(j);
-                    adjacency.get(j).push(i);
-                }
-            }
         }
         
-        // Extract connected components using DFS
-        for (let i = 0; i < draws.length; i++) {
-            if (visited.has(i)) continue;
-            
-            const component = [];
-            const stack = [i];
-            
-            while (stack.length > 0) {
-                const current = stack.pop();
-                if (visited.has(current)) continue;
-                
-                visited.add(current);
-                component.push(draws[current]);
-                
-                // Add connected draws to stack
-                adjacency.get(current).forEach(neighbor => {
-                    if (!visited.has(neighbor)) {
-                        stack.push(neighbor);
-                    }
+        return points;
+    }
+
+    finalizeParse() {
+        // Store apertures in layers
+        this.layers.apertures = Array.from(this.apertures.values());
+        
+        // Calculate bounds
+        this.calculateBounds();
+        
+        // Report statistics
+        if (this.options.debug) {
+            console.log('[GerberSemantic] Parse Statistics:');
+            console.log(`  Regions: ${this.debugStats.regionsCreated}`);
+            console.log(`  Traces: ${this.debugStats.tracesCreated}`);
+            console.log(`  Flashes: ${this.debugStats.flashesCreated}`);
+            console.log(`  Total objects: ${this.debugStats.totalObjects}`);
+            console.log(`  Region mode changes: ${this.debugStats.regionModeChanges}`);
+            console.log(`  Coordinates in regions: ${this.debugStats.coordinatesInRegion}`);
+        }
+        
+        this.debug('Parse finalized');
+    }
+
+    calculateBounds() {
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+        let hasData = false;
+        
+        this.layers.objects.forEach(obj => {
+            if (obj.type === 'region' && obj.points) {
+                obj.points.forEach(point => {
+                    minX = Math.min(minX, point.x);
+                    minY = Math.min(minY, point.y);
+                    maxX = Math.max(maxX, point.x);
+                    maxY = Math.max(maxY, point.y);
+                    hasData = true;
                 });
+            } else if (obj.type === 'trace') {
+                minX = Math.min(minX, obj.start.x, obj.end.x);
+                minY = Math.min(minY, obj.start.y, obj.end.y);
+                maxX = Math.max(maxX, obj.start.x, obj.end.x);
+                maxY = Math.max(maxY, obj.start.y, obj.end.y);
+                hasData = true;
+            } else if (obj.type === 'flash') {
+                const radius = obj.radius || (Math.max(obj.width || 0, obj.height || 0) / 2);
+                minX = Math.min(minX, obj.position.x - radius);
+                minY = Math.min(minY, obj.position.y - radius);
+                maxX = Math.max(maxX, obj.position.x + radius);
+                maxY = Math.max(maxY, obj.position.y + radius);
+                hasData = true;
             }
-            
-            paths.push(component);
-        }
-        
-        return paths;
-    }
-    
-    /**
-     * Check if two draws connect at their endpoints
-     */
-    drawsConnect(draw1, draw2, tolerance) {
-        const connections = [
-            { p1: draw1.end, p2: draw2.start },
-            { p1: draw1.end, p2: draw2.end },
-            { p1: draw1.start, p2: draw2.start },
-            { p1: draw1.start, p2: draw2.end }
-        ];
-        
-        return connections.some(conn => {
-            const dist = Math.sqrt(
-                Math.pow(conn.p1.x - conn.p2.x, 2) + 
-                Math.pow(conn.p1.y - conn.p2.y, 2)
-            );
-            return dist <= tolerance;
         });
-    }
-    
-    /**
-     * Convert connected draws to a simple path (no branching)
-     */
-    convertDrawsToSimplePath(draws) {
-        if (draws.length === 0) return [];
-        if (draws.length === 1) return [draws[0].start, draws[0].end];
         
-        // Build ordered path
-        const pathPoints = [];
-        const used = new Set();
-        const tolerance = this.options.joinTolerance;
-        
-        // Start with first draw
-        pathPoints.push({ ...draws[0].start }, { ...draws[0].end });
-        used.add(0);
-        
-        // Iteratively add connected draws
-        let changed = true;
-        while (changed && used.size < draws.length) {
-            changed = false;
-            
-            for (let i = 0; i < draws.length; i++) {
-                if (used.has(i)) continue;
-                
-                const draw = draws[i];
-                const pathStart = pathPoints[0];
-                const pathEnd = pathPoints[pathPoints.length - 1];
-                
-                // Check connections
-                if (this.pointsClose(pathEnd, draw.start, tolerance)) {
-                    pathPoints.push({ ...draw.end });
-                    used.add(i);
-                    changed = true;
-                } else if (this.pointsClose(pathEnd, draw.end, tolerance)) {
-                    pathPoints.push({ ...draw.start });
-                    used.add(i);
-                    changed = true;
-                } else if (this.pointsClose(pathStart, draw.end, tolerance)) {
-                    pathPoints.unshift({ ...draw.start });
-                    used.add(i);
-                    changed = true;
-                } else if (this.pointsClose(pathStart, draw.start, tolerance)) {
-                    pathPoints.unshift({ ...draw.end });
-                    used.add(i);
-                    changed = true;
-                }
-                
-                if (changed) break;
-            }
+        if (hasData) {
+            this.layers.bounds = {
+                minX, minY, maxX, maxY,
+                width: maxX - minX,
+                height: maxY - minY
+            };
         }
-        
-        return pathPoints;
     }
-    
-    pointsClose(p1, p2, tolerance) {
-        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2)) <= tolerance;
-    }
-    
+
     parseCoordinates(command) {
         const point = { ...this.currentPoint };
         
-        try {
-            const xMatch = command.match(/X([+-]?\d+)/);
-            if (xMatch) {
-                point.x = this.parseCoordinateValue(xMatch[1]);
-            }
-            
-            const yMatch = command.match(/Y([+-]?\d+)/);
-            if (yMatch) {
-                point.y = this.parseCoordinateValue(yMatch[1]);
-            }
-            
-            const iMatch = command.match(/I([+-]?\d+)/);
-            if (iMatch) {
-                point.i = this.parseCoordinateValue(iMatch[1]);
-            }
-            
-            const jMatch = command.match(/J([+-]?\d+)/);
-            if (jMatch) {
-                point.j = this.parseCoordinateValue(jMatch[1]);
-            }
-            
-            if (!this.validateCoordinates(point)) {
-                return null;
-            }
-            
-            this.coordinateValidation.validCoordinates++;
-            this.updateCoordinateRange(point);
-            
-            return point;
-            
-        } catch (error) {
-            this.coordinateValidation.invalidCoordinates++;
-            this.errors.push(`Coordinate parsing error: ${error.message} in command: ${command}`);
-            return null;
-        }
-    }
-    
-    validateCoordinates(point) {
-        if (!isFinite(point.x) || !isFinite(point.y)) {
-            this.errors.push(`Non-finite coordinates: (${point.x}, ${point.y})`);
-            this.coordinateValidation.invalidCoordinates++;
-            return false;
+        const xMatch = command.match(/X([+-]?\d+)/);
+        if (xMatch) {
+            point.x = this.parseCoordinateValue(xMatch[1]);
         }
         
-        const maxCoordinate = 1000;
-        if (Math.abs(point.x) > maxCoordinate || Math.abs(point.y) > maxCoordinate) {
-            this.coordinateValidation.suspiciousCoordinates.push({
-                coordinates: { x: point.x, y: point.y },
-                reason: 'coordinates_too_large'
-            });
-            this.warnings.push(`Suspiciously large coordinates: (${point.x.toFixed(3)}, ${point.y.toFixed(3)})`);
+        const yMatch = command.match(/Y([+-]?\d+)/);
+        if (yMatch) {
+            point.y = this.parseCoordinateValue(yMatch[1]);
         }
         
-        if (point.i !== undefined && !isFinite(point.i)) {
-            this.warnings.push(`Invalid I coordinate: ${point.i}`);
-        }
-        if (point.j !== undefined && !isFinite(point.j)) {
-            this.warnings.push(`Invalid J coordinate: ${point.j}`);
-        }
-        
-        return true;
+        return point;
     }
-    
-    updateCoordinateRange(point) {
-        const range = this.coordinateValidation.coordinateRange;
-        range.minX = Math.min(range.minX, point.x);
-        range.minY = Math.min(range.minY, point.y);
-        range.maxX = Math.max(range.maxX, point.x);
-        range.maxY = Math.max(range.maxY, point.y);
-    }
-    
+
     parseCoordinateValue(value) {
         const format = this.options.format;
         const negative = value.startsWith('-');
         const absValue = value.replace(/^[+-]/, '');
         
-        if (!/^\d+$/.test(absValue)) {
-            throw new Error(`Invalid coordinate format: ${value}`);
-        }
-        
         const totalDigits = format.integer + format.decimal;
-        if (absValue.length > totalDigits) {
-            this.warnings.push(`Coordinate value "${value}" exceeds format specification ${format.integer}.${format.decimal}`);
-        }
+        const paddedValue = absValue.padStart(totalDigits, '0');
         
-        const padded = absValue.padStart(totalDigits, '0');
-        const integerPart = padded.slice(0, format.integer);
-        const decimalPart = padded.slice(format.integer);
+        const integerPart = paddedValue.slice(0, format.integer);
+        const decimalPart = paddedValue.slice(format.integer);
         
         let coordinate = parseFloat(`${integerPart}.${decimalPart}`);
         
-        if (!isFinite(coordinate)) {
-            throw new Error(`Invalid coordinate calculation: ${value} -> ${integerPart}.${decimalPart}`);
-        }
-        
         if (negative) coordinate = -coordinate;
         
+        // Convert to mm if units are inches
         if (this.options.units === 'inch') {
             coordinate *= 25.4;
-            
-            if (Math.abs(coordinate) > 254) {
-                this.warnings.push(`Very large coordinate after inch conversion: ${coordinate.toFixed(3)}mm`);
-            }
         }
         
         return coordinate;
     }
-    
-    parseOperation(command) {
-        if (command.includes('D01')) return 'D01';
-        if (command.includes('D02')) return 'D02';
-        if (command.includes('D03')) return 'D03';
-        return 'D01';
+
+    parseFormatSpec(command) {
+        const match = command.match(/FS[LT][AI]X(\d)(\d)Y(\d)(\d)/);
+        if (match) {
+            this.options.format = {
+                integer: parseInt(match[1]),
+                decimal: parseInt(match[2])
+            };
+            this.debug(`Format: ${this.options.format.integer}.${this.options.format.decimal}`);
+        }
     }
-    
-    createFlash(position) {
-        // FIXED: Never create flash in region mode
-        if (this.regionState.active) {
-            this.debug('FIXED: Skipping flash creation - in region mode');
-            return;
+
+    parseApertureDefinition(command) {
+        const match = command.match(/ADD(\d+)([CROP]),(.+)/);
+        if (!match) return;
+        
+        const code = `D${match[1]}`;
+        const typeChar = match[2];
+        const params = match[3].split('X').map(p => parseFloat(p));
+        
+        let type;
+        switch (typeChar) {
+            case 'C': type = 'circle'; break;
+            case 'R': type = 'rectangle'; break;
+            case 'O': type = 'obround'; break;
+            case 'P': type = 'polygon'; break;
+            default: type = 'unknown';
         }
         
-        if (!this.currentAperture) return;
-        
-        const aperture = this.apertures.get(this.currentAperture);
-        if (!aperture) return;
-        
-        const flash = {
-            type: 'flash',
-            position: { ...position },
-            aperture: this.currentAperture,
-            polarity: this.polarity,
-            function: this.apertureFunction || aperture.function
+        const aperture = {
+            code: code,
+            type: type,
+            parameters: params
         };
         
-        const apertureSize = aperture.parameters[0] || 0;
-        this.coordinateValidation.objectCoordinates.push({
-            type: 'flash',
-            aperture: this.currentAperture,
-            bounds: {
-                minX: position.x - apertureSize / 2,
-                minY: position.y - apertureSize / 2,
-                maxX: position.x + apertureSize / 2,
-                maxY: position.y + apertureSize / 2
-            }
-        });
-        
-        this.layers.objects.push(flash);
-        this.debugStats.flashesCreated++;
+        this.apertures.set(code, aperture);
+        this.debug(`Aperture ${code}: ${type} [${params.join(', ')}]`);
     }
     
-    finalizeParse() {
-        this.calculateBounds();
-        this.validateCoordinateConsistency();
-        
-        // Sort objects by type for better rendering
-        this.layers.objects.sort((a, b) => {
-            const typeOrder = { 
-                region: 0, 
-                branching_network: 1, 
-                connected_path: 2, 
-                draw: 3, 
-                flash: 4 
-            };
-            const aOrder = typeOrder[a.subtype || a.type] || 5;
-            const bOrder = typeOrder[b.subtype || b.type] || 5;
-            return aOrder - bOrder;
-        });
-        
-        this.debug('FIXED: Parsing Statistics:');
-        this.debug(`  Regions created: ${this.debugStats.regionsCreated}`);
-        this.debug(`  Draws created: ${this.debugStats.drawsCreated}`);
-        this.debug(`  Flashes created: ${this.debugStats.flashesCreated}`);
-        this.debug(`  Duplicate perimeters avoided: ${this.debugStats.duplicatePerimetersAvoided}`);
-        this.debug(`  Duplicate perimeters removed: ${this.debugStats.duplicatePerimetersRemoved}`);
-        this.debug(`  Branching networks: ${this.pathJoinStats.branchingNetworksCreated}`);
-        this.debug(`  Connected paths: ${this.pathJoinStats.pathsCreated}`);
-    }
-    
-    validateCoordinateConsistency() {
-        if (this.coordinateValidation.objectCoordinates.length === 0) return;
-        
-        const range = this.coordinateValidation.coordinateRange;
-        const width = range.maxX - range.minX;
-        const height = range.maxY - range.minY;
-        
-        if (width > 500 || height > 500) {
-            this.warnings.push(`Layer dimensions are unusually large: ${width.toFixed(1)} × ${height.toFixed(1)} mm`);
-        }
-        
-        if (width < 0.1 || height < 0.1) {
-            this.warnings.push(`Layer dimensions are unusually small: ${width.toFixed(3)} × ${height.toFixed(3)} mm`);
-        }
-        
-        this.debug(`FIXED: Coordinate consistency check complete`);
-    }
-    
-    calculateBounds() {
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        let hasValidData = false;
-        
-        this.layers.objects.forEach(obj => {
-            try {
-                if (obj.type === 'region' || obj.subtype === 'connected_path') {
-                    obj.points.forEach(point => {
-                        if (isFinite(point.x) && isFinite(point.y)) {
-                            minX = Math.min(minX, point.x);
-                            minY = Math.min(minY, point.y);
-                            maxX = Math.max(maxX, point.x);
-                            maxY = Math.max(maxY, point.y);
-                            hasValidData = true;
-                        }
-                    });
-                } else if (obj.type === 'branching_network') {
-                    obj.segments.forEach(segment => {
-                        if (isFinite(segment.start.x) && isFinite(segment.start.y)) {
-                            minX = Math.min(minX, segment.start.x);
-                            minY = Math.min(minY, segment.start.y);
-                            maxX = Math.max(maxX, segment.start.x);
-                            maxY = Math.max(maxY, segment.start.y);
-                            hasValidData = true;
-                        }
-                        if (isFinite(segment.end.x) && isFinite(segment.end.y)) {
-                            minX = Math.min(minX, segment.end.x);
-                            minY = Math.min(minY, segment.end.y);
-                            maxX = Math.max(maxX, segment.end.x);
-                            maxY = Math.max(maxY, segment.end.y);
-                            hasValidData = true;
-                        }
-                    });
-                } else if (obj.type === 'draw') {
-                    if (isFinite(obj.start.x) && isFinite(obj.start.y) &&
-                        isFinite(obj.end.x) && isFinite(obj.end.y)) {
-                        minX = Math.min(minX, obj.start.x, obj.end.x);
-                        minY = Math.min(minY, obj.start.y, obj.end.y);
-                        maxX = Math.max(maxX, obj.start.x, obj.end.x);
-                        maxY = Math.max(maxY, obj.start.y, obj.end.y);
-                        hasValidData = true;
-                    }
-                } else if (obj.type === 'flash') {
-                    if (isFinite(obj.position.x) && isFinite(obj.position.y)) {
-                        const aperture = this.apertures.get(obj.aperture);
-                        if (aperture) {
-                            const radius = aperture.parameters[0] / 2;
-                            minX = Math.min(minX, obj.position.x - radius);
-                            minY = Math.min(minY, obj.position.y - radius);
-                            maxX = Math.max(maxX, obj.position.x + radius);
-                            maxY = Math.max(maxY, obj.position.y + radius);
-                            hasValidData = true;
-                        }
-                    }
-                }
-            } catch (error) {
-                this.warnings.push(`Error calculating bounds for ${obj.type}: ${error.message}`);
-            }
-        });
-        
-        if (hasValidData && isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
-            this.layers.bounds = { minX, minY, maxX, maxY };
-            this.debug(`FIXED: Calculated bounds: (${minX.toFixed(3)}, ${minY.toFixed(3)}) to (${maxX.toFixed(3)}, ${maxY.toFixed(3)})`);
-        } else {
-            this.warnings.push('Unable to calculate valid bounds from layer data');
-        }
-    }
-    
-    debug(message, data = null) {
+    debug(message) {
         if (this.options.debug) {
-            if (data) {
-                console.log(`[GerberSemantic-FIXED] ${message}`, data);
-            } else {
-                console.log(`[GerberSemantic-FIXED] ${message}`);
-            }
+            console.log(`[GerberSemantic] ${message}`);
         }
     }
 }
