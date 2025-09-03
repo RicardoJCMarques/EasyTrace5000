@@ -1,7 +1,6 @@
 // geometry/geometry-processor2.js
 // Clipper2 WASM-based geometry processor with polarity-aware winding
 // Handles boolean operations with proper dark/clear separation
-// FIXED: Enhanced debugging and validation for fusion operations
 (function() {
     'use strict';
     
@@ -359,7 +358,7 @@
         /**
          * Convert primitive to coordinates with polarity extraction
          * CRITICAL: Must return both coords AND polarity
-         * FIXED: Better handling of stroked paths
+         * FIXED: Proper handling of stroked paths with rounded end-caps
          */
         primitiveToCoordinates(primitive) {
             const scale = this.options.scale;
@@ -384,31 +383,21 @@
                 if (primitive.type === 'path' && primitive.points) {
                     // Check if this is a stroked path that needs conversion
                     if (primitive.properties?.stroke && primitive.properties?.strokeWidth && !primitive.properties?.fill) {
-                        // Convert stroked path to filled polygon
+                        // Convert stroked path to filled polygon with rounded end-caps
                         const strokeWidth = primitive.properties.strokeWidth;
                         
-                        // For simple lines, create a rectangle around the stroke
                         if (primitive.points.length === 2) {
-                            const p1 = primitive.points[0];
-                            const p2 = primitive.points[1];
-                            const dx = p2.x - p1.x;
-                            const dy = p2.y - p1.y;
-                            const len = Math.sqrt(dx * dx + dy * dy);
-                            
-                            if (len > 0) {
-                                // Unit perpendicular vector
-                                const nx = -dy / len * strokeWidth / 2;
-                                const ny = dx / len * strokeWidth / 2;
-                                
-                                // Create rectangle points
-                                addPoint(p1.x + nx, p1.y + ny);
-                                addPoint(p2.x + nx, p2.y + ny);
-                                addPoint(p2.x - nx, p2.y - ny);
-                                addPoint(p1.x - nx, p1.y - ny);
-                            }
+                            // Simple line - use proper lineToPolygon with rounded caps
+                            const polygonPoints = this.lineToPolygon(
+                                [primitive.points[0].x, primitive.points[0].y],
+                                [primitive.points[1].x, primitive.points[1].y],
+                                strokeWidth
+                            );
+                            polygonPoints.forEach(point => addPoint(point[0], point[1]));
                         } else {
-                            // For complex paths, just use the points as-is
-                            // (proper stroke expansion would require more complex algorithm)
+                            // Multi-segment path - convert each segment and union them
+                            // For now, just use the points as-is (fallback)
+                            // TODO: Implement proper multi-segment path conversion
                             primitive.points.forEach(point => {
                                 if (point) addPoint(point.x, point.y);
                             });
@@ -428,14 +417,28 @@
                         addPoint(x, y);
                     }
                 } else if (primitive.type === 'arc' && primitive.center && primitive.radius > 0) {
-                    const segments = this.getOptimalCircleSegments(primitive.radius);
-                    const angleSweep = primitive.endAngle - primitive.startAngle;
-                    const arcSegments = Math.max(2, Math.ceil(segments * (Math.abs(angleSweep) / (2 * Math.PI))));
-                    for (let i = 0; i <= arcSegments; i++) {
-                        const angle = primitive.startAngle + (angleSweep * i / arcSegments);
-                        const x = primitive.center.x + primitive.radius * Math.cos(angle);
-                        const y = primitive.center.y + primitive.radius * Math.sin(angle);
-                        addPoint(x, y);
+                    // Handle arc primitive with proper conversion
+                    if (primitive.properties?.stroke && primitive.properties?.strokeWidth && !primitive.properties?.fill) {
+                        // Convert stroked arc to filled polygon with rounded caps
+                        const polygonPoints = this.arcToPolygon(
+                            [primitive.center.x, primitive.center.y],
+                            primitive.radius,
+                            primitive.startAngle * 180 / Math.PI, // Convert to degrees
+                            primitive.endAngle * 180 / Math.PI,
+                            primitive.properties.strokeWidth
+                        );
+                        polygonPoints.forEach(point => addPoint(point[0], point[1]));
+                    } else {
+                        // Regular arc segment
+                        const segments = this.getOptimalCircleSegments(primitive.radius);
+                        const angleSweep = primitive.endAngle - primitive.startAngle;
+                        const arcSegments = Math.max(2, Math.ceil(segments * (Math.abs(angleSweep) / (2 * Math.PI))));
+                        for (let i = 0; i <= arcSegments; i++) {
+                            const angle = primitive.startAngle + (angleSweep * i / arcSegments);
+                            const x = primitive.center.x + primitive.radius * Math.cos(angle);
+                            const y = primitive.center.y + primitive.radius * Math.sin(angle);
+                            addPoint(x, y);
+                        }
                     }
                 } else if (primitive.type === 'rectangle' && primitive.position) {
                     const { x, y } = primitive.position;
@@ -462,6 +465,163 @@
                 this.debug('Error converting primitive to coordinates:', error, primitive);
                 return { coords: null, polarity };
             }
+        }
+
+        /**
+         * Convert line to thick polygon with rounded end-caps
+         * Creates proper CCW wound polygon with semicircular caps
+         */
+        lineToPolygon(from, to, width) {
+            const dx = to[0] - from[0];
+            const dy = to[1] - from[1];
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const halfWidth = width / 2;
+            
+            // Handle zero-length lines - return a circle
+            if (len < 0.001) {
+                const segments = 16;
+                const points = [];
+                for (let i = 0; i < segments; i++) {
+                    const angle = (i / segments) * 2 * Math.PI;
+                    points.push([
+                        from[0] + halfWidth * Math.cos(angle),
+                        from[1] + halfWidth * Math.sin(angle)
+                    ]);
+                }
+                return points;
+            }
+            
+            // Unit vector along the line
+            const ux = dx / len;
+            const uy = dy / len;
+            
+            // Perpendicular vector (rotated 90 degrees CCW)
+            const nx = -uy * halfWidth;
+            const ny = ux * halfWidth;
+            
+            const points = [];
+            const capSegments = 8;
+            
+            // Build polygon in CCW order:
+            
+            // 1. Start at left side of start point
+            points.push([from[0] + nx, from[1] + ny]);
+            
+            // 2. Start cap (semicircle from left to right)
+            const startAngle = Math.atan2(ny, nx);
+            for (let i = 1; i < capSegments; i++) {
+                const t = i / capSegments;
+                const angle = startAngle + Math.PI * t;
+                points.push([
+                    from[0] + halfWidth * Math.cos(angle),
+                    from[1] + halfWidth * Math.sin(angle)
+                ]);
+            }
+            
+            // 3. Right side of start point
+            points.push([from[0] - nx, from[1] - ny]);
+            
+            // 4. Right side of end point
+            points.push([to[0] - nx, to[1] - ny]);
+            
+            // 5. End cap (semicircle from right to left)
+            const endAngle = Math.atan2(-ny, -nx);
+            for (let i = 1; i < capSegments; i++) {
+                const t = i / capSegments;
+                const angle = endAngle + Math.PI * t;
+                points.push([
+                    to[0] + halfWidth * Math.cos(angle),
+                    to[1] + halfWidth * Math.sin(angle)
+                ]);
+            }
+            
+            // 6. Left side of end point
+            points.push([to[0] + nx, to[1] + ny]);
+            
+            return points;
+        }
+
+        /**
+         * Convert arc to thick polygon with rounded end-caps
+         */
+        arcToPolygon(center, radius, startDeg, endDeg, width) {
+            const points = [];
+            const segments = 32;
+            const capSegments = 8;
+            const halfWidth = width / 2;
+            const innerR = radius - halfWidth;
+            const outerR = radius + halfWidth;
+            
+            // Cannot create valid shape if inner radius is negative
+            if (innerR < 0) {
+                // Fall back to filled circle
+                const circleSegments = 32;
+                for (let i = 0; i < circleSegments; i++) {
+                    const angle = (i / circleSegments) * 2 * Math.PI;
+                    points.push([
+                        center[0] + outerR * Math.cos(angle),
+                        center[1] + outerR * Math.sin(angle)
+                    ]);
+                }
+                return points;
+            }
+            
+            const startRad = startDeg * Math.PI / 180;
+            const endRad = endDeg * Math.PI / 180;
+            
+            // Center points of the caps
+            const startCapCenter = [
+                center[0] + radius * Math.cos(startRad),
+                center[1] + radius * Math.sin(startRad)
+            ];
+            const endCapCenter = [
+                center[0] + radius * Math.cos(endRad),
+                center[1] + radius * Math.sin(endRad)
+            ];
+            
+            // Build continuous polygon in CCW order
+            
+            // 1. Outer arc (from start to end)
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                const angle = startRad + (endRad - startRad) * t;
+                points.push([
+                    center[0] + outerR * Math.cos(angle),
+                    center[1] + outerR * Math.sin(angle)
+                ]);
+            }
+            
+            // 2. End cap (semicircle from outer to inner edge)
+            for (let i = 1; i <= capSegments; i++) {
+                const t = i / capSegments;
+                const angle = endRad + (Math.PI * t);
+                points.push([
+                    endCapCenter[0] + halfWidth * Math.cos(angle),
+                    endCapCenter[1] + halfWidth * Math.sin(angle)
+                ]);
+            }
+            
+            // 3. Inner arc (from end to start - reversed)
+            for (let i = segments; i >= 0; i--) {
+                const t = i / segments;
+                const angle = startRad + (endRad - startRad) * t;
+                points.push([
+                    center[0] + innerR * Math.cos(angle),
+                    center[1] + innerR * Math.sin(angle)
+                ]);
+            }
+            
+            // 4. Start cap (semicircle from inner to outer edge)
+            for (let i = 1; i <= capSegments; i++) {
+                const t = i / capSegments;
+                const angle = (startRad + Math.PI) + (Math.PI * t);
+                points.push([
+                    startCapCenter[0] + halfWidth * Math.cos(angle),
+                    startCapCenter[1] + halfWidth * Math.sin(angle)
+                ]);
+            }
+            
+            return points;
         }
 
         /**
