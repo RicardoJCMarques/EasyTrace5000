@@ -4,23 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PCB CAM</title>
-    <!-- 
-    Pipeline Position: Main HTML structure and entry point
-    -->
     <link rel="stylesheet" href="cam.css">
-    <link rel="stylesheet" href="responsive.css">
+    
 </head>
 <body>
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-spinner"></div>
         <div id="loading-text">Loading PCB CAM...</div>
-        <div id="loading-progress" style="margin-top: 8px; font-size: 12px;">0%</div>
+        <div id="loading-progress" class="loading-progress">0%</div>
     </div>
 
     <div class="app">
         <header class="header">
             <div class="header-content">
-                <div>
+                <div class="header-brand">
                     <h1>PCB CAM</h1>
                     <span class="version-badge">v7.6</span>
                 </div>
@@ -47,7 +44,7 @@
             <div class="container">
                 <section class="section">
                     <h2>📂 PCB Operations</h2>
-                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
+                    <p class="section-description">
                         Upload your PCB files. Each operation type has a distinct color for easy identification.
                         <strong>v7.6:</strong> Consolidated rendering architecture with improved performance and maintainability.
                     </p>
@@ -55,87 +52,79 @@
                     <!-- Isolation Routing -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>🎯 Isolation Routing <span style="background: #ff8844; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
-                            <button class="btn-add-file" onclick="addFile('isolation')">+ Add File</button>
+                            <h3>🎯 Isolation Routing <span class="color-indicator color-isolation"></span></h3>
+                            <button class="btn btn-sm btn-primary" onclick="addFile('isolation')">+ Add File</button>
                         </div>
-                        <div class="operation-list" id="isolation-operations">
-                            <!-- Operations will be dynamically added here -->
-                        </div>
+                        <div class="operation-list" id="isolation-operations"></div>
                     </div>
 
                     <!-- Drilling -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>🔧 Drilling <span style="background: #4488ff; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
-                            <button class="btn-add-file" onclick="addFile('drill')">+ Add File</button>
+                            <h3>🔧 Drilling <span class="color-indicator color-drill"></span></h3>
+                            <button class="btn btn-sm btn-primary" onclick="addFile('drill')">+ Add File</button>
                         </div>
-                        <div class="operation-list" id="drill-operations">
-                            <!-- Operations will be dynamically added here -->
-                        </div>
+                        <div class="operation-list" id="drill-operations"></div>
                     </div>
 
                     <!-- Copper Clearing -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>🔄 Copper Clearing <span style="background: #44ff88; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
-                            <button class="btn-add-file" onclick="addFile('clear')">+ Add File</button>
+                            <h3>🔄 Copper Clearing <span class="color-indicator color-clear"></span></h3>
+                            <button class="btn btn-sm btn-primary" onclick="addFile('clear')">+ Add File</button>
                         </div>
-                        <div class="operation-list" id="clear-operations">
-                            <!-- Operations will be dynamically added here -->
-                        </div>
+                        <div class="operation-list" id="clear-operations"></div>
                     </div>
 
                     <!-- Board Cutout -->
                     <div class="operation-group">
                         <div class="operation-group-header">
-                            <h3>📄 Board Cutout <span style="background: #ff00ff; width: 12px; height: 12px; display: inline-block; border-radius: 2px; margin-left: 8px;"></span></h3>
-                            <button class="btn-add-file" onclick="addFile('cutout')">+ Add File</button>
+                            <h3>🔄 Board Cutout <span class="color-indicator color-cutout"></span></h3>
+                            <button class="btn btn-sm btn-primary" onclick="addFile('cutout')">+ Add File</button>
                         </div>
-                        <div class="operation-list" id="cutout-operations">
-                            <!-- Operations will be dynamically added here -->
-                        </div>
+                        <div class="operation-list" id="cutout-operations"></div>
                     </div>
                 </section>
 
                 <section class="section">
                     <h2>⚙️ Machine Settings</h2>
-                    <div class="machine-grid">
-                        <div class="param-group">
+                    <div class="settings-grid">
+                        <div class="settings-group">
                             <h3>PCB Properties</h3>
                             <div class="input-group">
                                 <label title="Total PCB thickness including substrate">PCB Thickness</label>
                                 <div class="input-unit">
                                     <input type="number" id="pcb-thickness" value="1.6" min="0.2" step="0.1">
-                                    <span>mm</span>
+                                    <span class="unit">mm</span>
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="param-group">
+                        <div class="settings-group">
                             <h3>Machine Heights</h3>
                             <div class="input-group">
                                 <label title="Safe height for tool changes and rapid moves">Safe Z</label>
                                 <div class="input-unit">
                                     <input type="number" id="safe-z" value="2" min="0.5" step="0.1">
-                                    <span>mm</span>
+                                    <span class="unit">mm</span>
                                 </div>
                             </div>
                             <div class="input-group">
                                 <label title="Height for rapid moves between cuts">Travel Z</label>
                                 <div class="input-unit">
                                     <input type="number" id="travel-z" value="1" min="0.1" step="0.1">
-                                    <span>mm</span>
+                                    <span class="unit">mm</span>
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="param-group">
+                        <div class="settings-group">
                             <h3>Machine Speeds</h3>
                             <div class="input-group">
                                 <label title="Non-cutting movement speed (rapids)">Rapid Feed</label>
                                 <div class="input-unit">
                                     <input type="number" id="rapid-feed" value="1000" min="100" step="100">
-                                    <span>mm/min</span>
+                                    <span class="unit">mm/min</span>
                                 </div>
                             </div>
                             <div class="input-group">
@@ -151,7 +140,7 @@
                 </section>
 
                 <section class="section">
-                    <h2>📐 G-code Configuration</h2>
+                    <h2>📝 G-code Configuration</h2>
                     <div class="gcode-config">
                         <div class="input-group">
                             <label>Post-Processor</label>
@@ -186,7 +175,7 @@ M2</textarea>
                 </section>
 
                 <div class="actions">
-                    <button class="btn-preview" id="preview-btn">🔍 Preview & Fusion Setup</button>
+                    <button class="btn btn-lg btn-secondary" id="preview-btn">🔍 Preview & Fusion Setup</button>
                 </div>
             </div>
         </main>
@@ -201,261 +190,209 @@ M2</textarea>
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modal-title">🔍 PCB Preview & Fusion Setup</h2>
-                <div class="board-size-display">
-                    <span class="board-size-label">Board:</span>
-                    <span id="board-size" class="board-size-value">-- × -- mm</span>
+                <div class="board-info">
+                    <span class="label">Board:</span>
+                    <span id="board-size" class="value">-- × -- mm</span>
                 </div>
-                <div class="modal-header-controls">
-                    <button class="modal-close" id="modal-close-btn">×</button>
-                </div>
+                <button class="modal-close" id="modal-close-btn">×</button>
             </div>
+            
             <div class="modal-body">
                 <div class="preview-container">
                     <canvas id="preview-canvas"></canvas>
                     <div class="preview-tools">
-                        <button id="zoom-fit-btn" title="Fit to view (or double-click canvas)">🔍 Fit</button>
-                        <button id="zoom-in-btn" title="Zoom in">🔍 +</button>
-                        <button id="zoom-out-btn" title="Zoom out">🔍 -</button>
+                        <button class="btn btn-sm" id="zoom-fit-btn" title="Fit to view">🔍 Fit</button>
+                        <button class="btn btn-sm" id="zoom-in-btn" title="Zoom in">🔍 +</button>
+                        <button class="btn btn-sm" id="zoom-out-btn" title="Zoom out">🔍 -</button>
                     </div>
                 </div>
                 
-                <!-- Page 1: Coordinate Setup with Fusion -->
+                <!-- Page 1: Coordinate Setup -->
                 <div class="preview-sidebar" id="modal-page-1">
-                    <!-- Coordinate system controls -->
-                    <div class="coordinate-section">
+                    <div class="sidebar-section">
                         <h3>🎯 Work Coordinate System</h3>
-                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Position buttons preview the origin. Offset inputs use value-change detection for smooth operation.
-                        </p>
+                        <p class="hint">Position buttons preview the origin. Offset inputs use value-change detection.</p>
                         
-                        <div class="coord-buttons">
-                            <button class="btn-secondary" id="center-origin-btn" title="Preview origin at board center">🎯 Center</button>
-                            <button class="btn-secondary" id="bottom-left-origin-btn" title="Preview origin at board bottom-left">↙️ Bottom-Left</button>
+                        <div class="button-group">
+                            <button class="btn btn-secondary" id="center-origin-btn">🎯 Center</button>
+                            <button class="btn btn-secondary" id="bottom-left-origin-btn">↙️ Bottom-Left</button>
                         </div>
                         
                         <div class="input-group">
-                            <label title="X offset from saved origin">X Offset</label>
+                            <label>X Offset</label>
                             <div class="input-unit">
-                                <input type="number" id="x-offset" value="0" step="0.1" placeholder="0.0" inputmode="decimal">
-                                <span>mm</span>
+                                <input type="number" id="x-offset" value="0" step="0.1">
+                                <span class="unit">mm</span>
                             </div>
                         </div>
                         <div class="input-group">
-                            <label title="Y offset from saved origin">Y Offset</label>
+                            <label>Y Offset</label>
                             <div class="input-unit">
-                                <input type="number" id="y-offset" value="0" step="0.1" placeholder="0.0" inputmode="decimal">
-                                <span>mm</span>
+                                <input type="number" id="y-offset" value="0" step="0.1">
+                                <span class="unit">mm</span>
                             </div>
                         </div>
                         
-                        <button class="btn-primary" id="apply-set-origin-btn" style="width: 100%; margin-top: 0.5rem;" title="Save current preview as new origin">
-                            📍 Set Origin
-                        </button>
-                        
-                        <button class="btn-secondary" id="reset-origin-btn" style="width: 100%; margin-top: 0.25rem;" title="Reset to last saved origin">↶ Reset</button>
+                        <button class="btn btn-primary btn-block" id="apply-set-origin-btn">📍 Set Origin</button>
+                        <button class="btn btn-secondary btn-block" id="reset-origin-btn">↶ Reset</button>
                     </div>
 
-                    <!-- Board Rotation Controls -->
-                    <div class="coordinate-section">
+                    <div class="sidebar-section">
                         <h3>🔄 Board Rotation</h3>
-                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Rotate board around its center. SVG exports follow board orientation.
-                        </p>
+                        <p class="hint">Rotate board around its center. SVG exports follow board orientation.</p>
                         
                         <div class="input-group">
-                            <label title="Rotation angle in degrees (positive = counter-clockwise)">Rotation Angle</label>
+                            <label>Rotation Angle</label>
                             <div class="input-unit">
-                                <input type="number" id="rotation-angle" value="0" step="1" placeholder="0" inputmode="decimal">
-                                <span>°</span>
+                                <input type="number" id="rotation-angle" value="0" step="1">
+                                <span class="unit">°</span>
                             </div>
                         </div>
                         
-                        <div class="coord-buttons">
-                            <button class="btn-primary" id="apply-rotation-btn" title="Apply rotation angle around board center">🔄 Apply Rotation</button>
-                            <button class="btn-secondary" id="reset-rotation-btn" title="Reset rotation only (keep position)">↺ Reset Rotation</button>
+                        <div class="button-group">
+                            <button class="btn btn-primary" id="apply-rotation-btn">🔄 Apply</button>
+                            <button class="btn btn-secondary" id="reset-rotation-btn">↺ Reset</button>
                         </div>
                     </div>
 
-                    <!-- Simple Stats -->
-                    <div class="preview-stats">
+                    <div class="sidebar-section">
                         <h3>📊 Operations</h3>
-                        <div class="stat-grid">
-                            <div class="stat-row">
-                                <span>Files Loaded:</span>
-                                <span id="preview-operations">0</span>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Files Loaded:</span>
+                                <span class="stat-value" id="preview-operations">0</span>
                             </div>
-                            <div class="stat-row">
-                                <span>Total Primitives:</span>
-                                <span id="preview-total-polygons">0</span>
+                            <div class="stat-item">
+                                <span class="stat-label">Total Primitives:</span>
+                                <span class="stat-value" id="preview-total-polygons">0</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Advanced Options -->
-                    <div class="advanced-options">
-                        <button class="btn-secondary" id="advanced-options-toggle" style="width: 100%; margin-bottom: 0.5rem;">
-                            🔧 Show Advanced Options
-                        </button>
+                    <div class="sidebar-section collapsible">
+                        <button class="section-toggle" id="advanced-options-toggle">🔧 Show Advanced Options</button>
                         
-                        <div id="advanced-options-section">
-                            <h3>🔧 Advanced Display Options</h3>
-                            
-                            <div style="margin-bottom: 1rem;">
-                                <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Rendering Mode</h4>
-                                <div class="debug-options" style="display: grid; gap: 0.5rem;">
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-wireframe">
-                                        <span>Wireframe Mode</span>
-                                        <small style="color: var(--text-hint); margin-left: auto;">Enhanced</small>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="fuse-geometry">
-                                        <span>Geometry Fusion</span>
-                                        <small style="color: var(--text-hint); margin-left: auto;">Clipper2</small>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="black-white">
-                                        <span>Black & White</span>
-                                    </label>
-                                </div>
+                        <div class="collapsible-content" id="advanced-options-section">
+                            <h4>Rendering Mode</h4>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-wireframe">
+                                    <span>Wireframe Mode</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="fuse-geometry">
+                                    <span>Geometry Fusion</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="black-white">
+                                    <span>Black & White</span>
+                                </label>
                             </div>
                             
-                            <!-- Geometry Type Controls -->
-                            <div style="margin-bottom: 1rem;">
-                                <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Geometry Types</h4>
-                                <div class="debug-options" style="display: grid; gap: 0.5rem;">
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-regions" checked>
-                                        <span>Fill Regions</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-traces" checked>
-                                        <span>Traces/Lines</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-cutouts" checked>
-                                        <span>Board Cutouts</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-pads" checked>
-                                        <span>Pads/Flashes</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-drills" checked>
-                                        <span>Drill Holes</span>
-                                    </label>
-                                </div>
+                            <h4>Geometry Types</h4>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-regions" checked>
+                                    <span>Fill Regions</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-traces" checked>
+                                    <span>Traces/Lines</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-cutouts" checked>
+                                    <span>Board Cutouts</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-pads" checked>
+                                    <span>Pads/Flashes</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-drills" checked>
+                                    <span>Drill Holes</span>
+                                </label>
                             </div>
                             
-                            <!-- Overlay Options -->
-                            <div style="margin-bottom: 1rem;">
-                                <h4 style="font-size: 0.75rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Display Overlays</h4>
-                                <div class="debug-options" style="display: grid; gap: 0.5rem;">
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-grid" checked>
-                                        <span>Show Grid</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-rulers" checked>
-                                        <span>Show Rulers</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="checkbox" id="show-bounds">
-                                        <span>Show Bounding Box</span>
-                                    </label>
-                                </div>
+                            <h4>Display Overlays</h4>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-grid" checked>
+                                    <span>Show Grid</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-rulers" checked>
+                                    <span>Show Rulers</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-bounds">
+                                    <span>Show Bounding Box</span>
+                                </label>
                             </div>
                             
-                            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                                <h4 style="font-size: 0.75rem; margin-bottom: 0.75rem; color: var(--text-secondary);">File Statistics</h4>
-                                <div id="operation-stats">
+                            <div class="stats-section">
+                                <h4>File Statistics</h4>
+                                <div id="operation-stats" class="stats-content">
                                     <p>Load PCB files to see statistics</p>
                                 </div>
                             </div>
                             
-                            <button class="btn-secondary" id="export-svg-btn" style="width: 100%; margin-top: 1rem;" title="Export SVG">
-                                📄 Export SVG
-                            </button>
+                            <button class="btn btn-secondary btn-block" id="export-svg-btn">📄 Export SVG</button>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Page 2: Offset Geometry (Future) -->
-                <div class="preview-sidebar" id="modal-page-2" style="display: none;">
-                    <div class="coordinate-section">
+                <!-- Page 2: Offset Geometry -->
+                <div class="preview-sidebar page-hidden" id="modal-page-2">
+                    <div class="sidebar-section">
                         <h3>⚙️ Offset Geometry</h3>
-                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Configure offset parameters for toolpath generation.
-                        </p>
-                        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+                        <p class="hint">Configure offset parameters for toolpath generation.</p>
+                        <div class="placeholder-content">
                             <p>🚧 Offset Geometry Configuration</p>
-                            <p style="font-size: 0.75rem; margin-top: 0.5rem;">Coming in next update...</p>
+                            <p class="text-sm">Coming in next update...</p>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Page 3: Toolpath Generation (Future) -->
-                <div class="preview-sidebar" id="modal-page-3" style="display: none;">
-                    <div class="coordinate-section">
+                <!-- Page 3: Toolpath Generation -->
+                <div class="preview-sidebar page-hidden" id="modal-page-3">
+                    <div class="sidebar-section">
                         <h3>🛠️ Toolpath Generation</h3>
-                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                            Generate G-code from geometry and settings.
-                        </p>
-                        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+                        <p class="hint">Generate G-code from geometry and settings.</p>
+                        <div class="placeholder-content">
                             <p>🚧 Toolpath Configuration</p>
-                            <p style="font-size: 0.75rem; margin-top: 0.5rem;">Coming in next update...</p>
-                            
-                            <button class="btn-primary" style="width: 100%; margin-top: 2rem;" disabled>
-                                ⚡ Generate G-code
-                            </button>
+                            <p class="text-sm">Coming in next update...</p>
+                            <button class="btn btn-primary btn-block" disabled>⚡ Generate G-code</button>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Multi-page footer with navigation -->
             <div class="modal-footer">
-                <button class="btn-secondary" id="modal-back-btn">← Back to Main</button>
-                <div style="display: flex; gap: 0.5rem;">
-                    <span id="page-indicator" style="font-size: 0.75rem; color: var(--text-secondary); align-self: center;">Page 1 of 3</span>
-                    <button class="btn-primary" id="modal-next-btn" style="display: none;">Next →</button>
+                <button class="btn btn-secondary" id="modal-back-btn">← Back to Main</button>
+                <div class="footer-right">
+                    <span class="page-indicator" id="page-indicator">Page 1 of 3</span>
+                    <button class="btn btn-primary page-hidden" id="modal-next-btn">Next →</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Hidden file input for file selection -->
-    <input type="file" id="file-input-temp" style="display: none;">
+    <!-- Hidden file input -->
+    <input type="file" id="file-input-temp" class="hidden">
 
+    <!-- Scripts -->
+    <script src="config.js"></script>
     <script>
         const scripts = [
-            // Base dependencies first
-            'geometry/clipper2z.js',       // Clipper2 main WASM library
-            // 'geometry/clipper2z-utils.js', // Clipper2 complementary WASM library svg related, unnused
-
-            // Primitive definitions
+            'geometry/clipper2z.js',
             'parsers/primitives.js',
-
-            // Geometry processing
             'geometry/geometry-processor.js',
-
-            // Parsers
             'parsers/gerber-semantic.js',
             'parsers/excellon-semantic.js',
-
-            // Plotter
             'plotter/gerber-plotter.js',
-
-            // UPDATED: Single consolidated renderer module
             'renderer/layer-renderer.js',
-
-            // Exporters
             'export/svg-exporter.js',
-
-            // Coordinate system
             'coordinate/coordinate-system.js',
-
-            // CAM application
             'cam-core.js',
             'cam-ui.js',
             'cam-controller.js'
@@ -468,8 +405,7 @@ M2</textarea>
         function loadScript(src) {
             return new Promise((resolve, reject) => {
                 const script = document.createElement('script');
-                // This is the key line. The browser will request the URL exactly as given in .src
-                script.src = src; 
+                script.src = src;
                 script.async = false;
                 script.onload = () => {
                     console.log(`✅ Loaded: ${src}`);
@@ -510,38 +446,11 @@ M2</textarea>
 
         async function loadAllScripts() {
             try {
-                console.log('🚀 Loading PCB CAM with consolidated renderer...');
-
+                console.log('🚀 Loading PCB CAM with config-based architecture...');
                 for (const scriptPath of scripts) {
                     await loadScript(scriptPath);
                 }
-
-                console.log('📦 Checking class availability...');
-                const requiredClasses = [
-                    'PCBCamCore', 'PCBCamUI', 'GeometryProcessor',
-                    'GerberSemanticParser', 'ExcellonSemanticParser',
-                    'GerberPlotter', 'LayerRenderer', 'CoordinateSystemManager',
-                    'SVGExporter'
-                ];
-
-                let missingClasses = [];
-                requiredClasses.forEach(className => {
-                    const available = typeof window[className] !== 'undefined';
-                    console.log(`  ${available ? '✅' : '❌'} ${className}: ${typeof window[className]}`);
-                    if (!available) {
-                        missingClasses.push(className);
-                    }
-                });
-
-                if (missingClasses.length > 0) {
-                    console.error('💥 Missing required classes:', missingClasses);
-                    document.getElementById('loading-text').textContent = `❌ Failed to load: ${missingClasses.join(', ')}`;
-                    return;
-                }
-
                 console.log('🎉 All scripts loaded successfully.');
-                console.log('✨ Rendering system consolidated into single LayerRenderer module');
-
             } catch (error) {
                 console.error('💥 Error loading PCB CAM:', error);
                 document.getElementById('loading-text').textContent = `Error: ${error.message}`;
@@ -550,6 +459,5 @@ M2</textarea>
 
         document.addEventListener('DOMContentLoaded', loadAllScripts);
     </script>
-
 </body>
 </html>

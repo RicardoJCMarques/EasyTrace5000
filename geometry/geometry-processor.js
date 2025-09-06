@@ -1,30 +1,26 @@
-// geometry/geometry-processor2.js
+// geometry/geometry-processor.js - Refactored with config integration
 // Clipper2 WASM-based geometry processor with polarity-aware winding
 // Handles boolean operations with proper dark/clear separation
+
 (function() {
     'use strict';
     
-    // Check for required primitive classes
-    const requiredClasses = ['PathPrimitive', 'CirclePrimitive', 'RectanglePrimitive'];
-    let missingClasses = [];
-
-    requiredClasses.forEach(className => {
-        if (typeof window[className] === 'undefined') {
-            missingClasses.push(className);
-        }
-    });
-
-    if (missingClasses.length > 0) {
-        console.warn('[GeometryProcessor] Missing primitive classes:', missingClasses);
-        console.warn('[GeometryProcessor] Will use generic path primitives as fallback');
-    }
-
+    // Get config reference
+    const config = window.PCBCAMConfig || {};
+    const geomConfig = config.geometry || {};
+    const perfConfig = config.performance || {};
+    const debugConfig = config.debug || {};
+    
     class GeometryProcessor {
         constructor(options = {}) {
+            // Merge options with config defaults
             this.options = {
-                debug: options.debug || false,
-                scale: options.scale || 1000, // Use 1000 like test page, not 10000
-                preserveOriginals: true,
+                debug: options.debug !== undefined ? options.debug : debugConfig.enabled,
+                scale: config.validateScale ? 
+                    config.validateScale(options.scale) : 
+                    (options.scale || geomConfig.clipperScale || 10000),
+                preserveOriginals: options.preserveOriginals !== undefined ? 
+                    options.preserveOriginals : true,
                 skipInit: options.skipInit || false,
                 ...options
             };
@@ -32,6 +28,7 @@
             this.clipper2 = null;
             this.initialized = false;
             this.initializationError = null;
+            
             this.stats = { 
                 fusionOperations: 0, 
                 primitivesProcessed: 0, 
@@ -50,7 +47,9 @@
             } else {
                 this.initPromise = Promise.resolve(false);
             }
-            this.debug('GeometryProcessor created with polarity support');
+            
+            this.debug('GeometryProcessor initialized with config-based settings');
+            this.debug(`Scale: ${this.options.scale}, Preserve originals: ${this.options.preserveOriginals}`);
         }
 
         async initializeClipper2() {
@@ -59,6 +58,7 @@
                 if (typeof Clipper2ZFactory === 'undefined') {
                     throw new Error('Clipper2ZFactory not found');
                 }
+                
                 const clipper2Core = await Clipper2ZFactory();
                 if (!clipper2Core) {
                     throw new Error('Failed to load Clipper2 core module');
@@ -88,10 +88,6 @@
             if (!this.initialized) throw new Error(this.initializationError?.message || 'Clipper2 not initialized');
         }
 
-        /**
-         * Create Path64 with proper coordinate conversion and winding enforcement
-         * This matches the test page's approach
-         */
         _makePath64(coords, polarity = 'dark') {
             const { Path64, Point64, AreaPath64 } = this.clipper2;
             
@@ -139,7 +135,7 @@
                     path.delete();
                     path = reversed;
                     
-                    if (this.options.debug) {
+                    if (this.options.debug && debugConfig.logging?.polarityHandling) {
                         this.debug(`Reversed winding for ${polarity} primitive (area was ${area})`);
                     }
                 }
@@ -209,13 +205,13 @@
                         if (result.polarity === 'clear') {
                             clearPaths.push_back(path64);
                             clearCount++;
-                            if (this.options.debug) {
+                            if (this.options.debug && debugConfig.logging?.polarityHandling) {
                                 this.debug(`Added clear primitive ${i} to subtraction set`);
                             }
                         } else {
                             darkPaths.push_back(path64);
                             darkCount++;
-                            if (this.options.debug) {
+                            if (this.options.debug && debugConfig.logging?.polarityHandling) {
                                 this.debug(`Added dark primitive ${i} to union set`);
                             }
                         }
@@ -231,11 +227,13 @@
                 this.stats.darkPrimitives = darkCount;
                 this.stats.clearPrimitives = clearCount;
                 
-                console.log(`[GeometryProcessor] Fusion input summary:`);
-                console.log(`  Total primitives: ${primitives.length}`);
-                console.log(`  Dark primitives: ${darkCount}`);
-                console.log(`  Clear primitives: ${clearCount}`);
-                console.log(`  Skipped/Invalid: ${skippedCount}`);
+                if (debugConfig.logging?.fusionOperations) {
+                    console.log(`[GeometryProcessor] Fusion input summary:`);
+                    console.log(`  Total primitives: ${primitives.length}`);
+                    console.log(`  Dark primitives: ${darkCount}`);
+                    console.log(`  Clear primitives: ${clearCount}`);
+                    console.log(`  Skipped/Invalid: ${skippedCount}`);
+                }
 
                 // Use Clipper64 with PolyTree for proper hole handling
                 const clipper = new Clipper64();
@@ -245,29 +243,41 @@
                 
                 let fusedPrimitives = [];
                 
+                // Get fill rule from config
+                const fillRule = geomConfig.fusion?.fillRule === 'evenodd' ? 
+                    FillRule.EvenOdd : FillRule.NonZero;
+                
                 if (darkCount > 0 && clearCount === 0) {
                     // Only dark regions - simple union
-                    console.log('[GeometryProcessor] Performing union of dark regions only');
+                    if (debugConfig.logging?.fusionOperations) {
+                        console.log('[GeometryProcessor] Performing union of dark regions only');
+                    }
                     clipper.AddSubject(darkPaths);
-                    const success = clipper.ExecutePoly(ClipType.Union, FillRule.NonZero, solutionPoly);
+                    const success = clipper.ExecutePoly(ClipType.Union, fillRule, solutionPoly);
                     
                     if (success) {
                         fusedPrimitives = this.polyTreeToPrimitives(solutionPoly);
-                        console.log(`[GeometryProcessor] Union successful: ${fusedPrimitives.length} output primitives`);
+                        if (debugConfig.logging?.fusionOperations) {
+                            console.log(`[GeometryProcessor] Union successful: ${fusedPrimitives.length} output primitives`);
+                        }
                     } else {
                         console.error('[GeometryProcessor] Union operation failed');
                     }
                     
                 } else if (darkCount > 0 && clearCount > 0) {
                     // Both dark and clear - union dark first, then subtract clear
-                    console.log('[GeometryProcessor] Processing dark and clear regions with PolyTree');
+                    if (debugConfig.logging?.fusionOperations) {
+                        console.log('[GeometryProcessor] Processing dark and clear regions with PolyTree');
+                    }
                     clipper.AddSubject(darkPaths);
                     clipper.AddClip(clearPaths);
-                    const success = clipper.ExecutePoly(ClipType.Difference, FillRule.NonZero, solutionPoly);
+                    const success = clipper.ExecutePoly(ClipType.Difference, fillRule, solutionPoly);
                     
                     if (success) {
                         fusedPrimitives = this.polyTreeToPrimitives(solutionPoly);
-                        console.log(`[GeometryProcessor] Difference successful: ${fusedPrimitives.length} output primitives`);
+                        if (debugConfig.logging?.fusionOperations) {
+                            console.log(`[GeometryProcessor] Difference successful: ${fusedPrimitives.length} output primitives`);
+                        }
                     } else {
                         console.error('[GeometryProcessor] Difference operation failed');
                     }
@@ -275,7 +285,6 @@
                 } else if (clearCount > 0) {
                     // Only clear regions - unusual but possible
                     console.log('[GeometryProcessor] Warning: Only clear regions found, returning empty');
-                    // Return empty array
                     
                 } else {
                     // No valid primitives
@@ -285,22 +294,28 @@
 
                 this.stats.primitivesReduced = (darkCount + clearCount) - fusedPrimitives.length;
                 
-                console.log(`[GeometryProcessor] Fusion complete:`);
-                console.log(`  Input: ${darkCount + clearCount} primitives`);
-                console.log(`  Output: ${fusedPrimitives.length} primitives`);
-                console.log(`  Reduction: ${this.stats.primitivesReduced} primitives`);
+                if (debugConfig.logging?.fusionOperations) {
+                    console.log(`[GeometryProcessor] Fusion complete:`);
+                    console.log(`  Input: ${darkCount + clearCount} primitives`);
+                    console.log(`  Output: ${fusedPrimitives.length} primitives`);
+                    console.log(`  Reduction: ${this.stats.primitivesReduced} primitives`);
+                }
                 
                 // Debug: Check for holes in result
-                let holesFound = 0;
-                fusedPrimitives.forEach((prim, idx) => {
-                    if (prim.holes && prim.holes.length > 0) {
-                        holesFound += prim.holes.length;
-                        console.log(`[GeometryProcessor] Primitive ${idx} contains ${prim.holes.length} holes`);
+                if (geomConfig.fusion?.preserveHoles) {
+                    let holesFound = 0;
+                    fusedPrimitives.forEach((prim, idx) => {
+                        if (prim.holes && prim.holes.length > 0) {
+                            holesFound += prim.holes.length;
+                            if (this.options.debug) {
+                                console.log(`[GeometryProcessor] Primitive ${idx} contains ${prim.holes.length} holes`);
+                            }
+                        }
+                    });
+                    if (holesFound > 0) {
+                        this.stats.holesDetected = holesFound;
+                        console.log(`[GeometryProcessor] Total holes detected: ${holesFound}`);
                     }
-                });
-                if (holesFound > 0) {
-                    this.stats.holesDetected = holesFound;
-                    console.log(`[GeometryProcessor] Total holes detected: ${holesFound}`);
                 }
                 
                 return fusedPrimitives;
@@ -314,9 +329,6 @@
             }
         }
 
-        /**
-         * Validate primitive before fusion
-         */
         validatePrimitiveForFusion(primitive, index) {
             // Check basic structure
             if (!primitive) {
@@ -348,23 +360,15 @@
                 if (primitive.properties.stroke && !primitive.properties.fill) {
                     this.debug(`INFO: Converting stroked path ${index} to filled polygon for fusion`);
                     this.stats.convertedPrimitives++;
-                    // The conversion happens in primitiveToCoordinates
                 }
             }
             
             return true;
         }
 
-        /**
-         * Convert primitive to coordinates with polarity extraction
-         * CRITICAL: Must return both coords AND polarity
-         * FIXED: Proper handling of stroked paths with rounded end-caps
-         */
         primitiveToCoordinates(primitive) {
             const scale = this.options.scale;
             const coords = [];
-            
-            // Extract polarity - CRITICAL
             const polarity = primitive.properties?.polarity || 'dark';
 
             try {
@@ -395,9 +399,7 @@
                             );
                             polygonPoints.forEach(point => addPoint(point[0], point[1]));
                         } else {
-                            // Multi-segment path - convert each segment and union them
-                            // For now, just use the points as-is (fallback)
-                            // TODO: Implement proper multi-segment path conversion
+                            // Multi-segment path - for now, just use the points as-is
                             primitive.points.forEach(point => {
                                 if (point) addPoint(point.x, point.y);
                             });
@@ -423,7 +425,7 @@
                         const polygonPoints = this.arcToPolygon(
                             [primitive.center.x, primitive.center.y],
                             primitive.radius,
-                            primitive.startAngle * 180 / Math.PI, // Convert to degrees
+                            primitive.startAngle * 180 / Math.PI,
                             primitive.endAngle * 180 / Math.PI,
                             primitive.properties.strokeWidth
                         );
@@ -454,11 +456,10 @@
                 }
 
                 // Debug output for converted coordinates
-                if (this.options.debug && coords.length > 0) {
+                if (this.options.debug && debugConfig.logging?.coordinateConversion && coords.length > 0) {
                     this.debug(`Converted ${primitive.type} to ${coords.length / 2} points, polarity: ${polarity}`);
                 }
 
-                // Return both coordinates AND polarity
                 return { coords, polarity };
                 
             } catch (error) {
@@ -467,10 +468,6 @@
             }
         }
 
-        /**
-         * Convert line to thick polygon with rounded end-caps
-         * Creates proper CCW wound polygon with semicircular caps
-         */
         lineToPolygon(from, to, width) {
             const dx = to[0] - from[0];
             const dy = to[1] - from[1];
@@ -478,8 +475,8 @@
             const halfWidth = width / 2;
             
             // Handle zero-length lines - return a circle
-            if (len < 0.001) {
-                const segments = 16;
+            if (len < (geomConfig.coordinatePrecision || 0.001)) {
+                const segments = 24;
                 const points = [];
                 for (let i = 0; i < segments; i++) {
                     const angle = (i / segments) * 2 * Math.PI;
@@ -500,7 +497,7 @@
             const ny = ux * halfWidth;
             
             const points = [];
-            const capSegments = 8;
+            const capSegments = 16;
             
             // Build polygon in CCW order:
             
@@ -541,13 +538,10 @@
             return points;
         }
 
-        /**
-         * Convert arc to thick polygon with rounded end-caps
-         */
         arcToPolygon(center, radius, startDeg, endDeg, width) {
             const points = [];
-            const segments = 32;
-            const capSegments = 8;
+            const segments = 48;
+            const capSegments = 16;
             const halfWidth = width / 2;
             const innerR = radius - halfWidth;
             const outerR = radius + halfWidth;
@@ -555,7 +549,7 @@
             // Cannot create valid shape if inner radius is negative
             if (innerR < 0) {
                 // Fall back to filled circle
-                const circleSegments = 32;
+                const circleSegments = 48;
                 for (let i = 0; i < circleSegments; i++) {
                     const angle = (i / circleSegments) * 2 * Math.PI;
                     points.push([
@@ -624,9 +618,6 @@
             return points;
         }
 
-        /**
-         * Convert PolyTree to primitives with proper hole handling
-         */
         polyTreeToPrimitives(polyNode) {
             const scale = this.options.scale;
             const primitives = [];
@@ -702,8 +693,12 @@
             return primitives;
         }
 
-        getOptimalCircleSegments(radius, minSegments = 16, maxSegments = 128) {
-            const targetSegmentLength = 0.1;
+        getOptimalCircleSegments(radius, minSegments = null, maxSegments = null) {
+            // Use config values if available
+            const targetSegmentLength = geomConfig.segments?.targetLength || 0.1;
+            minSegments = minSegments || geomConfig.segments?.minCircle || 16;
+            maxSegments = maxSegments || geomConfig.segments?.maxCircle || 128;
+            
             if (radius <= 0) return minSegments;
             const circumference = 2 * Math.PI * radius;
             const desiredSegments = Math.ceil(circumference / targetSegmentLength);
@@ -717,11 +712,14 @@
             const h = obround.height || 0;
             const r = Math.min(w, h) / 2;
             if (r <= 0) return [];
+            
             const segments = this.getOptimalCircleSegments(r, 8, 32);
             const halfSegments = Math.ceil(segments / 2);
 
             if (w > h) { // Horizontal
-                const c1x = x + r; const c2x = x + w - r; const cy = y + r;
+                const c1x = x + r; 
+                const c2x = x + w - r; 
+                const cy = y + r;
                 for (let i = 0; i <= halfSegments; i++) {
                     const angle = Math.PI / 2 + (i / halfSegments) * Math.PI;
                     points.push({ x: c1x + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
@@ -731,7 +729,9 @@
                     points.push({ x: c2x + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
                 }
             } else { // Vertical
-                const cx = x + r; const c1y = y + r; const c2y = y + h - r;
+                const cx = x + r; 
+                const c1y = y + r; 
+                const c2y = y + h - r;
                 for (let i = 0; i <= halfSegments; i++) {
                     const angle = Math.PI + (i / halfSegments) * Math.PI;
                     points.push({ x: cx + r * Math.cos(angle), y: c1y + r * Math.sin(angle) });
@@ -749,20 +749,27 @@
                 return new PathPrimitive(points, properties);
             }
             return {
-                type: 'path', points, properties, closed: properties.closed !== false,
+                type: 'path', 
+                points, 
+                properties, 
+                closed: properties.closed !== false,
                 holes: properties.holes || [],
                 getBounds: function() {
                     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                     this.points.forEach(p => {
-                        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-                        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+                        minX = Math.min(minX, p.x); 
+                        minY = Math.min(minY, p.y);
+                        maxX = Math.max(maxX, p.x); 
+                        maxY = Math.max(maxY, p.y);
                     });
                     // Include holes in bounds
                     if (this.holes && this.holes.length > 0) {
                         this.holes.forEach(hole => {
                             hole.forEach(p => {
-                                minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-                                maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+                                minX = Math.min(minX, p.x); 
+                                minY = Math.min(minY, p.y);
+                                maxX = Math.max(maxX, p.x); 
+                                maxY = Math.max(maxY, p.y);
                             });
                         });
                     }
@@ -789,13 +796,12 @@
             return { ...this.stats, initialized: this.initialized }; 
         }
 
-        // Prepare geometry for offset generation (placeholder for future implementation)
+        // Placeholder methods for future offset implementation
         prepareForOffset(primitives) {
             console.log('[GeometryProcessor] Offset preparation not yet implemented');
             return primitives;
         }
 
-        // Generate offset geometry (placeholder for future implementation)
         generateOffset(geometry, offsetDistance, options = {}) {
             console.log('[GeometryProcessor] Offset generation not yet implemented');
             return [];
