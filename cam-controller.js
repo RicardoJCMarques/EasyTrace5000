@@ -1,4 +1,4 @@
-// cam-controller_r.js - Refactored with config integration
+// cam-controller.js
 // Main application controller - ties together core logic and UI components
 // Manages async WASM operations and file processing pipeline
 
@@ -564,7 +564,7 @@
                 core: this.core.getProcessorStats(),
                 ui: {
                     fusionStats: this.ui.fusionStats,
-                    modalPage: this.ui.currentModalPage,
+                    modalPage: this.ui.modalManager?.getCurrentPage(),
                     hasRenderer: !!this.ui.renderer
                 },
                 operations: this.core.operations.length,
@@ -582,14 +582,24 @@
             console.log('📊 Document state:', document.readyState);
         }
         
+        // Check for new class names
         const requiredClasses = [
             'PCBCamCore',
             'PCBCamUI',
             'GeometryProcessor',
-            'GerberSemanticParser',
-            'ExcellonSemanticParser',
-            'GerberPlotter',
+            'GerberParser',           // New name
+            'ExcellonParser',         // New name
+            'ParserPlotter',          // New name
+            'ParserCore',             // New base class
             'LayerRenderer',
+            'RendererCore',           // New modular class
+            'PrimitiveRenderer',      // New modular class
+            'OverlayRenderer',        // New modular class
+            'InteractionHandler',     // New modular class
+            'ModalManager',           // New modular class
+            'OperationsManager',      // New modular class
+            'StatusManager',          // New modular class
+            'UIControls',             // New modular class
             'CoordinateSystemManager'
         ];
         
@@ -634,18 +644,18 @@
     // Initialization strategies
     document.addEventListener('DOMContentLoaded', () => {
         if (debugConfig.enabled) {
-            console.log('🔍 DOMContentLoaded event fired');
+            console.log('📍 DOMContentLoaded event fired');
         }
         initializePCBCAM();
     });
     
     if (document.readyState === 'loading') {
         if (debugConfig.enabled) {
-            console.log('🔍 Document still loading, waiting for DOMContentLoaded...');
+            console.log('📍 Document still loading, waiting for DOMContentLoaded...');
         }
     } else {
         if (debugConfig.enabled) {
-            console.log('🔍 Document already loaded, initializing immediately...');
+            console.log('📍 Document already loaded, initializing immediately...');
         }
         initializePCBCAM();
     }
@@ -654,7 +664,7 @@
     setTimeout(() => {
         if (!window.cam) {
             if (debugConfig.enabled) {
-                console.log('🔍 Delayed initialization attempt...');
+                console.log('📍 Delayed initialization attempt...');
             }
             initializePCBCAM();
         }

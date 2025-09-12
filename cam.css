@@ -1,5 +1,4 @@
-/* PCB CAM CSS - Cleaned and Consolidated
- * Organized by component type with reduced specificity
+/* PCB CAM CSS
  * Uses config.js values through CSS variables
  */
 
@@ -843,6 +842,32 @@ h4 {
     margin-bottom: var(--spacing-sm);
 }
 
+/* Arc Reconstruction sections */
+.arc-fitting-section {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+}
+
+.arc-fitting-params {
+    margin-top: 0.5rem;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.arc-fitting-params label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+}
+
+.arc-fitting-params input[type="number"] {
+    width: 80px;
+    padding: 0.25rem;
+}
+
 /* ============================================================================
    UTILITIES
    ============================================================================ */
@@ -942,3 +967,5 @@ textarea:focus-visible {
         transition-duration: 0.01ms !important;
     }
 }
+
+

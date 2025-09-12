@@ -1,5 +1,5 @@
-// config.js - Centralized configuration for PCB CAM
-// All settings, constants, and defaults in one place for easy customization
+// config.js
+// Centralized configuration for PCB CAM - constants only
 
 window.PCBCAMConfig = {
     // ============================================================================
@@ -494,7 +494,7 @@ window.PCBCAMConfig = {
     },
     
     // ============================================================================
-    // HELPER METHODS
+    // CONFIG-SPECIFIC HELPER METHODS
     // ============================================================================
     
     // Get operation configuration by type
@@ -513,50 +513,9 @@ window.PCBCAMConfig = {
         return templates ? templates[type] : '';
     },
     
-    // Validate scale factor
-    validateScale: function(scale) {
-        const min = 1000;
-        const max = 1000000;
-        return Math.max(min, Math.min(max, scale || this.geometry.clipperScale));
-    },
-    
-    // Get segment count for radius
-    getSegmentCount: function(radius, type = 'circle') {
-        const circumference = 2 * Math.PI * radius;
-        const targetLength = this.geometry.segments.targetLength;
-        const calculated = Math.ceil(circumference / targetLength);
-        
-        const min = this.geometry.segments[`min${type.charAt(0).toUpperCase() + type.slice(1)}`];
-        const max = this.geometry.segments[`max${type.charAt(0).toUpperCase() + type.slice(1)}`];
-        
-        return Math.max(min, Math.min(max, calculated));
-    },
-    
     // Format number for G-code
     formatGcode: function(value, type = 'coordinates') {
         const precision = this.gcode.precision[type] || 3;
         return value.toFixed(precision).replace(/\.?0+$/, '');
-    },
-    
-    // Export configuration as JSON
-    export: function() {
-        return JSON.stringify(this, null, 2);
-    },
-    
-    // Import configuration from JSON
-    import: function(jsonString) {
-        try {
-            const imported = JSON.parse(jsonString);
-            Object.assign(this, imported);
-            return true;
-        } catch (error) {
-            console.error('Failed to import configuration:', error);
-            return false;
-        }
-    },
-    
-    // Reset to defaults
-    reset: function() {
-        window.location.reload();
     }
 };

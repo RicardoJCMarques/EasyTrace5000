@@ -1,774 +1,357 @@
-// geometry/geometry-processor.js - Refactored with config integration
-// Clipper2 WASM-based geometry processor with polarity-aware winding
-// Handles boolean operations with proper dark/clear separation
+// geometry/geometry-processor.js
+// High-level geometry processing pipeline orchestrator
 
 (function() {
     'use strict';
     
-    // Get config reference
     const config = window.PCBCAMConfig || {};
     const geomConfig = config.geometry || {};
-    const perfConfig = config.performance || {};
     const debugConfig = config.debug || {};
     
     class GeometryProcessor {
         constructor(options = {}) {
-            // Merge options with config defaults
             this.options = {
                 debug: options.debug !== undefined ? options.debug : debugConfig.enabled,
-                scale: config.validateScale ? 
-                    config.validateScale(options.scale) : 
-                    (options.scale || geomConfig.clipperScale || 10000),
-                preserveOriginals: options.preserveOriginals !== undefined ? 
-                    options.preserveOriginals : true,
-                skipInit: options.skipInit || false,
+                scale: options.scale || geomConfig.clipperScale || 10000,
+                preserveOriginals: options.preserveOriginals !== undefined ? options.preserveOriginals : true,
                 ...options
             };
-
-            this.clipper2 = null;
-            this.initialized = false;
-            this.initializationError = null;
             
-            this.stats = { 
-                fusionOperations: 0, 
-                primitivesProcessed: 0, 
-                primitivesReduced: 0, 
-                errors: 0,
-                darkPrimitives: 0,
-                clearPrimitives: 0,
-                holesDetected: 0,
-                invalidPrimitives: 0,
-                emptyPrimitives: 0,
-                convertedPrimitives: 0
+            // Initialize sub-modules
+            this.clipper = new ClipperWrapper({
+                scale: this.options.scale,
+                debug: this.options.debug
+            });
+            
+            this.arcReconstructor = new ArcReconstructor({
+                debug: this.options.debug,
+                scale: this.options.scale
+            });
+            
+            // State caching
+            this.cachedStates = {
+                originalPrimitives: null,
+                preprocessedGeometry: null,
+                fusedGeometry: null
             };
-
-            if (!this.options.skipInit) {
-                this.initPromise = this.initializeClipper2();
-            } else {
-                this.initPromise = Promise.resolve(false);
-            }
             
-            this.debug('GeometryProcessor initialized with config-based settings');
-            this.debug(`Scale: ${this.options.scale}, Preserve originals: ${this.options.preserveOriginals}`);
+            // Statistics
+            this.stats = {
+                fusionOperations: 0,
+                primitivesProcessed: 0,
+                primitivesReduced: 0,
+                strokesConverted: 0,
+                holesDetected: 0
+            };
+            
+            // Initialize promise
+            this.initPromise = this.initialize();
         }
-
-        async initializeClipper2() {
-            this.debug('Initializing Clipper2 WASM modules...');
+        
+        async initialize() {
             try {
-                if (typeof Clipper2ZFactory === 'undefined') {
-                    throw new Error('Clipper2ZFactory not found');
-                }
-                
-                const clipper2Core = await Clipper2ZFactory();
-                if (!clipper2Core) {
-                    throw new Error('Failed to load Clipper2 core module');
-                }
-                this.clipper2 = clipper2Core;
-                
-                // Check for all required APIs
-                const requiredAPIs = ['Paths64', 'Path64', 'Point64', 'Union64', 'Difference64', 
-                                     'FillRule', 'AreaPath64', 'Clipper64', 'ClipType', 'PolyPath64'];
-                for (const api of requiredAPIs) {
-                    if (!this.clipper2[api]) throw new Error(`Required Clipper2 API '${api}' not found`);
-                }
-                
-                this.initialized = true;
-                this.debug('✅ Clipper2 WASM initialized with polarity support');
+                await this.clipper.initialize();
+                this.debug('GeometryProcessor initialized with modular architecture');
                 return true;
             } catch (error) {
-                console.error('[GeometryProcessor] Failed to initialize Clipper2:', error);
-                this.initialized = false;
-                this.initializationError = error;
+                console.error('Failed to initialize GeometryProcessor:', error);
                 return false;
             }
         }
         
-        async ensureInitialized() {
-            if (!this.initialized) await this.initPromise;
-            if (!this.initialized) throw new Error(this.initializationError?.message || 'Clipper2 not initialized');
-        }
-
-        _makePath64(coords, polarity = 'dark') {
-            const { Path64, Point64, AreaPath64 } = this.clipper2;
-            
-            let path = new Path64();
-            
-            try {
-                // Add all points to the path
-                let pointCount = 0;
-                for (let i = 0; i < coords.length; i += 2) {
-                    if (i + 1 < coords.length) {
-                        const point = new Point64(
-                            BigInt(coords[i]), 
-                            BigInt(coords[i + 1]), 
-                            BigInt(0)
-                        );
-                        path.push_back(point);
-                        point.delete();
-                        pointCount++;
-                    }
-                }
-                
-                if (pointCount < 3) {
-                    this.debug(`WARNING: Path has only ${pointCount} points, skipping`);
-                    path.delete();
-                    return null;
-                }
-                
-                // Calculate signed area using Clipper2's built-in function
-                const area = AreaPath64(path);
-                
-                // In Clipper2: positive area = CCW, negative area = CW
-                const isClockwise = area < 0;
-                
-                // Determine if we need to reverse based on polarity
-                const needsReversal = 
-                    (polarity === 'dark' && isClockwise) ||    // Dark must be CCW (positive area)
-                    (polarity === 'clear' && !isClockwise);     // Clear must be CW (negative area)
-                
-                if (needsReversal) {
-                    // Create reversed path
-                    const reversed = new Path64();
-                    for (let i = path.size() - 1; i >= 0; i--) {
-                        reversed.push_back(path.get(i));
-                    }
-                    path.delete();
-                    path = reversed;
-                    
-                    if (this.options.debug && debugConfig.logging?.polarityHandling) {
-                        this.debug(`Reversed winding for ${polarity} primitive (area was ${area})`);
-                    }
-                }
-                
-                return path;
-                
-            } catch (e) {
-                console.error('Error creating Path64:', e);
-                if (path) path.delete();
-                throw e;
-            }
-        }
-
-        async fuseGeometry(primitives) {
+        // Main fusion pipeline
+        async fuseGeometry(primitives, options = {}) {
             await this.ensureInitialized();
+            
             if (!primitives || primitives.length === 0) return [];
-
-            this.debug(`Starting Clipper2 fusion of ${primitives.length} primitives`);
+            
+            const fusionOptions = {
+                enableArcReconstruction: this.options.enableArcReconstruction || false,
+                ...options
+            };
+            
+            this.debug(`Starting fusion pipeline: ${primitives.length} primitives`);
+            if (fusionOptions.enableArcReconstruction) {
+                this.debug('Arc reconstruction ENABLED');
+            }
+            
+            // Clear previous state
+            this.clearCachedStates();
+            
+            // Step 1: Cache originals with indices
+            this.cachedStates.originalPrimitives = primitives.map((p, idx) => ({
+                ...p,
+                _originalIndex: idx
+            }));
+            
+            // Step 2: Detect curves if arc reconstruction is enabled
+            if (fusionOptions.enableArcReconstruction) {
+                this.arcReconstructor.clear();
+                const detectedCurves = this.arcReconstructor.detectCurves(primitives);
+                this.debug(`Detected ${detectedCurves.length} curves`);
+            }
+            
+            // Step 3: Preprocess primitives (maintains _originalIndex)
+            const preprocessed = this._preprocessPrimitives(this.cachedStates.originalPrimitives, fusionOptions);
+            this.cachedStates.preprocessedGeometry = preprocessed;
+            
+            // Step 4: Perform boolean fusion
+            const fused = await this._performFusion(preprocessed, fusionOptions);
+            
+            // Step 5: Reconstruct arcs if enabled
+            let finalGeometry = fused;
+            if (fusionOptions.enableArcReconstruction && this.arcReconstructor.registry.size > 0) {
+                finalGeometry = this.arcReconstructor.processForReconstruction(fused);
+                const stats = this.arcReconstructor.getStats();
+                this.debug(`Arc reconstruction: ${stats.reconstructed}/${stats.registered} curves recovered`);
+            }
+            
+            this.cachedStates.fusedGeometry = finalGeometry;
+            
+            // Update statistics
             this.stats.fusionOperations++;
             this.stats.primitivesProcessed += primitives.length;
-
-            const wasmObjects = [];
-            try {
-                const { Paths64, ClipType, FillRule, Clipper64, PolyPath64 } = this.clipper2;
-                
-                // Separate paths by polarity
-                const darkPaths = new Paths64();
-                const clearPaths = new Paths64();
-                wasmObjects.push(darkPaths);
-                wasmObjects.push(clearPaths);
-
-                let darkCount = 0;
-                let clearCount = 0;
-                let skippedCount = 0;
-                
-                // Process each primitive based on its polarity
-                for (let i = 0; i < primitives.length; i++) {
-                    const primitive = primitives[i];
-                    
-                    // Validate primitive
-                    if (!this.validatePrimitiveForFusion(primitive, i)) {
-                        skippedCount++;
-                        continue;
-                    }
-                    
-                    const result = this.primitiveToCoordinates(primitive);
-                    
-                    if (!result || !result.coords || result.coords.length < 6) {
-                        this.debug(`WARNING: Primitive ${i} produced invalid coordinates`);
-                        this.stats.invalidPrimitives++;
-                        skippedCount++;
-                        continue;
-                    }
-                    
-                    try {
-                        // Create path with polarity-aware winding
-                        const path64 = this._makePath64(result.coords, result.polarity);
-                        
-                        if (!path64) {
-                            this.debug(`WARNING: Failed to create Path64 for primitive ${i}`);
-                            this.stats.emptyPrimitives++;
-                            skippedCount++;
-                            continue;
-                        }
-                        
-                        // Add to appropriate container based on polarity
-                        if (result.polarity === 'clear') {
-                            clearPaths.push_back(path64);
-                            clearCount++;
-                            if (this.options.debug && debugConfig.logging?.polarityHandling) {
-                                this.debug(`Added clear primitive ${i} to subtraction set`);
-                            }
-                        } else {
-                            darkPaths.push_back(path64);
-                            darkCount++;
-                            if (this.options.debug && debugConfig.logging?.polarityHandling) {
-                                this.debug(`Added dark primitive ${i} to union set`);
-                            }
-                        }
-                        
-                        path64.delete();
-                    } catch (e) {
-                        console.error(`Failed to create Path64 for primitive ${i}:`, primitive, "Error:", e);
-                        this.stats.errors++;
-                        skippedCount++;
-                    }
-                }
-
-                this.stats.darkPrimitives = darkCount;
-                this.stats.clearPrimitives = clearCount;
-                
-                if (debugConfig.logging?.fusionOperations) {
-                    console.log(`[GeometryProcessor] Fusion input summary:`);
-                    console.log(`  Total primitives: ${primitives.length}`);
-                    console.log(`  Dark primitives: ${darkCount}`);
-                    console.log(`  Clear primitives: ${clearCount}`);
-                    console.log(`  Skipped/Invalid: ${skippedCount}`);
-                }
-
-                // Use Clipper64 with PolyTree for proper hole handling
-                const clipper = new Clipper64();
-                const solutionPoly = new PolyPath64();
-                wasmObjects.push(clipper);
-                wasmObjects.push(solutionPoly);
-                
-                let fusedPrimitives = [];
-                
-                // Get fill rule from config
-                const fillRule = geomConfig.fusion?.fillRule === 'evenodd' ? 
-                    FillRule.EvenOdd : FillRule.NonZero;
-                
-                if (darkCount > 0 && clearCount === 0) {
-                    // Only dark regions - simple union
-                    if (debugConfig.logging?.fusionOperations) {
-                        console.log('[GeometryProcessor] Performing union of dark regions only');
-                    }
-                    clipper.AddSubject(darkPaths);
-                    const success = clipper.ExecutePoly(ClipType.Union, fillRule, solutionPoly);
-                    
-                    if (success) {
-                        fusedPrimitives = this.polyTreeToPrimitives(solutionPoly);
-                        if (debugConfig.logging?.fusionOperations) {
-                            console.log(`[GeometryProcessor] Union successful: ${fusedPrimitives.length} output primitives`);
-                        }
-                    } else {
-                        console.error('[GeometryProcessor] Union operation failed');
-                    }
-                    
-                } else if (darkCount > 0 && clearCount > 0) {
-                    // Both dark and clear - union dark first, then subtract clear
-                    if (debugConfig.logging?.fusionOperations) {
-                        console.log('[GeometryProcessor] Processing dark and clear regions with PolyTree');
-                    }
-                    clipper.AddSubject(darkPaths);
-                    clipper.AddClip(clearPaths);
-                    const success = clipper.ExecutePoly(ClipType.Difference, fillRule, solutionPoly);
-                    
-                    if (success) {
-                        fusedPrimitives = this.polyTreeToPrimitives(solutionPoly);
-                        if (debugConfig.logging?.fusionOperations) {
-                            console.log(`[GeometryProcessor] Difference successful: ${fusedPrimitives.length} output primitives`);
-                        }
-                    } else {
-                        console.error('[GeometryProcessor] Difference operation failed');
-                    }
-                    
-                } else if (clearCount > 0) {
-                    // Only clear regions - unusual but possible
-                    console.log('[GeometryProcessor] Warning: Only clear regions found, returning empty');
-                    
-                } else {
-                    // No valid primitives
-                    console.log('[GeometryProcessor] No valid primitives to fuse');
-                    return [];
-                }
-
-                this.stats.primitivesReduced = (darkCount + clearCount) - fusedPrimitives.length;
-                
-                if (debugConfig.logging?.fusionOperations) {
-                    console.log(`[GeometryProcessor] Fusion complete:`);
-                    console.log(`  Input: ${darkCount + clearCount} primitives`);
-                    console.log(`  Output: ${fusedPrimitives.length} primitives`);
-                    console.log(`  Reduction: ${this.stats.primitivesReduced} primitives`);
-                }
-                
-                // Debug: Check for holes in result
-                if (geomConfig.fusion?.preserveHoles) {
-                    let holesFound = 0;
-                    fusedPrimitives.forEach((prim, idx) => {
-                        if (prim.holes && prim.holes.length > 0) {
-                            holesFound += prim.holes.length;
-                            if (this.options.debug) {
-                                console.log(`[GeometryProcessor] Primitive ${idx} contains ${prim.holes.length} holes`);
-                            }
-                        }
-                    });
-                    if (holesFound > 0) {
-                        this.stats.holesDetected = holesFound;
-                        console.log(`[GeometryProcessor] Total holes detected: ${holesFound}`);
-                    }
-                }
-                
-                return fusedPrimitives;
-
-            } catch (error) {
-                console.error('[GeometryProcessor] Clipper2 fusion failed:', error);
-                this.stats.errors++;
-                return primitives;
-            } finally {
-                this.cleanupWasmObjects(wasmObjects);
-            }
+            this.stats.primitivesReduced = preprocessed.length - finalGeometry.length;
+            
+            this.debug(`Fusion complete: ${primitives.length} → ${finalGeometry.length} primitives`);
+            
+            return finalGeometry;
         }
-
-        validatePrimitiveForFusion(primitive, index) {
-            // Check basic structure
-            if (!primitive) {
-                this.debug(`WARNING: Primitive ${index} is null/undefined`);
-                return false;
+        
+        // Preprocess primitives
+        _preprocessPrimitives(primitives, options) {
+            const preprocessed = [];
+            this.stats.strokesConverted = 0;
+            
+            for (const primitive of primitives) {
+                if (!this._validatePrimitive(primitive)) continue;
+                
+                // Preserve original index
+                const originalIndex = primitive._originalIndex;
+                
+                // Determine if stroke conversion is needed
+                const operationType = primitive.properties?.operationType;
+                const isStroke = (primitive.properties?.stroke && !primitive.properties?.fill) || 
+                               primitive.properties?.isTrace;
+                const shouldConvertStroke = isStroke && operationType === 'isolation';
+                
+                let processedPrimitive;
+                if (shouldConvertStroke) {
+                    this.stats.strokesConverted++;
+                    processedPrimitive = this._convertStrokeToPolygon(primitive);
+                } else {
+                    processedPrimitive = this._standardizePrimitive(primitive, options);
+                }
+                
+                if (processedPrimitive) {
+                    // Preserve the original index through preprocessing
+                    processedPrimitive._originalIndex = originalIndex;
+                    preprocessed.push(processedPrimitive);
+                }
             }
             
-            // Check for properties
+            this.debug(`Preprocessing: ${primitives.length} → ${preprocessed.length} (${this.stats.strokesConverted} strokes converted)`);
+            return preprocessed;
+        }
+        
+        // Perform boolean fusion
+        async _performFusion(primitives, options) {
+            // Separate by polarity
+            const darkPrimitives = [];
+            const clearPrimitives = [];
+            
+            for (const primitive of primitives) {
+                const polarity = primitive.properties?.polarity || 'dark';
+                
+                // Points should already be tagged with curve IDs from standardization
+                // No need for primitive-level tagging here
+                
+                if (polarity === 'clear') {
+                    clearPrimitives.push(primitive);
+                } else {
+                    darkPrimitives.push(primitive);
+                }
+            }
+            
+            this.debug(`Fusion input: ${darkPrimitives.length} dark, ${clearPrimitives.length} clear`);
+            
+            // Execute boolean difference
+            const result = await this.clipper.difference(darkPrimitives, clearPrimitives);
+            
+            // Count holes
+            let holesFound = 0;
+            result.forEach(p => {
+                if (p.holes && p.holes.length > 0) {
+                    holesFound += p.holes.length;
+                }
+            });
+            
+            if (holesFound > 0) {
+                this.stats.holesDetected = holesFound;
+                this.debug(`Detected ${holesFound} holes in fused geometry`);
+            }
+            
+            // Convert back to primitives
+            return result.map(p => this._createPathPrimitive(p.points, {
+                ...p.properties,
+                holes: p.holes || [],
+                curveIds: p.curveIds // Preserve curve IDs through fusion
+            }));
+        }
+        
+        // Convert stroke to polygon
+        _convertStrokeToPolygon(primitive) {
+            if (primitive.type === 'path' && primitive.points && primitive.properties?.strokeWidth) {
+                const polygonPoints = GeometryUtils.polylineToPolygon(
+                    primitive.points,
+                    primitive.properties.strokeWidth
+                );
+                
+                return this._createPathPrimitive(polygonPoints, {
+                    ...primitive.properties,
+                    isPreprocessed: true,
+                    wasStroke: true,
+                    fill: true,
+                    stroke: false,
+                    strokeWidth: 0,
+                    closed: true
+                });
+            }
+            
+            return null;
+        }
+        
+        // FIXED: Standardize primitive with proper curve ID tagging
+        _standardizePrimitive(primitive, options) {
+            let points = [];
+            let arcSegments = [];
+            
+            // Get curve IDs for this primitive if arc reconstruction is enabled
+            const curveIds = (options?.enableArcReconstruction && primitive._originalIndex !== undefined) ?
+                this.arcReconstructor.getCurveIdsForPrimitive(primitive._originalIndex) : [];
+            
+            if (primitive.type === 'path') {
+                points = primitive.points;
+                // Preserve arc segments from path
+                if (primitive.arcSegments) {
+                    arcSegments = primitive.arcSegments;
+                }
+            } else if (primitive.type === 'circle') {
+                // FIXED: Pass curve IDs to toPolygon for circles
+                if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
+                    const pathPrimitive = primitive.toPolygon(null, null, curveIds);
+                    return pathPrimitive;
+                } else {
+                    const segments = GeometryUtils.getOptimalSegments(primitive.radius);
+                    for (let i = 0; i < segments; i++) {
+                        const angle = (i / segments) * 2 * Math.PI;
+                        points.push({
+                            x: primitive.center.x + primitive.radius * Math.cos(angle),
+                            y: primitive.center.y + primitive.radius * Math.sin(angle)
+                        });
+                    }
+                }
+            } else if (primitive.type === 'rectangle') {
+                const { x, y } = primitive.position;
+                const w = primitive.width || 0;
+                const h = primitive.height || 0;
+                points = [
+                    { x, y },
+                    { x: x + w, y },
+                    { x: x + w, y: y + h },
+                    { x, y: y + h }
+                ];
+            } else if (primitive.type === 'obround') {
+                // FIXED: Pass curve IDs to toPolygon for obrounds
+                if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
+                    const pathPrimitive = primitive.toPolygon(null, curveIds);
+                    return pathPrimitive;
+                } else {
+                    points = GeometryUtils.obroundToPoints(primitive);
+                }
+            } else if (primitive.type === 'arc') {
+                // FIXED: Pass curve IDs to toPolygon for arcs
+                if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
+                    const pathPrimitive = primitive.toPolygon(null, null, curveIds);
+                    return pathPrimitive;
+                } else {
+                    points = GeometryUtils.interpolateArc(
+                        primitive.startPoint,
+                        primitive.endPoint,
+                        primitive.center,
+                        primitive.clockwise
+                    );
+                }
+            }
+            
+            if (points.length >= 3) {
+                const pathPrimitive = this._createPathPrimitive(points, {
+                    ...primitive.properties,
+                    originalType: primitive.type
+                });
+                
+                // Preserve arc segments
+                if (arcSegments.length > 0) {
+                    pathPrimitive.arcSegments = arcSegments;
+                }
+                
+                return pathPrimitive;
+            }
+            
+            return null;
+        }
+        
+        // Validate primitive
+        _validatePrimitive(primitive) {
+            if (!primitive) return false;
             if (!primitive.properties) {
-                this.debug(`WARNING: Primitive ${index} missing properties`);
-                return false;
+                primitive.properties = {};
             }
             
-            // Check polarity
             const polarity = primitive.properties.polarity;
             if (polarity !== 'dark' && polarity !== 'clear') {
-                this.debug(`WARNING: Primitive ${index} has invalid polarity: ${polarity}, defaulting to 'dark'`);
                 primitive.properties.polarity = 'dark';
-            }
-            
-            // Special handling for different primitive types
-            if (primitive.type === 'path') {
-                if (!primitive.points || !Array.isArray(primitive.points) || primitive.points.length < 2) {
-                    this.debug(`WARNING: Path primitive ${index} has invalid points`);
-                    return false;
-                }
-                
-                // Skip stroked paths for fusion (they should be converted to filled polygons)
-                if (primitive.properties.stroke && !primitive.properties.fill) {
-                    this.debug(`INFO: Converting stroked path ${index} to filled polygon for fusion`);
-                    this.stats.convertedPrimitives++;
-                }
             }
             
             return true;
         }
-
-        primitiveToCoordinates(primitive) {
-            const scale = this.options.scale;
-            const coords = [];
-            const polarity = primitive.properties?.polarity || 'dark';
-
-            try {
-                if (!primitive) return { coords: null, polarity };
-
-                const addPoint = (x, y) => {
-                    if (Number.isFinite(x) && Number.isFinite(y)) {
-                        coords.push(Math.round(x * scale));
-                        coords.push(Math.round(y * scale));
-                    } else {
-                        this.debug('WARNING: Skipping invalid coordinate:', { x, y });
-                    }
-                };
-                
-                // Handle different primitive types
-                if (primitive.type === 'path' && primitive.points) {
-                    // Check if this is a stroked path that needs conversion
-                    if (primitive.properties?.stroke && primitive.properties?.strokeWidth && !primitive.properties?.fill) {
-                        // Convert stroked path to filled polygon with rounded end-caps
-                        const strokeWidth = primitive.properties.strokeWidth;
-                        
-                        if (primitive.points.length === 2) {
-                            // Simple line - use proper lineToPolygon with rounded caps
-                            const polygonPoints = this.lineToPolygon(
-                                [primitive.points[0].x, primitive.points[0].y],
-                                [primitive.points[1].x, primitive.points[1].y],
-                                strokeWidth
-                            );
-                            polygonPoints.forEach(point => addPoint(point[0], point[1]));
-                        } else {
-                            // Multi-segment path - for now, just use the points as-is
-                            primitive.points.forEach(point => {
-                                if (point) addPoint(point.x, point.y);
-                            });
-                        }
-                    } else {
-                        // Regular filled path
-                        primitive.points.forEach(point => {
-                            if (point) addPoint(point.x, point.y);
-                        });
-                    }
-                } else if (primitive.type === 'circle' && primitive.center && primitive.radius > 0) {
-                    const segments = this.getOptimalCircleSegments(primitive.radius);
-                    for (let i = 0; i < segments; i++) {
-                        const angle = (i / segments) * 2 * Math.PI;
-                        const x = primitive.center.x + primitive.radius * Math.cos(angle);
-                        const y = primitive.center.y + primitive.radius * Math.sin(angle);
-                        addPoint(x, y);
-                    }
-                } else if (primitive.type === 'arc' && primitive.center && primitive.radius > 0) {
-                    // Handle arc primitive with proper conversion
-                    if (primitive.properties?.stroke && primitive.properties?.strokeWidth && !primitive.properties?.fill) {
-                        // Convert stroked arc to filled polygon with rounded caps
-                        const polygonPoints = this.arcToPolygon(
-                            [primitive.center.x, primitive.center.y],
-                            primitive.radius,
-                            primitive.startAngle * 180 / Math.PI,
-                            primitive.endAngle * 180 / Math.PI,
-                            primitive.properties.strokeWidth
-                        );
-                        polygonPoints.forEach(point => addPoint(point[0], point[1]));
-                    } else {
-                        // Regular arc segment
-                        const segments = this.getOptimalCircleSegments(primitive.radius);
-                        const angleSweep = primitive.endAngle - primitive.startAngle;
-                        const arcSegments = Math.max(2, Math.ceil(segments * (Math.abs(angleSweep) / (2 * Math.PI))));
-                        for (let i = 0; i <= arcSegments; i++) {
-                            const angle = primitive.startAngle + (angleSweep * i / arcSegments);
-                            const x = primitive.center.x + primitive.radius * Math.cos(angle);
-                            const y = primitive.center.y + primitive.radius * Math.sin(angle);
-                            addPoint(x, y);
-                        }
-                    }
-                } else if (primitive.type === 'rectangle' && primitive.position) {
-                    const { x, y } = primitive.position;
-                    const w = primitive.width || 0;
-                    const h = primitive.height || 0;
-                    addPoint(x, y); 
-                    addPoint(x + w, y); 
-                    addPoint(x + w, y + h); 
-                    addPoint(x, y + h);
-                } else if (primitive.type === 'obround' && primitive.position) {
-                    const points = this.obroundToPoints(primitive);
-                    points.forEach(point => addPoint(point.x, point.y));
-                }
-
-                // Debug output for converted coordinates
-                if (this.options.debug && debugConfig.logging?.coordinateConversion && coords.length > 0) {
-                    this.debug(`Converted ${primitive.type} to ${coords.length / 2} points, polarity: ${polarity}`);
-                }
-
-                return { coords, polarity };
-                
-            } catch (error) {
-                this.debug('Error converting primitive to coordinates:', error, primitive);
-                return { coords: null, polarity };
-            }
-        }
-
-        lineToPolygon(from, to, width) {
-            const dx = to[0] - from[0];
-            const dy = to[1] - from[1];
-            const len = Math.sqrt(dx * dx + dy * dy);
-            const halfWidth = width / 2;
-            
-            // Handle zero-length lines - return a circle
-            if (len < (geomConfig.coordinatePrecision || 0.001)) {
-                const segments = 24;
-                const points = [];
-                for (let i = 0; i < segments; i++) {
-                    const angle = (i / segments) * 2 * Math.PI;
-                    points.push([
-                        from[0] + halfWidth * Math.cos(angle),
-                        from[1] + halfWidth * Math.sin(angle)
-                    ]);
-                }
-                return points;
-            }
-            
-            // Unit vector along the line
-            const ux = dx / len;
-            const uy = dy / len;
-            
-            // Perpendicular vector (rotated 90 degrees CCW)
-            const nx = -uy * halfWidth;
-            const ny = ux * halfWidth;
-            
-            const points = [];
-            const capSegments = 16;
-            
-            // Build polygon in CCW order:
-            
-            // 1. Start at left side of start point
-            points.push([from[0] + nx, from[1] + ny]);
-            
-            // 2. Start cap (semicircle from left to right)
-            const startAngle = Math.atan2(ny, nx);
-            for (let i = 1; i < capSegments; i++) {
-                const t = i / capSegments;
-                const angle = startAngle + Math.PI * t;
-                points.push([
-                    from[0] + halfWidth * Math.cos(angle),
-                    from[1] + halfWidth * Math.sin(angle)
-                ]);
-            }
-            
-            // 3. Right side of start point
-            points.push([from[0] - nx, from[1] - ny]);
-            
-            // 4. Right side of end point
-            points.push([to[0] - nx, to[1] - ny]);
-            
-            // 5. End cap (semicircle from right to left)
-            const endAngle = Math.atan2(-ny, -nx);
-            for (let i = 1; i < capSegments; i++) {
-                const t = i / capSegments;
-                const angle = endAngle + Math.PI * t;
-                points.push([
-                    to[0] + halfWidth * Math.cos(angle),
-                    to[1] + halfWidth * Math.sin(angle)
-                ]);
-            }
-            
-            // 6. Left side of end point
-            points.push([to[0] + nx, to[1] + ny]);
-            
-            return points;
-        }
-
-        arcToPolygon(center, radius, startDeg, endDeg, width) {
-            const points = [];
-            const segments = 48;
-            const capSegments = 16;
-            const halfWidth = width / 2;
-            const innerR = radius - halfWidth;
-            const outerR = radius + halfWidth;
-            
-            // Cannot create valid shape if inner radius is negative
-            if (innerR < 0) {
-                // Fall back to filled circle
-                const circleSegments = 48;
-                for (let i = 0; i < circleSegments; i++) {
-                    const angle = (i / circleSegments) * 2 * Math.PI;
-                    points.push([
-                        center[0] + outerR * Math.cos(angle),
-                        center[1] + outerR * Math.sin(angle)
-                    ]);
-                }
-                return points;
-            }
-            
-            const startRad = startDeg * Math.PI / 180;
-            const endRad = endDeg * Math.PI / 180;
-            
-            // Center points of the caps
-            const startCapCenter = [
-                center[0] + radius * Math.cos(startRad),
-                center[1] + radius * Math.sin(startRad)
-            ];
-            const endCapCenter = [
-                center[0] + radius * Math.cos(endRad),
-                center[1] + radius * Math.sin(endRad)
-            ];
-            
-            // Build continuous polygon in CCW order
-            
-            // 1. Outer arc (from start to end)
-            for (let i = 0; i <= segments; i++) {
-                const t = i / segments;
-                const angle = startRad + (endRad - startRad) * t;
-                points.push([
-                    center[0] + outerR * Math.cos(angle),
-                    center[1] + outerR * Math.sin(angle)
-                ]);
-            }
-            
-            // 2. End cap (semicircle from outer to inner edge)
-            for (let i = 1; i <= capSegments; i++) {
-                const t = i / capSegments;
-                const angle = endRad + (Math.PI * t);
-                points.push([
-                    endCapCenter[0] + halfWidth * Math.cos(angle),
-                    endCapCenter[1] + halfWidth * Math.sin(angle)
-                ]);
-            }
-            
-            // 3. Inner arc (from end to start - reversed)
-            for (let i = segments; i >= 0; i--) {
-                const t = i / segments;
-                const angle = startRad + (endRad - startRad) * t;
-                points.push([
-                    center[0] + innerR * Math.cos(angle),
-                    center[1] + innerR * Math.sin(angle)
-                ]);
-            }
-            
-            // 4. Start cap (semicircle from inner to outer edge)
-            for (let i = 1; i <= capSegments; i++) {
-                const t = i / capSegments;
-                const angle = (startRad + Math.PI) + (Math.PI * t);
-                points.push([
-                    startCapCenter[0] + halfWidth * Math.cos(angle),
-                    startCapCenter[1] + halfWidth * Math.sin(angle)
-                ]);
-            }
-            
-            return points;
-        }
-
-        polyTreeToPrimitives(polyNode) {
-            const scale = this.options.scale;
-            const primitives = [];
-
-            // Recursive helper function to traverse the tree
-            const traverse = (node, isHole) => {
-                const polygon = node.polygon();
-                
-                if (polygon && polygon.size() > 2) {
-                    const points = [];
-                    for (let i = 0; i < polygon.size(); i++) {
-                        const pt = polygon.get(i);
-                        points.push({ x: Number(pt.x) / scale, y: Number(pt.y) / scale });
-                    }
-
-                    if (!isHole) {
-                        // This is an outer boundary
-                        const primitive = this.createPathPrimitive(points, {
-                            isFused: true,
-                            fill: true,
-                            closed: true,
-                            polarity: 'dark',
-                            holes: []
-                        });
-
-                        // Process children as holes
-                        for (let i = 0; i < node.count(); i++) {
-                            const child = node.child(i);
-                            const childPolygon = child.polygon();
-                            
-                            if (childPolygon && childPolygon.size() > 2) {
-                                const holePoints = [];
-                                for (let j = 0; j < childPolygon.size(); j++) {
-                                    const pt = childPolygon.get(j);
-                                    holePoints.push({ x: Number(pt.x) / scale, y: Number(pt.y) / scale });
-                                }
-                                primitive.holes.push(holePoints);
-                                
-                                // Process hole's children (islands within holes) recursively
-                                for (let k = 0; k < child.count(); k++) {
-                                    const grandchildren = traverse(child.child(k), false);
-                                    if (grandchildren) {
-                                        primitives.push(...grandchildren);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        return [primitive];
-                    }
-                }
-                
-                // Process children
-                const childPrimitives = [];
-                for (let i = 0; i < node.count(); i++) {
-                    const children = traverse(node.child(i), !isHole);
-                    if (children) {
-                        childPrimitives.push(...children);
-                    }
-                }
-                
-                return childPrimitives.length > 0 ? childPrimitives : null;
-            };
-
-            // Start traversing from the root's children
-            for (let i = 0; i < polyNode.count(); i++) {
-                const result = traverse(polyNode.child(i), false);
-                if (result) {
-                    primitives.push(...result);
-                }
-            }
-
-            return primitives;
-        }
-
-        getOptimalCircleSegments(radius, minSegments = null, maxSegments = null) {
-            // Use config values if available
-            const targetSegmentLength = geomConfig.segments?.targetLength || 0.1;
-            minSegments = minSegments || geomConfig.segments?.minCircle || 16;
-            maxSegments = maxSegments || geomConfig.segments?.maxCircle || 128;
-            
-            if (radius <= 0) return minSegments;
-            const circumference = 2 * Math.PI * radius;
-            const desiredSegments = Math.ceil(circumference / targetSegmentLength);
-            return Math.max(minSegments, Math.min(maxSegments, desiredSegments));
-        }
-
-        obroundToPoints(obround) {
-            const points = [];
-            const { x, y } = obround.position;
-            const w = obround.width || 0;
-            const h = obround.height || 0;
-            const r = Math.min(w, h) / 2;
-            if (r <= 0) return [];
-            
-            const segments = this.getOptimalCircleSegments(r, 8, 32);
-            const halfSegments = Math.ceil(segments / 2);
-
-            if (w > h) { // Horizontal
-                const c1x = x + r; 
-                const c2x = x + w - r; 
-                const cy = y + r;
-                for (let i = 0; i <= halfSegments; i++) {
-                    const angle = Math.PI / 2 + (i / halfSegments) * Math.PI;
-                    points.push({ x: c1x + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
-                }
-                for (let i = 0; i <= halfSegments; i++) {
-                    const angle = -Math.PI / 2 + (i / halfSegments) * Math.PI;
-                    points.push({ x: c2x + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
-                }
-            } else { // Vertical
-                const cx = x + r; 
-                const c1y = y + r; 
-                const c2y = y + h - r;
-                for (let i = 0; i <= halfSegments; i++) {
-                    const angle = Math.PI + (i / halfSegments) * Math.PI;
-                    points.push({ x: cx + r * Math.cos(angle), y: c1y + r * Math.sin(angle) });
-                }
-                for (let i = 0; i <= halfSegments; i++) {
-                    const angle = (i / halfSegments) * Math.PI;
-                    points.push({ x: cx + r * Math.cos(angle), y: c2y + r * Math.sin(angle) });
-                }
-            }
-            return points;
-        }
-
-        createPathPrimitive(points, properties) {
+        
+        // Create path primitive
+        _createPathPrimitive(points, properties) {
             if (typeof PathPrimitive !== 'undefined') {
-                return new PathPrimitive(points, properties);
+                const primitive = new PathPrimitive(points, properties);
+                
+                // Restore arc segments if present
+                if (properties.arcSegments) {
+                    primitive.arcSegments = properties.arcSegments;
+                }
+                
+                return primitive;
             }
+            
             return {
-                type: 'path', 
-                points, 
-                properties, 
-                closed: properties.closed !== false,
-                holes: properties.holes || [],
+                type: 'path',
+                points: points,
+                properties: properties || {},
+                closed: properties?.closed !== false,
+                holes: properties?.holes || [],
+                arcSegments: properties?.arcSegments || [],
                 getBounds: function() {
-                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    let minX = Infinity, minY = Infinity;
+                    let maxX = -Infinity, maxY = -Infinity;
                     this.points.forEach(p => {
-                        minX = Math.min(minX, p.x); 
+                        minX = Math.min(minX, p.x);
                         minY = Math.min(minY, p.y);
-                        maxX = Math.max(maxX, p.x); 
+                        maxX = Math.max(maxX, p.x);
                         maxY = Math.max(maxY, p.y);
                     });
                     // Include holes in bounds
                     if (this.holes && this.holes.length > 0) {
                         this.holes.forEach(hole => {
                             hole.forEach(p => {
-                                minX = Math.min(minX, p.x); 
+                                minX = Math.min(minX, p.x);
                                 minY = Math.min(minY, p.y);
-                                maxX = Math.max(maxX, p.x); 
+                                maxX = Math.max(maxX, p.x);
                                 maxY = Math.max(maxY, p.y);
                             });
                         });
@@ -777,37 +360,80 @@
                 }
             };
         }
-
-        cleanupWasmObjects(objects) {
-            objects.forEach(obj => {
-                try {
-                    if (obj && !obj.isDeleted()) obj.delete();
-                } catch (e) { /* ignore */ }
-            });
+        
+        // State management
+        clearCachedStates() {
+            this.cachedStates = {
+                originalPrimitives: null,
+                preprocessedGeometry: null,
+                fusedGeometry: null
+            };
         }
-
-        debug(message, ...args) {
-            if (this.options.debug) {
-                console.log('[GeometryProcessor]', message, ...args);
+        
+        getCachedState(stateName) {
+            return this.cachedStates[stateName] || null;
+        }
+        
+        // Ensure initialized
+        async ensureInitialized() {
+            if (!this.clipper.initialized) {
+                await this.initPromise;
+            }
+            if (!this.clipper.initialized) {
+                throw new Error('GeometryProcessor not initialized');
             }
         }
         
-        getStats() { 
-            return { ...this.stats, initialized: this.initialized }; 
+        // Statistics
+        getStats() {
+            return {
+                ...this.stats,
+                clipper: this.clipper.getCapabilities(),
+                arcReconstruction: this.arcReconstructor.getStats()
+            };
         }
-
-        // Placeholder methods for future offset implementation
-        prepareForOffset(primitives) {
-            console.log('[GeometryProcessor] Offset preparation not yet implemented');
-            return primitives;
+        
+        getArcReconstructionStats() {
+            return this.arcReconstructor.getStats();
         }
-
-        generateOffset(geometry, offsetDistance, options = {}) {
-            console.log('[GeometryProcessor] Offset generation not yet implemented');
+        
+        // Debug
+        debug(message) {
+            if (this.options.debug) {
+                console.log(`[GeometryProcessor] ${message}`);
+            }
+        }
+        
+        // Placeholder methods for future offset functionality
+        async prepareForOffsetGeneration() {
+            await this.ensureInitialized();
+            const fusedPrimitives = await this.fuseGeometry(this.getFuseablePrimitives());
+            this.debug('Offset preparation not yet implemented');
+            return fusedPrimitives;
+        }
+        
+        async generateOffsetGeometry(offsetDistance, options = {}) {
+            await this.ensureInitialized();
+            this.debug(`Offset generation (${offsetDistance}mm) not yet implemented`);
+            return [];
+        }
+        
+        // Compatibility methods
+        getPreprocessedPrimitives() {
+            return this.getCachedState('preprocessedGeometry');
+        }
+        
+        getFusedPrimitives() {
+            return this.getCachedState('fusedGeometry');
+        }
+        
+        getFuseablePrimitives() {
+            // This should be called by cam-core.js
             return [];
         }
     }
-
+    
+    // Export
     window.GeometryProcessor = GeometryProcessor;
-
+    
 })();

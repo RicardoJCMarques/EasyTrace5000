@@ -19,7 +19,7 @@
             <div class="header-content">
                 <div class="header-brand">
                     <h1>PCB CAM</h1>
-                    <span class="version-badge">v7.6</span>
+                    <span class="version-badge">v7.7</span>
                 </div>
                 <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                     <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -46,7 +46,7 @@
                     <h2>📂 PCB Operations</h2>
                     <p class="section-description">
                         Upload your PCB files. Each operation type has a distinct color for easy identification.
-                        <strong>v7.6:</strong> Consolidated rendering architecture with improved performance and maintainability.
+                        <strong>v7.7:</strong> Refactored modular architecture with improved maintainability.
                     </p>
                     
                     <!-- Isolation Routing -->
@@ -280,9 +280,13 @@ M2</textarea>
                                     <span>Wireframe Mode</span>
                                 </label>
                                 <label class="checkbox-label">
+                                    <input type="checkbox" id="show-preprocessed">
+                                    <span>Pre-processed Polygons</span>
+                                </label>
+                                <label class="checkbox-label">
                                     <input type="checkbox" id="fuse-geometry">
                                     <span>Geometry Fusion</span>
-                                </label>
+                                </label>                                
                                 <label class="checkbox-label">
                                     <input type="checkbox" id="black-white">
                                     <span>Black & White</span>
@@ -312,6 +316,18 @@ M2</textarea>
                                     <span>Drill Holes</span>
                                 </label>
                             </div>
+
+                            <h4>Arc Reconstruction</h4>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="enable-arc-reconstruction">
+                                    <span>Reconstruct Arcs from Metadata</span>
+                                </label>
+                            </div>
+                            <div id="arc-reconstruction-stats" class="stats-content" style="display: none; margin-top: 0.5rem; font-size: 0.75rem;">
+                                <div>Curves registered: <span id="curves-registered">0</span></div>
+                                <div>Curves reconstructed: <span id="curves-reconstructed">0</span></div>
+                            </div>
                             
                             <h4>Display Overlays</h4>
                             <div class="checkbox-group">
@@ -333,6 +349,24 @@ M2</textarea>
                                 <h4>File Statistics</h4>
                                 <div id="operation-stats" class="stats-content">
                                     <p>Load PCB files to see statistics</p>
+                                </div>
+                            </div>
+
+                            <div class="arc-fitting-section">
+                                <h4>Arc Fitting (Experimental)</h4>
+                                <label>
+                                    <input type="checkbox" id="enable-arc-fitting">
+                                    <span>Detect emergent curves</span>
+                                </label>
+                                <div class="arc-fitting-params">
+                                    <label>
+                                        Tolerance (mm):
+                                        <input type="number" id="arc-tolerance" value="0.01" step="0.001">
+                                    </label>
+                                    <label>
+                                        Min Points:
+                                        <input type="number" id="arc-min-points" value="5" min="3">
+                                    </label>
                                 </div>
                             </div>
                             
@@ -384,15 +418,41 @@ M2</textarea>
     <script src="config.js"></script>
     <script>
         const scripts = [
+            // WASM and geometry processing
             'geometry/clipper2z.js',
-            'parsers/primitives.js',
             'geometry/geometry-processor.js',
-            'parsers/gerber-semantic.js',
-            'parsers/excellon-semantic.js',
-            'plotter/gerber-plotter.js',
+            'geometry/arc-reconstructor.js',
+            'geometry/clipper-wrapper.js',
+            'geometry/geometry-utils.js',
+            
+            // Primitives (needed by parsers and renderers)
+            'parsers/primitives.js',
+            
+            // Parser system
+            'parsers/parser-core.js',
+            'parsers/parser-gerber.js',
+            'parsers/parser-excellon.js',
+            'parsers/parser-plotter.js',
+            
+            // Renderer system
+            'renderer/renderer-core.js',
+            'renderer/renderer-primitives.js',
+            'renderer/renderer-overlay.js',
+            'renderer/renderer-interaction.js',
             'renderer/layer-renderer.js',
+            
+            // Export functionality
             'export/svg-exporter.js',
+            
+            // Coordinate system
             'coordinate/coordinate-system.js',
+            
+            // UI system
+            'ui/ui-modal.js',
+            'ui/ui-operations.js',
+            'ui/ui-controls.js',
+            
+            // Core application logic
             'cam-core.js',
             'cam-ui.js',
             'cam-controller.js'
@@ -446,7 +506,7 @@ M2</textarea>
 
         async function loadAllScripts() {
             try {
-                console.log('🚀 Loading PCB CAM with config-based architecture...');
+                console.log('🚀 Loading PCB CAM v7.7 with modular architecture...');
                 for (const scriptPath of scripts) {
                     await loadScript(scriptPath);
                 }

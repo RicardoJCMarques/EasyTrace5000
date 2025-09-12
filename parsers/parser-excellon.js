@@ -1,39 +1,25 @@
-// parsers/excellon-semantic.js - Refactored with config integration
-// Semantic Excellon Parser - Enhanced with coordinate validation and consistency
+// parser/parser-excellon.js
+// Excellon-specific syntax module
 
 (function() {
     'use strict';
     
-    // Get config reference
     const config = window.PCBCAMConfig || {};
     const formatConfig = config.formats?.excellon || {};
-    const geomConfig = config.geometry || {};
-    const debugConfig = config.debug || {};
-    const validationConfig = debugConfig.validation || {};
     
-    class ExcellonSemanticParser {
+    class ExcellonParser extends ParserCore {
         constructor(options = {}) {
-            // Merge options with config defaults
-            this.options = {
-                units: options.units || formatConfig.defaultUnits || 'mm',
-                format: options.format || formatConfig.defaultFormat || { integer: 2, decimal: 4 },
-                debug: options.debug !== undefined ? options.debug : debugConfig.enabled,
+            super({
+                units: formatConfig.defaultUnits || 'mm',
+                format: formatConfig.defaultFormat || { integer: 2, decimal: 4 },
                 ...options
-            };
+            });
             
-            // Parser state
+            // Excellon-specific state
             this.tools = new Map();
             this.currentTool = null;
             this.inHeader = false;
             this.headerEnded = false;
-            
-            // Coordinate validation tracking
-            this.coordinateValidation = {
-                validCoordinates: 0,
-                invalidCoordinates: 0,
-                coordinateRange: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-                suspiciousCoordinates: []
-            };
             
             // Results
             this.drillData = {
@@ -43,14 +29,11 @@
                 holes: [],
                 bounds: null
             };
-            
-            this.errors = [];
-            this.warnings = [];
         }
         
         parse(content) {
             try {
-                this.debug('Starting semantic Excellon parse with enhanced coordinate validation...');
+                this.debug('Starting Excellon parse');
                 
                 // Reset state
                 this.reset();
@@ -68,16 +51,14 @@
                 // Process each line
                 lines.forEach((line, index) => {
                     this.processLine(line, index + 1);
+                    this.stats.linesProcessed++;
                 });
                 
                 // Finalize
                 this.finalizeParse();
                 
                 this.debug(`Parse complete: ${this.drillData.holes.length} holes, ${this.tools.size} tools`);
-                
-                if (debugConfig.logging?.parseOperations) {
-                    this.debug(`Coordinate validation: ${this.coordinateValidation.validCoordinates} valid, ${this.coordinateValidation.invalidCoordinates} invalid`);
-                }
+                this.logStatistics();
                 
                 return {
                     success: true,
@@ -104,12 +85,7 @@
             this.currentTool = null;
             this.inHeader = false;
             this.headerEnded = false;
-            this.coordinateValidation = {
-                validCoordinates: 0,
-                invalidCoordinates: 0,
-                coordinateRange: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-                suspiciousCoordinates: []
-            };
+            
             this.drillData = {
                 units: this.options.units,
                 format: this.options.format,
@@ -117,11 +93,28 @@
                 holes: [],
                 bounds: null
             };
+            
             this.errors = [];
             this.warnings = [];
+            this.stats = {
+                linesProcessed: 0,
+                objectsCreated: 0,
+                coordinatesParsed: 0,
+                invalidCoordinates: 0,
+                commandsProcessed: 0
+            };
+            
+            this.coordinateValidation = {
+                validCoordinates: 0,
+                invalidCoordinates: 0,
+                coordinateRange: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+                suspiciousCoordinates: []
+            };
         }
         
         processLine(line, lineNumber) {
+            this.stats.commandsProcessed++;
+            
             // Header start
             if (line === 'M48' || line === '%') {
                 this.inHeader = true;
@@ -213,7 +206,7 @@
             const toolNumber = parseInt(match[1]);
             let diameter = parseFloat(match[2]);
             
-            // Validate tool diameter using config
+            // Validate tool diameter
             if (!isFinite(diameter) || diameter <= 0) {
                 this.errors.push(`Invalid tool diameter: ${diameter} in line: ${line}`);
                 return;
@@ -227,26 +220,23 @@
                 displayDiameter: diameter // Will be converted to mm if needed
             };
             
-            // Convert to mm for internal storage with validation
+            // Convert to mm for internal storage
             if (this.options.units === 'inch') {
                 tool.displayDiameter = diameter * 25.4;
                 
-                // Validate reasonable drill sizes using config
-                if (validationConfig.validateGeometry && 
-                    tool.displayDiameter > formatConfig.maxToolDiameter) {
-                    this.warnings.push(`Unusually large drill diameter: ${tool.displayDiameter.toFixed(3)}mm for tool T${toolNumber}`);
+                // Validate reasonable drill sizes
+                if (tool.displayDiameter > formatConfig.maxToolDiameter) {
+                    this.warnings.push(`Large drill diameter: ${tool.displayDiameter.toFixed(3)}mm for tool T${toolNumber}`);
                 }
             } else {
-                if (validationConfig.validateGeometry && 
-                    diameter > formatConfig.maxToolDiameter) {
-                    this.warnings.push(`Unusually large drill diameter: ${diameter}mm for tool T${toolNumber}`);
+                if (diameter > formatConfig.maxToolDiameter) {
+                    this.warnings.push(`Large drill diameter: ${diameter}mm for tool T${toolNumber}`);
                 }
             }
             
             // Check minimum diameter
-            if (validationConfig.validateGeometry && 
-                tool.displayDiameter < formatConfig.minToolDiameter) {
-                this.warnings.push(`Very small drill diameter: ${tool.displayDiameter.toFixed(3)}mm for tool T${toolNumber}`);
+            if (tool.displayDiameter < formatConfig.minToolDiameter) {
+                this.warnings.push(`Small drill diameter: ${tool.displayDiameter.toFixed(3)}mm for tool T${toolNumber}`);
             }
             
             this.tools.set(`T${toolNumber.toString().padStart(2, '0')}`, tool);
@@ -266,7 +256,7 @@
                 this.currentTool = toolCode;
                 this.debug(`Selected tool: ${toolCode}`);
             } else {
-                // Create default tool if not defined using config default
+                // Create default tool if not defined
                 const defaultDiameter = formatConfig.defaultToolDiameter || 1.0;
                 const defaultTool = {
                     number: toolNumber,
@@ -291,7 +281,7 @@
                     this.currentTool = Array.from(this.tools.keys())[0];
                     this.warnings.push(`No tool selected at line ${lineNumber}, using ${this.currentTool}`);
                 } else {
-                    // Create default T01 using config
+                    // Create default T01
                     const defaultDiameter = formatConfig.defaultToolDiameter || 1.0;
                     const defaultTool = {
                         number: 1,
@@ -321,11 +311,12 @@
                 type: 'hole',
                 position: coordinates,
                 tool: this.currentTool,
-                diameter: tool.displayDiameter, // This is always in mm
+                diameter: tool.displayDiameter, // Always in mm
                 plated: true // Assume plated unless specified otherwise
             };
             
             this.drillData.holes.push(hole);
+            this.stats.objectsCreated++;
             
             this.debug(`Hole at (${coordinates.x.toFixed(3)}, ${coordinates.y.toFixed(3)}) with ${this.currentTool}`);
         }
@@ -340,11 +331,13 @@
             
             try {
                 if (xMatch) {
-                    coordinates.x = this.parseCoordinateValue(xMatch[1]);
+                    coordinates.x = this.parseCoordinateValue(xMatch[1], this.options.format, this.options.units);
+                    this.stats.coordinatesParsed++;
                 }
                 
                 if (yMatch) {
-                    coordinates.y = this.parseCoordinateValue(yMatch[1]);
+                    coordinates.y = this.parseCoordinateValue(yMatch[1], this.options.format, this.options.units);
+                    this.stats.coordinatesParsed++;
                 }
                 
                 // Validate parsed coordinates
@@ -360,103 +353,10 @@
                 
             } catch (error) {
                 this.coordinateValidation.invalidCoordinates++;
+                this.stats.invalidCoordinates++;
                 this.errors.push(`Coordinate parsing error at line ${lineNumber}: ${error.message}`);
                 return null;
             }
-        }
-        
-        validateCoordinates(coordinates, lineNumber) {
-            // Check for finite values
-            if (!isFinite(coordinates.x) || !isFinite(coordinates.y)) {
-                this.errors.push(`Non-finite coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
-                this.coordinateValidation.invalidCoordinates++;
-                return false;
-            }
-            
-            // Check for reasonable coordinate ranges using config
-            const maxCoordinate = geomConfig.maxCoordinate || 1000;
-            if (validationConfig.validateCoordinates && 
-                (Math.abs(coordinates.x) > maxCoordinate || Math.abs(coordinates.y) > maxCoordinate)) {
-                this.coordinateValidation.suspiciousCoordinates.push({
-                    line: lineNumber,
-                    coordinates: { ...coordinates },
-                    reason: 'coordinates_too_large'
-                });
-                this.warnings.push(`Suspiciously large coordinates at line ${lineNumber}: (${coordinates.x.toFixed(3)}, ${coordinates.y.toFixed(3)})`);
-            }
-            
-            // Check for precision issues using config
-            const precision = geomConfig.coordinatePrecision || 0.001;
-            const xRounded = Math.round(coordinates.x / precision) * precision;
-            const yRounded = Math.round(coordinates.y / precision) * precision;
-            
-            if (Math.abs(coordinates.x - xRounded) > precision * 0.1 || 
-                Math.abs(coordinates.y - yRounded) > precision * 0.1) {
-                this.debug(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
-            }
-            
-            return true;
-        }
-        
-        updateCoordinateRange(coordinates) {
-            const range = this.coordinateValidation.coordinateRange;
-            range.minX = Math.min(range.minX, coordinates.x);
-            range.minY = Math.min(range.minY, coordinates.y);
-            range.maxX = Math.max(range.maxX, coordinates.x);
-            range.maxY = Math.max(range.maxY, coordinates.y);
-        }
-        
-        parseCoordinateValue(value) {
-            // Handle decimal coordinates
-            if (value.includes('.')) {
-                let coordinate = parseFloat(value);
-                
-                if (!isFinite(coordinate)) {
-                    throw new Error(`Invalid decimal coordinate: ${value}`);
-                }
-                
-                // Convert to mm if needed
-                if (this.options.units === 'inch') {
-                    coordinate *= 25.4;
-                }
-                
-                return coordinate;
-            }
-            
-            // Handle integer format coordinates
-            const format = this.options.format;
-            const negative = value.startsWith('-');
-            const absValue = value.replace(/^[+-]/, '');
-            
-            // Validate format
-            if (absValue.length > format.integer + format.decimal) {
-                if (validationConfig.warnOnInvalidData) {
-                    this.warnings.push(`Coordinate value "${value}" exceeds format specification ${format.integer}.${format.decimal}`);
-                }
-            }
-            
-            // Pad with zeros
-            const totalDigits = format.integer + format.decimal;
-            const padded = absValue.padStart(totalDigits, '0');
-            
-            // Split into integer and decimal
-            const integerPart = padded.slice(0, format.integer);
-            const decimalPart = padded.slice(format.integer);
-            
-            let coordinate = parseFloat(`${integerPart}.${decimalPart}`);
-            
-            if (!isFinite(coordinate)) {
-                throw new Error(`Invalid formatted coordinate: ${value} -> ${integerPart}.${decimalPart}`);
-            }
-            
-            if (negative) coordinate = -coordinate;
-            
-            // Convert to mm if needed
-            if (this.options.units === 'inch') {
-                coordinate *= 25.4;
-            }
-            
-            return coordinate;
         }
         
         parseGCode(line) {
@@ -470,68 +370,21 @@
                 this.errors.push('No tools defined in file');
             }
             
-            // Calculate bounds with validation
-            this.calculateBounds();
+            // Calculate bounds
+            this.calculateDrillBounds();
             
             // Validate coordinate consistency
             this.validateCoordinateConsistency();
             
             // Generate statistics
-            this.generateStats();
+            this.generateDrillStats();
 
             // Enforce 'mm' units for output consistency
             this.drillData.units = 'mm';
             this.debug(`Final output units normalized to: ${this.drillData.units}`);
         }
         
-        validateCoordinateConsistency() {
-            if (this.drillData.holes.length === 0) return;
-            
-            const range = this.coordinateValidation.coordinateRange;
-            
-            // Check if coordinate range is reasonable
-            const width = range.maxX - range.minX;
-            const height = range.maxY - range.minY;
-            
-            // Use config for max board size
-            const maxDimension = geomConfig.maxCoordinate || 500;
-            
-            if (validationConfig.validateCoordinates) {
-                if (width > maxDimension || height > maxDimension) {
-                    this.warnings.push(`Board dimensions are unusually large: ${width.toFixed(1)} × ${height.toFixed(1)} mm`);
-                }
-                
-                if (width < 1 && height < 1) { // 1mm is very small
-                    this.warnings.push(`Board dimensions are unusually small: ${width.toFixed(3)} × ${height.toFixed(3)} mm`);
-                }
-            }
-            
-            // Check for coordinate clustering (most holes should be in similar range)
-            const centerX = (range.minX + range.maxX) / 2;
-            const centerY = (range.minY + range.maxY) / 2;
-            
-            let outliers = 0;
-            const outlierThreshold = Math.max(width, height) * 0.75; // 75% of board size
-            
-            this.drillData.holes.forEach(hole => {
-                const distanceFromCenter = Math.sqrt(
-                    Math.pow(hole.position.x - centerX, 2) + 
-                    Math.pow(hole.position.y - centerY, 2)
-                );
-                
-                if (distanceFromCenter > outlierThreshold) {
-                    outliers++;
-                }
-            });
-            
-            if (validationConfig.validateGeometry && outliers > this.drillData.holes.length * 0.1) {
-                this.warnings.push(`${outliers} holes appear to be outliers (far from board center)`);
-            }
-            
-            this.debug(`Coordinate consistency check: ${width.toFixed(1)} × ${height.toFixed(1)} mm, ${outliers} outliers`);
-        }
-        
-        calculateBounds() {
+        calculateDrillBounds() {
             if (this.drillData.holes.length === 0) return;
             
             let minX = Infinity, minY = Infinity;
@@ -556,7 +409,49 @@
             this.debug(`Calculated bounds: (${minX.toFixed(3)}, ${minY.toFixed(3)}) to (${maxX.toFixed(3)}, ${maxY.toFixed(3)})`);
         }
         
-        generateStats() {
+        validateCoordinateConsistency() {
+            if (this.drillData.holes.length === 0) return;
+            
+            const range = this.coordinateValidation.coordinateRange;
+            
+            // Check if coordinate range is reasonable
+            const width = range.maxX - range.minX;
+            const height = range.maxY - range.minY;
+            
+            const maxDimension = config.geometry?.maxCoordinate || 500;
+            
+            if (width > maxDimension || height > maxDimension) {
+                this.warnings.push(`Board dimensions are large: ${width.toFixed(1)} × ${height.toFixed(1)} mm`);
+            }
+            
+            if (width < 1 && height < 1) {
+                this.warnings.push(`Board dimensions are small: ${width.toFixed(3)} × ${height.toFixed(3)} mm`);
+            }
+            
+            // Check for coordinate clustering
+            const centerX = (range.minX + range.maxX) / 2;
+            const centerY = (range.minY + range.maxY) / 2;
+            
+            let outliers = 0;
+            const outlierThreshold = Math.max(width, height) * 0.75;
+            
+            this.drillData.holes.forEach(hole => {
+                const distanceFromCenter = Math.sqrt(
+                    Math.pow(hole.position.x - centerX, 2) + 
+                    Math.pow(hole.position.y - centerY, 2)
+                );
+                
+                if (distanceFromCenter > outlierThreshold) {
+                    outliers++;
+                }
+            });
+            
+            if (outliers > this.drillData.holes.length * 0.1) {
+                this.warnings.push(`${outliers} holes appear to be outliers`);
+            }
+        }
+        
+        generateDrillStats() {
             const toolUsage = new Map();
             
             this.drillData.holes.forEach(hole => {
@@ -576,33 +471,12 @@
                     const toolInfo = this.tools.get(tool);
                     this.debug(`  ${tool}: ${count} holes, ⌀${toolInfo.displayDiameter.toFixed(3)}mm`);
                 });
-                
-                if (debugConfig.logging?.parseOperations) {
-                    this.debug('Coordinate validation summary:');
-                    this.debug(`  Valid coordinates: ${this.coordinateValidation.validCoordinates}`);
-                    this.debug(`  Invalid coordinates: ${this.coordinateValidation.invalidCoordinates}`);
-                    this.debug(`  Suspicious coordinates: ${this.coordinateValidation.suspiciousCoordinates.length}`);
-                    
-                    const range = this.coordinateValidation.coordinateRange;
-                    if (isFinite(range.minX)) {
-                        this.debug(`  Coordinate range: (${range.minX.toFixed(3)}, ${range.minY.toFixed(3)}) to (${range.maxX.toFixed(3)}, ${range.maxY.toFixed(3)})`);
-                    }
-                }
-            }
-        }
-        
-        debug(message, data = null) {
-            if (this.options.debug) {
-                if (data) {
-                    console.log(`[ExcellonSemantic] ${message}`, data);
-                } else {
-                    console.log(`[ExcellonSemantic] ${message}`);
-                }
             }
         }
     }
     
-    // Export
-    window.ExcellonSemanticParser = ExcellonSemanticParser;
+    // Export with backward compatibility
+    window.ExcellonParser = ExcellonParser;
+    window.ExcellonSemanticParser = ExcellonParser;  // Alias for compatibility
     
 })();
