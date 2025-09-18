@@ -1,5 +1,6 @@
 // geometry/geometry-utils.js
-// Pure geometric utility functions - no state, no side effects
+// Pure geometric utility functions with curve metadata support
+// FIXED: Complete end-cap boundary tagging, ALL points get metadata
 
 (function() {
     'use strict';
@@ -131,24 +132,45 @@
             return points;
         },
         
-        // Convert polyline to polygon with width
+        // Convert polyline to polygon with metadata for end-caps
         polylineToPolygon(points, width) {
             if (!points || points.length < 2) return [];
             
             const halfWidth = width / 2;
             
-            // Single segment
+            // Single segment - use specialized function
             if (points.length === 2) {
                 return this.lineToPolygon(
-                    [points[0].x, points[0].y],
-                    [points[1].x, points[1].y],
+                    {x: points[0].x, y: points[0].y},
+                    {x: points[1].x, y: points[1].y},
                     width
-                ).map(p => ({ x: p[0], y: p[1] }));
+                );
             }
             
-            // Multi-segment
+            // Multi-segment with proper end-cap metadata
             const leftSide = [];
             const rightSide = [];
+            
+            // Register and generate curve IDs for end-caps
+            const startCapId = window.globalCurveRegistry?.register({
+                type: 'arc',
+                center: { x: points[0].x, y: points[0].y },
+                radius: halfWidth,
+                startAngle: 0,
+                endAngle: Math.PI * 2,
+                clockwise: true,
+                source: 'end_cap'
+            });
+            
+            const endCapId = window.globalCurveRegistry?.register({
+                type: 'arc',
+                center: { x: points[points.length - 1].x, y: points[points.length - 1].y },
+                radius: halfWidth,
+                startAngle: 0,
+                endAngle: Math.PI * 2,
+                clockwise: true,
+                source: 'end_cap'
+            });
             
             for (let i = 0; i < points.length - 1; i++) {
                 const p0 = i > 0 ? points[i - 1] : null;
@@ -167,8 +189,10 @@
                 const ny = ux * halfWidth;
                 
                 if (i === 0) {
-                    // Start cap
-                    const capPoints = this.generateRoundedCap(p1, -ux, -uy, halfWidth, true);
+                    // Start cap with complete metadata
+                    const capPoints = this.generateCompleteRoundedCap(
+                        p1, -ux, -uy, halfWidth, true, startCapId
+                    );
                     leftSide.push(...capPoints);
                     rightSide.push({ x: p1.x - nx, y: p1.y - ny });
                 } else {
@@ -179,9 +203,11 @@
                 }
                 
                 if (i === points.length - 2) {
-                    // End cap
+                    // End cap with complete metadata
                     leftSide.push({ x: p2.x + nx, y: p2.y + ny });
-                    const capPoints = this.generateRoundedCap(p2, ux, uy, halfWidth, false);
+                    const capPoints = this.generateCompleteRoundedCap(
+                        p2, ux, uy, halfWidth, false, endCapId
+                    );
                     rightSide.push(...capPoints);
                 }
             }
@@ -189,23 +215,35 @@
             return [...leftSide, ...rightSide.reverse()];
         },
         
-        // Convert line to polygon with rounded caps
+        // Convert line to polygon with complete metadata for rounded caps
         lineToPolygon(from, to, width) {
-            const dx = to[0] - from[0];
-            const dy = to[1] - from[1];
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
             const len = Math.sqrt(dx * dx + dy * dy);
             const halfWidth = width / 2;
             
-            // Zero-length line becomes circle
+            // Zero-length line becomes circle with metadata
             if (len < this.PRECISION) {
                 const segments = 24;
                 const points = [];
+                const curveId = window.globalCurveRegistry?.register({
+                    type: 'circle',
+                    center: { x: from.x, y: from.y },
+                    radius: halfWidth,
+                    source: 'end_cap'
+                });
+                
                 for (let i = 0; i < segments; i++) {
                     const angle = (i / segments) * 2 * Math.PI;
-                    points.push([
-                        from[0] + halfWidth * Math.cos(angle),
-                        from[1] + halfWidth * Math.sin(angle)
-                    ]);
+                    const point = {
+                        x: from.x + halfWidth * Math.cos(angle),
+                        y: from.y + halfWidth * Math.sin(angle),
+                        curveId: curveId,
+                        segmentIndex: i,
+                        totalSegments: segments,
+                        t: i / segments
+                    };
+                    points.push(point);
                 }
                 return points;
             }
@@ -216,48 +254,112 @@
             const ny = ux * halfWidth;
             
             const points = [];
-            const capSegments = 16;
+            
+            // Use consistent segment count based on radius - match circle segmentation
+            const capSegments = Math.max(16, Math.min(64, this.getOptimalSegments(halfWidth, 16, 64)));
+            const halfSegments = Math.floor(capSegments / 2);
+            
+            // Register end-caps
+            const startCapId = window.globalCurveRegistry?.register({
+                type: 'arc',
+                center: { x: from.x, y: from.y },
+                radius: halfWidth,
+                startAngle: 0,
+                endAngle: Math.PI * 2,
+                clockwise: true,
+                source: 'end_cap'
+            });
+            
+            const endCapId = window.globalCurveRegistry?.register({
+                type: 'arc',
+                center: { x: to.x, y: to.y },
+                radius: halfWidth,
+                startAngle: 0,
+                endAngle: Math.PI * 2,
+                clockwise: true,
+                source: 'end_cap'
+            });
             
             // Left side of start
-            points.push([from[0] + nx, from[1] + ny]);
+            points.push({ x: from.x + nx, y: from.y + ny });
             
-            // Start cap
+            // Start cap with COMPLETE metadata - ALL points including first and last
             const startAngle = Math.atan2(ny, nx);
-            for (let i = 1; i < capSegments; i++) {
-                const t = i / capSegments;
+            for (let i = 0; i <= halfSegments; i++) {
+                const t = i / halfSegments;
                 const angle = startAngle + Math.PI * t;
-                points.push([
-                    from[0] + halfWidth * Math.cos(angle),
-                    from[1] + halfWidth * Math.sin(angle)
-                ]);
+                const point = {
+                    x: from.x + halfWidth * Math.cos(angle),
+                    y: from.y + halfWidth * Math.sin(angle),
+                    curveId: startCapId,
+                    segmentIndex: i,
+                    totalSegments: halfSegments + 1,
+                    t: t,
+                    isConnectionPoint: (i === 0 || i === halfSegments)  // Mark both boundaries
+                };
+                
+                // Skip duplicate points but ensure end points are tagged
+                if (i === 0 && points.length > 0) {
+                    const lastPoint = points[points.length - 1];
+                    if (Math.abs(point.x - lastPoint.x) < this.PRECISION &&
+                        Math.abs(point.y - lastPoint.y) < this.PRECISION) {
+                        // Transfer metadata to existing point
+                        lastPoint.curveId = point.curveId;
+                        lastPoint.segmentIndex = point.segmentIndex;
+                        lastPoint.totalSegments = point.totalSegments;
+                        lastPoint.t = point.t;
+                        lastPoint.isConnectionPoint = true;
+                        continue;
+                    }
+                }
+                points.push(point);
             }
             
             // Right side
-            points.push([from[0] - nx, from[1] - ny]);
-            points.push([to[0] - nx, to[1] - ny]);
+            points.push({ x: from.x - nx, y: from.y - ny });
+            points.push({ x: to.x - nx, y: to.y - ny });
             
-            // End cap
+            // End cap with COMPLETE metadata - ALL points including first and last
             const endAngle = Math.atan2(-ny, -nx);
-            for (let i = 1; i < capSegments; i++) {
-                const t = i / capSegments;
+            for (let i = 0; i <= halfSegments; i++) {
+                const t = i / halfSegments;
                 const angle = endAngle + Math.PI * t;
-                points.push([
-                    to[0] + halfWidth * Math.cos(angle),
-                    to[1] + halfWidth * Math.sin(angle)
-                ]);
+                const point = {
+                    x: to.x + halfWidth * Math.cos(angle),
+                    y: to.y + halfWidth * Math.sin(angle),
+                    curveId: endCapId,
+                    segmentIndex: i,
+                    totalSegments: halfSegments + 1,
+                    t: t,
+                    isConnectionPoint: (i === 0 || i === halfSegments)  // Mark both boundaries
+                };
+                
+                // Skip duplicate points but ensure end points are tagged
+                if (i === 0 && points.length > 0) {
+                    const lastPoint = points[points.length - 1];
+                    if (Math.abs(point.x - lastPoint.x) < this.PRECISION &&
+                        Math.abs(point.y - lastPoint.y) < this.PRECISION) {
+                        // Transfer metadata to existing point
+                        lastPoint.curveId = point.curveId;
+                        lastPoint.segmentIndex = point.segmentIndex;
+                        lastPoint.totalSegments = point.totalSegments;
+                        lastPoint.t = point.t;
+                        lastPoint.isConnectionPoint = true;
+                        continue;
+                    }
+                }
+                points.push(point);
             }
             
             // Left side of end
-            points.push([to[0] + nx, to[1] + ny]);
+            points.push({ x: to.x + nx, y: to.y + ny });
             
             return points;
         },
         
-        // Convert arc to polygon with width
+        // Convert arc to polygon with metadata for end-caps
         arcToPolygon(center, radius, startDeg, endDeg, width) {
             const points = [];
-            const segments = 48;
-            const capSegments = 16;
             const halfWidth = width / 2;
             const innerR = radius - halfWidth;
             const outerR = radius + halfWidth;
@@ -265,12 +367,24 @@
             // Fallback to filled circle if inner radius is negative
             if (innerR < 0) {
                 const circleSegments = 48;
+                const curveId = window.globalCurveRegistry?.register({
+                    type: 'circle',
+                    center: { x: center.x, y: center.y },
+                    radius: outerR,
+                    source: 'arc_fallback'
+                });
+                
                 for (let i = 0; i < circleSegments; i++) {
                     const angle = (i / circleSegments) * 2 * Math.PI;
-                    points.push([
-                        center[0] + outerR * Math.cos(angle),
-                        center[1] + outerR * Math.sin(angle)
-                    ]);
+                    const point = {
+                        x: center.x + outerR * Math.cos(angle),
+                        y: center.y + outerR * Math.sin(angle),
+                        curveId: curveId,
+                        segmentIndex: i,
+                        totalSegments: circleSegments,
+                        t: i / circleSegments
+                    };
+                    points.push(point);
                 }
                 return points;
             }
@@ -278,75 +392,125 @@
             const startRad = startDeg * Math.PI / 180;
             const endRad = endDeg * Math.PI / 180;
             
-            const startCapCenter = [
-                center[0] + radius * Math.cos(startRad),
-                center[1] + radius * Math.sin(startRad)
-            ];
-            const endCapCenter = [
-                center[0] + radius * Math.cos(endRad),
-                center[1] + radius * Math.sin(endRad)
-            ];
+            const startCapCenter = {
+                x: center.x + radius * Math.cos(startRad),
+                y: center.y + radius * Math.sin(startRad)
+            };
+            const endCapCenter = {
+                x: center.x + radius * Math.cos(endRad),
+                y: center.y + radius * Math.sin(endRad)
+            };
+            
+            // Register end-caps
+            const startCapId = window.globalCurveRegistry?.register({
+                type: 'arc',
+                center: startCapCenter,
+                radius: halfWidth,
+                startAngle: 0,
+                endAngle: Math.PI * 2,
+                clockwise: true,
+                source: 'arc_end_cap'
+            });
+            
+            const endCapId = window.globalCurveRegistry?.register({
+                type: 'arc',
+                center: endCapCenter,
+                radius: halfWidth,
+                startAngle: 0,
+                endAngle: Math.PI * 2,
+                clockwise: true,
+                source: 'arc_end_cap'
+            });
+            
+            const segments = 48;
+            const capSegments = Math.max(8, Math.min(16, this.getOptimalSegments(halfWidth, 8, 16)));
             
             // Outer arc
             for (let i = 0; i <= segments; i++) {
                 const t = i / segments;
                 const angle = startRad + (endRad - startRad) * t;
-                points.push([
-                    center[0] + outerR * Math.cos(angle),
-                    center[1] + outerR * Math.sin(angle)
-                ]);
+                points.push({
+                    x: center.x + outerR * Math.cos(angle),
+                    y: center.y + outerR * Math.sin(angle)
+                });
             }
             
-            // End cap
-            for (let i = 1; i <= capSegments; i++) {
+            // End cap with complete metadata
+            for (let i = 0; i <= capSegments; i++) {  // FIXED: Start at 0
                 const t = i / capSegments;
                 const angle = endRad + (Math.PI * t);
-                points.push([
-                    endCapCenter[0] + halfWidth * Math.cos(angle),
-                    endCapCenter[1] + halfWidth * Math.sin(angle)
-                ]);
+                const point = {
+                    x: endCapCenter.x + halfWidth * Math.cos(angle),
+                    y: endCapCenter.y + halfWidth * Math.sin(angle),
+                    curveId: endCapId,
+                    segmentIndex: i,
+                    totalSegments: capSegments + 1,
+                    t: t,
+                    isConnectionPoint: (i === 0 || i === capSegments)
+                };
+                points.push(point);
             }
             
             // Inner arc (reversed)
             for (let i = segments; i >= 0; i--) {
                 const t = i / segments;
                 const angle = startRad + (endRad - startRad) * t;
-                points.push([
-                    center[0] + innerR * Math.cos(angle),
-                    center[1] + innerR * Math.sin(angle)
-                ]);
+                points.push({
+                    x: center.x + innerR * Math.cos(angle),
+                    y: center.y + innerR * Math.sin(angle)
+                });
             }
             
-            // Start cap
-            for (let i = 1; i <= capSegments; i++) {
+            // Start cap with complete metadata
+            for (let i = 0; i <= capSegments; i++) {  // FIXED: Start at 0
                 const t = i / capSegments;
                 const angle = (startRad + Math.PI) + (Math.PI * t);
-                points.push([
-                    startCapCenter[0] + halfWidth * Math.cos(angle),
-                    startCapCenter[1] + halfWidth * Math.sin(angle)
-                ]);
+                const point = {
+                    x: startCapCenter.x + halfWidth * Math.cos(angle),
+                    y: startCapCenter.y + halfWidth * Math.sin(angle),
+                    curveId: startCapId,
+                    segmentIndex: i,
+                    totalSegments: capSegments + 1,
+                    t: t,
+                    isConnectionPoint: (i === 0 || i === capSegments)
+                };
+                points.push(point);
             }
             
             return points;
         },
         
-        // Generate rounded cap
-        generateRoundedCap(center, dirX, dirY, radius, isStart) {
+        // Generate complete rounded cap with all boundary points tagged
+        generateCompleteRoundedCap(center, dirX, dirY, radius, isStart, curveId) {
             const points = [];
-            const segments = 16;
+            // Use same segmentation rules as circles for consistency
+            const segments = Math.max(16, Math.min(64, this.getOptimalSegments(radius, 16, 64)));
+            const halfSegments = Math.floor(segments / 2);
             
             const baseAngle = Math.atan2(dirY, dirX);
             const startAngle = isStart ? baseAngle - Math.PI/2 : baseAngle + Math.PI/2;
             
-            for (let i = 0; i <= segments; i++) {
-                const angle = startAngle + (Math.PI * i / segments);
-                points.push({
+            for (let i = 0; i <= halfSegments; i++) {  // Half circle for end-cap
+                const angle = startAngle + (Math.PI * i / halfSegments);
+                const t = i / halfSegments;
+                const point = {
                     x: center.x + radius * Math.cos(angle),
-                    y: center.y + radius * Math.sin(angle)
-                });
+                    y: center.y + radius * Math.sin(angle),
+                    curveId: curveId,
+                    segmentIndex: i,
+                    totalSegments: halfSegments + 1,
+                    t: t,
+                    isConnectionPoint: (i === 0 || i === halfSegments)  // Mark both ends
+                };
+                points.push(point);
             }
             
             return points;
+        },
+        
+        // Backward compatibility wrapper
+        generateRoundedCap(center, dirX, dirY, radius, isStart, curveId) {
+            return this.generateCompleteRoundedCap(center, dirX, dirY, radius, isStart, curveId);
         },
         
         // Generate join between segments

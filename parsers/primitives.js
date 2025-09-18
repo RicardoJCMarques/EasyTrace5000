@@ -1,6 +1,6 @@
 // parsers/primitives.js
-// Primitives with geometric context preservation for efficient processing
-// Added metadata generation for curve reconstruction
+// Primitives with geometric context preservation and immediate curve registration
+// FIXED: Obround handles circular case properly, better toPolygon metadata
 
 (function() {
     'use strict';
@@ -10,11 +10,17 @@
     const geomConfig = config.geometry || {};
     const segmentConfig = geomConfig.segments || {};
     
+    // Primitive ID counter for tracking
+    let nextPrimitiveId = 1;
+    
     class RenderPrimitive {
         constructor(type, properties = {}) {
             this.type = type;
             this.properties = properties;
             this.bounds = null;
+            
+            // Unique ID for primitive tracking
+            this.id = `prim_${nextPrimitiveId++}`;
             
             // Preserve original geometric context
             this.geometricContext = {
@@ -74,6 +80,9 @@
             // Track arc segments within the path
             this.arcSegments = properties.arcSegments || [];
             this.holes = properties.holes || [];
+            
+            // Store curve IDs if provided
+            this.curveIds = properties.curveIds || [];
             
             // Update geometric context if this path contains arcs
             if (this.arcSegments.length > 0) {
@@ -176,6 +185,35 @@
                 center: { ...center },
                 radius: radius
             };
+            
+            // IMMEDIATELY REGISTER THIS CIRCLE AS A CURVE
+            this.curveId = this.registerAsGlobalCurve();
+            if (this.curveId) {
+                this.curveIds = [this.curveId];
+            }
+        }
+        
+        registerAsGlobalCurve() {
+            if (!window.globalCurveRegistry) {
+                if (window.PCBCAMConfig?.debug?.enabled) {
+                    console.warn('[CirclePrimitive] Global curve registry not available at creation');
+                }
+                return null;
+            }
+            
+            const curveId = window.globalCurveRegistry.register({
+                type: 'circle',
+                center: { ...this.center },
+                radius: this.radius,
+                primitiveId: this.id,
+                source: 'primitive_circle'
+            });
+            
+            if (window.PCBCAMConfig?.debug?.logging?.curveRegistration) {
+                console.log(`[CirclePrimitive] Registered circle ${this.id} as curve ${curveId}`);
+            }
+            
+            return curveId;
         }
         
         calculateBounds() {
@@ -218,7 +256,6 @@
             };
         }
         
-        // FIXED: Accept curveIds parameter for point tagging
         toPolygon(minSegments = null, maxSegments = null, curveIds = null) {
             // Use config values if not specified
             minSegments = minSegments || segmentConfig.minCircle || 16;
@@ -232,31 +269,43 @@
             );
             
             const points = [];
-            const curveId = (curveIds && curveIds.length > 0) ? curveIds[0] : undefined;
+            // Use the circle's own registered curve ID
+            const curveId = this.curveId || (curveIds && curveIds.length > 0 ? curveIds[0] : undefined);
             
-            for (let i = 0; i < segments; i++) {
-                const angle = (i / segments) * 2 * Math.PI;
+            // Generate points with full metadata
+            for (let i = 0; i <= segments; i++) {
+                const normalizedIndex = i % segments;
+                const angle = (normalizedIndex / segments) * 2 * Math.PI;
                 const point = {
                     x: this.center.x + this.radius * Math.cos(angle),
                     y: this.center.y + this.radius * Math.sin(angle)
                 };
                 
-                // FIXED: Tag point with curve ID if provided
+                // Tag every point with metadata
                 if (curveId !== undefined) {
                     point.curveId = curveId;
+                    point.segmentIndex = normalizedIndex;
+                    point.totalSegments = segments;
+                    point.t = normalizedIndex / segments;
+                    point.angle = angle;
                 }
                 
                 points.push(point);
             }
             
-            return new PathPrimitive(points, {
+            const pathPrimitive = new PathPrimitive(points, {
                 ...this.properties,
                 closed: true,
                 originalCircle: {
                     center: { ...this.center },
                     radius: this.radius
-                }
+                },
+                curveIds: [curveId].filter(id => id !== undefined),
+                originalPointCount: segments + 1,
+                hasCompleteMetadata: true
             });
+            
+            return pathPrimitive;
         }
     }
     
@@ -298,7 +347,8 @@
                 { x: this.position.x, y: this.position.y },
                 { x: this.position.x + this.width, y: this.position.y },
                 { x: this.position.x + this.width, y: this.position.y + this.height },
-                { x: this.position.x, y: this.position.y + this.height }
+                { x: this.position.x, y: this.position.y + this.height },
+                { x: this.position.x, y: this.position.y } // Explicitly close
             ];
             
             return new PathPrimitive(points, {
@@ -312,9 +362,9 @@
             });
         }
         
-        // Rectangles aren't curves but can be useful for debugging
+        // Rectangles aren't curves
         generateCurveMetadata() {
-            return null; // Rectangles don't have curve metadata
+            return null;
         }
     }
     
@@ -325,14 +375,112 @@
             this.width = width;
             this.height = height;
             
-            // Obrounds have analytical properties
-            this.geometricContext.isAnalytic = true;
-            this.geometricContext.metadata = {
-                position: { ...position },
-                width: width,
-                height: height,
-                cornerRadius: Math.min(width, height) / 2
-            };
+            // Check if this is actually a circle (equal dimensions)
+            const tolerance = geomConfig.coordinatePrecision || 0.001;
+            this.isCircular = Math.abs(width - height) < tolerance;
+            
+            if (this.isCircular) {
+                // It's actually a circle - mark it as such
+                this.geometricContext.isAnalytic = true;
+                this.geometricContext.metadata = {
+                    position: { ...position },
+                    width: width,
+                    height: height,
+                    actualType: 'circle',
+                    radius: width / 2,
+                    center: {
+                        x: position.x + width / 2,
+                        y: position.y + height / 2
+                    }
+                };
+                
+                // Register as a single circle
+                if (window.globalCurveRegistry) {
+                    this.curveId = window.globalCurveRegistry.register({
+                        type: 'circle',
+                        center: this.geometricContext.metadata.center,
+                        radius: this.geometricContext.metadata.radius,
+                        primitiveId: this.id,
+                        source: 'obround_circular'
+                    });
+                    this.curveIds = [this.curveId];
+                }
+            } else {
+                // True obround with semicircles
+                this.geometricContext.isAnalytic = true;
+                this.geometricContext.metadata = {
+                    position: { ...position },
+                    width: width,
+                    height: height,
+                    cornerRadius: Math.min(width, height) / 2
+                };
+                
+                // Register the semicircles as curves
+                this.registerSemicircles();
+            }
+        }
+        
+        registerSemicircles() {
+            if (!window.globalCurveRegistry) {
+                return;
+            }
+            
+            const r = Math.min(this.width, this.height) / 2;
+            this.curveIds = [];
+            
+            if (this.width > this.height) {
+                // Horizontal obround - two semicircles
+                const leftId = window.globalCurveRegistry.register({
+                    type: 'arc',
+                    center: { x: this.position.x + r, y: this.position.y + r },
+                    radius: r,
+                    startAngle: Math.PI / 2,
+                    endAngle: 3 * Math.PI / 2,
+                    clockwise: true,
+                    primitiveId: this.id,
+                    source: 'obround_left'
+                });
+                
+                const rightId = window.globalCurveRegistry.register({
+                    type: 'arc',
+                    center: { x: this.position.x + this.width - r, y: this.position.y + r },
+                    radius: r,
+                    startAngle: -Math.PI / 2,
+                    endAngle: Math.PI / 2,
+                    clockwise: true,
+                    primitiveId: this.id,
+                    source: 'obround_right'
+                });
+                
+                if (leftId) this.curveIds.push(leftId);
+                if (rightId) this.curveIds.push(rightId);
+            } else {
+                // Vertical obround - two semicircles
+                const topId = window.globalCurveRegistry.register({
+                    type: 'arc',
+                    center: { x: this.position.x + r, y: this.position.y + r },
+                    radius: r,
+                    startAngle: Math.PI,
+                    endAngle: 2 * Math.PI,
+                    clockwise: true,
+                    primitiveId: this.id,
+                    source: 'obround_top'
+                });
+                
+                const bottomId = window.globalCurveRegistry.register({
+                    type: 'arc',
+                    center: { x: this.position.x + r, y: this.position.y + this.height - r },
+                    radius: r,
+                    startAngle: 0,
+                    endAngle: Math.PI,
+                    clockwise: true,
+                    primitiveId: this.id,
+                    source: 'obround_bottom'
+                });
+                
+                if (topId) this.curveIds.push(topId);
+                if (bottomId) this.curveIds.push(bottomId);
+            }
         }
         
         calculateBounds() {
@@ -352,8 +500,19 @@
             this.bounds = { minX, minY, maxX, maxY };
         }
         
-        // Generate curve metadata for obround semicircles
+        // Generate curve metadata for obround
         generateCurveMetadata() {
+            if (this.isCircular) {
+                // Return circle metadata
+                return {
+                    type: 'circle',
+                    center: this.geometricContext.metadata.center,
+                    radius: this.geometricContext.metadata.radius,
+                    originalObround: true
+                };
+            }
+            
+            // Return obround metadata with curves
             const r = Math.min(this.width, this.height) / 2;
             const curves = [];
             
@@ -404,142 +563,57 @@
             };
         }
         
-        // FIXED: Accept curveIds and apply them to the correct segments
         toPolygon(segmentsPerArc = null, curveIds = null) {
+            // Handle circular case
+            if (this.isCircular) {
+                const center = {
+                    x: this.position.x + this.width / 2,
+                    y: this.position.y + this.height / 2
+                };
+                const radius = this.width / 2;
+                
+                // Create a circle primitive and convert it to polygon
+                const circlePrim = new CirclePrimitive(center, radius, this.properties);
+                return circlePrim.toPolygon();
+            }
+            
+            // Normal obround handling
             const r = Math.min(this.width, this.height) / 2;
             segmentsPerArc = segmentsPerArc || segmentConfig.obround || 16;
             
-            const points = [];
-            const arcSegments = [];
+            // Use geometry utilities to create proper stroked path
+            const isHorizontal = this.width > this.height;
+            const strokeWidth = Math.min(this.width, this.height);
+            const strokeLength = Math.abs(this.width - this.height);
             
-            // Extract individual curve IDs if provided
-            const firstCurveId = (curveIds && curveIds.length > 0) ? curveIds[0] : undefined;
-            const secondCurveId = (curveIds && curveIds.length > 1) ? curveIds[1] : undefined;
-            
-            if (this.width > this.height) {
-                // Horizontal obround
-                const leftCenter = { x: this.position.x + r, y: this.position.y + r };
-                const rightCenter = { x: this.position.x + this.width - r, y: this.position.y + r };
-                
-                // Right semicircle
-                const rightStartIdx = points.length;
-                for (let i = 0; i <= segmentsPerArc / 2; i++) {
-                    const angle = -Math.PI / 2 + (i / (segmentsPerArc / 2)) * Math.PI;
-                    const point = {
-                        x: rightCenter.x + r * Math.cos(angle),
-                        y: rightCenter.y + r * Math.sin(angle)
-                    };
-                    
-                    // FIXED: Tag points with the second curve ID (right semicircle)
-                    if (secondCurveId !== undefined) {
-                        point.curveId = secondCurveId;
-                    }
-                    
-                    points.push(point);
-                }
-                arcSegments.push({
-                    startIndex: rightStartIdx,
-                    endIndex: points.length - 1,
-                    center: rightCenter,
-                    radius: r,
-                    startAngle: -Math.PI / 2,
-                    endAngle: Math.PI / 2,
-                    clockwise: true
-                });
-                
-                // Left semicircle
-                const leftStartIdx = points.length;
-                for (let i = 0; i <= segmentsPerArc / 2; i++) {
-                    const angle = Math.PI / 2 + (i / (segmentsPerArc / 2)) * Math.PI;
-                    const point = {
-                        x: leftCenter.x + r * Math.cos(angle),
-                        y: leftCenter.y + r * Math.sin(angle)
-                    };
-                    
-                    // FIXED: Tag points with the first curve ID (left semicircle)
-                    if (firstCurveId !== undefined) {
-                        point.curveId = firstCurveId;
-                    }
-                    
-                    points.push(point);
-                }
-                arcSegments.push({
-                    startIndex: leftStartIdx,
-                    endIndex: points.length - 1,
-                    center: leftCenter,
-                    radius: r,
-                    startAngle: Math.PI / 2,
-                    endAngle: 3 * Math.PI / 2,
-                    clockwise: true
-                });
+            let start, end;
+            if (isHorizontal) {
+                const centerY = this.position.y + this.height / 2;
+                start = { x: this.position.x + r, y: centerY };
+                end = { x: this.position.x + this.width - r, y: centerY };
             } else {
-                // Vertical obround
-                const topCenter = { x: this.position.x + r, y: this.position.y + this.height - r };
-                const bottomCenter = { x: this.position.x + r, y: this.position.y + r };
-                
-                // Top semicircle
-                const topStartIdx = points.length;
-                for (let i = 0; i <= segmentsPerArc / 2; i++) {
-                    const angle = (i / (segmentsPerArc / 2)) * Math.PI;
-                    const point = {
-                        x: topCenter.x + r * Math.cos(angle),
-                        y: topCenter.y + r * Math.sin(angle)
-                    };
-                    
-                    // FIXED: Tag points with the second curve ID (top semicircle)
-                    if (secondCurveId !== undefined) {
-                        point.curveId = secondCurveId;
-                    }
-                    
-                    points.push(point);
-                }
-                arcSegments.push({
-                    startIndex: topStartIdx,
-                    endIndex: points.length - 1,
-                    center: topCenter,
-                    radius: r,
-                    startAngle: 0,
-                    endAngle: Math.PI,
-                    clockwise: true
-                });
-                
-                // Bottom semicircle
-                const bottomStartIdx = points.length;
-                for (let i = 0; i <= segmentsPerArc / 2; i++) {
-                    const angle = Math.PI + (i / (segmentsPerArc / 2)) * Math.PI;
-                    const point = {
-                        x: bottomCenter.x + r * Math.cos(angle),
-                        y: bottomCenter.y + r * Math.sin(angle)
-                    };
-                    
-                    // FIXED: Tag points with the first curve ID (bottom semicircle)
-                    if (firstCurveId !== undefined) {
-                        point.curveId = firstCurveId;
-                    }
-                    
-                    points.push(point);
-                }
-                arcSegments.push({
-                    startIndex: bottomStartIdx,
-                    endIndex: points.length - 1,
-                    center: bottomCenter,
-                    radius: r,
-                    startAngle: Math.PI,
-                    endAngle: 2 * Math.PI,
-                    clockwise: true
-                });
+                const centerX = this.position.x + this.width / 2;
+                start = { x: centerX, y: this.position.y + r };
+                end = { x: centerX, y: this.position.y + this.height - r };
             }
             
-            return new PathPrimitive(points, {
+            // Use lineToPolygon for proper end-cap metadata
+            const points = GeometryUtils.lineToPolygon(start, end, strokeWidth);
+            
+            const pathPrimitive = new PathPrimitive(points, {
                 ...this.properties,
                 closed: true,
-                arcSegments: arcSegments,
                 originalObround: {
                     position: { ...this.position },
                     width: this.width,
                     height: this.height
-                }
+                },
+                curveIds: this.curveIds || [],
+                originalPointCount: points.length,
+                hasCompleteMetadata: true
             });
+            
+            return pathPrimitive;
         }
     }
     
@@ -571,6 +645,31 @@
                 x: center.x + radius * Math.cos(endAngle),
                 y: center.y + radius * Math.sin(endAngle)
             };
+            
+            // REGISTER THIS ARC AS A CURVE
+            this.curveId = this.registerAsGlobalCurve();
+            if (this.curveId) {
+                this.curveIds = [this.curveId];
+            }
+        }
+        
+        registerAsGlobalCurve() {
+            if (!window.globalCurveRegistry) {
+                return null;
+            }
+            
+            const curveId = window.globalCurveRegistry.register({
+                type: 'arc',
+                center: { ...this.center },
+                radius: this.radius,
+                startAngle: this.startAngle,
+                endAngle: this.endAngle,
+                clockwise: this.clockwise,
+                primitiveId: this.id,
+                source: 'primitive_arc'
+            });
+            
+            return curveId;
         }
         
         calculateBounds() {
@@ -663,7 +762,6 @@
             };
         }
         
-        // FIXED: Accept curveIds parameter for point tagging
         toPolygon(minSegments = null, maxSegments = null, curveIds = null) {
             minSegments = minSegments || segmentConfig.minArc || 8;
             maxSegments = maxSegments || segmentConfig.maxArc || 64;
@@ -681,8 +779,10 @@
             const segments = Math.max(minSegments, Math.min(maxSegments, desiredSegments));
             
             const points = [];
-            const curveId = (curveIds && curveIds.length > 0) ? curveIds[0] : undefined;
+            // Use the arc's own registered curve ID
+            const curveId = this.curveId || (curveIds && curveIds.length > 0 ? curveIds[0] : undefined);
             
+            // Generate points with full metadata
             for (let i = 0; i <= segments; i++) {
                 const t = i / segments;
                 const angle = this.startAngle + angleSpan * t;
@@ -691,15 +791,18 @@
                     y: this.center.y + this.radius * Math.sin(angle)
                 };
                 
-                // FIXED: Tag point with curve ID if provided
                 if (curveId !== undefined) {
                     point.curveId = curveId;
+                    point.segmentIndex = i;
+                    point.totalSegments = segments + 1;
+                    point.t = t;
+                    point.angle = angle;
                 }
                 
                 points.push(point);
             }
             
-            return new PathPrimitive(points, {
+            const pathPrimitive = new PathPrimitive(points, {
                 ...this.properties,
                 closed: false,
                 arcSegments: [{
@@ -709,9 +812,15 @@
                     radius: this.radius,
                     startAngle: this.startAngle,
                     endAngle: this.endAngle,
-                    clockwise: this.clockwise
-                }]
+                    clockwise: this.clockwise,
+                    curveId: curveId
+                }],
+                curveIds: [curveId].filter(id => id !== undefined),
+                originalPointCount: segments + 1,
+                hasCompleteMetadata: true
             });
+            
+            return pathPrimitive;
         }
     }
     
@@ -739,33 +848,20 @@
                 });
             }
             
-            // For strokes, create an obround-like shape
-            const angle = Math.atan2(dy, dx);
-            const perpAngle = angle + Math.PI / 2;
-            const halfWidth = width / 2;
+            // For strokes, use GeometryUtils to create proper polygon with end-caps
+            const points = GeometryUtils.lineToPolygon(start, end, width);
             
-            const position = {
-                x: start.x - halfWidth * Math.cos(perpAngle),
-                y: start.y - halfWidth * Math.sin(perpAngle)
-            };
-            
-            const obround = new ObroundPrimitive(
-                position,
-                length + width,
-                width,
-                {
-                    ...properties,
-                    isStroke: true,
-                    originalStroke: {
-                        start: { ...start },
-                        end: { ...end },
-                        width: width
-                    },
-                    rotation: angle
-                }
-            );
-            
-            return obround;
+            return new PathPrimitive(points, {
+                ...properties,
+                isStroke: true,
+                originalStroke: {
+                    start: { ...start },
+                    end: { ...end },
+                    width: width
+                },
+                closed: true,
+                hasCompleteMetadata: true
+            });
         }
         
         static createPolygon(center, diameter, sides, rotation = 0, properties = {}) {

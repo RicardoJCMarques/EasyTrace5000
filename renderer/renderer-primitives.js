@@ -1,5 +1,6 @@
 // renderer/renderer-primitives.js
 // Handles drawing all primitive types
+// ENHANCED: Debug visualization for curve metadata survival
 
 (function() {
     'use strict';
@@ -11,22 +12,372 @@
         constructor(core) {
             this.core = core;
             this.ctx = core.ctx;
+            
+            // Track debug statistics
+            this.debugStats = {
+                totalPoints: 0,
+                taggedPoints: 0,
+                curvePoints: new Map() // curveId -> point count
+            };
         }
         
         renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false) {
             this.ctx.save();
             
-            this.ctx.fillStyle = fillColor;
-            this.ctx.strokeStyle = strokeColor;
+            // Check if this is a reconstructed arc/circle
+            const isReconstructed = primitive.properties?.reconstructed === true;
             
-            if (this.core.options.showWireframe) {
-                this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
-                this.renderPrimitiveWireframe(primitive);
+            if (isReconstructed) {
+                // Special styling for reconstructed arcs
+                this.renderReconstructedPrimitive(primitive, fillColor, strokeColor);
             } else {
-                this.renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed);
+                // Normal rendering
+                this.ctx.fillStyle = fillColor;
+                this.ctx.strokeStyle = strokeColor;
+                
+                if (this.core.options.showWireframe) {
+                    this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
+                    this.renderPrimitiveWireframe(primitive);
+                } else {
+                    this.renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed);
+                }
+            }
+            
+            // ENHANCED: Debug visualization of curve metadata for all paths
+            if (this.core.options.debugCurvePoints && primitive.type === 'path') {
+                this.renderCurveMetadataDebug(primitive);
             }
             
             this.ctx.restore();
+        }
+        
+        // NEW: Comprehensive curve metadata visualization
+        renderCurveMetadataDebug(primitive) {
+            if (!primitive.points || primitive.points.length === 0) return;
+            
+            // Reset stats for this primitive
+            this.debugStats.totalPoints = 0;
+            this.debugStats.taggedPoints = 0;
+            this.debugStats.curvePoints.clear();
+            
+            this.ctx.save();
+            
+            // Use screen space for consistent visualization
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            const pointRadius = 4;
+            const fontSize = 10;
+            const labelOffset = 8;
+            
+            // First pass: Draw connecting lines to show point order
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            this.ctx.lineWidth = 1;
+            this.ctx.setLineDash([2, 2]);
+            this.ctx.beginPath();
+            
+            primitive.points.forEach((p, index) => {
+                const canvasX = this.core.worldToCanvasX(p.x);
+                const canvasY = this.core.worldToCanvasY(p.y);
+                
+                if (index === 0) {
+                    this.ctx.moveTo(canvasX, canvasY);
+                } else {
+                    this.ctx.lineTo(canvasX, canvasY);
+                }
+            });
+            
+            // Show if polygon is closed
+            if (primitive.closed !== false) {
+                this.ctx.closePath();
+                this.ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+            }
+            this.ctx.stroke();
+            
+            // Second pass: Draw points with metadata visualization
+            primitive.points.forEach((p, index) => {
+                const canvasX = this.core.worldToCanvasX(p.x);
+                const canvasY = this.core.worldToCanvasY(p.y);
+                
+                this.debugStats.totalPoints++;
+                
+                if (p.curveId !== undefined && p.curveId > 0) {
+                    // Point has curve metadata
+                    this.debugStats.taggedPoints++;
+                    const count = this.debugStats.curvePoints.get(p.curveId) || 0;
+                    this.debugStats.curvePoints.set(p.curveId, count + 1);
+                    
+                    // Use different colors for different curve IDs
+                    const hue = (p.curveId * 137) % 360; // Golden angle for color distribution
+                    this.ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                    
+                    // Draw larger point for curve points
+                    this.ctx.beginPath();
+                    this.ctx.arc(canvasX, canvasY, pointRadius, 0, 2 * Math.PI);
+                    this.ctx.fill();
+                    
+                    // Draw black outline
+                    this.ctx.strokeStyle = '#000000';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.setLineDash([]);
+                    this.ctx.stroke();
+                    
+                    // Draw metadata label
+                    this.ctx.fillStyle = '#FFFFFF';
+                    this.ctx.strokeStyle = '#000000';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.font = `${fontSize}px monospace`;
+                    
+                    const label = `C${p.curveId}`;
+                    const segLabel = p.segmentIndex !== undefined ? `:${p.segmentIndex}` : '';
+                    const fullLabel = label + segLabel;
+                    
+                    // Draw text with outline for visibility
+                    this.ctx.strokeText(fullLabel, canvasX + labelOffset, canvasY - labelOffset);
+                    this.ctx.fillText(fullLabel, canvasX + labelOffset, canvasY - labelOffset);
+                    
+                    // Show additional metadata on hover (stored for potential interaction)
+                    if (p.segmentIndex !== undefined) {
+                        const debugInfo = {
+                            curveId: p.curveId,
+                            segmentIndex: p.segmentIndex,
+                            totalSegments: p.totalSegments,
+                            t: p.t,
+                            angle: p.angle,
+                            pointIndex: index
+                        };
+                        
+                        // Draw small index number below point
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                        this.ctx.font = `${fontSize - 2}px monospace`;
+                        this.ctx.fillText(`[${index}]`, canvasX - 10, canvasY + labelOffset + 10);
+                    }
+                    
+                } else {
+                    // Point has no curve metadata - straight segment point
+                    this.ctx.fillStyle = 'rgba(128, 128, 128, 0.5)';
+                    
+                    // Draw smaller point for straight segments
+                    this.ctx.beginPath();
+                    this.ctx.arc(canvasX, canvasY, pointRadius - 1, 0, 2 * Math.PI);
+                    this.ctx.fill();
+                    
+                    // Draw index for first and last points
+                    if (index === 0 || index === primitive.points.length - 1) {
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                        this.ctx.font = `${fontSize - 2}px monospace`;
+                        const label = index === 0 ? 'START' : 'END';
+                        this.ctx.fillText(label, canvasX + labelOffset, canvasY);
+                    }
+                }
+            });
+            
+            // Draw statistics overlay
+            this.renderDebugStatistics();
+            
+            // Highlight potential issues
+            this.highlightPotentialIssues(primitive);
+            
+            this.ctx.restore();
+        }
+        
+        // NEW: Show debug statistics overlay
+        renderDebugStatistics() {
+            const stats = this.debugStats;
+            if (stats.totalPoints === 0) return;
+            
+            this.ctx.save();
+            
+            // Position in top-left corner
+            const x = 10;
+            const y = 60;
+            const lineHeight = 16;
+            
+            // Background
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            const width = 250;
+            const height = (3 + stats.curvePoints.size) * lineHeight + 10;
+            this.ctx.fillRect(x, y, width, height);
+            
+            // Text
+            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.font = '12px monospace';
+            
+            let currentY = y + lineHeight;
+            this.ctx.fillText(`Total points: ${stats.totalPoints}`, x + 5, currentY);
+            
+            currentY += lineHeight;
+            const percentage = ((stats.taggedPoints / stats.totalPoints) * 100).toFixed(1);
+            this.ctx.fillText(`Tagged points: ${stats.taggedPoints} (${percentage}%)`, x + 5, currentY);
+            
+            if (stats.curvePoints.size > 0) {
+                currentY += lineHeight;
+                this.ctx.fillText('Curves detected:', x + 5, currentY);
+                
+                stats.curvePoints.forEach((count, curveId) => {
+                    currentY += lineHeight;
+                    const hue = (curveId * 137) % 360;
+                    this.ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                    this.ctx.fillText(`  Curve ${curveId}: ${count} points`, x + 5, currentY);
+                });
+            }
+            
+            this.ctx.restore();
+        }
+        
+        // NEW: Highlight potential reconstruction issues
+        highlightPotentialIssues(primitive) {
+            if (!primitive.points || primitive.points.length < 3) return;
+            
+            this.ctx.save();
+            
+            // Check for gaps in curve sequences
+            let lastCurveId = null;
+            let gapStart = null;
+            const gaps = [];
+            
+            primitive.points.forEach((p, index) => {
+                const curveId = p.curveId > 0 ? p.curveId : null;
+                
+                if (lastCurveId !== null && curveId !== lastCurveId) {
+                    // Found a transition
+                    if (gapStart !== null && curveId === gapStart.curveId) {
+                        // Same curve ID appearing again - potential split
+                        gaps.push({
+                            startIndex: gapStart.index,
+                            endIndex: index,
+                            curveId: curveId
+                        });
+                    }
+                    gapStart = { index, curveId: lastCurveId };
+                }
+                lastCurveId = curveId;
+            });
+            
+            // Highlight gaps with warning indicators
+            this.ctx.strokeStyle = '#FF0000';
+            this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([5, 5]);
+            
+            gaps.forEach(gap => {
+                const startPoint = primitive.points[gap.startIndex];
+                const endPoint = primitive.points[gap.endIndex];
+                
+                const startX = this.core.worldToCanvasX(startPoint.x);
+                const startY = this.core.worldToCanvasY(startPoint.y);
+                const endX = this.core.worldToCanvasX(endPoint.x);
+                const endY = this.core.worldToCanvasY(endPoint.y);
+                
+                this.ctx.beginPath();
+                this.ctx.moveTo(startX, startY);
+                this.ctx.lineTo(endX, endY);
+                this.ctx.stroke();
+                
+                // Draw warning icon
+                this.ctx.fillStyle = '#FF0000';
+                this.ctx.font = '16px sans-serif';
+                const midX = (startX + endX) / 2;
+                const midY = (startY + endY) / 2;
+                this.ctx.fillText('⚠', midX - 8, midY + 5);
+            });
+            
+            this.ctx.restore();
+        }
+        
+        renderReconstructedPrimitive(primitive, fillColor, strokeColor) {
+            // Highlight reconstructed arcs with special styling
+            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
+            
+            // Use a bright accent color for reconstructed arcs
+            const accentColor = '#00ffff'; // Cyan for reconstructed arcs
+            const glowColor = '#00ff00';   // Green glow
+            
+            this.ctx.save();
+            
+            // Add glow effect for visibility
+            this.ctx.shadowColor = glowColor;
+            this.ctx.shadowBlur = 10 / this.core.viewScale;
+            
+            // Render based on type
+            if (primitive.type === 'circle') {
+                // Reconstructed circle
+                this.ctx.strokeStyle = accentColor;
+                this.ctx.lineWidth = 2 / this.core.viewScale;
+                this.ctx.fillStyle = fillColor + '40'; // Semi-transparent fill
+                
+                this.ctx.beginPath();
+                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
+                this.ctx.fill();
+                this.ctx.stroke();
+                
+                // Add center marker
+                this.ctx.fillStyle = accentColor;
+                this.ctx.beginPath();
+                this.ctx.arc(primitive.center.x, primitive.center.y, 2 / this.core.viewScale, 0, 2 * Math.PI);
+                this.ctx.fill();
+            } else if (primitive.type === 'arc') {
+                // Reconstructed arc
+                this.ctx.strokeStyle = accentColor;
+                this.ctx.lineWidth = 2 / this.core.viewScale;
+                
+                this.ctx.beginPath();
+                this.ctx.arc(
+                    primitive.center.x,
+                    primitive.center.y,
+                    primitive.radius,
+                    primitive.startAngle,
+                    primitive.endAngle,
+                    !primitive.clockwise
+                );
+                this.ctx.stroke();
+                
+                // Add endpoint markers
+                this.ctx.fillStyle = accentColor;
+                
+                const startX = primitive.center.x + primitive.radius * Math.cos(primitive.startAngle);
+                const startY = primitive.center.y + primitive.radius * Math.sin(primitive.startAngle);
+                this.ctx.beginPath();
+                this.ctx.arc(startX, startY, 3 / this.core.viewScale, 0, 2 * Math.PI);
+                this.ctx.fill();
+                
+                const endX = primitive.center.x + primitive.radius * Math.cos(primitive.endAngle);
+                const endY = primitive.center.y + primitive.radius * Math.sin(primitive.endAngle);
+                this.ctx.beginPath();
+                this.ctx.arc(endX, endY, 3 / this.core.viewScale, 0, 2 * Math.PI);
+                this.ctx.fill();
+            } else if (primitive.type === 'path' && primitive.properties?.wasPartial) {
+                // Partially reconstructed arc as path
+                this.ctx.strokeStyle = '#ffff00'; // Yellow for partial
+                this.ctx.lineWidth = 2 / this.core.viewScale;
+                this.ctx.setLineDash([5 / this.core.viewScale, 5 / this.core.viewScale]);
+                
+                this.renderPathNormal(primitive, primitive.properties, fillColor + '40', '#ffff00', false);
+            }
+            
+            this.ctx.restore();
+            
+            // Add label if debug enabled
+            if (debugConfig.enabled && primitive.properties?.originalCurveId) {
+                this.ctx.save();
+                this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+                this.ctx.fillStyle = accentColor;
+                this.ctx.font = '10px monospace';
+                
+                let labelPos;
+                if (primitive.type === 'circle') {
+                    labelPos = this.core.worldToCanvasX(primitive.center.x);
+                    const y = this.core.worldToCanvasY(primitive.center.y);
+                    this.ctx.fillText(`C${primitive.properties.originalCurveId}`, labelPos, y);
+                } else if (primitive.type === 'arc') {
+                    const midAngle = (primitive.startAngle + primitive.endAngle) / 2;
+                    const midX = primitive.center.x + primitive.radius * Math.cos(midAngle);
+                    const midY = primitive.center.y + primitive.radius * Math.sin(midAngle);
+                    labelPos = this.core.worldToCanvasX(midX);
+                    const y = this.core.worldToCanvasY(midY);
+                    this.ctx.fillText(`A${primitive.properties.originalCurveId}`, labelPos, y);
+                }
+                
+                this.ctx.restore();
+            }
         }
         
         renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed = false) {
@@ -257,19 +608,34 @@
         }
         
         renderArcNormal(primitive, props, strokeColor) {
-            const radius = Math.sqrt(
-                Math.pow(primitive.start.x - primitive.center.x, 2) +
-                Math.pow(primitive.start.y - primitive.center.y, 2)
-            );
+            // Fix: Use correct property names for ArcPrimitive
+            let radius, startAngle, endAngle;
             
-            const startAngle = Math.atan2(
-                primitive.start.y - primitive.center.y,
-                primitive.start.x - primitive.center.x
-            );
-            const endAngle = Math.atan2(
-                primitive.end.y - primitive.center.y,
-                primitive.end.x - primitive.center.x
-            );
+            if (primitive.radius !== undefined) {
+                // New ArcPrimitive structure with direct properties
+                radius = primitive.radius;
+                startAngle = primitive.startAngle;
+                endAngle = primitive.endAngle;
+            } else if (primitive.startPoint && primitive.endPoint && primitive.center) {
+                // Fallback for calculated properties
+                radius = Math.sqrt(
+                    Math.pow(primitive.startPoint.x - primitive.center.x, 2) +
+                    Math.pow(primitive.startPoint.y - primitive.center.y, 2)
+                );
+                
+                startAngle = Math.atan2(
+                    primitive.startPoint.y - primitive.center.y,
+                    primitive.startPoint.x - primitive.center.x
+                );
+                endAngle = Math.atan2(
+                    primitive.endPoint.y - primitive.center.y,
+                    primitive.endPoint.x - primitive.center.x
+                );
+            } else {
+                // Legacy fallback
+                console.warn('Arc primitive missing required properties');
+                return;
+            }
             
             this.ctx.beginPath();
             this.ctx.arc(

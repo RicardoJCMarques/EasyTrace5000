@@ -1,5 +1,6 @@
 // renderer/layer-renderer.js
 // Simplified orchestrator that combines core, primitive, overlay, and interaction components
+// FIXED: Separate debug overlay rendering phase for proper z-order
 
 (function() {
     'use strict';
@@ -26,6 +27,9 @@
             // Coordinate system reference
             this.coordinateSystem = null;
             
+            // Track debug primitives for overlay
+            this.debugPrimitives = [];
+            
             // Create property accessors for compatibility
             this._createPropertyAccessors();
             
@@ -39,7 +43,7 @@
             const properties = [
                 'viewOffset', 'viewScale', 'bounds', 'options', 'colors', 
                 'layers', 'renderStats', 'originPosition', 'currentRotation', 
-                'rotationCenter'
+                'rotationCenter', 'ctx'
             ];
             
             properties.forEach(prop => {
@@ -53,9 +57,12 @@
         render() {
             const startTime = this.core.beginRender();
             
+            // Clear debug primitives tracking
+            this.debugPrimitives = [];
+            
             this.core.setupTransform();
             
-            // Render grid if enabled
+            // Phase 1: Background elements
             if (this.options.showGrid) {
                 this.overlayRenderer.renderGrid();
             }
@@ -65,7 +72,7 @@
                 this.overlayRenderer.renderBounds();
             }
             
-            // Render layers
+            // Phase 2: Main geometry - collect debug info but don't render debug visuals
             this.renderLayers();
             
             this.core.resetTransform();
@@ -79,7 +86,7 @@
             }
             this.canvas.getContext('2d').restore();
             
-            // Render UI overlays
+            // Phase 3: UI overlays
             if (this.options.showRulers) {
                 this.overlayRenderer.renderRulers();
             }
@@ -87,7 +94,42 @@
             this.overlayRenderer.renderScaleIndicator();
             this.overlayRenderer.renderStats();
             
+            // Phase 4: Debug visualization overlay (always on top)
+            if (this.options.debugCurvePoints) {
+                this.renderDebugOverlay();
+            }
+            
             this.core.endRender(startTime);
+        }
+        
+        renderDebugOverlay() {
+            // Create a separate canvas context state for debug rendering
+            const ctx = this.canvas.getContext('2d');
+            ctx.save();
+            
+            // Set up for screen-space rendering
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            // Reset debug stats
+            this.primitiveRenderer.debugStats = {
+                totalPoints: 0,
+                taggedPoints: 0,
+                curvePoints: new Map()
+            };
+            
+            // Render all debug information for collected primitives
+            this.debugPrimitives.forEach(primitive => {
+                if (primitive.type === 'path' && primitive.points) {
+                    this.primitiveRenderer.renderCurveMetadataDebug(primitive);
+                }
+            });
+            
+            // Always show stats when debugging curve points
+            if (this.primitiveRenderer.debugStats.totalPoints > 0) {
+                this.primitiveRenderer.renderDebugStatistics();
+            }
+            
+            ctx.restore();
         }
         
         renderLayers() {
@@ -147,7 +189,16 @@
                     strokeColor = bwColor;
                 }
                 
+                // Collect primitives for debug overlay but don't render debug here
+                if (this.options.debugCurvePoints && primitive.type === 'path') {
+                    this.debugPrimitives.push(primitive);
+                }
+                
+                // Render primitive without inline debug
+                const originalDebugState = this.options.debugCurvePoints;
+                this.options.debugCurvePoints = false;
                 this.primitiveRenderer.renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed);
+                this.options.debugCurvePoints = originalDebugState;
             });
         }
         
@@ -193,7 +244,16 @@
                     strokeColor = bwColor;
                 }
                 
+                // Collect primitives for debug overlay but don't render debug here
+                if (this.options.debugCurvePoints && primitive.type === 'path') {
+                    this.debugPrimitives.push(primitive);
+                }
+                
+                // Render primitive without inline debug
+                const originalDebugState = this.options.debugCurvePoints;
+                this.options.debugCurvePoints = false;
                 this.primitiveRenderer.renderPrimitive(primitive, fillColor, strokeColor, false);
+                this.options.debugCurvePoints = originalDebugState;
             });
         }
         
@@ -222,7 +282,11 @@
                 }
                 ctx.stroke();
             } else {
+                // Disable inline debug for cutouts too
+                const originalDebugState = this.options.debugCurvePoints;
+                this.options.debugCurvePoints = false;
                 this.primitiveRenderer.renderPrimitive(primitive, 'transparent', color, false);
+                this.options.debugCurvePoints = originalDebugState;
             }
             
             ctx.restore();

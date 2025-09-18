@@ -1,5 +1,6 @@
 // geometry/arc-reconstructor.js
-// Consolidated arc detection and reconstruction for boolean operations
+// Simplified arc detection and reconstruction for boolean operations
+// FIXED: Better wrap-around handling, simpler fallback
 
 (function() {
     'use strict';
@@ -7,20 +8,23 @@
     class ArcReconstructor {
         constructor(options = {}) {
             this.debug = options.debug || false;
-            this.tolerance = options.tolerance || 0.01;
             this.scale = options.scale || 10000;
             
-            // Enhanced tolerance for noisy data
-            this.noiseTolerance = options.noiseTolerance || 0.05;
-            this.minArcPoints = 5; // Minimum points to consider arc reconstruction
+            // Minimum points to reconstruct an arc
+            this.minArcPoints = 3;  // Increased from 2 for better reliability
             this.maxGapRatio = 0.3; // Maximum gap in arc coverage to still reconstruct
             
-            // Enhanced curve registry
-            this.registry = new Map();
-            this.nextId = 1;
-            
-            // Mapping from primitive index to curve IDs
-            this.primitiveIndexToCurves = new Map();
+            // Use global registry
+            this.registry = window.globalCurveRegistry;
+            if (!this.registry) {
+                console.error('[ArcReconstructor] Global curve registry not found!');
+                this.registry = { 
+                    register: () => null, 
+                    getCurve: () => null,
+                    clear: () => {},
+                    getCurvesForPrimitive: () => []
+                };
+            }
             
             // Statistics
             this.stats = {
@@ -31,15 +35,15 @@
                 pathsWithCurves: 0,
                 pointsWithCurves: 0,
                 partialArcs: 0,
-                noisyReconstructions: 0
+                fullCircles: 0,
+                groupsFound: 0,
+                wrappedGroups: 0
             };
         }
         
         // Clear all registered curves
         clear() {
-            this.registry.clear();
-            this.primitiveIndexToCurves.clear();
-            this.nextId = 1;
+            // Don't clear global registry - just reset local stats
             this.stats = {
                 detected: 0,
                 registered: 0,
@@ -48,207 +52,51 @@
                 pathsWithCurves: 0,
                 pointsWithCurves: 0,
                 partialArcs: 0,
-                noisyReconstructions: 0
+                fullCircles: 0,
+                groupsFound: 0,
+                wrappedGroups: 0
             };
             if (this.debug) {
-                console.log('[ArcReconstructor] Registry cleared');
+                console.log('[ArcReconstructor] Stats reset');
             }
         }
         
-        // Main detection method - enhanced with decomposition
+        // Get curve by ID from global registry
+        getCurve(id) {
+            return this.registry.getCurve(id);
+        }
+        
+        // Get curves for a primitive
+        getCurveIdsForPrimitive(primitiveIndex) {
+            // For now, we'll track this locally since primitives don't have stable IDs
+            return this.registry.getCurvesForPrimitive(primitiveIndex) || [];
+        }
+        
+        // Main detection method - uses global registry for new curves only
         detectCurves(primitives) {
             const detectedCurves = [];
             
             primitives.forEach((primitive, index) => {
-                // Check if primitive should register curves
-                if (this.shouldRegisterCurve(primitive)) {
-                    const metadata = this.extractCurveMetadata(primitive);
-                    if (metadata) {
-                        // FIXED: Decompose composite metadata before registration
-                        const decomposed = this.decomposeMetadata(metadata);
-                        decomposed.forEach(curveData => {
-                            const id = this.registerCurve(curveData);
-                            detectedCurves.push({ ...curveData, id, primitiveIndex: index });
-                            
-                            // Map primitive index to curve IDs
-                            if (!this.primitiveIndexToCurves.has(index)) {
-                                this.primitiveIndexToCurves.set(index, []);
-                            }
-                            this.primitiveIndexToCurves.get(index).push(id);
-                            
-                            this.stats.detected++;
-                        });
-                    }
-                }
+                // Primitives should have already registered their curves
+                // This is just for verification and stats
+                const curveIds = this.registry.getCurvesForPrimitive(primitive.id || `temp_${index}`);
                 
-                // Check for arc segments within paths
-                if (primitive.type === 'path' && primitive.arcSegments && primitive.arcSegments.length > 0) {
-                    primitive.arcSegments.forEach(arcSeg => {
-                        const metadata = {
-                            type: 'arc',
-                            center: { ...arcSeg.center },
-                            radius: arcSeg.radius,
-                            startAngle: arcSeg.startAngle,
-                            endAngle: arcSeg.endAngle,
-                            clockwise: arcSeg.clockwise,
-                            source: 'path_arc_segment'
-                        };
-                        const id = this.registerCurve(metadata);
-                        detectedCurves.push({ ...metadata, id, primitiveIndex: index });
-                        
-                        if (!this.primitiveIndexToCurves.has(index)) {
-                            this.primitiveIndexToCurves.set(index, []);
+                if (curveIds && curveIds.length > 0) {
+                    curveIds.forEach(id => {
+                        const curveData = this.registry.getCurve(id);
+                        if (curveData) {
+                            detectedCurves.push({ ...curveData, id, primitiveIndex: index });
+                            this.stats.detected++;
                         }
-                        this.primitiveIndexToCurves.get(index).push(id);
-                        
-                        this.stats.detected++;
                     });
                 }
             });
             
             if (this.debug && detectedCurves.length > 0) {
-                console.log(`[ArcReconstructor] Detected ${detectedCurves.length} curves from ${primitives.length} primitives`);
+                console.log(`[ArcReconstructor] Found ${detectedCurves.length} registered curves from ${primitives.length} primitives`);
             }
             
             return detectedCurves;
-        }
-        
-        // FIXED: Decompose composite metadata into individual curves
-        decomposeMetadata(metadata) {
-            const curves = [];
-            
-            if (metadata.type === 'obround') {
-                // Extract individual arcs from obround metadata
-                if (metadata.curves && Array.isArray(metadata.curves)) {
-                    metadata.curves.forEach(curve => {
-                        if (curve.type === 'arc' && curve.center && curve.radius) {
-                            curves.push({
-                                type: 'arc',
-                                center: { ...curve.center },
-                                radius: curve.radius,
-                                startAngle: curve.startAngle,
-                                endAngle: curve.endAngle,
-                                clockwise: curve.clockwise,
-                                source: 'obround_component'
-                            });
-                        }
-                    });
-                }
-            } else if (metadata.type === 'path_with_arcs') {
-                // Extract individual segments from path metadata
-                if (metadata.segments && Array.isArray(metadata.segments)) {
-                    metadata.segments.forEach(segment => {
-                        if (segment.type === 'arc' && segment.center && segment.radius) {
-                            curves.push({
-                                type: 'arc',
-                                center: { ...segment.center },
-                                radius: segment.radius,
-                                startAngle: segment.startAngle,
-                                endAngle: segment.endAngle,
-                                clockwise: segment.clockwise,
-                                source: 'path_segment'
-                            });
-                        }
-                    });
-                }
-            } else if ((metadata.type === 'circle' || metadata.type === 'arc') && 
-                       metadata.center && metadata.radius) {
-                // Simple curves are registered as-is
-                curves.push(metadata);
-            }
-            
-            return curves.length > 0 ? curves : [metadata];
-        }
-        
-        // Check if primitive should register curves
-        shouldRegisterCurve(primitive) {
-            // Direct curve primitives
-            if (primitive.type === 'circle' || primitive.type === 'arc') {
-                return true;
-            }
-            
-            // Obrounds have curves
-            if (primitive.type === 'obround') {
-                return true;
-            }
-            
-            // Paths with arc segments
-            if (primitive.type === 'path' && primitive.arcSegments && primitive.arcSegments.length > 0) {
-                return true;
-            }
-            
-            // Primitives with curve metadata generation
-            if (primitive.generateCurveMetadata && typeof primitive.generateCurveMetadata === 'function') {
-                const metadata = primitive.generateCurveMetadata();
-                return metadata !== null;
-            }
-            
-            return false;
-        }
-        
-        // Extract curve metadata from primitive
-        extractCurveMetadata(primitive) {
-            // Try primitive's own method first
-            if (primitive.generateCurveMetadata && typeof primitive.generateCurveMetadata === 'function') {
-                return primitive.generateCurveMetadata();
-            }
-            
-            // Handle known primitive types
-            if (primitive.type === 'circle' && primitive.center && primitive.radius) {
-                return {
-                    type: 'circle',
-                    center: { ...primitive.center },
-                    radius: primitive.radius,
-                    source: 'direct'
-                };
-            }
-            
-            if (primitive.type === 'arc' && primitive.center && primitive.radius) {
-                return {
-                    type: 'arc',
-                    center: { ...primitive.center },
-                    radius: primitive.radius,
-                    startAngle: primitive.startAngle,
-                    endAngle: primitive.endAngle,
-                    clockwise: primitive.clockwise,
-                    source: 'direct'
-                };
-            }
-            
-            return null;
-        }
-        
-        // Register curve and return ID
-        registerCurve(metadata) {
-            // Validate curve has required properties
-            if (!metadata.center || metadata.radius === undefined) {
-                if (this.debug) {
-                    console.warn('[ArcReconstructor] Skipping registration of curve without center/radius:', metadata);
-                }
-                return null;
-            }
-            
-            const id = this.nextId++;
-            this.registry.set(id, metadata);
-            this.stats.registered++;
-            
-            if (this.debug) {
-                const angleInfo = metadata.startAngle !== undefined ? 
-                    ` (${(metadata.startAngle * 180 / Math.PI).toFixed(1)}° to ${(metadata.endAngle * 180 / Math.PI).toFixed(1)}°)` : '';
-                console.log(`[ArcReconstructor] Registered curve ${id}: ${metadata.type} r=${metadata.radius.toFixed(3)}${angleInfo}`);
-            }
-            
-            return id;
-        }
-        
-        // Get curve by ID
-        getCurve(id) {
-            return this.registry.get(id);
-        }
-        
-        // Get curve IDs for primitive index
-        getCurveIdsForPrimitive(primitiveIndex) {
-            return this.primitiveIndexToCurves.get(primitiveIndex) || [];
         }
         
         // Main reconstruction method - process fused primitives
@@ -256,393 +104,370 @@
             if (!primitives || primitives.length === 0) return primitives;
             
             if (this.debug) {
-                console.log(`[ArcReconstructor] Processing ${primitives.length} primitives for reconstruction`);
+                console.log(`[ArcReconstructor] === RECONSTRUCTION PHASE ===`);
+                console.log(`[ArcReconstructor] Processing ${primitives.length} fused primitives`);
+                
+                // Count points with curve IDs
+                let totalPointsWithCurveIds = 0;
+                let primitivesWithCurveIds = 0;
+                
+                primitives.forEach(prim => {
+                    let hasPointCurveIds = false;
+                    
+                    if (prim.points) {
+                        prim.points.forEach(pt => {
+                            if (pt.curveId && pt.curveId > 0) {
+                                totalPointsWithCurveIds++;
+                                hasPointCurveIds = true;
+                            }
+                        });
+                    }
+                    
+                    if (hasPointCurveIds || (prim.curveIds && prim.curveIds.length > 0)) {
+                        primitivesWithCurveIds++;
+                    }
+                });
+                
+                console.log(`[ArcReconstructor] Input analysis:`);
+                console.log(`[ArcReconstructor]   Primitives with curve data: ${primitivesWithCurveIds}`);
+                console.log(`[ArcReconstructor]   Total tagged points: ${totalPointsWithCurveIds}`);
             }
             
             const reconstructed = [];
             
             for (const primitive of primitives) {
-                // Check if primitive has curve IDs
-                if (primitive.curveIds && primitive.curveIds.length > 0) {
-                    const result = this.reconstructPrimitiveWithCurves(primitive);
-                    reconstructed.push(...(Array.isArray(result) ? result : [result]));
-                    continue;
-                }
+                // Check if primitive has any curve data
+                const hasCurveIds = (primitive.curveIds && primitive.curveIds.length > 0) ||
+                                   (primitive.points && primitive.points.some(p => p.curveId > 0));
                 
-                // Check points for curve IDs
-                if (primitive.type === 'path' && primitive.points) {
-                    const result = this.reconstructPathWithCurvePoints(primitive);
-                    reconstructed.push(...(Array.isArray(result) ? result : [result]));
-                    continue;
+                if (hasCurveIds && primitive.type === 'path') {
+                    const result = this.reconstructPrimitive(primitive);
+                    reconstructed.push(...result);
+                } else {
+                    // No curves to reconstruct
+                    reconstructed.push(primitive);
                 }
-                
-                // No curves to reconstruct
-                reconstructed.push(primitive);
             }
             
             if (this.debug) {
-                console.log(`[ArcReconstructor] Reconstruction complete: ${this.stats.reconstructed} curves reconstructed`);
-                if (this.stats.partialArcs > 0) {
-                    console.log(`  Partial arcs: ${this.stats.partialArcs}`);
-                }
-                if (this.stats.noisyReconstructions > 0) {
-                    console.log(`  Noisy reconstructions: ${this.stats.noisyReconstructions}`);
-                }
+                console.log(`[ArcReconstructor] === RECONSTRUCTION COMPLETE ===`);
+                console.log(`[ArcReconstructor] Results:`);
+                console.log(`[ArcReconstructor]   Input primitives: ${primitives.length}`);
+                console.log(`[ArcReconstructor]   Output primitives: ${reconstructed.length}`);
+                console.log(`[ArcReconstructor]   Curves reconstructed: ${this.stats.reconstructed}`);
+                console.log(`[ArcReconstructor]   Partial arcs: ${this.stats.partialArcs}`);
+                console.log(`[ArcReconstructor]   Full circles: ${this.stats.fullCircles}`);
+                console.log(`[ArcReconstructor]   Failed reconstructions: ${this.stats.failed}`);
             }
             
             return reconstructed;
         }
         
-        // Reconstruct primitive that has curve IDs
-        reconstructPrimitiveWithCurves(primitive) {
-            if (primitive.curveIds.length === 1) {
-                // Single curve - try to reconstruct entire primitive
-                const curveData = this.getCurve(primitive.curveIds[0]);
-                if (curveData && this.verifyPointsMatchCurve(primitive.points, curveData, true)) {
-                    const reconstructed = this.createReconstructedPrimitive(curveData, primitive.points);
-                    if (reconstructed) {
-                        this.stats.reconstructed++;
-                        return reconstructed;
-                    }
-                }
-            }
-            
-            // Multiple curves or failed single reconstruction
-            return this.reconstructPathWithCurvePoints(primitive);
-        }
-        
-        // Reconstruct path with curve points - enhanced for noisy data
-        reconstructPathWithCurvePoints(primitive) {
+        // Reconstruct primitive with curve data
+        reconstructPrimitive(primitive) {
             if (!primitive.points || primitive.points.length < 3) {
-                return primitive;
-            }
-            
-            // Check if any points have curve IDs
-            const hasCurveIds = primitive.points.some(p => p.curveId && p.curveId > 0);
-            if (!hasCurveIds) {
-                return primitive;
+                return [primitive]; // Pass through unchanged
             }
             
             this.stats.pathsWithCurves++;
             
-            // Group consecutive points by curve ID
-            const segments = this.groupPointsByCurveId(primitive.points);
-            const reconstructed = [];
-            let currentPath = [];
+            // Group consecutive points by curveId with wrap-around handling
+            const groups = this.groupConsecutivePointsByCurveId(primitive.points, primitive.closed);
+            const reconstructedPrimitives = [];
             
-            for (const segment of segments) {
-                if (segment.curveId === 0) {
-                    // Non-curve segment
-                    currentPath.push(...segment.points);
-                } else {
-                    // Try to reconstruct curve
-                    const curveData = this.getCurve(segment.curveId);
-                    
-                    if (curveData && segment.points.length >= this.minArcPoints) {
-                        const verification = this.verifyPointsMatchCurve(segment.points, curveData, true);
-                        
-                        if (verification) {
-                            // Flush current path
-                            if (currentPath.length > 0) {
-                                reconstructed.push(this.createPathPrimitive(currentPath, primitive.properties));
-                                currentPath = [];
-                            }
-                            
-                            // Add reconstructed curve with detected extents
-                            const curve = this.createReconstructedPrimitive(curveData, segment.points);
-                            if (curve) {
-                                reconstructed.push(curve);
-                                this.stats.reconstructed++;
-                                this.stats.pointsWithCurves += segment.points.length;
-                                
-                                if (verification.isPartial) {
-                                    this.stats.partialArcs++;
-                                }
-                                if (verification.isNoisy) {
-                                    this.stats.noisyReconstructions++;
-                                }
-                            } else {
-                                currentPath.push(...segment.points);
-                            }
-                        } else {
-                            // Verification failed
-                            currentPath.push(...segment.points);
-                            this.stats.failed++;
-                        }
-                    } else {
-                        // No metadata or not enough points
-                        currentPath.push(...segment.points);
-                        if (!curveData && this.debug) {
-                            console.warn(`[ArcReconstructor] No curve data found for ID ${segment.curveId}`);
-                        }
-                    }
+            if (this.debug) {
+                console.log(`[ArcReconstructor] Found ${groups.length} groups in primitive (closed: ${primitive.closed})`);
+                groups.forEach((group, idx) => {
+                    console.log(`[ArcReconstructor]   Group ${idx}: type=${group.type}, curveId=${group.curveId || 'none'}, points=${group.points.length}`);
+                });
+            }
+            
+            // Check if we can reconstruct as a single complete circle
+            if (groups.length === 1 && groups[0].type === 'curve') {
+                const circleResult = this.attemptFullCircleReconstruction(groups[0], primitive.properties);
+                if (circleResult) {
+                    reconstructedPrimitives.push(circleResult);
+                    return reconstructedPrimitives;
                 }
             }
             
-            // Flush remaining path
-            if (currentPath.length > 0) {
-                const finalPath = this.createPathPrimitive(currentPath, primitive.properties);
-                if (primitive.holes) {
-                    finalPath.holes = primitive.holes;
-                }
-                reconstructed.push(finalPath);
-            }
+            // Otherwise, reconstruct as a path with arc segments
+            const enhancedPath = this.reconstructPathWithArcs(primitive, groups);
+            reconstructedPrimitives.push(enhancedPath);
             
-            return reconstructed.length === 1 ? reconstructed[0] : reconstructed;
+            return reconstructedPrimitives;
         }
         
-        // Group consecutive points by curve ID
-        groupPointsByCurveId(points) {
-            const segments = [];
-            let currentSegment = null;
+        // Group consecutive points by curveId with improved wrap-around detection
+        groupConsecutivePointsByCurveId(points, isClosed = false) {
+            if (!points || points.length === 0) {
+                return [];
+            }
             
-            for (const point of points) {
-                const curveId = point.curveId || 0;
+            const groups = [];
+            let currentGroup = null;
+            
+            // First pass: linear scan
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                const curveId = point.curveId > 0 ? point.curveId : null;
+                const type = curveId ? 'curve' : 'straight';
                 
-                if (!currentSegment || currentSegment.curveId !== curveId) {
-                    currentSegment = {
-                        curveId: curveId,
-                        points: [point]
+                if (!currentGroup || currentGroup.type !== type || currentGroup.curveId !== curveId) {
+                    if (currentGroup) {
+                        groups.push(currentGroup);
+                    }
+                    currentGroup = {
+                        type,
+                        curveId,
+                        points: [point],
+                        indices: [i]  // Track indices for debugging
                     };
-                    segments.push(currentSegment);
                 } else {
-                    currentSegment.points.push(point);
+                    currentGroup.points.push(point);
+                    currentGroup.indices.push(i);
                 }
             }
             
-            if (this.debug && segments.length > 1) {
-                const summary = segments.map(s => `ID${s.curveId}:${s.points.length}pts`).join(', ');
-                console.log(`[ArcReconstructor] Grouped into ${segments.length} segments: ${summary}`);
+            if (currentGroup) {
+                groups.push(currentGroup);
             }
             
-            return segments;
-        }
-        
-        // Enhanced verification for noisy/partial curves
-        verifyPointsMatchCurve(points, curveData, allowPartial = false) {
-            if (!points || points.length < this.minArcPoints) return false;
-            
-            // FIXED: Validate curveData has required properties
-            if (!curveData || !curveData.center || curveData.radius === undefined) {
-                if (this.debug) {
-                    console.warn('[ArcReconstructor] Invalid curve data for verification:', curveData);
-                }
-                return false;
-            }
-            
-            const { center, radius } = curveData;
-            let maxError = 0;
-            let totalError = 0;
-            let errorCount = 0;
-            
-            // Calculate angle range of points for partial arc detection
-            let minAngle = Infinity, maxAngle = -Infinity;
-            const angles = [];
-            
-            for (const point of points) {
-                const dist = Math.sqrt(
-                    Math.pow(point.x - center.x, 2) +
-                    Math.pow(point.y - center.y, 2)
-                );
-                const error = Math.abs(dist - radius);
-                maxError = Math.max(maxError, error);
-                totalError += error;
+            // Handle wrap-around for closed polygons
+            if (isClosed && groups.length > 1) {
+                const firstGroup = groups[0];
+                const lastGroup = groups[groups.length - 1];
                 
-                if (error > this.noiseTolerance) {
-                    errorCount++;
-                }
-                
-                // Track angle for partial arc detection
-                const angle = Math.atan2(point.y - center.y, point.x - center.x);
-                angles.push(angle);
-                minAngle = Math.min(minAngle, angle);
-                maxAngle = Math.max(maxAngle, angle);
-            }
-            
-            const avgError = totalError / points.length;
-            const errorRatio = errorCount / points.length;
-            
-            // More lenient for noisy data
-            const isNoisy = avgError > this.tolerance;
-            const acceptableNoise = errorRatio <= 0.2 && maxError < this.noiseTolerance * 2;
-            
-            if (!acceptableNoise && !allowPartial) {
-                if (this.debug) {
-                    console.log(`[ArcReconstructor] Verification failed: ${errorCount}/${points.length} points out of tolerance, max error: ${maxError.toFixed(4)}`);
-                }
-                return false;
-            }
-            
-            // Check if this is a partial arc
-            let isPartial = false;
-            if (curveData.type === 'arc' && allowPartial) {
-                const originalSpan = this.normalizeAngleSpan(
-                    curveData.startAngle, 
-                    curveData.endAngle, 
-                    curveData.clockwise
-                );
-                const detectedSpan = this.calculateAngleSpan(angles);
-                const coverage = detectedSpan / Math.abs(originalSpan);
-                
-                isPartial = coverage < (1 - this.maxGapRatio);
-                
-                if (this.debug && isPartial) {
-                    console.log(`[ArcReconstructor] Partial arc detected: ${(coverage * 100).toFixed(1)}% coverage`);
-                }
-            }
-            
-            return {
-                verified: true,
-                isPartial: isPartial,
-                isNoisy: isNoisy,
-                avgError: avgError,
-                angles: angles
-            };
-        }
-        
-        // Calculate angle span from point angles
-        calculateAngleSpan(angles) {
-            if (angles.length < 2) return 0;
-            
-            angles.sort((a, b) => a - b);
-            
-            // Check for wrap-around (arc crosses 0°)
-            let maxGap = 0;
-            let maxGapIndex = -1;
-            
-            for (let i = 0; i < angles.length - 1; i++) {
-                const gap = angles[i + 1] - angles[i];
-                if (gap > maxGap) {
-                    maxGap = gap;
-                    maxGapIndex = i;
-                }
-            }
-            
-            // Check wrap-around gap
-            const wrapGap = (angles[0] + 2 * Math.PI) - angles[angles.length - 1];
-            if (wrapGap > maxGap) {
-                // Arc crosses 0°
-                return 2 * Math.PI - wrapGap;
-            } else {
-                // Normal arc
-                return angles[angles.length - 1] - angles[0];
-            }
-        }
-        
-        // Normalize angle span
-        normalizeAngleSpan(startAngle, endAngle, clockwise) {
-            let span = endAngle - startAngle;
-            if (clockwise) {
-                if (span > 0) span -= 2 * Math.PI;
-            } else {
-                if (span < 0) span += 2 * Math.PI;
-            }
-            return span;
-        }
-        
-        // Create reconstructed primitive - enhanced for partial arcs
-        createReconstructedPrimitive(curveData, points = null) {
-            try {
-                // Adjust angles for partial arcs if points provided
-                let actualStart = curveData.startAngle;
-                let actualEnd = curveData.endAngle;
-                
-                if (points && points.length >= 2 && curveData.type === 'arc') {
-                    // Use actual point positions for arc extents
-                    const firstPoint = points[0];
-                    const lastPoint = points[points.length - 1];
+                // Check if both are curve groups with the same ID
+                if (firstGroup.type === 'curve' && 
+                    lastGroup.type === 'curve' && 
+                    firstGroup.curveId === lastGroup.curveId) {
                     
-                    actualStart = Math.atan2(
-                        firstPoint.y - curveData.center.y,
-                        firstPoint.x - curveData.center.x
-                    );
-                    actualEnd = Math.atan2(
-                        lastPoint.y - curveData.center.y,
-                        lastPoint.x - curveData.center.x
+                    // Check for continuity in segment indices
+                    const lastSegmentIndex = lastGroup.points[lastGroup.points.length - 1].segmentIndex;
+                    const firstSegmentIndex = firstGroup.points[0].segmentIndex;
+                    
+                    // Allow wrapping if indices suggest continuity (0 follows max)
+                    const seemsContinuous = firstSegmentIndex === 0 || 
+                                           Math.abs(lastSegmentIndex - firstSegmentIndex) <= 1;
+                    
+                    if (seemsContinuous) {
+                        if (this.debug) {
+                            console.log(`[ArcReconstructor] Merging wrap-around group for curveId ${firstGroup.curveId}`);
+                            console.log(`[ArcReconstructor]   Last segment index: ${lastSegmentIndex}, First segment index: ${firstSegmentIndex}`);
+                        }
+                        
+                        // Merge: append first group's points to the last group
+                        lastGroup.points.push(...firstGroup.points);
+                        lastGroup.indices.push(...firstGroup.indices);
+                        groups.shift(); // Remove the first group
+                        this.stats.wrappedGroups++;
+                    }
+                }
+            }
+            
+            this.stats.groupsFound += groups.length;
+            return groups;
+        }
+        
+        // Attempt to reconstruct a full circle
+        attemptFullCircleReconstruction(group, properties) {
+            const curveData = this.getCurve(group.curveId);
+            if (!curveData || curveData.type !== 'circle') {
+                return null;
+            }
+            
+            // Calculate coverage
+            const coverage = this.calculateCoverage(group.points);
+            
+            if (this.debug) {
+                console.log(`[ArcReconstructor] Circle reconstruction attempt:`);
+                console.log(`[ArcReconstructor]   Curve ID: ${group.curveId}`);
+                console.log(`[ArcReconstructor]   Points: ${group.points.length}`);
+                console.log(`[ArcReconstructor]   Coverage: ${(coverage * 100).toFixed(1)}%`);
+            }
+            
+            // Need near-complete coverage for a full circle
+            // Lower threshold for smaller circles with fewer points
+            const minCoverage = group.points.length < 20 ? 0.80 : 0.90;
+            if (coverage >= minCoverage) {
+                this.stats.fullCircles++;
+                this.stats.reconstructed++;
+                
+                // Use CirclePrimitive if available
+                if (typeof CirclePrimitive !== 'undefined') {
+                    return new CirclePrimitive(
+                        curveData.center,
+                        curveData.radius,
+                        {
+                            ...properties,
+                            reconstructed: true,
+                            originalCurveId: group.curveId,
+                            coverage: coverage
+                        }
                     );
                 }
                 
-                if (curveData.type === 'circle') {
-                    if (typeof CirclePrimitive !== 'undefined') {
-                        return new CirclePrimitive(curveData.center, curveData.radius, {
-                            reconstructed: true,
-                            originalCurveId: curveData.id,
-                            source: curveData.source
-                        });
+                // Fallback
+                return {
+                    type: 'circle',
+                    center: curveData.center,
+                    radius: curveData.radius,
+                    properties: {
+                        ...properties,
+                        reconstructed: true,
+                        originalCurveId: group.curveId,
+                        coverage: coverage
                     }
-                } else if (curveData.type === 'arc') {
-                    if (typeof ArcPrimitive !== 'undefined') {
-                        return new ArcPrimitive(
-                            curveData.center,
-                            curveData.radius,
-                            actualStart,
-                            actualEnd,
-                            curveData.clockwise,
-                            {
-                                reconstructed: true,
-                                originalCurveId: curveData.id,
-                                source: curveData.source,
-                                wasPartial: actualStart !== curveData.startAngle || actualEnd !== curveData.endAngle
-                            }
-                        );
-                    }
-                }
-            } catch (error) {
-                if (this.debug) {
-                    console.error('[ArcReconstructor] Failed to create primitive:', error);
-                }
+                };
             }
             
             return null;
         }
         
-        // Create path primitive
-        createPathPrimitive(points, properties) {
-            if (typeof PathPrimitive !== 'undefined') {
-                return new PathPrimitive(points, properties);
-            }
+        // Reconstruct a path with arc segments (simplified fallback)
+        reconstructPathWithArcs(primitive, groups) {
+            // Always return the preprocessed primitive with enhanced metadata
+            // This is the safest fallback that preserves the correct geometry
             
-            return {
-                type: 'path',
-                points: points,
-                properties: properties || {},
-                closed: properties?.closed !== false,
-                holes: [],
-                getBounds: function() {
-                    let minX = Infinity, minY = Infinity;
-                    let maxX = -Infinity, maxY = -Infinity;
-                    this.points.forEach(p => {
-                        minX = Math.min(minX, p.x);
-                        minY = Math.min(minY, p.y);
-                        maxX = Math.max(maxX, p.x);
-                        maxY = Math.max(maxY, p.y);
-                    });
-                    return { minX, minY, maxX, maxY };
+            // Create a copy with arc segments if we found any curves
+            const enhancedPrimitive = {
+                ...primitive,
+                arcSegments: [],
+                properties: {
+                    ...primitive.properties,
+                    hasReconstructedArcs: false,
+                    reconstructed: false
                 }
             };
+            
+            let currentPointIndex = 0;
+            let arcsFound = 0;
+            
+            for (const group of groups) {
+                if (group.type === 'curve' && group.points.length >= this.minArcPoints) {
+                    const curveData = this.getCurve(group.curveId);
+                    
+                    if (curveData) {
+                        const startPoint = group.points[0];
+                        const endPoint = group.points[group.points.length - 1];
+                        
+                        // Calculate actual angles from the points
+                        const startAngle = Math.atan2(
+                            startPoint.y - curveData.center.y,
+                            startPoint.x - curveData.center.x
+                        );
+                        const endAngle = Math.atan2(
+                            endPoint.y - curveData.center.y,
+                            endPoint.x - curveData.center.x
+                        );
+                        
+                        // Add arc segment metadata
+                        enhancedPrimitive.arcSegments.push({
+                            startIndex: currentPointIndex,
+                            endIndex: currentPointIndex + group.points.length - 1,
+                            center: curveData.center,
+                            radius: curveData.radius,
+                            startAngle: startAngle,
+                            endAngle: endAngle,
+                            clockwise: curveData.clockwise || false,
+                            curveId: group.curveId,
+                            coverage: this.calculateCoverage(group.points)
+                        });
+                        
+                        arcsFound++;
+                        this.stats.partialArcs++;
+                        
+                        if (this.debug) {
+                            console.log(`[ArcReconstructor] Added arc segment:`);
+                            console.log(`[ArcReconstructor]   Curve ID: ${group.curveId}`);
+                            console.log(`[ArcReconstructor]   Points: ${currentPointIndex} to ${currentPointIndex + group.points.length - 1}`);
+                        }
+                    }
+                }
+                
+                currentPointIndex += group.points.length;
+            }
+            
+            // Mark as having reconstructed arcs if any were found
+            if (arcsFound > 0) {
+                enhancedPrimitive.properties.hasReconstructedArcs = true;
+                enhancedPrimitive.properties.reconstructed = true;
+                this.stats.reconstructed += arcsFound;
+            }
+            
+            // Return as proper PathPrimitive if available
+            if (typeof PathPrimitive !== 'undefined') {
+                return new PathPrimitive(enhancedPrimitive.points, enhancedPrimitive.properties);
+            }
+            
+            return enhancedPrimitive;
+        }
+        
+        // Calculate coverage percentage of a curve
+        calculateCoverage(points) {
+            if (points.length === 0) return 0;
+            
+            // Find the range of segment indices
+            let minIndex = Infinity;
+            let maxIndex = -Infinity;
+            let totalSegments = 0;
+            const uniqueIndices = new Set();
+            
+            points.forEach(p => {
+                if (p.segmentIndex !== undefined) {
+                    minIndex = Math.min(minIndex, p.segmentIndex);
+                    maxIndex = Math.max(maxIndex, p.segmentIndex);
+                    uniqueIndices.add(p.segmentIndex);
+                    if (p.totalSegments !== undefined) {
+                        totalSegments = Math.max(totalSegments, p.totalSegments);
+                    }
+                }
+            });
+            
+            if (totalSegments === 0) {
+                // Estimate based on point count (assuming ~32-64 points for a full circle)
+                return Math.min(1.0, points.length / 48);
+            }
+            
+            // Check for wrap-around case
+            const hasWrapAround = uniqueIndices.has(0) && uniqueIndices.has(totalSegments - 1);
+            
+            if (hasWrapAround) {
+                // Use unique indices count for wrap-around
+                return Math.min(1.0, uniqueIndices.size / totalSegments);
+            } else {
+                // Normal case: continuous range
+                const range = maxIndex - minIndex + 1;
+                return Math.min(1.0, range / totalSegments);
+            }
         }
         
         // Get statistics
         getStats() {
+            const globalStats = this.registry.getStats ? this.registry.getStats() : {};
+            const successRate = this.stats.registered > 0 ? 
+                (this.stats.reconstructed / this.stats.registered * 100).toFixed(1) : '0';
+                
             return {
                 ...this.stats,
-                registrySize: this.registry.size,
-                successRate: this.stats.registered > 0 ? 
-                    (this.stats.reconstructed / this.stats.registered * 100).toFixed(1) + '%' : '0%',
-                partialRate: this.stats.reconstructed > 0 ?
-                    (this.stats.partialArcs / this.stats.reconstructed * 100).toFixed(1) + '%' : '0%',
-                noisyRate: this.stats.reconstructed > 0 ?
-                    (this.stats.noisyReconstructions / this.stats.reconstructed * 100).toFixed(1) + '%' : '0%'
+                ...globalStats,
+                registrySize: globalStats.registrySize || 0,
+                successRate: `${successRate}%`,
+                wrapAroundMerges: this.stats.wrappedGroups
             };
         }
         
         // Export registry for debugging
         exportRegistry() {
-            const exported = [];
-            this.registry.forEach((curve, id) => {
-                exported.push({ id, ...curve });
-            });
-            return exported;
+            if (this.registry.registry && this.registry.registry instanceof Map) {
+                const exported = [];
+                this.registry.registry.forEach((curve, id) => {
+                    exported.push({ id, ...curve });
+                });
+                return exported;
+            }
+            return [];
         }
     }
     

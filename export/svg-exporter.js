@@ -1,11 +1,10 @@
-// export/svg-exporter.js - Refactored with config integration
+// export/svg-exporter.js
 // SVG exporter that respects canvas state and exports what's actually visible
 // Supports dual export when fusion is active (pre/post fusion geometry)
 
 (function() {
     'use strict';
     
-    // Get config reference
     const config = window.PCBCAMConfig || {};
     const renderConfig = config.rendering || {};
     const themeConfig = renderConfig.themes || {};
@@ -17,7 +16,6 @@
         constructor(renderer) {
             this.renderer = renderer;
             
-            // Options with config defaults
             this.options = {
                 precision: config.gcode?.precision?.coordinates || 3,
                 padding: 5,
@@ -27,17 +25,13 @@
                 useViewBox: true,
                 embedStyles: true,
                 compressOutput: false,
-                respectCanvasState: true // Export what's visible on canvas
+                respectCanvasState: true
             };
         }
         
-        /**
-         * Main export function - respects canvas state and fusion mode
-         */
         exportSVG(options = {}) {
             const exportConfig = { ...this.options, ...options };
             
-            // Check if fusion is active
             const isFusionActive = this.renderer.options.fuseGeometry;
             
             if (isFusionActive && !exportConfig.skipDualExport) {
@@ -47,23 +41,19 @@
             }
         }
         
-/**
-         * Export dual SVG files when fusion is active
-         */
         exportDualSVG(exportConfig) {
             if (debugConfig.enabled) {
                 console.log('Exporting dual SVG (pre/post fusion)...');
             }
             
-            // Get geometry processor reference
             const geometryProcessor = this.getGeometryProcessor();
             if (!geometryProcessor) {
                 console.warn('Geometry processor not available for dual export');
                 return this.exportSingleSVG(exportConfig);
             }
             
-            // 1. Export pre-fusion geometry (preprocessed primitives with strokes converted to polygons)
-            const preprocessedGeometry = geometryProcessor.getLastPreprocessedGeometry();
+            // Export pre-fusion geometry
+            const preprocessedGeometry = geometryProcessor.getCachedState('preprocessedGeometry');
             let preFusionString = null;
             
             if (preprocessedGeometry && preprocessedGeometry.length > 0) {
@@ -71,30 +61,16 @@
                     ...exportConfig,
                     filename: 'pcb-preprocessed.svg'
                 });
-            } else {
-                console.warn('No preprocessed geometry available, exporting current canvas state as pre-fusion');
-                preFusionString = this.exportSingleSVG({
-                    ...exportConfig,
-                    filename: 'pcb-prefusion.svg',
-                    forceFusionState: false
-                });
             }
             
-            // 2. Export post-fusion geometry from geometry processor
-            const fusedGeometry = geometryProcessor.getLastFusedGeometry();
+            // Export post-fusion geometry
+            const fusedGeometry = geometryProcessor.getCachedState('fusedGeometry');
             let postFusionString = null;
             
             if (fusedGeometry && fusedGeometry.length > 0) {
                 postFusionString = this.exportFusedGeometry(fusedGeometry, {
                     ...exportConfig,
                     filename: 'pcb-fused.svg'
-                });
-            } else {
-                console.warn('No fused geometry available, exporting current canvas state as post-fusion');
-                postFusionString = this.exportSingleSVG({
-                    ...exportConfig,
-                    filename: 'pcb-postfusion.svg',
-                    forceFusionState: true
                 });
             }
             
@@ -104,9 +80,6 @@
             };
         }
         
-        /**
-         * Export preprocessed geometry (strokes converted to polygons)
-         */
         exportPreprocessedGeometry(primitives, exportConfig) {
             const filename = exportConfig.filename || 'pcb-preprocessed.svg';
             
@@ -114,19 +87,14 @@
                 console.log(`Exporting preprocessed geometry: ${primitives.length} primitives`);
             }
             
-            // Calculate bounds from preprocessed primitives
             const bounds = this.calculatePrimitiveBounds(primitives);
-            
-            // Create SVG document
             const svg = this.createSVGDocument(bounds, exportConfig);
             
-            // Add preprocessed primitives
             const svgNS = 'http://www.w3.org/2000/svg';
             const mainGroup = document.createElementNS(svgNS, 'g');
             mainGroup.setAttribute('id', 'pcb-preprocessed-layers');
             mainGroup.setAttribute('transform', 'scale(1,-1)');
             
-            // Apply rotation if present
             const viewState = this.renderer.getViewState();
             if (viewState.rotation !== 0) {
                 const center = this.renderer.rotationCenter || { x: 0, y: 0 };
@@ -135,7 +103,6 @@
                     `${transform} rotate(${viewState.rotation} ${center.x} ${center.y})`);
             }
             
-            // Group primitives by polarity for better organization
             const darkPrimitives = [];
             const clearPrimitives = [];
             
@@ -148,7 +115,6 @@
                 }
             });
             
-            // Add dark primitives group
             if (darkPrimitives.length > 0) {
                 const darkGroup = document.createElementNS(svgNS, 'g');
                 darkGroup.setAttribute('id', 'dark-primitives');
@@ -166,7 +132,6 @@
                 mainGroup.appendChild(darkGroup);
             }
             
-            // Add clear primitives group
             if (clearPrimitives.length > 0) {
                 const clearGroup = document.createElementNS(svgNS, 'g');
                 clearGroup.setAttribute('id', 'clear-primitives');
@@ -186,29 +151,23 @@
             
             svg.appendChild(mainGroup);
             
-            // Add metadata comment
             const comment = document.createComment(
                 ` Preprocessed geometry: ${primitives.length} total (${darkPrimitives.length} dark, ${clearPrimitives.length} clear) `
             );
             svg.insertBefore(comment, svg.firstChild);
             
-            // Serialize and download
             const svgString = this.serializeSVG(svg, exportConfig);
             this.downloadSVG(svgString, filename);
             
             return svgString;
         }
         
-        /**
-         * Export fused geometry (post-boolean operations)
-         */
         exportFusedGeometry(primitives, exportConfig) {
             const filename = exportConfig.filename || 'pcb-fused.svg';
             
             if (debugConfig.enabled) {
                 console.log(`Exporting fused geometry: ${primitives.length} primitives`);
                 
-                // Count holes
                 let totalHoles = 0;
                 primitives.forEach(p => {
                     if (p.holes && p.holes.length > 0) {
@@ -221,19 +180,14 @@
                 }
             }
             
-            // Calculate bounds from fused primitives
             const bounds = this.calculatePrimitiveBounds(primitives);
-            
-            // Create SVG document
             const svg = this.createSVGDocument(bounds, exportConfig);
             
-            // Add fused primitives
             const svgNS = 'http://www.w3.org/2000/svg';
             const mainGroup = document.createElementNS(svgNS, 'g');
             mainGroup.setAttribute('id', 'pcb-fused-layers');
             mainGroup.setAttribute('transform', 'scale(1,-1)');
             
-            // Apply rotation if present
             const viewState = this.renderer.getViewState();
             if (viewState.rotation !== 0) {
                 const center = this.renderer.rotationCenter || { x: 0, y: 0 };
@@ -242,7 +196,6 @@
                     `${transform} rotate(${viewState.rotation} ${center.x} ${center.y})`);
             }
             
-            // Add all fused primitives
             const fusedGroup = document.createElementNS(svgNS, 'g');
             fusedGroup.setAttribute('id', 'fused-geometry');
             fusedGroup.setAttribute('data-primitive-count', primitives.length.toString());
@@ -261,7 +214,6 @@
             mainGroup.appendChild(fusedGroup);
             svg.appendChild(mainGroup);
             
-            // Add metadata comment
             let metadataText = ` Fused geometry: ${primitives.length} primitives `;
             const holesCount = primitives.reduce((sum, p) => sum + (p.holes?.length || 0), 0);
             if (holesCount > 0) {
@@ -270,16 +222,12 @@
             const comment = document.createComment(metadataText);
             svg.insertBefore(comment, svg.firstChild);
             
-            // Serialize and download
             const svgString = this.serializeSVG(svg, exportConfig);
             this.downloadSVG(svgString, filename);
             
             return svgString;
         }
         
-        /**
-         * Export single SVG respecting current canvas state
-         */
         exportSingleSVG(exportConfig) {
             const filename = exportConfig.filename || 'pcb-export.svg';
             
@@ -287,7 +235,6 @@
                 console.log(`Exporting SVG: ${filename}`);
             }
             
-            // Get current view state
             const viewState = this.renderer.getViewState();
             const bounds = this.calculateExportBounds(exportConfig);
             
@@ -296,30 +243,23 @@
                 return null;
             }
             
-            // Create SVG document
             const svg = this.createSVGDocument(bounds, exportConfig);
-            
-            // Add visible layers respecting canvas state
             const layerGroup = this.createVisibleLayers(svg, viewState, exportConfig);
             svg.appendChild(layerGroup);
             
-            // Serialize and download
             const svgString = this.serializeSVG(svg, exportConfig);
             this.downloadSVG(svgString, filename);
             
             return svgString;
         }
         
-        /**
-         * Get geometry processor from the renderer's coordinate system or cam core
-         */
         getGeometryProcessor() {
-            // Try to get from cam core first
+            // Primary: get from cam core
             if (window.cam && window.cam.core && window.cam.core.geometryProcessor) {
                 return window.cam.core.geometryProcessor;
             }
             
-            // Fallback to checking renderer's coordinate system
+            // Fallback: renderer's coordinate system (shouldn't have it)
             if (this.renderer.coordinateSystem && this.renderer.coordinateSystem.geometryProcessor) {
                 return this.renderer.coordinateSystem.geometryProcessor;
             }
@@ -327,9 +267,6 @@
             return null;
         }
         
-        /**
-         * Calculate bounds from an array of primitives
-         */
         calculatePrimitiveBounds(primitives) {
             if (!primitives || primitives.length === 0) {
                 return { minX: 0, minY: 0, maxX: 100, maxY: 100, width: 100, height: 100 };
@@ -341,11 +278,9 @@
             primitives.forEach(primitive => {
                 let bounds;
                 
-                // Get bounds based on primitive type
                 if (typeof primitive.getBounds === 'function') {
                     bounds = primitive.getBounds();
                 } else if (primitive.type === 'path' && primitive.points) {
-                    // Calculate bounds from points
                     primitive.points.forEach(p => {
                         minX = Math.min(minX, p.x);
                         minY = Math.min(minY, p.y);
@@ -353,7 +288,6 @@
                         maxY = Math.max(maxY, p.y);
                     });
                     
-                    // Include holes in bounds
                     if (primitive.holes) {
                         primitive.holes.forEach(hole => {
                             hole.forEach(p => {
@@ -376,7 +310,6 @@
                 }
             });
             
-            // Fallback to default bounds if nothing found
             if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
                 return { minX: 0, minY: 0, maxX: 100, maxY: 100, width: 100, height: 100 };
             }
@@ -388,9 +321,6 @@
             };
         }
         
-        /**
-         * Create SVG document with proper setup
-         */
         createSVGDocument(bounds, exportConfig) {
             const svgNS = 'http://www.w3.org/2000/svg';
             const svg = document.createElementNS(svgNS, 'svg');
@@ -419,9 +349,6 @@
             return svg;
         }
         
-        /**
-         * Create metadata element
-         */
         createMetadata(svgNS) {
             const metadata = document.createElementNS(svgNS, 'metadata');
             const desc = document.createElementNS(svgNS, 'desc');
@@ -430,9 +357,6 @@
             return metadata;
         }
         
-        /**
-         * Create styles based on current theme and canvas state
-         */
         createStyles(svgNS, exportConfig) {
             const defs = document.createElementNS(svgNS, 'defs');
             const style = document.createElementNS(svgNS, 'style');
@@ -445,7 +369,6 @@
             let css = '';
             
             if (isWireframe) {
-                // Wireframe mode - everything is stroked
                 css = `
                     .pcb-isolation { fill: none; stroke: ${colors.isolation}; stroke-width: 0.05; }
                     .pcb-clear { fill: none; stroke: ${colors.clear}; stroke-width: 0.05; }
@@ -458,7 +381,6 @@
                     .pcb-preprocessed-clear { fill: ${colors.clear}; stroke: none; fill-opacity: 0.8; }
                 `;
             } else {
-                // Normal mode - respect fill/stroke
                 css = `
                     .pcb-isolation { fill: ${colors.isolation}; stroke: none; }
                     .pcb-clear { fill: ${colors.clear}; stroke: none; }
@@ -478,16 +400,12 @@
             return defs;
         }
         
-        /**
-         * Create layers respecting visibility settings
-         */
         createVisibleLayers(svg, viewState, exportConfig) {
             const svgNS = 'http://www.w3.org/2000/svg';
             const mainGroup = document.createElementNS(svgNS, 'g');
             mainGroup.setAttribute('id', 'pcb-layers');
             mainGroup.setAttribute('transform', 'scale(1,-1)');
             
-            // Apply rotation if present
             if (viewState.rotation !== 0) {
                 const center = this.renderer.rotationCenter || { x: 0, y: 0 };
                 const transform = mainGroup.getAttribute('transform');
@@ -495,7 +413,6 @@
                     `${transform} rotate(${viewState.rotation} ${center.x} ${center.y})`);
             }
             
-            // Get visible layers and apply canvas filters
             const layers = this.renderer.getVisibleLayers();
             
             layers.forEach((layer, name) => {
@@ -510,13 +427,9 @@
             return mainGroup;
         }
         
-        /**
-         * Check if layer should be exported based on canvas state
-         */
         shouldExportLayer(layer, exportConfig) {
             if (!layer.visible) return false;
             
-            // Force fusion state if specified
             if (exportConfig.forceFusionState !== undefined) {
                 if (exportConfig.forceFusionState && !layer.isFused) return false;
                 if (!exportConfig.forceFusionState && layer.isFused) return false;
@@ -525,20 +438,15 @@
             return true;
         }
         
-        /**
-         * Create layer with canvas state filters applied
-         */
         createFilteredLayer(svgNS, layer, name, exportConfig) {
             const group = document.createElementNS(svgNS, 'g');
             group.setAttribute('id', `layer-${name}`);
             group.setAttribute('data-layer-type', layer.type);
             
-            // Filter primitives based on canvas visibility settings
             const filteredPrimitives = this.filterPrimitives(layer.primitives, layer.type);
             
             if (filteredPrimitives.length === 0) return null;
             
-            // Export filtered primitives
             if (layer.isFused) {
                 filteredPrimitives.forEach(primitive => {
                     const element = this.fusedPrimitiveToSVG(svgNS, primitive, exportConfig);
@@ -560,16 +468,12 @@
             return group;
         }
         
-        /**
-         * Filter primitives based on canvas visibility settings
-         */
         filterPrimitives(primitives, layerType) {
             const options = this.renderer.options;
             
             return primitives.filter(primitive => {
                 const props = primitive.properties || {};
                 
-                // Apply visibility filters
                 if (props.isDrillHole && !options.showDrills) return false;
                 if (props.isTrace && !options.showTraces) return false;
                 if ((props.isPad || props.isFlash) && !options.showPads) return false;
@@ -580,9 +484,6 @@
             });
         }
         
-        /**
-         * Convert primitive to SVG element
-         */
         primitiveToSVG(svgNS, primitive, layerType, exportConfig, isWireframe) {
             const precision = exportConfig.precision;
             isWireframe = isWireframe || this.renderer.options.showWireframe;
@@ -603,16 +504,12 @@
             }
         }
         
-        /**
-         * Export fused primitive
-         */
         fusedPrimitiveToSVG(svgNS, primitive, exportConfig) {
             const path = document.createElementNS(svgNS, 'path');
             const precision = exportConfig.precision;
             
             let d = this.buildSimplePath(primitive.points, primitive.closed !== false, precision);
             
-            // Add holes
             if (primitive.holes && primitive.holes.length > 0) {
                 primitive.holes.forEach(hole => {
                     d += ' ' + this.buildSimplePath(hole, true, precision);
@@ -629,9 +526,6 @@
             return path;
         }
         
-        /**
-         * Group connected traces
-         */
         groupConnectedTraces(primitives) {
             const grouped = [];
             const used = new Set();
@@ -663,9 +557,6 @@
             return grouped;
         }
         
-        /**
-         * Find connected traces
-         */
         findConnectedTraces(primitives, startIndex, used) {
             const traces = [];
             const startTrace = primitives[startIndex];
@@ -698,9 +589,6 @@
             return traces;
         }
         
-        /**
-         * Export grouped traces
-         */
         traceGroupToSVG(svgNS, group, exportConfig) {
             const path = document.createElementNS(svgNS, 'path');
             const precision = exportConfig.precision;
@@ -720,9 +608,6 @@
             return path;
         }
         
-        /**
-         * Path to SVG
-         */
         pathToSVG(svgNS, primitive, layerType, exportConfig, isWireframe) {
             const path = document.createElementNS(svgNS, 'path');
             const precision = exportConfig.precision;
@@ -747,9 +632,6 @@
             return path;
         }
         
-        /**
-         * Circle to SVG
-         */
         circleToSVG(svgNS, primitive, layerType, precision, isWireframe) {
             const circle = document.createElementNS(svgNS, 'circle');
             
@@ -762,9 +644,6 @@
             return circle;
         }
         
-        /**
-         * Rectangle to SVG
-         */
         rectangleToSVG(svgNS, primitive, layerType, precision, isWireframe) {
             const rect = document.createElementNS(svgNS, 'rect');
             
@@ -778,9 +657,6 @@
             return rect;
         }
         
-        /**
-         * Obround to SVG
-         */
         obroundToSVG(svgNS, primitive, layerType, exportConfig, isWireframe) {
             const precision = exportConfig.precision;
             const r = Math.min(primitive.width, primitive.height) / 2;
@@ -815,9 +691,6 @@
             return path;
         }
         
-        /**
-         * Arc to SVG
-         */
         arcToSVG(svgNS, primitive, layerType, exportConfig, isWireframe) {
             const precision = exportConfig.precision;
             const path = document.createElementNS(svgNS, 'path');
@@ -842,9 +715,6 @@
             return path;
         }
         
-        /**
-         * Apply styles based on wireframe mode and properties
-         */
         applyStyles(element, primitive, layerType, isWireframe) {
             const props = primitive.properties || {};
             
@@ -857,7 +727,6 @@
             
             element.setAttribute('class', className);
             
-            // Override for wireframe mode
             if (isWireframe) {
                 element.setAttribute('fill', 'none');
                 if (props.strokeWidth) {
@@ -869,9 +738,6 @@
             }
         }
         
-        /**
-         * Build path with arcs
-         */
         buildPathWithArcs(primitive, precision, exportConfig) {
             let d = '';
             const points = primitive.points;
@@ -906,9 +772,6 @@
             return d;
         }
         
-        /**
-         * Build simple path
-         */
         buildSimplePath(points, closed, precision) {
             let d = '';
             
@@ -925,9 +788,6 @@
             return d;
         }
         
-        /**
-         * Calculate export bounds
-         */
         calculateExportBounds(exportConfig) {
             const bounds = this.renderer.bounds;
             
@@ -945,9 +805,6 @@
             };
         }
         
-        /**
-         * Serialize SVG
-         */
         serializeSVG(svg, exportConfig) {
             const serializer = new XMLSerializer();
             let svgString = serializer.serializeToString(svg);
@@ -961,16 +818,10 @@
             return svgString;
         }
         
-        /**
-         * Format number
-         */
         formatNumber(value, precision) {
             return parseFloat(value.toFixed(precision)).toString();
         }
         
-        /**
-         * Download SVG
-         */
         downloadSVG(svgString, filename) {
             const blob = new Blob([svgString], { type: 'image/svg+xml' });
             const url = URL.createObjectURL(blob);
@@ -984,7 +835,5 @@
         }
     }
     
-    // Export
     window.SVGExporter = SVGExporter;
-    
 })();

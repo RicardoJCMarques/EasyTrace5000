@@ -1,5 +1,5 @@
-// cam-ui.js
-// Simplified main UI controller that orchestrates sub-components
+// cam-ui_r.js
+// Main UI controller for workspace-centric design
 
 (function() {
     'use strict';
@@ -10,14 +10,14 @@
     const opsConfig = config.operations || {};
     
     class PCBCamUI {
-        constructor(core) {
+        constructor(core, modalManager) {
             this.core = core;
+            this.activeModal = null;
             this.renderer = null;
             this.coordinateSystem = null;
             this.svgExporter = null;
             
             // Initialize sub-components
-            this.modalManager = new ModalManager();
             this.operationsManager = new OperationsManager(this);
             this.statusManager = new StatusManager(this);
             this.controls = new UIControls(this);
@@ -51,20 +51,42 @@
         
         // Initialization
         initializeUI() {
+            this.initializeModals();
             this.updateUIFromSettings();
             this.operationsManager.renderAllOperations();
             this.statusManager.updateStatus();
             
-            // Initialize modal manager
-            this.modalManager.init();
-            this.modalManager.setCallbacks({
-                onOpen: () => this.onModalOpen(),
-                onClose: () => this.onModalClose(),
-                onPageChange: (page) => this.onModalPageChange(page)
-            });
-            
             if (debugConfig.enabled) {
-                console.log('PCBCamUI initialized with modular architecture');
+                console.log('PCBCamUI initialized for workspace');
+            }
+        }
+        
+        setupWorkspace() {
+            // Initialize renderer immediately for workspace
+            this.initializeRenderer();
+            
+            // Initialize controls
+            this.controls.init(this.renderer, this.coordinateSystem);
+            
+            // Ensure coordinate system is initialized even if empty
+            if (this.coordinateSystem && !this.coordinateSystem.initialized) {
+                this.coordinateSystem.initializeEmpty();
+            }
+            
+            // Setup canvas resize observer
+            const canvas = document.getElementById('preview-canvas');
+            if (canvas && window.ResizeObserver) {
+                const resizeObserver = new ResizeObserver(() => {
+                    if (this.renderer) {
+                        this.renderer.resizeCanvas();
+                    }
+                });
+                resizeObserver.observe(canvas.parentElement);
+            }
+            
+            // Initial render
+            if (this.renderer) {
+                this.renderer.render();
             }
         }
         
@@ -89,12 +111,66 @@
                 this.renderer.setCoordinateSystem(this.coordinateSystem);
                 this.coordinateSystem.setRenderer(this.renderer);
                 
-                // Initialize controls with renderer
-                this.controls.init(this.renderer, this.coordinateSystem);
-                
                 if (debugConfig.enabled) {
                     console.log('Renderer and coordinate system initialized');
                 }
+            }
+        }
+
+        // Modal Management 
+        initializeModals() {
+            // Setup close handlers for all modals
+            document.querySelectorAll('.modal .modal-close').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const modal = e.target.closest('.modal');
+                    if (modal) this.closeModal(modal);
+                });
+            });
+
+            // Click outside to close
+            document.querySelectorAll('.modal').forEach(modal => {
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        this.closeModal(modal);
+                    }
+                });
+            });
+            return true;
+        }
+
+        openModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (!modal) return false;
+
+            this.closeActiveModal();
+            modal.classList.add('active');
+            this.activeModal = modal;
+            document.body.style.overflow = 'hidden';
+
+            if (debugConfig.enabled) {
+                console.log(`Modal opened: ${modalId}`);
+            }
+
+            return true;
+        }
+
+        closeModal(modal) {
+            if (!modal) return;
+
+            modal.classList.remove('active');
+            if (this.activeModal === modal) {
+                this.activeModal = null;
+                document.body.style.overflow = '';
+            }
+
+            if (debugConfig.enabled) {
+                console.log(`Modal closed: ${modal.id}`);
+            }
+        }
+
+        closeActiveModal() {
+            if (this.activeModal) {
+                this.closeModal(this.activeModal);
             }
         }
         
@@ -104,67 +180,14 @@
                 'safe-z': this.core.settings.machine.safeZ,
                 'travel-z': this.core.settings.machine.travelZ,
                 'rapid-feed': this.core.settings.machine.rapidFeed,
-                'work-coords': this.core.settings.machine.workCoordinateSystem,
                 'post-processor': this.core.settings.gcode.postProcessor,
-                'gcode-units': this.core.settings.gcode.units,
-                'start-gcode': this.core.settings.gcode.startCode,
-                'end-gcode': this.core.settings.gcode.endCode
+                'gcode-units': this.core.settings.gcode.units
             };
             
             Object.entries(elements).forEach(([id, value]) => {
                 const element = document.getElementById(id);
                 if (element) element.value = value;
             });
-        }
-        
-        // Modal operations
-        async openPreview() {
-            if (!this.modalManager.open()) return;
-            
-            this.initializeRenderer();
-            
-            await new Promise(resolve => requestAnimationFrame(resolve));
-            
-            if (this.renderer) {
-                this.core.updateCoordinateSystem();
-                await this.updateRendererAsync();
-                this.renderer.resizeCanvas();
-                
-                setTimeout(() => {
-                    if (this.renderer && this.coordinateSystem) {
-                        const originPos = this.coordinateSystem.getOriginPosition();
-                        const rotationState = this.coordinateSystem.getRotationState();
-                        
-                        this.renderer.setOriginPosition(originPos.x, originPos.y);
-                        this.renderer.setRotation(rotationState.angle, rotationState.center);
-                        this.renderer.zoomFit();
-                        this.renderer.render();
-                    }
-                }, 250);
-            }
-            
-            this.updatePreviewUI();
-            this.controls.updateOffsetInputsWithTracking();
-        }
-        
-        closePreview() {
-            this.modalManager.close();
-        }
-        
-        onModalOpen() {
-            this.updatePreviewUI();
-        }
-        
-        onModalClose() {
-            if (debugConfig.enabled) {
-                console.log('Modal closed, renderer preserved');
-            }
-        }
-        
-        onModalPageChange(page) {
-            if (debugConfig.enabled) {
-                console.log(`Modal page changed to ${page}`);
-            }
         }
         
         // Renderer updates
@@ -180,6 +203,7 @@
             }
             
             this.renderer.render();
+            this.updateWorkspaceUI();
         }
         
         async performFusion() {
@@ -310,16 +334,8 @@
         }
         
         // UI updates
-        updatePreviewUI() {
-            const stats = this.core.getStats();
-            const operationsElement = document.getElementById('preview-operations');
-            const polygonsElement = document.getElementById('preview-total-polygons');
-            
-            if (operationsElement) operationsElement.textContent = stats.operations;
-            if (polygonsElement) polygonsElement.textContent = stats.totalPrimitives;
-            
+        updateWorkspaceUI() {
             this.updateOriginDisplay();
-            this.updateOperationStatistics();
             this.controls.updateArcReconstructionStats();
         }
         
@@ -337,44 +353,6 @@
             this.controls.updateOffsetInputsWithTracking();
         }
         
-        updateOperationStatistics() {
-            const statsContainer = document.getElementById('operation-stats');
-            if (!statsContainer) return;
-            
-            if (this.core.operations.length === 0) {
-                statsContainer.innerHTML = '<p>Load PCB files to see statistics</p>';
-                return;
-            }
-            
-            let statsHtml = '';
-            
-            this.core.operations.forEach((operation) => {
-                const status = operation.error ? '❌' : (operation.primitives ? '✅' : '⏳');
-                const primitiveCount = operation.primitives ? operation.primitives.length : 0;
-                const fileSize = (operation.file.size / 1024).toFixed(1);
-                
-                let extraInfo = '';
-                if (operation.geometricContext?.strokeCount > 0) {
-                    extraInfo += ` • Strokes: ${operation.geometricContext.strokeCount}`;
-                }
-                if (operation.geometricContext?.hasArcs) {
-                    extraInfo += ` • Has arcs`;
-                }
-                
-                statsHtml += `
-                    <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: var(--bg-hover); border-radius: 4px;">
-                        <div style="font-weight: 500; margin-bottom: 0.25rem;">${status} ${operation.file.name}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-hint);">
-                            Type: ${operation.type} • Size: ${fileSize}KB • Primitives: ${primitiveCount}${extraInfo}
-                        </div>
-                        ${operation.error ? `<div style="color: var(--error); font-size: 0.75rem; margin-top: 0.25rem;">Error: ${operation.error}</div>` : ''}
-                    </div>
-                `;
-            });
-            
-            statsContainer.innerHTML = statsHtml;
-        }
-        
         // Loading state
         showLoadingState(operation, message = '') {
             this.loadingState.isLoading = true;
@@ -383,11 +361,7 @@
             this.loadingState.message = message || `${messagesConfig.processing || 'Processing'} ${operation}...`;
             
             this.statusManager.updateStatus(this.loadingState.message, 'info');
-            
-            const modal = document.getElementById('preview-modal');
-            if (modal && modal.classList.contains('active')) {
-                this.showPreviewLoadingOverlay();
-            }
+            this.showCanvasLoadingOverlay();
         }
         
         hideLoadingState() {
@@ -404,87 +378,25 @@
             this.loadingState.startTime = null;
             this.loadingState.message = '';
             
-            this.hidePreviewLoadingOverlay();
+            this.hideCanvasLoadingOverlay();
         }
         
-        showPreviewLoadingOverlay() {
-            const canvas = document.getElementById('preview-canvas');
-            if (!canvas) return;
-            
-            let overlay = document.getElementById('preview-loading-overlay');
-            if (!overlay) {
-                overlay = this.createLoadingOverlay();
-                canvas.parentElement.appendChild(overlay);
-                this.addLoadingStyles();
-            } else {
-                const message = document.getElementById('preview-loading-message');
-                if (message) {
-                    message.textContent = this.loadingState.message;
-                }
+        showCanvasLoadingOverlay() {
+            const overlay = document.getElementById('canvas-loading-overlay');
+            if (!overlay) return;
+
+            const message = document.getElementById('canvas-loading-message');
+            if (message) {
+                message.textContent = this.loadingState.message;
             }
+
+            overlay.classList.remove('hidden');
         }
         
-        createLoadingOverlay() {
-            const overlay = document.createElement('div');
-            overlay.id = 'preview-loading-overlay';
-            overlay.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0,0,0,0.7);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 1000;
-            `;
-            
-            const spinner = document.createElement('div');
-            spinner.className = 'loading-spinner';
-            spinner.style.cssText = `
-                border: 3px solid rgba(255,255,255,0.3);
-                border-top: 3px solid white;
-                border-radius: 50%;
-                width: 40px;
-                height: 40px;
-                animation: spin 1s linear infinite;
-            `;
-            
-            const message = document.createElement('div');
-            message.id = 'preview-loading-message';
-            message.style.cssText = `
-                position: absolute;
-                bottom: 20px;
-                color: white;
-                font-size: 14px;
-            `;
-            message.textContent = this.loadingState.message;
-            
-            overlay.appendChild(spinner);
-            overlay.appendChild(message);
-            
-            return overlay;
-        }
-        
-        addLoadingStyles() {
-            if (!document.getElementById('loading-spin-style')) {
-                const style = document.createElement('style');
-                style.id = 'loading-spin-style';
-                style.textContent = `
-                    @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                    }
-                `;
-                document.head.appendChild(style);
-            }
-        }
-        
-        hidePreviewLoadingOverlay() {
-            const overlay = document.getElementById('preview-loading-overlay');
+        hideCanvasLoadingOverlay() {
+            const overlay = document.getElementById('canvas-loading-overlay');
             if (overlay) {
-                overlay.remove();
+                overlay.classList.add('hidden');
             }
         }
         

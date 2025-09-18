@@ -43,7 +43,7 @@ window.PCBCAMConfig = {
     // ============================================================================
     formats: {
         excellon: {
-            defaultFormat: { integer: 2, decimal: 4 },
+            defaultFormat: { integer: 3, decimal: 3 },
             defaultUnits: 'mm',
             defaultToolDiameter: 1.0,   // mm
             minToolDiameter: 0.1,       // mm
@@ -66,7 +66,7 @@ window.PCBCAMConfig = {
         isolation: {
             extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs', '.gto', '.gbo', '.gtp', '.gbp'],
             color: '#ff8844',
-            icon: '📄',
+            icon: '🔄',
             tool: {
                 diameter: 0.1,          // mm
                 type: 'end_mill',
@@ -93,7 +93,7 @@ window.PCBCAMConfig = {
         clear: {
             extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd'],
             color: '#44ff88',
-            icon: '📄',
+            icon: '🔄',
             tool: {
                 diameter: 0.8,
                 type: 'end_mill',
@@ -144,7 +144,7 @@ window.PCBCAMConfig = {
         cutout: {
             extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill'],
             color: '#ff00ff',
-            icon: '📄',
+            icon: '🔄',
             tool: {
                 diameter: 1.0,
                 type: 'end_mill',
@@ -402,7 +402,7 @@ window.PCBCAMConfig = {
         modal: {
             totalPages: 3,
             titles: [
-                '🔍 PCB Preview & Fusion Setup',
+                '📝 PCB Preview & Fusion Setup',
                 '⚙️ Offset Geometry Configuration',
                 '🛠️ Toolpath Generation'
             ],
@@ -470,7 +470,8 @@ window.PCBCAMConfig = {
             renderOperations: false,
             fusionOperations: true,
             fileOperations: false,
-            toolpathGeneration: false
+            toolpathGeneration: false,
+            curveRegistration: true      // NEW: track curve registration
         },
         
         // Visualization
@@ -519,3 +520,124 @@ window.PCBCAMConfig = {
         return value.toFixed(precision).replace(/\.?0+$/, '');
     }
 };
+
+// ============================================================================
+// GLOBAL CURVE REGISTRY - Initialized immediately
+// ============================================================================
+(function() {
+    'use strict';
+    
+    class GlobalCurveRegistry {
+        constructor() {
+            this.registry = new Map();
+            this.hashToId = new Map();
+            this.primitiveIdToCurves = new Map();
+            this.nextId = 1;
+            this.hashPrecision = 1000;
+            
+            // Statistics
+            this.stats = {
+                registered: 0,
+                circles: 0,
+                arcs: 0,
+                endCaps: 0
+            };
+        }
+        
+        generateHash(metadata) {
+            const roundedCenter = {
+                x: Math.round(metadata.center.x * this.hashPrecision) / this.hashPrecision,
+                y: Math.round(metadata.center.y * this.hashPrecision) / this.hashPrecision
+            };
+            const roundedRadius = Math.round(metadata.radius * this.hashPrecision) / this.hashPrecision;
+            
+            let str = `${metadata.type}_${roundedCenter.x}_${roundedCenter.y}_${roundedRadius}`;
+            
+            if (metadata.type === 'arc') {
+                const roundedStartAngle = Math.round((metadata.startAngle || 0) * this.hashPrecision) / this.hashPrecision;
+                const roundedEndAngle = Math.round((metadata.endAngle || Math.PI * 2) * this.hashPrecision) / this.hashPrecision;
+                str += `_${roundedStartAngle}_${roundedEndAngle}_${metadata.clockwise || false}`;
+            }
+            
+            // Simple string hash
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            
+            return Math.abs(hash);
+        }
+        
+        register(metadata) {
+            if (!metadata || !metadata.center || metadata.radius === undefined) {
+                return null;
+            }
+            
+            const hash = this.generateHash(metadata);
+            
+            // Check if already registered
+            if (this.hashToId.has(hash)) {
+                return this.hashToId.get(hash);
+            }
+            
+            // Register new curve
+            const id = this.nextId++;
+            this.registry.set(id, metadata);
+            this.hashToId.set(hash, id);
+            
+            // Track primitive association if provided
+            if (metadata.primitiveId) {
+                if (!this.primitiveIdToCurves.has(metadata.primitiveId)) {
+                    this.primitiveIdToCurves.set(metadata.primitiveId, []);
+                }
+                this.primitiveIdToCurves.get(metadata.primitiveId).push(id);
+            }
+            
+            // Update stats
+            this.stats.registered++;
+            if (metadata.type === 'circle') this.stats.circles++;
+            else if (metadata.type === 'arc') this.stats.arcs++;
+            if (metadata.source === 'end_cap') this.stats.endCaps++;
+            
+            if (window.PCBCAMConfig?.debug?.logging?.curveRegistration) {
+                console.log(`[GlobalRegistry] Registered curve ${id}: ${metadata.type} r=${metadata.radius.toFixed(3)}`);
+            }
+            
+            return id;
+        }
+        
+        getCurve(id) {
+            return this.registry.get(id);
+        }
+        
+        getCurvesForPrimitive(primitiveId) {
+            return this.primitiveIdToCurves.get(primitiveId) || [];
+        }
+        
+        clear() {
+            this.registry.clear();
+            this.hashToId.clear();
+            this.primitiveIdToCurves.clear();
+            this.nextId = 1;
+            this.stats = {
+                registered: 0,
+                circles: 0,
+                arcs: 0,
+                endCaps: 0
+            };
+        }
+        
+        getStats() {
+            return {
+                ...this.stats,
+                registrySize: this.registry.size
+            };
+        }
+    }
+    
+    // Create and expose global registry
+    window.globalCurveRegistry = new GlobalCurveRegistry();
+    
+})();

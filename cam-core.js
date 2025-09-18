@@ -554,7 +554,7 @@
             return primitives;
         }
         
-        // FIXED: Get only fuseable primitives (isolation + clear)
+        // Get only fuseable primitives (isolation + clear) (this might be too agressive, they are to be fused but individually, not on the same layer)
         getFuseablePrimitives() {
             const primitives = [];
             this.operations.forEach(op => {
@@ -624,7 +624,7 @@
             return this.operations.some(op => op.primitives && op.primitives.length > 0);
         }
        
-        // FIXED: Only fuse isolation and clear primitives, not drill or cutout
+        // Only fuse isolation and clear primitives, not drill or cutout (this might be too agressive, they are to be fused but individually, not on the same layer)
         async fuseAllPrimitives(options = {}) {
             await this.ensureProcessorReady();
            
@@ -632,7 +632,7 @@
                 throw new Error('Geometry processor not available');
             }
            
-            // CRITICAL FIX: Only get fuseable primitives (isolation + clear)
+            // Only get fuseable primitives (isolation + clear) (this might be too agressive, they are to be fused but individually, not on the same layer)
             const fuseablePrimitives = this.getFuseablePrimitives();
            
             if (fuseablePrimitives.length === 0) {
@@ -774,7 +774,7 @@
             return this.settings[category]?.[key];
         }
         
-        // FIXED: Add layer contamination check
+        // Add layer contamination check (What is this for? isolation and clear look like they are still on the same fused layer as clear geometry turns isolation color)
         checkLayerContamination() {
             console.log('=== LAYER CONTAMINATION CHECK ===');
             

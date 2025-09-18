@@ -1,5 +1,5 @@
 // ui/ui-controls.js
-// Preview controls, debug toggles, and settings management
+// Workspace controls and settings management
 
 (function() {
     'use strict';
@@ -38,7 +38,6 @@
             this.setupRenderControls();
             this.setupOffsetControls();
             this.setupRotationControls();
-            this.setupAdvancedOptions();
             
             return true;
         }
@@ -140,12 +139,38 @@
                 
                 this.debugControls.push(arcReconstructToggle);
             }
+
+            // Debug Curve Points toggle
+            const debugCurvePoints = document.getElementById('debug-curve-points');
+            if (debugCurvePoints && this.renderer) {
+                debugCurvePoints.checked = this.renderer.options.debugCurvePoints || false;
+                
+                debugCurvePoints.addEventListener('change', async (e) => {
+                    if (!this.renderer.options.fuseGeometry) {
+                        e.target.checked = false;
+                        this.ui.statusManager.showStatus('Enable fusion first to debug curve points', 'warning');
+                        return;
+                    }
+                    
+                    // This option is part of the core renderer options
+                    this.renderer.setOptions({ debugCurvePoints: e.target.checked });
+                    
+                    // No need to re-fuse, just re-render
+                    this.renderer.render();
+                    
+                    this.ui.statusManager.showStatus(
+                        e.target.checked ? 'Curve point debug enabled' : 'Curve point debug disabled', 
+                        'info'
+                    );
+                });
+                
+                this.debugControls.push(debugCurvePoints);
+            }
         }
         
         setupRenderControls() {
             const controls = [
                 { id: 'show-pads', option: 'showPads', default: true },
-                { id: 'black-white', option: 'blackAndWhite', default: false },
                 { id: 'show-grid', option: 'showGrid', default: true },
                 { id: 'show-rulers', option: 'showRulers', default: true },
                 { id: 'show-bounds', option: 'showBounds', default: false },
@@ -281,33 +306,6 @@
             }
         }
         
-        setupAdvancedOptions() {
-            const advancedToggle = document.getElementById('advanced-options-toggle');
-            const advancedSection = document.getElementById('advanced-options-section');
-            
-            if (advancedToggle && advancedSection) {
-                advancedSection.classList.remove('expanded');
-                advancedToggle.classList.remove('active');
-                advancedToggle.textContent = '🔧 Show Advanced Options';
-                
-                advancedToggle.onclick = () => {
-                    const isExpanded = advancedSection.classList.contains('expanded');
-                    
-                    if (isExpanded) {
-                        advancedSection.classList.remove('expanded');
-                        advancedToggle.classList.remove('active');
-                        advancedToggle.textContent = '🔧 Show Advanced Options';
-                    } else {
-                        advancedSection.classList.add('expanded');
-                        advancedToggle.classList.add('active');
-                        advancedToggle.textContent = '🔧 Hide Advanced Options';
-                        this.ui.updateOperationStatistics();
-                        this.updateArcReconstructionStats();
-                    }
-                };
-            }
-        }
-        
         resetFusionStates() {
             // Reset preprocessed view
             this.ui.viewState.showPreprocessed = false;
@@ -335,21 +333,18 @@
             const stats = this.ui.fusionStats;
             
             if (stats.arcReconstructionEnabled && stats.curvesRegistered > 0) {
-                statsContainer.style.display = 'block';
+                statsContainer.classList.remove('hidden');
                 const successRate = stats.curvesRegistered > 0 ? 
                     ((stats.curvesReconstructed / stats.curvesRegistered) * 100).toFixed(1) : 0;
                 
                 statsContainer.innerHTML = `
-                    <div style="font-weight: 500; margin-bottom: 4px;">Arc Reconstruction Statistics:</div>
                     <div>Curves registered: ${stats.curvesRegistered}</div>
                     <div>Curves reconstructed: ${stats.curvesReconstructed}</div>
                     <div>Curves lost: ${stats.curvesLost}</div>
-                    <div style="margin-top: 4px; color: ${stats.curvesReconstructed > 0 ? 'var(--success)' : 'var(--warning)'}">
-                        Success rate: ${successRate}%
-                    </div>
+                    <div>Success rate: ${successRate}%</div>
                 `;
             } else {
-                statsContainer.style.display = 'none';
+                statsContainer.classList.add('hidden');
             }
         }
         

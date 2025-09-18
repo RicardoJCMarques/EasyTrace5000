@@ -1,5 +1,5 @@
 // cam-controller.js
-// Main application controller - ties together core logic and UI components
+// Main application controller - Workspace Edition
 // Manages async WASM operations and file processing pipeline
 
 (function() {
@@ -12,6 +12,40 @@
     const timingConfig = uiConfig.timing || {};
     const messagesConfig = uiConfig.messages || {};
     const opsConfig = config.operations || {};
+    
+    // PCB Example definitions - can be loaded from server later
+    const PCB_EXAMPLES = {
+        'xiao': {
+            name: 'Xiao ESP32 V1',
+            files: {
+                isolation: 'examples/xiao/Xiao-F_Cu.gbr',
+                drill: 'examples/xiao/Xiao-PTH.drl',
+                clear: 'examples/xiao/Xiao-Keepout.gbr',
+                cutout: 'examples/xiao/Xiao-Edge_Cuts.gbr'
+            }
+        },
+        'arduino-shield': {
+            name: 'Arduino Shield',
+            files: {
+                isolation: 'examples/shield_top.gbr',
+                drill: 'examples/shield.drl',
+                cutout: 'examples/shield_edge.gbr'
+            }
+        },
+        'smd-adapter': {
+            name: 'SMD to DIP Adapter',
+            files: {
+                isolation: 'examples/adapter_copper.gbr',
+                drill: 'examples/adapter.drl'
+            }
+        },
+        'test-pattern': {
+            name: 'Test Pattern',
+            files: {
+                isolation: 'examples/test_pattern.gbr'
+            }
+        }
+    };
     
     class SemanticPCBCam {
         constructor() {
@@ -27,6 +61,9 @@
             // Operation queue for file processing
             this.pendingFileOperations = [];
             
+            // Upload modal file tracking
+            this.uploadedFiles = {};
+            
             // Initialize core components
             this.core = new PCBCamCore({ skipInit: true });
             this.ui = new PCBCamUI(this.core);
@@ -40,20 +77,21 @@
         
         async initializeApp() {
             if (debugConfig.enabled) {
-                console.log('🚀 Starting PCB CAM initialization with Clipper2 WASM...');
+                console.log('🚀 Starting PCB CAM Workspace Edition...');
             }
             
             // Set theme from config or saved
             const savedTheme = localStorage.getItem('theme') || uiConfig.theme;
             document.documentElement.setAttribute('data-theme', savedTheme);
             
-            // Initialize UI
+            // Initialize UI with workspace
             this.ui.initializeUI();
+            this.ui.setupWorkspace();
             this.setupEventListeners();
             this.initializationState.uiReady = true;
             
             if (debugConfig.enabled) {
-                console.log('✅ UI initialized');
+                console.log('✅ Workspace UI initialized');
             }
             
             // Initialize WASM processors
@@ -80,11 +118,15 @@
                 this.initializationState.fullyReady = true;
                 
                 if (debugConfig.enabled) {
-                    console.log('✅ PCB CAM fully initialized with Clipper2');
-                    console.log('📦 Ready for file import');
+                    console.log('✅ PCB CAM fully initialized');
                 }
                 
-                this.ui.updateStatus(messagesConfig.ready || 'Ready - Clipper2 WASM loaded', 'success');
+                this.ui.updateStatus(messagesConfig.ready || 'Ready - Workspace loaded', 'success');
+                
+                // Show welcome modal for first-time users
+                if (!localStorage.getItem('hasVisited')) {
+                    this.showWelcomeModal();
+                }
                 
             } catch (error) {
                 console.error('❌ Failed to initialize Clipper2 WASM:', error);
@@ -99,6 +141,200 @@
                     console.warn('⚠️ Running in fallback mode without Clipper2 fusion');
                 }
             }
+        }
+        
+        showWelcomeModal() {
+            this.ui.openModal('welcome-modal'); 
+            
+            // Populate example dropdown from JS
+            const select = document.getElementById('pcb-example-select');
+            if (select) {
+                select.innerHTML = '';
+                Object.entries(PCB_EXAMPLES).forEach(([key, example]) => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = example.name;
+                    if (key === 'xiao') option.selected = true;
+                    select.appendChild(option);
+                });
+            }
+            
+            const closeBtn = document.getElementById('welcome-modal-close');
+            const dontShowCheckbox = document.getElementById('dont-show-welcome');
+            
+            // Load example button
+            const loadExampleBtn = document.getElementById('load-example-btn');
+            if (loadExampleBtn) {
+                loadExampleBtn.onclick = async () => {
+                    const select = document.getElementById('pcb-example-select');
+                    if (select) {
+                        await this.loadPCBExample(select.value);
+                    }
+                    if (dontShowCheckbox && dontShowCheckbox.checked) {
+                        localStorage.setItem('hasVisited', 'true');
+                    }
+                    this.ui.closeActiveModal();
+                    // Ensure coordinate system is initialized
+                    this.ensureCoordinateSystem();
+                };
+            }
+            
+            // Upload files button
+            const uploadFilesBtn = document.getElementById('upload-files-btn');
+            if (uploadFilesBtn) {
+                uploadFilesBtn.onclick = () => {
+                    if (dontShowCheckbox && dontShowCheckbox.checked) {
+                        localStorage.setItem('hasVisited', 'true');
+                    }
+                    this.ui.closeActiveModal();
+                    this.ensureCoordinateSystem();
+                    this.showUploadModal();
+                };
+            }
+            
+            // Start empty button
+            const startEmptyBtn = document.getElementById('start-empty-btn');
+            if (startEmptyBtn) {
+                startEmptyBtn.onclick = () => {
+                    if (dontShowCheckbox && dontShowCheckbox.checked) {
+                        localStorage.setItem('hasVisited', 'true');
+                    }
+                    this.ui.closeActiveModal();
+                    // Initialize coordinate system for empty workspace
+                    this.ensureCoordinateSystem();
+                };
+            }
+        }
+        
+        ensureCoordinateSystem() {
+            if (this.core.coordinateSystem && !this.core.coordinateSystem.initialized) {
+                // Initialize with empty bounds if no operations
+                this.core.coordinateSystem.initializeEmpty();
+                if (this.ui.renderer) {
+                    this.ui.updateOriginDisplay();
+                }
+            }
+        }
+        
+        showUploadModal() {
+            this.ui.openModal('upload-modal');
+            this.uploadedFiles = {};
+            
+            // Setup file inputs
+            ['isolation', 'drill', 'clear', 'cutout'].forEach(type => {
+                const input = document.getElementById(`${type}-file`);
+                const status = document.getElementById(`${type}-status`);
+                
+                if (input) {
+                    input.value = '';
+                    input.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            this.uploadedFiles[type] = file;
+                            if (status) {
+                                status.textContent = `Selected: ${file.name}`;
+                                status.style.color = 'var(--success)';
+                            }
+                            this.updateProcessButton();
+                        }
+                    };
+                }
+                
+                if (status) {
+                    status.textContent = '';
+                }
+            });
+            
+            // Process files button
+            const processBtn = document.getElementById('process-files-btn');
+            if (processBtn) {
+                processBtn.disabled = true;
+                processBtn.onclick = async () => {
+                    await this.processUploadedFiles();
+                    this.ui.closeActiveModal();
+                };
+            }
+            
+            // Cancel button
+            const cancelBtn = document.getElementById('cancel-upload-btn');
+            if (cancelBtn) {
+                cancelBtn.onclick = () => {
+                    this.ui.closeActiveModal();
+                    this.uploadedFiles = {};
+                };
+            }
+        }
+        
+        updateProcessButton() {
+            const processBtn = document.getElementById('process-files-btn');
+            if (processBtn) {
+                processBtn.disabled = Object.keys(this.uploadedFiles).length === 0;
+            }
+        }
+        
+        async processUploadedFiles() {
+            for (const [type, file] of Object.entries(this.uploadedFiles)) {
+                await this.processFile(file, type, null);
+            }
+            this.uploadedFiles = {};
+            
+            // Ensure coordinate system is initialized after file upload
+            this.ensureCoordinateSystem();
+            
+            // Expand operations after loading
+            this.ui.operationsManager.expandAllOperations();
+        }
+        
+        async loadPCBExample(exampleId) {
+            const example = PCB_EXAMPLES[exampleId];
+            if (!example) {
+                console.error(`Example ${exampleId} not found`);
+                return;
+            }
+
+            this.ui.updateStatus(`Loading example: ${example.name}...`, 'info');
+
+            // Clear existing operations
+            this.core.operations = [];
+            this.ui.operationsManager.renderAllOperations();
+
+            // Load all files in parallel
+            const filePromises = Object.entries(example.files).map(async ([type, filepath]) => {
+                try {
+                    // Fetch actual file from server
+                    const response = await fetch(filepath);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const content = await response.text();
+                    const fileName = filepath.split('/').pop();
+                    const file = new File([content], fileName, { type: 'text/plain' });
+                    
+                    // Process the file
+                    await this.processFile(file, type, null);
+
+                } catch (e) {
+                    console.error(`Failed to load example file ${filepath}:`, e);
+                    this.ui.showOperationMessage(type, `Failed to load ${filepath.split('/').pop()}`, 'error');
+                }
+            });
+
+            await Promise.all(filePromises);
+
+            // Force coordinate system initialization after loading
+            if (this.core.coordinateSystem) {
+                this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
+            }
+
+            this.ui.updateStatus(`Example '${example.name}' loaded successfully.`, 'success');
+            
+            // Update renderer
+            if (this.ui.renderer) {
+                await this.ui.updateRendererAsync();
+            }
+            
+            // Expand operations after loading
+            this.ui.operationsManager.expandAllOperations();
         }
         
         setupEventListeners() {
@@ -117,42 +353,18 @@
             // File input
             document.getElementById('file-input-temp')?.addEventListener('change', (e) => this.handleFileSelect(e));
             
-            // Preview button
-            document.getElementById('preview-btn')?.addEventListener('click', async () => {
-                await this.ui.openPreview();
-            });
-            
-            // Modal controls
-            document.getElementById('modal-close-btn')?.addEventListener('click', () => this.ui.closePreview());
+            // Canvas zoom controls
             document.getElementById('zoom-fit-btn')?.addEventListener('click', () => this.ui.renderer?.zoomFit());
             document.getElementById('zoom-in-btn')?.addEventListener('click', () => this.ui.renderer?.zoomIn());
             document.getElementById('zoom-out-btn')?.addEventListener('click', () => this.ui.renderer?.zoomOut());
             
-            // Coordinate system controls
-            document.getElementById('center-origin-btn')?.addEventListener('click', () => this.ui.centerOrigin());
-            document.getElementById('bottom-left-origin-btn')?.addEventListener('click', () => this.ui.bottomLeftOrigin());
-            document.getElementById('reset-origin-btn')?.addEventListener('click', () => this.ui.resetOrigin());
-            document.getElementById('apply-set-origin-btn')?.addEventListener('click', () => this.ui.applyOffsetAndSetOrigin());
-            
-            // Rotation controls
-            document.getElementById('apply-rotation-btn')?.addEventListener('click', () => {
-                const input = document.getElementById('rotation-angle');
-                const angle = parseFloat(input?.value) || 0;
-                if (angle !== 0) {
-                    this.ui.applyBoardRotation(angle);
-                    if (input) input.value = '0';
-                }
-            });
-            
-            document.getElementById('reset-rotation-btn')?.addEventListener('click', () => {
-                this.ui.resetBoardRotationOnly();
-                const input = document.getElementById('rotation-angle');
-                if (input) input.value = '0';
-            });
-            
             // Export controls
             document.getElementById('export-svg-btn')?.addEventListener('click', async () => {
                 await this.ui.exportSVG();
+            });
+            
+            document.getElementById('generate-gcode-btn')?.addEventListener('click', async () => {
+                await this.exportGcode();
             });
             
             // Machine settings
@@ -172,10 +384,6 @@
                 this.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
             });
             
-            document.getElementById('work-coords')?.addEventListener('change', (e) => {
-                this.core.updateSettings('machine', { workCoordinateSystem: e.target.value });
-            });
-            
             // G-code settings
             document.getElementById('post-processor')?.addEventListener('change', (e) => {
                 this.core.updateSettings('gcode', { postProcessor: e.target.value });
@@ -185,12 +393,17 @@
                 this.core.updateSettings('gcode', { units: e.target.value });
             });
             
-            document.getElementById('start-gcode')?.addEventListener('change', (e) => {
-                this.core.updateSettings('gcode', { startCode: e.target.value });
-            });
-            
-            document.getElementById('end-gcode')?.addEventListener('change', (e) => {
-                this.core.updateSettings('gcode', { endCode: e.target.value });
+            // Collapsible sections - including master Operations toggle
+            document.querySelectorAll('.section-toggle').forEach(toggle => {
+                toggle.addEventListener('click', () => {
+                    const targetId = toggle.getAttribute('data-target');
+                    const content = document.getElementById(targetId);
+                    if (content) {
+                        const isActive = content.style.display === 'block';
+                        content.style.display = isActive ? 'none' : 'block';
+                        toggle.classList.toggle('active', !isActive);
+                    }
+                });
             });
             
             if (debugConfig.enabled) {
@@ -205,7 +418,12 @@
                 
                 const opConfig = opsConfig[type];
                 if (opConfig) {
-                    fileInput.setAttribute('accept', opConfig.extensions.join(','));
+                    // Include SVG in accepted extensions
+                    const extensions = [...opConfig.extensions];
+                    if (!extensions.includes('.svg')) {
+                        extensions.push('.svg');
+                    }
+                    fileInput.setAttribute('accept', extensions.join(','));
                 }
                 
                 fileInput.click();
@@ -275,6 +493,11 @@
                     
                     this.ui.showOperationMessage(type, `Successfully loaded ${count} primitives`, 'success');
                     this.ui.updateStatus(`Loaded ${operation.file.name}: ${count} primitives`, 'success');
+                    
+                    // Update coordinate system after successful parse
+                    if (this.core.coordinateSystem) {
+                        this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
+                    }
                 } else {
                     this.ui.showOperationMessage(type, `Error: ${operation.error}`, 'error');
                     this.ui.updateStatus(`Error processing ${operation.file.name}: ${operation.error}`, 'error');
@@ -320,257 +543,16 @@
             console.log('Debug mode disabled');
         }
         
-        // Test functions
-        async testBasicFusion() {
-            const allPrimitives = this.core.getAllPrimitives();
-            
-            if (debugConfig.logging?.fusionOperations) {
-                console.log(`Testing Clipper2 fusion with ${allPrimitives.length} primitives`);
-            }
-            
-            if (allPrimitives.length === 0) {
-                console.error('No primitives loaded');
-                return null;
-            }
-            
-            if (!this.initializationState.wasmReady) {
-                console.error('Clipper2 WASM not initialized');
-                return null;
-            }
-            
-            try {
-                this.ui.showLoadingState('test-fusion', messagesConfig.processing || 'Testing Clipper2 fusion...');
-                const fused = await this.core.fuseAllPrimitives();
-                
-                if (debugConfig.logging?.fusionOperations) {
-                    console.log(`Result: ${fused.length} fused primitives with automatic hole detection`);
-                }
-                
-                return fused;
-            } catch (error) {
-                console.error('Fusion test failed:', error);
-                return null;
-            } finally {
-                this.ui.hideLoadingState();
-            }
-        }
-        
-        async visualTestFusion() {
-            const fused = await this.core.fuseAllPrimitives();
-            if (!fused || fused.length === 0) {
-                console.error('No fused primitives to display');
-                return;
-            }
-            
-            if (this.ui.renderer) {
-                this.ui.renderer.clearLayers();
-                this.ui.renderer.addLayer('fused-test', fused, {
-                    type: 'copper',
-                    color: config.rendering?.themes?.dark?.layers?.fused || '#00ff00',
-                    visible: true
-                });
-                
-                this.ui.renderer.render();
-                
-                if (debugConfig.enabled) {
-                    console.log('Fused geometry displayed with PolyTree hole detection');
-                }
-            }
-        }
-        
-        async testHolePreservation() {
-            await this.visualTestFusion();
-            
-            const fused = await this.core.fuseAllPrimitives();
-            let holesFound = 0;
-            
-            fused.forEach((primitive, index) => {
-                if (primitive.holes && primitive.holes.length > 0) {
-                    holesFound += primitive.holes.length;
-                    if (debugConfig.logging?.fusionOperations) {
-                        console.log(`Path ${index} has ${primitive.holes.length} holes (via PolyTree)`);
-                    }
-                }
-            });
-            
-            if (debugConfig.enabled) {
-                console.log(`Total holes preserved by Clipper2: ${holesFound}`);
-            }
-        }
-        
-        testRegionProcessing() {
-            if (debugConfig.enabled) {
-                console.log('🔍 Testing region processing...');
-            }
-            
-            let regionCount = 0;
-            let drawCount = 0;
-            
-            this.core.operations.forEach(operation => {
-                if (operation.primitives) {
-                    operation.primitives.forEach(primitive => {
-                        if (primitive.properties?.isRegion) {
-                            regionCount++;
-                        } else if (primitive.properties?.isStroke) {
-                            drawCount++;
-                        }
-                    });
-                }
-            });
-            
-            if (debugConfig.enabled) {
-                console.log(`📊 Region Analysis:`);
-                console.log(`  Regions (filled): ${regionCount}`);
-                console.log(`  Draws (stroked): ${drawCount}`);
-            }
-            
-            return { regionCount, drawCount };
-        }
-        
-        analyzeParsingOutput() {
-            if (!debugConfig.enabled) return;
-            
-            console.log('🔍 Analyzing parsing output...');
-            console.log('================================');
-            
-            this.core.operations.forEach((operation, opIndex) => {
-                console.log(`\n📄 Operation ${opIndex + 1}: ${operation.type.toUpperCase()} - ${operation.file.name}`);
-                
-                if (operation.parsed && operation.parsed.layers) {
-                    const layers = operation.parsed.layers;
-                    console.log('   Parsed data:');
-                    console.log(`     Objects: ${layers.objects ? layers.objects.length : 0}`);
-                    
-                    if (layers.objects) {
-                        const typeCount = {};
-                        layers.objects.forEach(obj => {
-                            typeCount[obj.type] = (typeCount[obj.type] || 0) + 1;
-                        });
-                        console.log('     Object types:', typeCount);
-                    }
-                }
-                
-                if (operation.primitives) {
-                    const primitiveTypes = {};
-                    const propertyTypes = {};
-                    
-                    operation.primitives.forEach(p => {
-                        primitiveTypes[p.type] = (primitiveTypes[p.type] || 0) + 1;
-                        
-                        if (p.properties) {
-                            if (p.properties.isRegion) propertyTypes.regions = (propertyTypes.regions || 0) + 1;
-                            if (p.properties.isStroke) propertyTypes.strokes = (propertyTypes.strokes || 0) + 1;
-                            if (p.properties.isFlash) propertyTypes.flashes = (propertyTypes.flashes || 0) + 1;
-                        }
-                    });
-                    
-                    console.log('   Plotted primitives:', primitiveTypes);
-                    console.log('   Primitive properties:', propertyTypes);
-                }
-            });
-        }
-        
-        analyzePrimitiveTypes() {
-            if (!debugConfig.enabled) return;
-            
-            console.log('🔍 Analyzing primitive types...');
-            
-            this.core.operations.forEach((operation, opIndex) => {
-                if (!operation.primitives || operation.primitives.length === 0) return;
-                
-                console.log(`\n📄 Operation ${opIndex + 1}: ${operation.type.toUpperCase()} - ${operation.file.name}`);
-                console.log(`   Total primitives: ${operation.primitives.length}`);
-                
-                const typeCount = {};
-                const propertyCount = {};
-                
-                operation.primitives.forEach(primitive => {
-                    typeCount[primitive.type] = (typeCount[primitive.type] || 0) + 1;
-                    
-                    if (primitive.properties) {
-                        if (primitive.properties.isRegion) propertyCount.regions = (propertyCount.regions || 0) + 1;
-                        if (primitive.properties.isStroke) propertyCount.strokes = (propertyCount.strokes || 0) + 1;
-                        if (primitive.properties.isFlash) propertyCount.flashes = (propertyCount.flashes || 0) + 1;
-                        if (primitive.properties.hasArcs) propertyCount.hasArcs = (propertyCount.hasArcs || 0) + 1;
-                    }
-                });
-                
-                console.log('   By type:', typeCount);
-                console.log('   By properties:', propertyCount);
-            });
-            
-            const allPrimitives = this.core.getAllPrimitives();
-            console.log(`\n🌍 GLOBAL TOTALS: ${allPrimitives.length} primitives`);
-        }
-        
-        async testOffsetGeneration(offsetDistance = -0.1) {
-            if (debugConfig.logging?.toolpathGeneration) {
-                console.log(`🧪 Testing offset generation: ${offsetDistance}mm`);
-            }
-            
-            if (!this.initializationState.wasmReady) {
-                console.error('Clipper2 WASM not initialized');
-                return null;
-            }
-            
-            try {
-                this.ui.showLoadingState('test-offset', messagesConfig.processing || 'Testing offset generation...');
-                
-                const fusedPrimitives = await this.core.fuseAllPrimitives();
-                const preparedGeometry = await this.core.prepareForOffsetGeneration();
-                const offsetGeometry = await this.core.generateOffsetGeometry(offsetDistance);
-                
-                if (debugConfig.logging?.toolpathGeneration) {
-                    console.log(`✅ Fusion: ${fusedPrimitives.length} primitives`);
-                    console.log(`✅ Prepared: ${preparedGeometry.length} primitives`);
-                    console.log(`✅ Offset: ${offsetGeometry.length} toolpaths`);
-                }
-                
-                if (this.ui.renderer && offsetGeometry.length > 0) {
-                    this.ui.renderer.clearLayers();
-                    
-                    this.ui.renderer.addLayer('original', fusedPrimitives, {
-                        type: 'copper',
-                        color: opsConfig.isolation?.color || '#ff8844',
-                        visible: true
-                    });
-                    
-                    this.ui.renderer.addLayer('offset', offsetGeometry, {
-                        type: 'toolpath',
-                        color: config.rendering?.themes?.dark?.layers?.toolpath || '#ffff00',
-                        visible: true
-                    });
-                    
-                    this.ui.renderer.render();
-                }
-                
-                return {
-                    fusedCount: fusedPrimitives.length,
-                    preparedCount: preparedGeometry.length,
-                    offsetCount: offsetGeometry.length,
-                    offsetDistance: offsetDistance
-                };
-                
-            } catch (error) {
-                console.error('❌ Offset generation test failed:', error);
-                return null;
-            } finally {
-                this.ui.hideLoadingState();
-            }
-        }
-        
         getStats() {
             return {
                 core: this.core.getProcessorStats(),
                 ui: {
                     fusionStats: this.ui.fusionStats,
-                    modalPage: this.ui.modalManager?.getCurrentPage(),
                     hasRenderer: !!this.ui.renderer
                 },
                 operations: this.core.operations.length,
                 debugMode: this.debugMode,
-                initialization: this.initializationState,
-                regionProcessing: this.testRegionProcessing()
+                initialization: this.initializationState
             };
         }
     }
@@ -578,28 +560,31 @@
     // Initialize application
     async function initializePCBCAM() {
         if (debugConfig.enabled) {
-            console.log('🎯 Starting PCB CAM initialization with config integration...');
+            console.log('🎯 Starting PCB CAM Workspace Edition initialization...');
             console.log('📊 Document state:', document.readyState);
         }
         
-        // Check for new class names
+        // Check for required classes (some may be optional for workspace mode)
         const requiredClasses = [
             'PCBCamCore',
             'PCBCamUI',
-            'GeometryProcessor',
-            'GerberParser',           // New name
-            'ExcellonParser',         // New name
-            'ParserPlotter',          // New name
-            'ParserCore',             // New base class
             'LayerRenderer',
-            'RendererCore',           // New modular class
-            'PrimitiveRenderer',      // New modular class
-            'OverlayRenderer',        // New modular class
-            'InteractionHandler',     // New modular class
-            'ModalManager',           // New modular class
-            'OperationsManager',      // New modular class
-            'StatusManager',          // New modular class
-            'UIControls',             // New modular class
+            'RendererCore',
+            'PrimitiveRenderer',
+            'OverlayRenderer',
+            'InteractionHandler',
+            'OperationsManager',
+            'StatusManager',
+            'UIControls'
+        ];
+        
+        const optionalClasses = [
+            'GeometryProcessor',
+            'GerberParser',
+            'ExcellonParser',
+            'SVGParser',
+            'ParserPlotter',
+            'ParserCore',
             'CoordinateSystemManager'
         ];
         
@@ -623,9 +608,18 @@
             return false;
         }
         
+        // Check optional classes
+        if (debugConfig.enabled) {
+            console.log('📋 Checking optional classes:');
+            optionalClasses.forEach(className => {
+                const exists = typeof window[className] !== 'undefined';
+                console.log(`  ${exists ? '✅' : '⚠️'} ${className}`);
+            });
+        }
+        
         try {
             if (debugConfig.enabled) {
-                console.log('🚀 Creating PCB CAM application with config...');
+                console.log('🚀 Creating PCB CAM application...');
             }
             window.cam = new SemanticPCBCam();
             
@@ -644,18 +638,18 @@
     // Initialization strategies
     document.addEventListener('DOMContentLoaded', () => {
         if (debugConfig.enabled) {
-            console.log('📍 DOMContentLoaded event fired');
+            console.log('📌 DOMContentLoaded event fired');
         }
         initializePCBCAM();
     });
     
     if (document.readyState === 'loading') {
         if (debugConfig.enabled) {
-            console.log('📍 Document still loading, waiting for DOMContentLoaded...');
+            console.log('📌 Document still loading, waiting for DOMContentLoaded...');
         }
     } else {
         if (debugConfig.enabled) {
-            console.log('📍 Document already loaded, initializing immediately...');
+            console.log('📌 Document already loaded, initializing immediately...');
         }
         initializePCBCAM();
     }
@@ -664,7 +658,7 @@
     setTimeout(() => {
         if (!window.cam) {
             if (debugConfig.enabled) {
-                console.log('📍 Delayed initialization attempt...');
+                console.log('📌 Delayed initialization attempt...');
             }
             initializePCBCAM();
         }
@@ -692,62 +686,6 @@
     };
     
     // Console test functions
-    window.testBasicFusion = async function() {
-        if (!window.cam) {
-            console.error('CAM not initialized');
-            return;
-        }
-        return await window.cam.testBasicFusion();
-    };
-    
-    window.visualTestFusion = async function() {
-        if (!window.cam) {
-            console.error('CAM not initialized');
-            return;
-        }
-        await window.cam.visualTestFusion();
-    };
-    
-    window.testHolePreservation = async function() {
-        if (!window.cam) {
-            console.error('CAM not initialized');
-            return;
-        }
-        await window.cam.testHolePreservation();
-    };
-    
-    window.testRegionProcessing = function() {
-        if (!window.cam) {
-            console.error('CAM not initialized');
-            return;
-        }
-        return window.cam.testRegionProcessing();
-    };
-    
-    window.analyzePrimitiveTypes = function() {
-        if (!window.cam) {
-            console.error('CAM not initialized');
-            return;
-        }
-        return window.cam.analyzePrimitiveTypes();
-    };
-    
-    window.analyzeParsingOutput = function() {
-        if (!window.cam) {
-            console.error('CAM not initialized');
-            return;
-        }
-        return window.cam.analyzeParsingOutput();
-    };
-    
-    window.testOffsetGeneration = async function(offsetDistance = -0.1) {
-        if (!window.cam) {
-            console.error('CAM not initialized');
-            return;
-        }
-        return await window.cam.testOffsetGeneration(offsetDistance);
-    };
-    
     window.showCamStats = function() {
         if (!window.cam) {
             console.error('CAM not initialized');
@@ -755,46 +693,17 @@
         }
         console.log('PCB CAM Statistics:', window.cam.getStats());
     };
-    
-    window.checkLayerContamination = function() {
-        if (!window.cam || !window.cam.core) {
-            console.error('CAM not initialized');
+
+    // NEW: Add this function to inspect the curve registry
+    window.getReconstructionRegistry = function() {
+        if (!window.cam || !window.cam.core.geometryProcessor) {
+            console.error('Geometry processor not initialized');
             return;
         }
-        return window.cam.core.checkLayerContamination();
-    };
-    
-    window.inspectLayer = function(operationType) {
-        if (!window.cam || !window.cam.core) {
-            console.error('CAM not initialized');
-            return;
-        }
-        
-        const operations = window.cam.core.getOperationsByType(operationType);
-        if (operations.length === 0) {
-            console.log(`No operations of type '${operationType}' found`);
-            return;
-        }
-        
-        operations.forEach((op, index) => {
-            console.log(`\n📄 ${operationType} Operation ${index + 1}: ${op.file.name}`);
-            console.log(`   Primitives: ${op.primitives ? op.primitives.length : 0}`);
-            
-            if (op.primitives) {
-                const sample = op.primitives.slice(0, 5);
-                sample.forEach((p, i) => {
-                    console.log(`   Primitive ${i}:`, {
-                        type: p.type,
-                        properties: p.properties,
-                        bounds: p.getBounds()
-                    });
-                });
-                
-                if (op.primitives.length > 5) {
-                    console.log(`   ... and ${op.primitives.length - 5} more`);
-                }
-            }
-        });
+        const registry = window.cam.core.geometryProcessor.arcReconstructor.exportRegistry();
+        console.log(`Arc Reconstructor Registry (${registry.length} curves):`);
+        console.table(registry);
+        return registry;
     };
     
     // Config access for debugging

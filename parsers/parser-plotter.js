@@ -1,5 +1,6 @@
 // parser/parser-plotter.js
 // Common primitive generation for parsed data
+// FIXED: Circular obround detection, stroked obround handling, arc trace registration
 
 (function() {
     'use strict';
@@ -27,7 +28,10 @@
                 drillsCreated: 0,
                 primitivesCreated: 0,
                 regionPointCounts: [],
-                traceLengths: []
+                traceLengths: [],
+                circularObrounds: 0,
+                strokedObrounds: 0,
+                arcTraces: 0
             };
         }
         
@@ -270,17 +274,72 @@
             }
             
             let points;
+            let arcSegments = [];
             
-            // Handle arc traces
+            // Handle arc traces with proper curve registration
             if (trace.arc && (trace.interpolation === 'G02' || trace.interpolation === 'G03' || 
                 trace.interpolation === 'cw_arc' || trace.interpolation === 'ccw_arc')) {
+                
                 const center = {
                     x: trace.start.x + trace.arc.i,
                     y: trace.start.y + trace.arc.j
                 };
+                
+                const radius = Math.sqrt(
+                    Math.pow(trace.start.x - center.x, 2) +
+                    Math.pow(trace.start.y - center.y, 2)
+                );
+                
                 const clockwise = trace.clockwise !== false;
+                
+                // Calculate angles
+                const startAngle = Math.atan2(trace.start.y - center.y, trace.start.x - center.x);
+                const endAngle = Math.atan2(trace.end.y - center.y, trace.end.x - center.x);
+                
+                // Register this arc in the global registry
+                let arcId = null;
+                if (window.globalCurveRegistry) {
+                    arcId = window.globalCurveRegistry.register({
+                        type: 'arc',
+                        center: center,
+                        radius: radius,
+                        startAngle: startAngle,
+                        endAngle: endAngle,
+                        clockwise: clockwise,
+                        source: 'trace_arc'
+                    });
+                }
+                
+                // Generate interpolated points
                 points = this.createArcPoints(trace.start, trace.end, center, clockwise);
-                this.debug(`  Arc trace with ${points.length} interpolated points`);
+                
+                // Tag every point with curve metadata
+                if (arcId) {
+                    points.forEach((point, idx) => {
+                        point.curveId = arcId;
+                        point.segmentIndex = idx;
+                        point.totalSegments = points.length;
+                        point.t = idx / (points.length - 1);
+                    });
+                }
+                
+                // Record the arc segment for the primitive
+                arcSegments.push({
+                    startIndex: 0,
+                    endIndex: points.length - 1,
+                    center: center,
+                    radius: radius,
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    clockwise: clockwise,
+                    curveId: arcId
+                });
+                
+                properties.arcSegments = arcSegments;
+                properties.hasArcs = true;
+                
+                this.creationStats.arcTraces++;
+                this.debug(`  Arc trace with ${points.length} interpolated points, curve ID: ${arcId}`);
             } else {
                 // Simple line
                 points = [trace.start, trace.end];
@@ -340,16 +399,21 @@
                 case 'obround':
                     const oWidth = flash.width || flash.parameters?.[0] || 1.0;
                     const oHeight = flash.height || flash.parameters?.[1] || oWidth;
-                    this.debug(`  Obround flash, size: ${oWidth.toFixed(3)} x ${oHeight.toFixed(3)}mm`);
-                    primitive = new ObroundPrimitive(
-                        {
-                            x: flash.position.x - oWidth / 2,
-                            y: flash.position.y - oHeight / 2
-                        },
-                        oWidth,
-                        oHeight,
-                        properties
-                    );
+                    
+                    // CRITICAL FIX: Check if this is actually a circle
+                    const tolerance = geomConfig.coordinatePrecision || 0.001;
+                    if (Math.abs(oWidth - oHeight) < tolerance) {
+                        // It's geometrically a circle, treat it as such
+                        const radius = oWidth / 2;
+                        this.debug(`  Obround with equal dimensions (${oWidth.toFixed(3)}x${oHeight.toFixed(3)}) is actually a circle, radius: ${radius.toFixed(3)}mm`);
+                        primitive = new CirclePrimitive(flash.position, radius, properties);
+                        this.creationStats.circularObrounds++;
+                    } else {
+                        // True obround - treat as stroked path for proper end-cap registration
+                        this.debug(`  Obround flash, size: ${oWidth.toFixed(3)} x ${oHeight.toFixed(3)}mm - converting to stroked path`);
+                        primitive = this.createStrokedObround(flash, oWidth, oHeight, properties);
+                        this.creationStats.strokedObrounds++;
+                    }
                     break;
                 
                 case 'polygon':
@@ -371,6 +435,45 @@
             }
             
             return primitive;
+        }
+        
+        createStrokedObround(flash, width, height, properties) {
+            // Treat obround as a stroked line with semicircular end-caps
+            const isHorizontal = width > height;
+            const strokeWidth = Math.min(width, height);
+            const strokeLength = Math.abs(width - height);
+            
+            if (strokeLength < 0.001) {
+                // Degenerate case - should have been caught earlier
+                return new CirclePrimitive(flash.position, strokeWidth / 2, properties);
+            }
+            
+            // Create endpoints for the virtual stroke
+            let start, end;
+            if (isHorizontal) {
+                const halfLength = strokeLength / 2;
+                start = { x: flash.position.x - halfLength, y: flash.position.y };
+                end = { x: flash.position.x + halfLength, y: flash.position.y };
+            } else {
+                const halfLength = strokeLength / 2;
+                start = { x: flash.position.x, y: flash.position.y - halfLength };
+                end = { x: flash.position.x, y: flash.position.y + halfLength };
+            }
+            
+            // Use the same pipeline as traces - this ensures consistent curve registration
+            const points = GeometryUtils.lineToPolygon(start, end, strokeWidth);
+            
+            // Create path primitive with metadata
+            return new PathPrimitive(points, {
+                ...properties,
+                originalObround: { 
+                    width: width, 
+                    height: height, 
+                    position: flash.position 
+                },
+                isConvertedObround: true,
+                closed: true
+            });
         }
         
         plotDraw(draw) {
@@ -551,7 +654,10 @@
                 drillsCreated: 0,
                 primitivesCreated: 0,
                 regionPointCounts: [],
-                traceLengths: []
+                traceLengths: [],
+                circularObrounds: 0,
+                strokedObrounds: 0,
+                arcTraces: 0
             };
         }
         
@@ -568,7 +674,10 @@
                 const avgLength = this.creationStats.traceLengths.reduce((a, b) => a + b, 0) / this.creationStats.traceLengths.length;
                 this.debug(`    Average trace length: ${avgLength.toFixed(3)}mm`);
             }
+            this.debug(`    Arc traces: ${this.creationStats.arcTraces}`);
             this.debug(`  Flashes: ${this.creationStats.flashesCreated}`);
+            this.debug(`    Circular obrounds detected: ${this.creationStats.circularObrounds}`);
+            this.debug(`    Stroked obrounds created: ${this.creationStats.strokedObrounds}`);
             this.debug(`  Drills: ${this.creationStats.drillsCreated}`);
             this.debug(`  Total primitives: ${this.creationStats.primitivesCreated}`);
         }

@@ -40,6 +40,39 @@
             this.renderer = renderer;
             this.debug('Renderer linked to coordinate system');
         }
+
+        initializeEmpty() {
+            // Initialize with default empty bounds for empty canvas
+            if (!this.initialized) {
+                this.boardBounds = {
+                    minX: 0,
+                    minY: 0,
+                    maxX: 100,
+                    maxY: 100,
+                    width: 100,
+                    height: 100,
+                    centerX: 50,
+                    centerY: 50
+                };
+                
+                this.rotationCenter = {
+                    x: 50,
+                    y: 50
+                };
+                
+                this.fileOrigin = { x: 0, y: 0 };
+                this.savedOrigin = { x: 0, y: 0 };
+                this.previewOrigin = { x: 0, y: 0 };
+                this.currentRotation = 0;
+                this.fileRotation = 0;
+                this.initialized = true;
+                
+                this.syncToRenderer();
+                this.debug('Initialized with empty canvas bounds');
+            }
+            
+            return this.getStatus();
+        }
         
         analyzeCoordinateSystem(operations) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
