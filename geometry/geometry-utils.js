@@ -1,6 +1,6 @@
 // geometry/geometry-utils.js
 // Pure geometric utility functions with curve metadata support
-// FIXED: Complete end-cap boundary tagging, ALL points get metadata
+// FIXED: End-cap curves registered with explicit clockwise=false
 
 (function() {
     'use strict';
@@ -151,14 +151,14 @@
             const leftSide = [];
             const rightSide = [];
             
-            // Register and generate curve IDs for end-caps
+            // FIXED: Register end-caps with explicit clockwise=false
             const startCapId = window.globalCurveRegistry?.register({
                 type: 'arc',
                 center: { x: points[0].x, y: points[0].y },
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: true,
+                clockwise: false,  // CRITICAL: End-caps always CCW
                 source: 'end_cap'
             });
             
@@ -168,7 +168,7 @@
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: true,
+                clockwise: false,  // CRITICAL: End-caps always CCW
                 source: 'end_cap'
             });
             
@@ -226,10 +226,12 @@
             if (len < this.PRECISION) {
                 const segments = 24;
                 const points = [];
+                // FIXED: Register circle end-cap with clockwise=false
                 const curveId = window.globalCurveRegistry?.register({
                     type: 'circle',
                     center: { x: from.x, y: from.y },
                     radius: halfWidth,
+                    clockwise: false,  // CRITICAL: Always CCW
                     source: 'end_cap'
                 });
                 
@@ -259,14 +261,14 @@
             const capSegments = Math.max(16, Math.min(64, this.getOptimalSegments(halfWidth, 16, 64)));
             const halfSegments = Math.floor(capSegments / 2);
             
-            // Register end-caps
+            // FIXED: Register end-caps with explicit clockwise=false
             const startCapId = window.globalCurveRegistry?.register({
                 type: 'arc',
                 center: { x: from.x, y: from.y },
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: true,
+                clockwise: false,  // CRITICAL: End-caps always CCW
                 source: 'end_cap'
             });
             
@@ -276,7 +278,7 @@
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: true,
+                clockwise: false,  // CRITICAL: End-caps always CCW
                 source: 'end_cap'
             });
             
@@ -367,10 +369,12 @@
             // Fallback to filled circle if inner radius is negative
             if (innerR < 0) {
                 const circleSegments = 48;
+                // FIXED: Register circle with clockwise=false
                 const curveId = window.globalCurveRegistry?.register({
                     type: 'circle',
                     center: { x: center.x, y: center.y },
                     radius: outerR,
+                    clockwise: false,  // CRITICAL: Circles always CCW
                     source: 'arc_fallback'
                 });
                 
@@ -401,14 +405,14 @@
                 y: center.y + radius * Math.sin(endRad)
             };
             
-            // Register end-caps
+            // FIXED: Register end-caps with explicit clockwise=false
             const startCapId = window.globalCurveRegistry?.register({
                 type: 'arc',
                 center: startCapCenter,
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: true,
+                clockwise: false,  // CRITICAL: End-caps always CCW
                 source: 'arc_end_cap'
             });
             
@@ -418,7 +422,7 @@
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: true,
+                clockwise: false,  // CRITICAL: End-caps always CCW
                 source: 'arc_end_cap'
             });
             
@@ -480,7 +484,7 @@
             return points;
         },
         
-        // Generate complete rounded cap with all boundary points tagged
+        // Generate complete rounded cap with all boundary points tagged - END-CAPS ARE ALWAYS CCW
         generateCompleteRoundedCap(center, dirX, dirY, radius, isStart, curveId) {
             const points = [];
             // Use same segmentation rules as circles for consistency
@@ -490,6 +494,7 @@
             const baseAngle = Math.atan2(dirY, dirX);
             const startAngle = isStart ? baseAngle - Math.PI/2 : baseAngle + Math.PI/2;
             
+            // End-caps are always generated CCW (positive angle progression)
             for (let i = 0; i <= halfSegments; i++) {  // Half circle for end-cap
                 const angle = startAngle + (Math.PI * i / halfSegments);
                 const t = i / halfSegments;

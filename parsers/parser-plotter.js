@@ -1,6 +1,6 @@
 // parser/parser-plotter.js
 // Common primitive generation for parsed data
-// FIXED: Circular obround detection, stroked obround handling, arc trace registration
+// FIXED: Arc detection and clockwise property handling
 
 (function() {
     'use strict';
@@ -249,6 +249,11 @@
             
             this.debug(`Plotting trace: (${trace.start.x.toFixed(3)}, ${trace.start.y.toFixed(3)}) to (${trace.end.x.toFixed(3)}, ${trace.end.y.toFixed(3)}), length: ${length.toFixed(3)}mm`);
             
+            // Debug: Log interpolation info
+            if (trace.interpolation) {
+                this.debug(`  Interpolation: "${trace.interpolation}"${trace.arc ? ', has arc data' : ''}`);
+            }
+            
             const width = trace.width || config.formats?.gerber?.defaultAperture || 0.1;
             
             const properties = {
@@ -258,7 +263,7 @@
                 strokeWidth: width,
                 polarity: trace.polarity || 'dark',
                 aperture: trace.aperture,
-                interpolation: trace.interpolation || 'G01',
+                interpolation: trace.interpolation || 'linear',
                 closed: false,
                 traceLength: length
             };
@@ -276,9 +281,21 @@
             let points;
             let arcSegments = [];
             
-            // Handle arc traces with proper curve registration
-            if (trace.arc && (trace.interpolation === 'G02' || trace.interpolation === 'G03' || 
-                trace.interpolation === 'cw_arc' || trace.interpolation === 'ccw_arc')) {
+            // FIXED: Broader arc detection - check multiple conditions
+            const isArc = trace.arc || 
+                         trace.interpolation === 'cw_arc' || 
+                         trace.interpolation === 'ccw_arc' ||
+                         trace.interpolation === 'G02' ||
+                         trace.interpolation === 'G03' ||
+                         trace.interpolation === 'G2' ||
+                         trace.interpolation === 'G3';
+            
+            if (isArc && trace.arc) {
+                // FIXED: Determine clockwise from multiple sources
+                const clockwise = trace.interpolation === 'cw_arc' || 
+                                trace.interpolation === 'G02' ||
+                                trace.interpolation === 'G2' ||
+                                trace.clockwise === true;
                 
                 const center = {
                     x: trace.start.x + trace.arc.i,
@@ -290,13 +307,11 @@
                     Math.pow(trace.start.y - center.y, 2)
                 );
                 
-                const clockwise = trace.clockwise !== false;
-                
                 // Calculate angles
                 const startAngle = Math.atan2(trace.start.y - center.y, trace.start.x - center.x);
                 const endAngle = Math.atan2(trace.end.y - center.y, trace.end.x - center.x);
                 
-                // Register this arc in the global registry
+                // Register arc with explicit clockwise property
                 let arcId = null;
                 if (window.globalCurveRegistry) {
                     arcId = window.globalCurveRegistry.register({
@@ -305,7 +320,7 @@
                         radius: radius,
                         startAngle: startAngle,
                         endAngle: endAngle,
-                        clockwise: clockwise,
+                        clockwise: clockwise,  // Use determined clockwise value
                         source: 'trace_arc'
                     });
                 }
@@ -339,7 +354,7 @@
                 properties.hasArcs = true;
                 
                 this.creationStats.arcTraces++;
-                this.debug(`  Arc trace with ${points.length} interpolated points, curve ID: ${arcId}`);
+                console.log(`ARC TRACE DETECTED: ${clockwise ? 'CW' : 'CCW'}, interpolation="${trace.interpolation}", curve ID: ${arcId}`);
             } else {
                 // Simple line
                 points = [trace.start, trace.end];

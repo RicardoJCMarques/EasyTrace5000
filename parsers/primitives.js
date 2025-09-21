@@ -1,6 +1,6 @@
 // parsers/primitives.js
 // Primitives with geometric context preservation and immediate curve registration
-// FIXED: Obround handles circular case properly, better toPolygon metadata
+// FIXED: Store clockwise property for all curve registrations
 
 (function() {
     'use strict';
@@ -186,7 +186,7 @@
                 radius: radius
             };
             
-            // IMMEDIATELY REGISTER THIS CIRCLE AS A CURVE
+            // IMMEDIATELY REGISTER THIS CIRCLE AS A CURVE WITH DIRECTION
             this.curveId = this.registerAsGlobalCurve();
             if (this.curveId) {
                 this.curveIds = [this.curveId];
@@ -201,16 +201,18 @@
                 return null;
             }
             
+            // FIXED: Circles are always generated CCW (0→2π)
             const curveId = window.globalCurveRegistry.register({
                 type: 'circle',
                 center: { ...this.center },
                 radius: this.radius,
                 primitiveId: this.id,
+                clockwise: false,  // CRITICAL: Circles always CCW in our system
                 source: 'primitive_circle'
             });
             
             if (window.PCBCAMConfig?.debug?.logging?.curveRegistration) {
-                console.log(`[CirclePrimitive] Registered circle ${this.id} as curve ${curveId}`);
+                console.log(`[CirclePrimitive] Registered circle ${this.id} as curve ${curveId} (CCW)`);
             }
             
             return curveId;
@@ -248,6 +250,7 @@
                 type: 'circle',
                 center: { ...this.center },
                 radius: this.radius,
+                clockwise: false,  // Always CCW
                 properties: {
                     isComplete: true,
                     startAngle: 0,
@@ -272,7 +275,7 @@
             // Use the circle's own registered curve ID
             const curveId = this.curveId || (curveIds && curveIds.length > 0 ? curveIds[0] : undefined);
             
-            // Generate points with full metadata
+            // Generate points with full metadata - ALWAYS CCW (0→2π)
             for (let i = 0; i <= segments; i++) {
                 const normalizedIndex = i % segments;
                 const angle = (normalizedIndex / segments) * 2 * Math.PI;
@@ -394,13 +397,14 @@
                     }
                 };
                 
-                // Register as a single circle
+                // Register as a single circle with direction
                 if (window.globalCurveRegistry) {
                     this.curveId = window.globalCurveRegistry.register({
                         type: 'circle',
                         center: this.geometricContext.metadata.center,
                         radius: this.geometricContext.metadata.radius,
                         primitiveId: this.id,
+                        clockwise: false,  // Circles always CCW
                         source: 'obround_circular'
                     });
                     this.curveIds = [this.curveId];
@@ -428,6 +432,8 @@
             const r = Math.min(this.width, this.height) / 2;
             this.curveIds = [];
             
+            // FIXED: Store clockwise property for all semicircle registrations
+            // End-caps are always generated CCW
             if (this.width > this.height) {
                 // Horizontal obround - two semicircles
                 const leftId = window.globalCurveRegistry.register({
@@ -436,7 +442,7 @@
                     radius: r,
                     startAngle: Math.PI / 2,
                     endAngle: 3 * Math.PI / 2,
-                    clockwise: true,
+                    clockwise: false,  // CCW semicircle
                     primitiveId: this.id,
                     source: 'obround_left'
                 });
@@ -447,7 +453,7 @@
                     radius: r,
                     startAngle: -Math.PI / 2,
                     endAngle: Math.PI / 2,
-                    clockwise: true,
+                    clockwise: false,  // CCW semicircle
                     primitiveId: this.id,
                     source: 'obround_right'
                 });
@@ -462,7 +468,7 @@
                     radius: r,
                     startAngle: Math.PI,
                     endAngle: 2 * Math.PI,
-                    clockwise: true,
+                    clockwise: false,  // CCW semicircle
                     primitiveId: this.id,
                     source: 'obround_top'
                 });
@@ -473,7 +479,7 @@
                     radius: r,
                     startAngle: 0,
                     endAngle: Math.PI,
-                    clockwise: true,
+                    clockwise: false,  // CCW semicircle
                     primitiveId: this.id,
                     source: 'obround_bottom'
                 });
@@ -508,6 +514,7 @@
                     type: 'circle',
                     center: this.geometricContext.metadata.center,
                     radius: this.geometricContext.metadata.radius,
+                    clockwise: false,  // Always CCW
                     originalObround: true
                 };
             }
@@ -517,14 +524,14 @@
             const curves = [];
             
             if (this.width > this.height) {
-                // Horizontal obround - two semicircles
+                // Horizontal obround - two semicircles (CCW)
                 curves.push({
                     type: 'arc',
                     center: { x: this.position.x + r, y: this.position.y + r },
                     radius: r,
                     startAngle: Math.PI / 2,
                     endAngle: 3 * Math.PI / 2,
-                    clockwise: true
+                    clockwise: false
                 });
                 curves.push({
                     type: 'arc',
@@ -532,17 +539,17 @@
                     radius: r,
                     startAngle: -Math.PI / 2,
                     endAngle: Math.PI / 2,
-                    clockwise: true
+                    clockwise: false
                 });
             } else {
-                // Vertical obround - two semicircles
+                // Vertical obround - two semicircles (CCW)
                 curves.push({
                     type: 'arc',
                     center: { x: this.position.x + r, y: this.position.y + r },
                     radius: r,
                     startAngle: Math.PI,
                     endAngle: 2 * Math.PI,
-                    clockwise: true
+                    clockwise: false
                 });
                 curves.push({
                     type: 'arc',
@@ -550,7 +557,7 @@
                     radius: r,
                     startAngle: 0,
                     endAngle: Math.PI,
-                    clockwise: true
+                    clockwise: false
                 });
             }
             
@@ -646,7 +653,7 @@
                 y: center.y + radius * Math.sin(endAngle)
             };
             
-            // REGISTER THIS ARC AS A CURVE
+            // REGISTER THIS ARC AS A CURVE WITH DIRECTION
             this.curveId = this.registerAsGlobalCurve();
             if (this.curveId) {
                 this.curveIds = [this.curveId];
@@ -658,13 +665,14 @@
                 return null;
             }
             
+            // FIXED: Store actual clockwise property
             const curveId = window.globalCurveRegistry.register({
                 type: 'arc',
                 center: { ...this.center },
                 radius: this.radius,
                 startAngle: this.startAngle,
                 endAngle: this.endAngle,
-                clockwise: this.clockwise,
+                clockwise: this.clockwise,  // CRITICAL: Store actual direction
                 primitiveId: this.id,
                 source: 'primitive_arc'
             });

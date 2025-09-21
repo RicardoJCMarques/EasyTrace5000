@@ -1,6 +1,6 @@
 // geometry/geometry-processor.js
 // High-level geometry processing pipeline orchestrator
-// FIXED: Uses global curve registry consistently
+// SIMPLIFIED: Removed unnecessary Clipper2 orientation connection
 
 (function() {
     'use strict';
@@ -55,6 +55,7 @@
         async initialize() {
             try {
                 await this.clipper.initialize();
+                
                 this.debug('GeometryProcessor initialized with arc reconstruction pipeline');
                 return true;
             } catch (error) {
@@ -107,22 +108,7 @@
             
             // Verify metadata propagation
             if (fusionOptions.enableArcReconstruction && this.options.debug) {
-                let pointsWithCurveIds = 0;
-                let primitivesWithCurveIds = 0;
-                
-                preprocessed.forEach(prim => {
-                    if (prim.curveIds && prim.curveIds.length > 0) {
-                        primitivesWithCurveIds++;
-                    }
-                    if (prim.points) {
-                        const taggedPoints = prim.points.filter(p => p.curveId !== undefined && p.curveId > 0);
-                        if (taggedPoints.length > 0) {
-                            pointsWithCurveIds += taggedPoints.length;
-                        }
-                    }
-                });
-                
-                this.debug(`After preprocessing: ${primitivesWithCurveIds} primitives with curve IDs, ${pointsWithCurveIds} points tagged`);
+                this.verifyMetadataPropagation(preprocessed, 'After preprocessing');
             }
             
             // Step 4: Perform boolean fusion
@@ -130,39 +116,32 @@
             
             // Verify metadata survival
             if (fusionOptions.enableArcReconstruction && this.options.debug) {
-                let fusedPointsWithCurveIds = 0;
-                let fusedPrimitivesWithCurveIds = 0;
-                
-                fused.forEach(prim => {
-                    if (prim.curveIds && prim.curveIds.length > 0) {
-                        fusedPrimitivesWithCurveIds++;
-                    }
-                    if (prim.points) {
-                        const taggedPoints = prim.points.filter(p => p.curveId !== undefined && p.curveId > 0);
-                        if (taggedPoints.length > 0) {
-                            fusedPointsWithCurveIds += taggedPoints.length;
-                        }
-                    }
-                });
-                
-                this.debug(`After fusion: ${fusedPrimitivesWithCurveIds} primitives with curve IDs, ${fusedPointsWithCurveIds} points tagged`);
+                this.verifyMetadataPropagation(fused, 'After fusion');
             }
             
             // Step 5: Reconstruct arcs if enabled
             let finalGeometry = fused;
             if (fusionOptions.enableArcReconstruction && window.globalCurveRegistry?.registry?.size > 0) {
                 this.debug(`=== RECONSTRUCTION PHASE ===`);
+                
+                // Store pre-reconstruction state for debugging
+                const preReconstructionCount = fused.length;
+                
                 finalGeometry = this.arcReconstructor.processForReconstruction(fused);
                 
                 const stats = this.arcReconstructor.getStats();
                 this.stats.curvesReconstructed = stats.reconstructed;
                 
                 this.debug(`Reconstruction complete:`);
-                this.debug(`  Curves in registry: ${stats.registrySize}`);
-                this.debug(`  Curves reconstructed: ${stats.reconstructed}`);
-                this.debug(`  Success rate: ${stats.successRate}`);
-                this.debug(`  Partial arcs: ${stats.partialArcs}`);
-                this.debug(`  Full circles: ${stats.fullCircles}`);
+                this.debug(`  Primitives: ${preReconstructionCount} → ${finalGeometry.length}`);
+                this.debug(`  Full circles reconstructed: ${stats.fullCircles}`);
+                this.debug(`  Partial arcs found: ${stats.partialArcs}`);
+                this.debug(`  Groups with gaps merged: ${stats.wrappedGroups}`);
+                
+                // Verify reconstruction results
+                if (this.options.debug) {
+                    this.verifyReconstructionResults(finalGeometry);
+                }
             }
             
             this.cachedStates.fusedGeometry = finalGeometry;
@@ -176,6 +155,68 @@
             this.debug(`Result: ${primitives.length} → ${finalGeometry.length} primitives`);
             
             return finalGeometry;
+        }
+        
+        // Verify metadata propagation through pipeline
+        verifyMetadataPropagation(primitives, stage) {
+            let pointsWithCurveIds = 0;
+            let primitivesWithCurveIds = 0;
+            let uniqueCurveIds = new Set();
+            
+            primitives.forEach(prim => {
+                let hasPointCurveIds = false;
+                
+                if (prim.curveIds && prim.curveIds.length > 0) {
+                    primitivesWithCurveIds++;
+                    prim.curveIds.forEach(id => uniqueCurveIds.add(id));
+                }
+                
+                if (prim.points) {
+                    const taggedPoints = prim.points.filter(p => p.curveId !== undefined && p.curveId > 0);
+                    if (taggedPoints.length > 0) {
+                        pointsWithCurveIds += taggedPoints.length;
+                        hasPointCurveIds = true;
+                        taggedPoints.forEach(p => uniqueCurveIds.add(p.curveId));
+                    }
+                }
+                
+                if (hasPointCurveIds && !prim.curveIds) {
+                    primitivesWithCurveIds++;
+                }
+            });
+            
+            this.debug(`${stage}:`);
+            this.debug(`  ${primitivesWithCurveIds}/${primitives.length} primitives with curve data`);
+            this.debug(`  ${pointsWithCurveIds} points tagged`);
+            this.debug(`  ${uniqueCurveIds.size} unique curve IDs`);
+        }
+        
+        // Verify reconstruction results
+        verifyReconstructionResults(primitives) {
+            let reconstructedCircles = 0;
+            let reconstructedPaths = 0;
+            let pathsWithArcs = 0;
+            let totalArcSegments = 0;
+            
+            primitives.forEach(prim => {
+                if (prim.properties?.reconstructed) {
+                    if (prim.type === 'circle') {
+                        reconstructedCircles++;
+                        this.debug(`  Reconstructed circle: r=${prim.radius.toFixed(3)}, coverage=${(prim.properties.coverage * 100).toFixed(1)}%`);
+                    } else if (prim.type === 'path') {
+                        reconstructedPaths++;
+                        if (prim.arcSegments && prim.arcSegments.length > 0) {
+                            pathsWithArcs++;
+                            totalArcSegments += prim.arcSegments.length;
+                        }
+                    }
+                }
+            });
+            
+            this.debug(`Reconstruction verification:`);
+            this.debug(`  Circles reconstructed: ${reconstructedCircles}`);
+            this.debug(`  Paths with arc segments: ${pathsWithArcs}`);
+            this.debug(`  Total arc segments: ${totalArcSegments}`);
         }
         
         // Preprocess primitives with curve ID preservation

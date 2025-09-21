@@ -402,7 +402,7 @@ window.PCBCAMConfig = {
         modal: {
             totalPages: 3,
             titles: [
-                '📝 PCB Preview & Fusion Setup',
+                '🔍 PCB Preview & Fusion Setup',
                 '⚙️ Offset Geometry Configuration',
                 '🛠️ Toolpath Generation'
             ],
@@ -471,7 +471,7 @@ window.PCBCAMConfig = {
             fusionOperations: true,
             fileOperations: false,
             toolpathGeneration: false,
-            curveRegistration: true      // NEW: track curve registration
+            curveRegistration: true      // Track curve registration
         },
         
         // Visualization
@@ -556,7 +556,8 @@ window.PCBCAMConfig = {
             if (metadata.type === 'arc') {
                 const roundedStartAngle = Math.round((metadata.startAngle || 0) * this.hashPrecision) / this.hashPrecision;
                 const roundedEndAngle = Math.round((metadata.endAngle || Math.PI * 2) * this.hashPrecision) / this.hashPrecision;
-                str += `_${roundedStartAngle}_${roundedEndAngle}_${metadata.clockwise || false}`;
+                // Include direction in hash for arcs
+                str += `_${roundedStartAngle}_${roundedEndAngle}_${metadata.isOriginalDirectionCW === true}`;
             }
             
             // Simple string hash
@@ -575,6 +576,14 @@ window.PCBCAMConfig = {
                 return null;
             }
             
+            // Ensure we have explicit direction information
+            if (metadata.isOriginalDirectionCW === undefined) {
+                if (window.PCBCAMConfig?.debug?.enabled) {
+                    console.warn('[GlobalRegistry] Missing direction information, defaulting to CCW for:', metadata);
+                }
+                metadata.isOriginalDirectionCW = false;
+            }
+            
             const hash = this.generateHash(metadata);
             
             // Check if already registered
@@ -582,9 +591,15 @@ window.PCBCAMConfig = {
                 return this.hashToId.get(hash);
             }
             
+            // Store with explicit direction
+            const curveData = {
+                ...metadata,
+                isOriginalDirectionCW: metadata.isOriginalDirectionCW
+            };
+            
             // Register new curve
             const id = this.nextId++;
-            this.registry.set(id, metadata);
+            this.registry.set(id, curveData);
             this.hashToId.set(hash, id);
             
             // Track primitive association if provided
@@ -599,10 +614,11 @@ window.PCBCAMConfig = {
             this.stats.registered++;
             if (metadata.type === 'circle') this.stats.circles++;
             else if (metadata.type === 'arc') this.stats.arcs++;
-            if (metadata.source === 'end_cap') this.stats.endCaps++;
+            if (metadata.source === 'end_cap' || metadata.source === 'arc_end_cap') this.stats.endCaps++;
             
             if (window.PCBCAMConfig?.debug?.logging?.curveRegistration) {
-                console.log(`[GlobalRegistry] Registered curve ${id}: ${metadata.type} r=${metadata.radius.toFixed(3)}`);
+                const dirStr = metadata.isOriginalDirectionCW ? 'CW' : 'CCW';
+                console.log(`[GlobalRegistry] Registered curve ${id}: ${metadata.type} r=${metadata.radius.toFixed(3)} ${dirStr} (source: ${metadata.source || 'unknown'})`);
             }
             
             return id;
