@@ -1,7 +1,7 @@
 /**
  * Clipper2 UI Module
  * UI interactions and state management
- * Version 6.9 - Added 3-button export system
+ * Version 8.2 - Fixed state corruption and hard-coded values
  */
 
 class Clipper2UI {
@@ -19,22 +19,11 @@ class Clipper2UI {
         if (this.initialized) return;
         
         try {
-            // Set up test reference
             this.tests.ui = this;
-            
-            // Initialize view states
             this.initializeViewStates();
-            
-            // Set default values in UI controls from defaults
             this.setDefaultValues();
-            
-            // Initialize event handlers
             this.initializeEventHandlers();
-            
-            // Draw all default shapes
             this.drawAllDefaults();
-            
-            // Hide loading screen
             this.hideLoading();
             
             this.initialized = true;
@@ -50,85 +39,59 @@ class Clipper2UI {
      * Set default values in UI controls from configuration
      */
     setDefaultValues() {
-        // Boolean test defaults
         const booleanOp = document.getElementById('boolean-operation');
-        if (booleanOp) {
-            booleanOp.value = 'union';
-        }
+        if (booleanOp) booleanOp.value = 'union';
         
         const booleanClip = document.getElementById('boolean-clip-shape');
-        if (booleanClip) {
-            booleanClip.value = 'circle';
-        }
+        if (booleanClip) booleanClip.value = 'circle';
         
-        // Offset test defaults
         const offsetShape = document.getElementById('offset-shape');
-        if (offsetShape) {
-            offsetShape.value = this.defaults.geometries.offset.defaults.shape;
-        }
+        if (offsetShape) offsetShape.value = this.defaults.geometries.offset.defaults.shape;
         
         const offsetType = document.getElementById('offset-type');
-        if (offsetType) {
-            offsetType.value = this.defaults.geometries.offset.defaults.type;
-        }
+        if (offsetType) offsetType.value = this.defaults.geometries.offset.defaults.type;
         
         const offsetCount = document.getElementById('offset-count');
-        if (offsetCount) {
-            offsetCount.value = this.defaults.geometries.offset.defaults.count;
-        }
+        if (offsetCount) offsetCount.value = this.defaults.geometries.offset.defaults.count;
         
         const offsetDistance = document.getElementById('offset-distance');
-        if (offsetDistance) {
-            offsetDistance.value = this.defaults.geometries.offset.defaults.distance;
-        }
+        if (offsetDistance) offsetDistance.value = this.defaults.geometries.offset.defaults.distance;
         
         const offsetJoin = document.getElementById('offset-join');
-        if (offsetJoin) {
-            offsetJoin.value = this.defaults.geometries.offset.defaults.joinType;
-        }
+        if (offsetJoin) offsetJoin.value = this.defaults.geometries.offset.defaults.joinType;
         
         const offsetMiter = document.getElementById('offset-miter-limit');
-        if (offsetMiter) {
-            offsetMiter.value = this.defaults.geometries.offset.defaults.miterLimit;
-        }
+        if (offsetMiter) offsetMiter.value = this.defaults.geometries.offset.defaults.miterLimit;
         
-        // Simplify defaults
         const simplifyTolerance = document.getElementById('simplify-tolerance');
-        if (simplifyTolerance) {
-            simplifyTolerance.value = this.defaults.geometries.simplify.defaultTolerance;
-        }
+        if (simplifyTolerance) simplifyTolerance.value = this.defaults.geometries.simplify.defaultTolerance;
         
-        // Minkowski defaults
         const minkowskiPattern = document.getElementById('minkowski-pattern');
-        if (minkowskiPattern) {
-            minkowskiPattern.value = this.defaults.geometries.minkowski.defaults.pattern;
-        }
+        if (minkowskiPattern) minkowskiPattern.value = this.defaults.geometries.minkowski.defaults.pattern;
         
         const minkowskiPath = document.getElementById('minkowski-path');
-        if (minkowskiPath) {
-            minkowskiPath.value = this.defaults.geometries.minkowski.defaults.path;
-        }
+        if (minkowskiPath) minkowskiPath.value = this.defaults.geometries.minkowski.defaults.path;
         
         const minkowskiOp = document.getElementById('minkowski-operation');
-        if (minkowskiOp) {
-            minkowskiOp.value = this.defaults.geometries.minkowski.defaults.operation;
-        }
+        if (minkowskiOp) minkowskiOp.value = this.defaults.geometries.minkowski.defaults.operation;
         
         const minkowskiSweep = document.getElementById('minkowski-sweep');
-        if (minkowskiSweep) {
-            minkowskiSweep.checked = this.defaults.geometries.minkowski.defaults.showSweep;
-        }
+        if (minkowskiSweep) minkowskiSweep.checked = this.defaults.geometries.minkowski.defaults.showSweep;
         
         const minkowskiOffset = document.getElementById('minkowski-offset');
-        if (minkowskiOffset) {
-            minkowskiOffset.checked = this.defaults.geometries.minkowski.defaults.showOffset;
-        }
+        if (minkowskiOffset) minkowskiOffset.checked = this.defaults.geometries.minkowski.defaults.showOffset;
         
-        // PIP defaults
         const pipTolerance = document.getElementById('pip-tolerance');
-        if (pipTolerance) {
-            pipTolerance.value = this.defaults.geometries.pip.edgeTolerance;
-        }
+        if (pipTolerance) pipTolerance.value = this.defaults.geometries.pip.edgeTolerance;
+        
+        const arcOp = document.getElementById('arc-operation');
+        if (arcOp) arcOp.value = 'union';
+        
+        const arcReconstruct = document.getElementById('arc-reconstruct-toggle');
+        if (arcReconstruct) arcReconstruct.checked = true;
+        
+        const arcMetadata = document.getElementById('arc-show-metadata');
+        if (arcMetadata) arcMetadata.checked = false;
     }
 
     /**
@@ -137,7 +100,7 @@ class Clipper2UI {
     initializeViewStates() {
         const testNames = [
             'boolean', 'letter-b', 'nested', 'offset',
-            'simplify', 'pcb-fusion', 'area', 'pip', 'minkowski'
+            'simplify', 'pcb-fusion', 'area', 'pip', 'minkowski', 'arc-reconstruction'
         ];
         
         testNames.forEach(name => {
@@ -149,7 +112,6 @@ class Clipper2UI {
      * Initialize event handlers for all controls
      */
     initializeEventHandlers() {
-        // Boolean test controls
         const booleanOp = document.getElementById('boolean-operation');
         if (booleanOp) {
             booleanOp.addEventListener('change', (e) => {
@@ -166,7 +128,6 @@ class Clipper2UI {
             });
         }
         
-        // Offset test controls
         const offsetShape = document.getElementById('offset-shape');
         if (offsetShape) {
             offsetShape.addEventListener('change', (e) => {
@@ -211,21 +172,15 @@ class Clipper2UI {
             });
         }
         
-        // Simplify tolerance control
         const simplifyTolerance = document.getElementById('simplify-tolerance');
         if (simplifyTolerance) {
             simplifyTolerance.addEventListener('input', (e) => {
                 this.tests.updateTestState('simplify', 'tolerance', parseFloat(e.target.value));
-                const value = e.target.value;
-                // Update display if there's a value indicator
                 const valueDisplay = document.getElementById('simplify-tolerance-value');
-                if (valueDisplay) {
-                    valueDisplay.textContent = value;
-                }
+                if (valueDisplay) valueDisplay.textContent = e.target.value;
             });
         }
         
-        // Minkowski test controls
         const minkowskiPattern = document.getElementById('minkowski-pattern');
         if (minkowskiPattern) {
             minkowskiPattern.addEventListener('change', (e) => {
@@ -266,7 +221,6 @@ class Clipper2UI {
             });
         }
         
-        // PIP test controls
         const pipTolerance = document.getElementById('pip-tolerance');
         if (pipTolerance) {
             pipTolerance.addEventListener('input', (e) => {
@@ -275,30 +229,139 @@ class Clipper2UI {
             });
         }
         
-        // Setup draggable shapes
+        const arcOp = document.getElementById('arc-operation');
+        if (arcOp) {
+            arcOp.addEventListener('change', (e) => {
+                this.tests.updateTestState('arc-reconstruction', 'operation', e.target.value);
+                this.updateResult('arc-reconstruction-result', 'Operation changed - click "Run Test" to update');
+            });
+        }
+        
+        const arcReconstruct = document.getElementById('arc-reconstruct-toggle');
+        if (arcReconstruct) {
+            arcReconstruct.addEventListener('change', (e) => {
+                this.tests.updateTestState('arc-reconstruction', 'showReconstruction', e.target.checked);
+            });
+        }
+        
+        const arcMetadata = document.getElementById('arc-show-metadata');
+        if (arcMetadata) {
+            arcMetadata.addEventListener('change', (e) => {
+                this.tests.updateTestState('arc-reconstruction', 'showMetadata', e.target.checked);
+            });
+        }
+        
+        this.setupDraggableArcReconstruction();
         this.setupDraggableBoolean();
         this.setupDraggableNested();
-        
-        // Setup PIP canvas immediately
         this.setupPIPCanvas();
-        
-        // Setup area test properly with separate buttons
         this.setupAreaTest();
     }
 
     /**
-     * Setup area test - make canvas clickable from page load
+     * Setup draggable circles for arc reconstruction
+     */
+    setupDraggableArcReconstruction() {
+        const canvas = document.getElementById('arc-reconstruction-canvas');
+        if (!canvas) return;
+        
+        let draggingCircle = null;
+        let dragOffset = { x: 0, y: 0 };
+        
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            
+            const state = this.tests.getTestState('arc-reconstruction');
+            
+            const dist1 = Math.sqrt(
+                Math.pow(x - state.circle1Pos.x, 2) + 
+                Math.pow(y - state.circle1Pos.y, 2)
+            );
+            if (dist1 <= state.circle1Radius) {
+                draggingCircle = 'circle1';
+                dragOffset = { x: x - state.circle1Pos.x, y: y - state.circle1Pos.y };
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+            
+            const dist2 = Math.sqrt(
+                Math.pow(x - state.circle2Pos.x, 2) + 
+                Math.pow(y - state.circle2Pos.y, 2)
+            );
+            if (dist2 <= state.circle2Radius) {
+                draggingCircle = 'circle2';
+                dragOffset = { x: x - state.circle2Pos.x, y: y - state.circle2Pos.y };
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (!draggingCircle) {
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+                const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+                
+                const state = this.tests.getTestState('arc-reconstruction');
+                const dist1 = Math.sqrt(Math.pow(x - state.circle1Pos.x, 2) + Math.pow(y - state.circle1Pos.y, 2));
+                const dist2 = Math.sqrt(Math.pow(x - state.circle2Pos.x, 2) + Math.pow(y - state.circle2Pos.y, 2));
+                
+                if (dist1 <= state.circle1Radius || dist2 <= state.circle2Radius) {
+                    canvas.style.cursor = 'grab';
+                } else {
+                    canvas.style.cursor = 'default';
+                }
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            
+            const radius = draggingCircle === 'circle1' ? 
+                this.tests.getTestState('arc-reconstruction').circle1Radius :
+                this.tests.getTestState('arc-reconstruction').circle2Radius;
+            
+            const canvasSize = this.defaults.config.canvasWidth;
+            const newPos = {
+                x: Math.max(radius, Math.min(canvasSize - radius, x - dragOffset.x)),
+                y: Math.max(radius, Math.min(canvasSize - radius, y - dragOffset.y))
+            };
+            
+            if (draggingCircle === 'circle1') {
+                this.tests.updateTestState('arc-reconstruction', 'circle1Pos', newPos);
+            } else if (draggingCircle === 'circle2') {
+                this.tests.updateTestState('arc-reconstruction', 'circle2Pos', newPos);
+            }
+            
+            this.drawDefaultArcReconstruction();
+            this.updateResult('arc-reconstruction-result', 'Circles repositioned - click "Run Test" to update');
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            draggingCircle = null;
+            canvas.style.cursor = 'default';
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            draggingCircle = null;
+            canvas.style.cursor = 'default';
+        });
+    }
+
+    /**
+     * Setup area test
      */
     setupAreaTest() {
         const canvas = document.getElementById('area-canvas');
         if (!canvas) return;
-        
-        // Initialize the area test immediately
         this.tests.initializeAreaTest();
     }
 
     /**
-     * Setup PIP canvas click handler immediately - FIXED
+     * Setup PIP canvas click handler
      */
     setupPIPCanvas() {
         const canvas = document.getElementById('pip-canvas');
@@ -331,7 +394,6 @@ class Clipper2UI {
             }
         };
         
-        // Initially run the test to set up the polygon
         this.tests.testPointInPolygon();
     }
 
@@ -347,11 +409,9 @@ class Clipper2UI {
         canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e, 'boolean'));
         canvas.addEventListener('mouseleave', (e) => this.handleMouseUp(e, 'boolean'));
         
-        // Touch support
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
-            const rect = canvas.getBoundingClientRect();
             const mouseEvent = new MouseEvent('mousedown', {
                 clientX: touch.clientX,
                 clientY: touch.clientY
@@ -389,40 +449,66 @@ class Clipper2UI {
     }
 
     /**
+     * Get clip shape radius from defaults
+     */
+    getClipRadius(clipShape) {
+        const clipDef = this.defaults.geometries.boolean.clips[clipShape];
+        if (!clipDef) return 160; // fallback
+        
+        if (clipDef.radius) return clipDef.radius;
+        if (clipDef.outerRadius) return clipDef.outerRadius;
+        if (clipDef.avgRadius) return clipDef.avgRadius;
+        
+        // For polygon shapes, calculate bounding radius
+        if (clipDef.data) {
+            let maxDist = 0;
+            clipDef.data.forEach(pt => {
+                const dist = Math.sqrt(pt[0] * pt[0] + pt[1] * pt[1]);
+                maxDist = Math.max(maxDist, dist);
+            });
+            return maxDist;
+        }
+        
+        return 160; // fallback
+    }
+
+    /**
      * Mouse down handler
      */
     handleMouseDown(event, testName) {
-        const rect = event.target.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
+        const canvas = event.target;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (event.clientX - rect.left) * scaleX;
+        const y = (event.clientY - rect.top) * scaleY;
         
         const state = this.tests.getTestState(testName);
         
         if (testName === 'boolean') {
-            // Only drag the clip shape (subject is fixed)
-            const clipRadius = 90; // Approximate radius for hit detection
+            const clipRadius = this.getClipRadius(state.clipShape);
             if (Math.sqrt(Math.pow(x - state.clipPos.x, 2) + 
                          Math.pow(y - state.clipPos.y, 2)) <= clipRadius) {
                 this.dragInfo = {
                     isDragging: true,
                     shape: 'clip',
-                    offset: { x: x - state.clipPos.x, y: y - state.clipPos.y }
+                    offset: { x: x - state.clipPos.x, y: y - state.clipPos.y },
+                    radius: clipRadius
                 };
             }
         } else if (testName === 'nested') {
-            // Check islands
             const island1 = state.island1Pos;
             const island2 = state.island2Pos;
             
-            if (x >= island1.x && x <= island1.x + 100 &&
-                y >= island1.y && y <= island1.y + 100) {
+            if (x >= island1.x && x <= island1.x + 200 &&
+                y >= island1.y && y <= island1.y + 200) {
                 this.dragInfo = {
                     isDragging: true,
                     shape: 'island1',
                     offset: { x: x - island1.x, y: y - island1.y }
                 };
-            } else if (x >= island2.x && x <= island2.x + 80 &&
-                       y >= island2.y && y <= island2.y + 80) {
+            } else if (x >= island2.x && x <= island2.x + 160 &&
+                       y >= island2.y && y <= island2.y + 160) {
                 this.dragInfo = {
                     isDragging: true,
                     shape: 'island2',
@@ -440,19 +526,21 @@ class Clipper2UI {
      * Mouse move handler
      */
     handleMouseMove(event, testName) {
-        const rect = event.target.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
+        const canvas = event.target;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (event.clientX - rect.left) * scaleX;
+        const y = (event.clientY - rect.top) * scaleY;
         
         if (!this.dragInfo?.isDragging) {
-            // Update hover cursor
             const state = this.tests.getTestState(testName);
             let hovering = false;
             
             if (testName === 'boolean') {
-                // Only check clip shape (subject is fixed)
+                const clipRadius = this.getClipRadius(state.clipShape);
                 if (Math.sqrt(Math.pow(x - state.clipPos.x, 2) + 
-                             Math.pow(y - state.clipPos.y, 2)) <= 90) {
+                             Math.pow(y - state.clipPos.y, 2)) <= clipRadius) {
                     hovering = true;
                 }
             }
@@ -461,9 +549,13 @@ class Clipper2UI {
             return;
         }
         
-        // Handle dragging
-        const newX = Math.max(20, Math.min(380, x - this.dragInfo.offset.x));
-        const newY = Math.max(20, Math.min(380, y - this.dragInfo.offset.y));
+        const canvasSize = this.defaults.config.canvasWidth;
+        const clipRadius = this.dragInfo.radius || 160;
+        const margin = this.defaults.config.draggableMargin || 20;
+        const minBound = clipRadius + margin;
+        const maxBound = canvasSize - clipRadius - margin;
+        const newX = Math.max(minBound, Math.min(maxBound, x - this.dragInfo.offset.x));
+        const newY = Math.max(minBound, Math.min(maxBound, y - this.dragInfo.offset.y));
         
         if (testName === 'boolean') {
             if (this.dragInfo.shape === 'clip') {
@@ -503,83 +595,68 @@ class Clipper2UI {
         if (!canvas) return;
         
         const state = this.tests.getTestState(testName);
+        const canvasSize = this.defaults.config.canvasWidth;
         
         if (testName === 'nested') {
-            // Create proper nested structure with holes
-            const nestedDef = this.defaults.geometries.nested;
-            
-            // Clear canvas
             this.tests.rendering.clearCanvas(canvas);
             const ctx = canvas.getContext('2d');
             
-            // Draw main frame with hole
             ctx.fillStyle = this.tests.rendering.resolveStyleValue('var(--shape-fill)');
             ctx.strokeStyle = this.tests.rendering.resolveStyleValue('var(--shape-stroke)');
             ctx.lineWidth = 2;
             
-            // Use even-odd fill rule for proper holes
             ctx.beginPath();
-            // Outer frame
-            ctx.rect(50, 50, 300, 300);
-            // Inner hole (drawn in opposite direction)
-            ctx.rect(100, 100, 200, 200);
+            ctx.rect(100, 100, 600, 600);
+            ctx.rect(200, 200, 400, 400);
             ctx.fill('evenodd');
             ctx.stroke();
             
-            // Draw islands with holes
-            // Island 1
             ctx.fillStyle = 'rgba(16, 185, 129, 0.4)';
             ctx.strokeStyle = '#10b981';
             ctx.beginPath();
-            // Outer
-            ctx.rect(state.island1Pos.x, state.island1Pos.y, 100, 100);
-            // Inner hole
-            ctx.rect(state.island1Pos.x + 30, state.island1Pos.y + 30, 40, 40);
+            ctx.rect(state.island1Pos.x, state.island1Pos.y, 200, 200);
+            ctx.rect(state.island1Pos.x + 60, state.island1Pos.y + 60, 80, 80);
             ctx.fill('evenodd');
             ctx.stroke();
             
-            // Island 2
             ctx.fillStyle = 'rgba(245, 158, 11, 0.4)';
             ctx.strokeStyle = '#f59e0b';
             ctx.beginPath();
-            // Outer
-            ctx.rect(state.island2Pos.x, state.island2Pos.y, 80, 80);
-            // Inner hole
-            ctx.rect(state.island2Pos.x + 20, state.island2Pos.y + 20, 40, 40);
+            ctx.rect(state.island2Pos.x, state.island2Pos.y, 160, 160);
+            ctx.rect(state.island2Pos.x + 40, state.island2Pos.y + 40, 80, 80);
             ctx.fill('evenodd');
             ctx.stroke();
             
-            ctx.font = '12px Arial';
+            ctx.font = '16px Arial';
             ctx.fillStyle = '#6b7280';
             ctx.textAlign = 'center';
-            ctx.fillText('Drag smaller frames to position', 200, 380);
+            ctx.fillText('Drag smaller frames to position', canvasSize / 2, canvasSize - 50);
             
         } else if (testName === 'boolean') {
             const shapes = {};
             
-            // Subject is fixed at center   
             shapes.subject = {
                 type: 'rect',
-                x: state.subjectPos.x - 100,
-                y: state.subjectPos.y - 100,
-                width: 200,
-                height: 200,
+                x: state.subjectPos.x - 200,
+                y: state.subjectPos.y - 200,
+                width: 400,
+                height: 400,
                 color: 'var(--subject-stroke)'
             };
             
             const clipShape = state.clipShape;
+            const clipRadius = this.getClipRadius(clipShape);
             
             if (clipShape === 'circle') {
                 shapes.clip = {
                     type: 'circle',
                     x: state.clipPos.x,
                     y: state.clipPos.y,
-                    radius: 80,
+                    radius: clipRadius,
                     color: 'var(--clip-stroke)'
                 };
-            } else if (clipShape === 'rabbit' && state.rabbitPath) {
-                // Draw rabbit shape
-                const coords = state.rabbitPath.map(pt => [
+            } else if (clipShape === 'rabbit' && this.tests.rabbitPath) {
+                const coords = this.tests.rabbitPath.map(pt => [
                     pt[0] + state.clipPos.x,
                     pt[1] + state.clipPos.y
                 ]);
@@ -598,7 +675,8 @@ class Clipper2UI {
                     coords = clipDef.data.map(pt => [pt[0] + state.clipPos.x, pt[1] + state.clipPos.y]);
                 } else if (clipShape === 'star') {
                     coords = this.defaults.generators.star(
-                        state.clipPos.x, state.clipPos.y, 80, 40, 5
+                        state.clipPos.x, state.clipPos.y, 
+                        clipDef.outerRadius, clipDef.innerRadius, clipDef.points
                     );
                 } else if (clipShape === 'random' && state.randomShape) {
                     coords = state.randomShape.map(pt => [pt[0] + state.clipPos.x, pt[1] + state.clipPos.y]);
@@ -616,10 +694,10 @@ class Clipper2UI {
             this.tests.rendering.drawShapePreview(shapes, canvas);
             
             const ctx = canvas.getContext('2d');
-            ctx.font = '12px Arial';
+            ctx.font = '16px Arial';
             ctx.fillStyle = '#6b7280';
             ctx.textAlign = 'center';
-            ctx.fillText('Drag red shape to position', 200, 380);
+            ctx.fillText('Drag red shape to position', canvasSize / 2, canvasSize - 50);
         }
     }
 
@@ -636,6 +714,7 @@ class Clipper2UI {
         this.drawDefaultPIP();
         this.drawDefaultMinkowski();
         this.drawDefaultArea();
+        this.drawDefaultArcReconstruction();
     }
 
     drawDefaultBoolean() {
@@ -683,13 +762,11 @@ class Clipper2UI {
         const coords = this.tests.geometry.parseSVGPath(
             simplifyDef.path,
             simplifyDef.scale,
-            [85, 10] // Center on canvas
+            simplifyDef.position
         );
         
         if (coords && coords.length > 0) {
             this.tests.rendering.drawSimplePaths([coords], 'simplify-canvas', this.defaults.styles.default);
-        } else {
-            console.warn('[UI] Could not draw default for simplify test.');
         }
     }
 
@@ -713,10 +790,8 @@ class Clipper2UI {
         const patternDef = this.defaults.geometries.minkowski.patterns[state.pattern];
         const pathDef = this.defaults.geometries.minkowski.paths[state.path];
         
-        // Clear canvas
         this.tests.rendering.clearCanvas(canvas);
         
-        // Draw path
         if (pathDef) {
             this.tests.rendering.drawSimplePaths([pathDef.data], canvas, {
                 fillOuter: 'none',
@@ -726,12 +801,11 @@ class Clipper2UI {
             });
         }
         
-        // Draw pattern at default position
         if (patternDef) {
             let patternCoords;
             if (patternDef.type === 'parametric') {
                 patternCoords = this.defaults.generators[patternDef.shape](
-                    100, 200, // Default position
+                    100, 200,
                     patternDef.radius || patternDef.outerRadius,
                     patternDef.innerRadius,
                     patternDef.points
@@ -748,7 +822,6 @@ class Clipper2UI {
             });
         }
         
-        // Add labels
         const ctx = canvas.getContext('2d');
         ctx.font = '12px Arial';
         ctx.fillStyle = '#6b7280';
@@ -756,15 +829,53 @@ class Clipper2UI {
     }
 
     drawDefaultArea() {
-        // Area test initializes itself in setupAreaTest
-        // Just ensure it's ready
         const areaCanvas = document.getElementById('area-canvas');
         if (areaCanvas) {
-            // The test should already be initialized, but if not, do it now
             if (!this.tests.testState.area.isDrawing) {
                 this.tests.initializeAreaTest();
             }
         }
+    }
+
+    /**
+     * Draw default arc reconstruction
+     */
+    drawDefaultArcReconstruction() {
+        const canvas = document.getElementById('arc-reconstruction-canvas');
+        if (!canvas) return;
+        
+        const state = this.tests.getTestState('arc-reconstruction');
+        
+        this.tests.rendering.clearCanvas(canvas);
+        this.tests.rendering.drawGrid(canvas, this.defaults.config.gridSize);
+        
+        const ctx = canvas.getContext('2d');
+        
+        ctx.strokeStyle = '#3b82f6';
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.arc(state.circle1Pos.x, state.circle1Pos.y, state.circle1Radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.strokeStyle = '#10b981';
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+        
+        ctx.beginPath();
+        ctx.arc(state.circle2Pos.x, state.circle2Pos.y, state.circle2Radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#6b7280';
+        ctx.textAlign = 'center';
+        ctx.fillText('Circle 1', state.circle1Pos.x, state.circle1Pos.y - state.circle1Radius - 10);
+        ctx.fillText('Circle 2', state.circle2Pos.x, state.circle2Pos.y - state.circle2Radius - 10);
+        
+        ctx.textAlign = 'left';
+        ctx.fillText('Drag circles to position', 10, 20);
     }
 
     /**
@@ -784,8 +895,7 @@ class Clipper2UI {
                 );
                 this.tests.updateTestState('boolean', 'randomShape', randomShape);
             } else if (state.clipShape === 'rabbit') {
-                // Rabbit path is already pre-parsed in tests initialization
-                // Just redraw
+                // Rabbit path is already pre-parsed
             } else {
                 this.tests.updateTestState('boolean', 'randomShape', null);
             }
@@ -806,7 +916,7 @@ class Clipper2UI {
     }
 
     /**
-     * Reset view to default - FIXED area test cleanup
+     * Reset view to default - FIXED array spread issue
      */
     resetView(testName) {
         this.viewStates.set(testName, false);
@@ -821,37 +931,50 @@ class Clipper2UI {
             infoElement.textContent = '';
         }
         
-        // Set card status
         const card = document.querySelector(`[data-test="${testName}"]`);
         if (card) {
             card.dataset.status = '';
         }
         
-        // Redraw defaults
         switch(testName) {
             case 'boolean': 
-                // Reset clip position when resetting
-                this.tests.testState.boolean.clipPos = { x: 100, y: 100 };
+                // Use defaults from config
+                const boolDefaults = this.defaults.geometries.boolean.clips.circle;
+                // FIXED: Correctly handle array to object conversion
+                this.tests.testState.boolean.clipPos = {
+                    x: boolDefaults.initialPos[0],
+                    y: boolDefaults.initialPos[1]
+                };
                 this.drawDefaultBoolean(); 
                 break;
-            case 'letter-b': this.drawDefaultLetterB(); break;
-            case 'nested': this.drawDefaultNested(); break;
-            case 'offset': this.drawDefaultOffset(); break;
-            case 'simplify': this.drawDefaultSimplify(); break;
-            case 'pcb-fusion': this.drawDefaultPCB(); break;
+            case 'letter-b': 
+                this.drawDefaultLetterB(); 
+                break;
+            case 'nested': 
+                this.tests.testState.nested.island1Pos = { x: 300, y: 300 };
+                this.tests.testState.nested.island2Pos = { x: 500, y: 500 };
+                this.drawDefaultNested(); 
+                break;
+            case 'offset': 
+                this.drawDefaultOffset(); 
+                break;
+            case 'simplify': 
+                this.drawDefaultSimplify(); 
+                break;
+            case 'pcb-fusion': 
+                this.drawDefaultPCB(); 
+                break;
             case 'pip': 
                 this.tests.testState.pip.points = [];
                 this.drawDefaultPIP(); 
                 break;
             case 'area':
-                // Reset area test to initial clickable state
                 this.tests.testState.area.points = [];
                 this.tests.testState.area.isDrawing = false;
                 this.tests.testState.area.lastPolygonPath = null;
                 this.tests.initializeAreaTest();
                 break;
             case 'minkowski':
-                // Reset minkowski controls to defaults
                 const patternSelect = document.getElementById('minkowski-pattern');
                 const pathSelect = document.getElementById('minkowski-path');
                 const opSelect = document.getElementById('minkowski-operation');
@@ -866,20 +989,24 @@ class Clipper2UI {
                 
                 this.drawDefaultMinkowski();
                 break;
+            case 'arc-reconstruction':
+                const defaults = this.defaults.geometries['arc-reconstruction'].defaults;
+                this.tests.testState['arc-reconstruction'].circle1Pos = { ...defaults.circle1Pos };
+                this.tests.testState['arc-reconstruction'].circle2Pos = { ...defaults.circle2Pos };
+                this.tests.testState['arc-reconstruction'].circle1Radius = defaults.circle1Radius;
+                this.tests.testState['arc-reconstruction'].circle2Radius = defaults.circle2Radius;
+                this.drawDefaultArcReconstruction();
+                break;
         }
         
         const label = document.getElementById(`${testName}-label`);
         if (label) label.textContent = this.defaults.labels.inputGeometry;
     }
 
-    /**
-     * Handle export button clicks - NEW METHOD
-     */
     handleExport(testName, dataType) {
         this.tests.exportSVG(testName, dataType);
     }
 
-    // Utility methods
     hideLoading() {
         const loading = document.getElementById('loading');
         if (loading) loading.classList.remove('active');
@@ -914,7 +1041,6 @@ class Clipper2UI {
         if (element) {
             element.textContent = message;
             
-            // Update card status based on result
             const testName = elementId.replace('-result', '');
             const card = document.querySelector(`[data-test="${testName}"]`);
             if (card) {

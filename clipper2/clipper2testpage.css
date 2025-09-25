@@ -61,7 +61,7 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
 }
 
@@ -72,6 +72,17 @@ h1 {
     display: flex;
     align-items: center;
     gap: 1rem;
+}
+
+.welcome-message {
+    margin: -1rem 0 2rem 0;
+    padding: 1.5rem;
+    background: var(--surface);
+    border-left: 5px solid var(--primary);
+    color: var(--text-secondary);
+    font-size: 1rem;
+    line-height: 1.6;
+    border-radius: 0 8px 8px 0;
 }
 
 .version-badge {
@@ -173,13 +184,13 @@ h1 {
     margin-bottom: 1rem;
 }
 
-/* Canvas Container */
+/* Canvas Container - FIXED: Standardized grid layout for all test cards */
 .canvas-container {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 1rem;
+    display: grid;
+    grid-template-columns: 800px 1fr;
     gap: 2rem;
-    flex-wrap: wrap;
+    align-items: start;
+    margin-bottom: 1rem;
 }
 
 .canvas-wrapper {
@@ -188,13 +199,23 @@ h1 {
     border: 2px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
+    width: 800px;
+    height: 800px;
 }
 
+/* Style for controls panel - now applies to all cards */
+.controls-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Canvas elements - consistent 800x800 sizing */
 canvas {
     display: block;
-    width: 400px;
-    height: 400px;
-    image-rendering: crisp-edges;
+    width: 800px;
+    height: 800px;
+    image-rendering: optimizeQuality;
 }
 
 /* Controls */
@@ -369,7 +390,6 @@ canvas {
     border-radius: 4px;
     font-size: 0.75rem;
     font-family: 'Consolas', 'Monaco', monospace;
-    max-height: 150px;
     overflow-y: auto;
     white-space: pre-wrap;
     line-height: 1.4;
@@ -415,6 +435,7 @@ canvas {
     gap: 1rem;
     margin-bottom: 0.5rem;
     font-size: 0.75rem;
+    flex-wrap: wrap;
 }
 
 .legend-item {
@@ -579,15 +600,27 @@ canvas {
     margin-top: 1rem;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-    canvas {
-        width: 100%;
-        max-width: 400px;
-        height: auto;
-        aspect-ratio: 1;
+/* Responsive Design - Updated for 800x800 layout */
+@media (max-width: 1200px) {
+    .canvas-container {
+        grid-template-columns: 1fr;
     }
     
+    .canvas-wrapper {
+        width: 100%;
+        max-width: 800px;
+        height: auto;
+        aspect-ratio: 1 / 1;
+        margin: 0 auto;
+    }
+
+    canvas {
+        width: 100%;
+        height: 100%;
+    }
+}
+
+@media (max-width: 768px) {
     .test-header {
         flex-direction: column;
         align-items: flex-start;
@@ -610,4 +643,3 @@ canvas {
         min-width: auto;
     }
 }
-

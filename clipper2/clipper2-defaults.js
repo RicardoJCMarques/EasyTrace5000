@@ -1,7 +1,7 @@
 /**
  * Clipper2 Defaults Module
  * Central configuration for geometry, algorithms, and test data
- * Version 4.6 - Improved visualization styles
+ * Version 5.3 - Added centralized constants for draggable bounds
  */
 
 // Define reusable SVG path data to avoid duplication
@@ -10,161 +10,203 @@ const SVG_PATHS = {
 };
 
 const Clipper2Defaults = {
-    // System configuration - Algorithm and calculation parameters
+    // System configuration - Centralized constants
     config: {
-        scale: 1000,            // Clipper2 integer scaling factor
-        polygonResolution: 64,  // Segments for circles/arcs
-        precision: 6,           // Decimal precision
-        miterLimit: 10,         // Default miter limit for offsets
-        // Internal canvas resolution for geometric calculations
-        canvasWidth: 400,       
-        canvasHeight: 400,
-        gridSize: 20,           // Grid spacing for drawing operations
-        debugMode: false        // Debug logging flag
+        scale: 1000,            
+        polygonResolution: 64,  
+        precision: 6,           
+        miterLimit: 10,         
+        canvasWidth: 800,         // Centralized canvas width
+        canvasHeight: 800,        // Centralized canvas height
+        gridSize: 40,             
+        debugMode: false,
+        draggableMargin: 20       // Margin for draggable shapes from canvas edges
     },
     
-    // Geometry definitions - Pure coordinate data
+    // Geometry definitions - All properly scaled for 800x800
     geometries: {
-        // Letter B - defined as strokes with width
         letterB: {
             type: 'strokes',
-            strokeWidth: 10,
+            strokeWidth: 20,
             data: [
-                { type: 'line', from: [100, 50], to: [100, 290] },
-                { type: 'line', from: [100, 80], to: [200, 80] },
-                { type: 'arc', center: [200, 110], radius: 30, start: -90, end: 90 },
-                { type: 'line', from: [200, 140], to: [100, 140] },
-                { type: 'line', from: [100, 200], to: [210, 200] },
-                { type: 'arc', center: [210, 235], radius: 35, start: -90, end: 90 },
-                { type: 'line', from: [210, 270], to: [100, 270] }
+                { type: 'line', from: [200, 100], to: [200, 580] },
+                { type: 'line', from: [200, 160], to: [400, 160] },
+                { type: 'arc', center: [400, 220], radius: 60, start: -90, end: 90 },
+                { type: 'line', from: [400, 280], to: [200, 280] },
+                { type: 'line', from: [200, 400], to: [420, 400] },
+                { type: 'arc', center: [420, 470], radius: 70, start: -90, end: 90 },
+                { type: 'line', from: [420, 540], to: [200, 540] }
             ]
         },
         
-        // PCB Fusion - traces and pads with geometric properties
         pcbFusion: {
             type: 'pcb',
-            traceWidth: 12,
+            traceWidth: 24,
             traces: [
-                { from: [50, 200], to: [350, 200] },
-                { from: [150, 100], to: [150, 300] },
-                { from: [250, 100], to: [350, 300] },
-                { from: [150, 100], to: [250, 100] },
-                { from: [150, 300], to: [350, 300] }
+                { from: [100, 400], to: [700, 400] },
+                { from: [300, 200], to: [300, 600] },
+                { from: [500, 200], to: [700, 600] },
+                { from: [300, 200], to: [500, 200] },
+                { from: [300, 600], to: [700, 600] }
             ],
             pads: [
-                { center: [50, 200], radius: 20 },
-                { center: [150, 200], radius: 25 },
-                { center: [250, 200], radius: 25 },
-                { center: [350, 200], radius: 20 },
-                { center: [150, 100], radius: 20 },
-                { center: [150, 300], radius: 20 },
-                { center: [250, 100], radius: 20 },
-                { center: [350, 300], radius: 20 }
+                { center: [100, 400], radius: 40 },
+                { center: [300, 400], radius: 50 },
+                { center: [500, 400], radius: 50 },
+                { center: [700, 400], radius: 40 },
+                { center: [300, 200], radius: 40 },
+                { center: [300, 600], radius: 40 },
+                { center: [500, 200], radius: 40 },
+                { center: [700, 600], radius: 40 }
             ]
         },
         
-        // Boolean operation shapes - coordinate data only
+        // Boolean operation shapes - properly centered for 800x800
         boolean: {
             subject: {
                 type: 'polygon',
-                data: [[100, 100], [300, 100], [300, 300], [100, 300]]
+                data: [[200, 200], [600, 200], [600, 600], [200, 600]]
             },
             clips: {
                 circle: {
                     type: 'parametric',
                     shape: 'circle',
-                    center: [200, 200],
-                    radius: 80,
-                    initialPos: [200, 200]
+                    center: [0, 0],
+                    radius: 160,
+                    initialPos: [200, 200]  // Array format for initial position
                 },
                 triangle: {
                     type: 'polygon',
-                    data: [[0, -80], [70, 40], [-70, 40]],  // Relative to center
-                    initialPos: [200, 200]
+                    data: [[0, -160], [140, 80], [-140, 80]],
+                    initialPos: [500, 400],
+                    boundingRadius: 160  // Pre-calculated for dragging bounds
                 },
                 square: {
                     type: 'polygon',
-                    data: [[-75, -75], [75, -75], [75, 75], [-75, 75]],  // Relative
-                    initialPos: [200, 200]
+                    data: [[-150, -150], [150, -150], [150, 150], [-150, 150]],
+                    initialPos: [500, 400],
+                    boundingRadius: 150
                 },
                 star: {
                     type: 'parametric',
                     shape: 'star',
-                    outerRadius: 80,
-                    innerRadius: 40,
+                    outerRadius: 160,
+                    innerRadius: 80,
                     points: 5,
-                    initialPos: [200, 200]
+                    initialPos: [500, 400]
                 },
                 random: {
                     type: 'parametric',
                     shape: 'random',
-                    avgRadius: 70,
-                    variance: 30,
+                    avgRadius: 140,
+                    variance: 60,
                     points: 8,
-                    initialPos: [200, 200]
+                    initialPos: [500, 400]
                 },
                 rabbit: {
                     type: 'svg',
                     path: SVG_PATHS.rabbit,
-                    scale: 0.3, // Specific scale for this test
-                    initialPos: [200, 200]
+                    scale: 0.6,
+                    initialPos: [500, 400],
+                    boundingRadius: 160  // Approximate for dragging
                 }
             }
         },
         
-        // Nested structure
+        // Nested structure - properly scaled
         nested: {
             frame: {
                 type: 'polygon',
-                outer: [[50, 50], [350, 50], [350, 350], [50, 350]],
-                inner: [[100, 100], [300, 100], [300, 300], [100, 300]]
+                outer: [[100, 100], [700, 100], [700, 700], [100, 700]],
+                inner: [[200, 200], [600, 200], [600, 600], [200, 600]]
             },
             islands: [
                 {
                     type: 'polygon',
-                    outer: [[150, 150], [250, 150], [250, 250], [150, 250]],
-                    inner: [[180, 180], [220, 180], [220, 220], [180, 220]]
+                    outer: [[300, 300], [500, 300], [500, 500], [300, 500]],
+                    inner: [[360, 360], [440, 360], [440, 440], [360, 440]]
                 },
                 {
                     type: 'polygon',
-                    outer: [[250, 250], [330, 250], [330, 330], [250, 330]],
-                    inner: [[270, 270], [310, 270], [310, 310], [270, 310]]
+                    outer: [[500, 500], [660, 500], [660, 660], [500, 660]],
+                    inner: [[540, 540], [620, 540], [620, 620], [540, 620]]
                 }
-            ]
+            ],
+            defaults: {
+                island1Pos: { x: 300, y: 300 },
+                island2Pos: { x: 500, y: 500 }
+            }
         },
         
-        // Offset test shapes
+        // Arc Reconstruction with adjusted thresholds
+        'arc-reconstruction': {
+            shapes: {
+                circle1: {
+                    type: 'circle',
+                    center: { x: 300, y: 400 },
+                    radius: 90,
+                    segments: 96  // Increased for better reconstruction
+                },
+                circle2: {
+                    type: 'circle', 
+                    center: { x: 500, y: 400 },
+                    radius: 70,
+                    segments: 96
+                }
+            },
+            defaults: {
+                operation: 'union',
+                showReconstruction: true,
+                showMetadata: false,
+                circle1Radius: 90,
+                circle2Radius: 70,
+                circle1Pos: { x: 300, y: 400 },
+                circle2Pos: { x: 500, y: 400 }
+            },
+            reconstruction: {
+                polygonFill: 'rgba(59, 130, 246, 0.2)',
+                polygonStroke: '#3b82f6',
+                reconstructedStroke: '#ff9900',
+                reconstructedFill: 'rgba(255, 153, 0, 0.1)',
+                reconstructedWidth: 3,
+                markerRadius: 4,
+                startMarkerColor: '#00ff00',
+                endMarkerColor: '#ff0000'
+            }
+        },
+        
+        // Offset test shapes - centered at 400,400
         offset: {
             shapes: {
                 star: {
                     type: 'parametric',
                     shape: 'star',
-                    center: [200, 200],
-                    outerRadius: 120,
-                    innerRadius: 60,
-                    points: 8
+                    center: [400, 400],
+                    outerRadius: 200,
+                    innerRadius: 100,
+                    points: 7
                 },
                 circle: {
                     type: 'parametric',
                     shape: 'circle',
-                    center: [200, 200],
-                    radius: 80
+                    center: [400, 400],
+                    radius: 200
                 },
                 square: {
                     type: 'polygon',
-                    data: [[120, 120], [280, 120], [280, 280], [120, 280]]
+                    data: [[250, 250], [550, 250], [550, 550], [250, 550]]
                 },
                 triangle: {
                     type: 'polygon',
-                    data: [[200, 80], [320, 280], [80, 280]]
+                    data: [[400, 200], [550, 500], [250, 500]]
                 },
                 bottleneck: {
                     type: 'polygon',
-                    data: [[120, 120], [280, 120], [220, 200], [280, 280], [120, 280], [180, 200]]
+                    data: [[300, 300], [500, 300], [430, 400], [500, 500], [300, 500], [370, 400]]
                 }
             },
             defaults: {
-                shape: 'star',      // Default shape to display
+                shape: 'star',
                 type: 'external',
                 count: 3,
                 distance: 10,
@@ -173,86 +215,85 @@ const Clipper2Defaults = {
             }
         },
         
-        // Minkowski geometric exploration test
         minkowski: {
             patterns: {
                 circle: {
                     type: 'parametric',
                     shape: 'circle',
                     center: [0, 0],
-                    radius: 15,
-                    displayName: 'Circle (r=15)',
-                    equivalentRadius: 15
+                    radius: 30,
+                    displayName: 'Circle (r=30)',
+                    equivalentRadius: 30
                 },
                 square: {
                     type: 'polygon',
-                    data: [[-10, -10], [10, -10], [10, 10], [-10, 10]],
-                    displayName: 'Square (20x20)',
-                    equivalentRadius: 14.14  // Diagonal from center to corner
+                    data: [[-20, -20], [20, -20], [20, 20], [-20, 20]],
+                    displayName: 'Square (40x40)',
+                    equivalentRadius: 28.28
                 },
                 triangle: {
                     type: 'polygon',
-                    data: [[0, -12], [10, 6], [-10, 6]],
+                    data: [[0, -24], [20, 12], [-20, 12]],
                     displayName: 'Triangle',
-                    equivalentRadius: 12  // Max distance from center
+                    equivalentRadius: 24
                 },
                 star: {
                     type: 'parametric',
                     shape: 'star',
                     center: [0, 0],
-                    outerRadius: 15,
-                    innerRadius: 7,
+                    outerRadius: 30,
+                    innerRadius: 14,
                     points: 5,
                     displayName: 'Star (5 points)',
-                    equivalentRadius: 15
+                    equivalentRadius: 30
                 },
                 diamond: {
                     type: 'polygon',
-                    data: [[0, -15], [10, 0], [0, 15], [-10, 0]],
+                    data: [[0, -30], [20, 0], [0, 30], [-20, 0]],
                     displayName: 'Diamond',
-                    equivalentRadius: 15
+                    equivalentRadius: 30
                 },
                 hex: {
                     type: 'polygon',
-                    data: [[15, 0], [7.5, 13], [-7.5, 13], [-15, 0], [-7.5, -13], [7.5, -13]],
+                    data: [[30, 0], [15, 26], [-15, 26], [-30, 0], [-15, -26], [15, -26]],
                     displayName: 'Hexagon',
-                    equivalentRadius: 15
+                    equivalentRadius: 30
                 }
             },
             paths: {
                 line: {
                     type: 'polygon',
-                    data: [[80, 200], [320, 200]],
+                    data: [[160, 400], [640, 400]],
                     displayName: 'Horizontal Line',
                     isClosed: false
                 },
                 triangle: {
                     type: 'polygon',
-                    data: [[200, 100], [300, 250], [100, 250]],
+                    data: [[400, 200], [600, 500], [200, 500]],
                     displayName: 'Triangle Path',
                     isClosed: true
                 },
                 square: {
                     type: 'polygon',
-                    data: [[120, 120], [280, 120], [280, 280], [120, 280]],
+                    data: [[240, 240], [560, 240], [560, 560], [240, 560]],
                     displayName: 'Square Path',
                     isClosed: true
                 },
                 concave: {
                     type: 'polygon',
-                    data: [[100, 100], [200, 100], [200, 150], [150, 150], [150, 250], [250, 250], [250, 100], [300, 100], [300, 300], [100, 300]],
+                    data: [[200, 200], [400, 200], [400, 300], [300, 300], [300, 500], [500, 500], [500, 200], [600, 200], [600, 600], [200, 600]],
                     displayName: 'Concave Path',
                     isClosed: true
                 },
                 zigzag: {
                     type: 'polygon',
-                    data: [[80, 150], [140, 250], [200, 150], [260, 250], [320, 150]],
+                    data: [[160, 300], [280, 500], [400, 300], [520, 500], [640, 300]],
                     displayName: 'Zigzag Path',
                     isClosed: false
                 },
                 lshape: {
                     type: 'polygon',
-                    data: [[100, 100], [100, 280], [280, 280]],
+                    data: [[200, 200], [200, 560], [560, 560]],
                     displayName: 'L-Shape Path',
                     isClosed: false
                 }
@@ -264,36 +305,33 @@ const Clipper2Defaults = {
                 pathClosed: true,
                 showSweep: false,
                 showOffset: false,
-                sweepSteps: 8
+                sweepSteps: 8,
+                patternPos: { x: 200, y: 400 }
             }
         },
         
-        // Simplify test - noisy flower
         simplify: {
             type: 'svg',
             path: SVG_PATHS.rabbit,
-            scale: 0.8, // Larger scale for better visibility in simplify test
-            defaultTolerance: 2
+            scale: 1.6,
+            defaultTolerance: 2,
+            position: [160, 10]
         },
         
-        // Point in polygon test
         pip: {
             type: 'polygon',
-            data: [[100, 50], [300, 100], [350, 200], [250, 350], [50, 300], [50, 150]],
-            edgeTolerance: 3
+            data: [[200, 100], [600, 200], [700, 400], [500, 700], [100, 600], [100, 300]],
+            edgeTolerance: 6
         },
         
-        // Area test configuration
         area: {
-            gridSize: 20,
+            gridSize: 40,
             minPoints: 3,
-            pointRadius: 4
+            pointRadius: 8
         }
     },
     
-    // Visual styles - Reference CSS variables for colors
     styles: {
-        // Default rendering style
         default: {
             fillOuter: 'var(--shape-fill)',
             strokeOuter: 'var(--shape-stroke)',
@@ -302,21 +340,18 @@ const Clipper2Defaults = {
             strokeWidth: 2
         },
         
-        // Input geometry style
         input: {
             fillOuter: 'var(--input-fill)',
             strokeOuter: 'var(--input-stroke)',
             strokeWidth: 1
         },
         
-        // Output/result style
         output: {
             fillOuter: 'var(--output-fill)',
             strokeOuter: 'var(--output-stroke)',
             strokeWidth: 2
         },
         
-        // Test-specific styles
         boolean: {
             subject: {
                 fillOuter: 'var(--subject-fill)',
@@ -391,10 +426,33 @@ const Clipper2Defaults = {
                 markerColor: 'rgba(239, 68, 68, 0.6)',
                 markerRadius: 3
             }
+        },
+        
+        arcReconstruction: {
+            polygon: {
+                fillOuter: 'rgba(59, 130, 246, 0.2)',
+                strokeOuter: '#3b82f6',
+                strokeWidth: 1
+            },
+            reconstructed: {
+                strokeColor: '#ff9900',
+                fillColor: 'rgba(255, 153, 0, 0.1)',
+                lineWidth: 3,
+                fill: false
+            },
+            metadata: {
+                pointRadius: 2,
+                normalPointColor: '#666',
+                taggedPointColor: 'dynamic'
+            },
+            markers: {
+                startColor: '#00ff00',
+                endColor: '#ff0000',
+                radius: 3
+            }
         }
     },
     
-    // Test validation expectations
     validation: {
         letterB: {
             expectedPaths: 3,
@@ -409,10 +467,13 @@ const Clipper2Defaults = {
         minkowski: {
             expectedMinPaths: 1,
             description: 'Minkowski operation should produce at least one path'
+        },
+        arcReconstruction: {
+            expectedMinCurves: 1,
+            description: 'Arc reconstruction should identify at least one curve'
         }
     },
     
-    // Labels and text content
     labels: {
         inputGeometry: 'Input Geometry',
         outputGeometry: 'Output Geometry',
@@ -423,11 +484,7 @@ const Clipper2Defaults = {
         success: 'Success: '
     },
     
-    // Helper functions for geometry generation
     generators: {
-        /**
-         * Generate circle points
-         */
         circle(cx, cy, r, segments = 64) {
             const points = [];
             for (let i = 0; i < segments; i++) {
@@ -440,9 +497,6 @@ const Clipper2Defaults = {
             return points;
         },
         
-        /**
-         * Generate star points
-         */
         star(cx, cy, outerR, innerR, numPoints) {
             const points = [];
             for (let i = 0; i < numPoints * 2; i++) {
@@ -456,9 +510,6 @@ const Clipper2Defaults = {
             return points;
         },
         
-        /**
-         * Generate random convex polygon
-         */
         randomConvex(cx, cy, avgRadius, variance, numPoints) {
             const angles = [];
             for (let i = 0; i < numPoints; i++) {
@@ -478,9 +529,6 @@ const Clipper2Defaults = {
             return points;
         },
         
-        /**
-         * Stroke to polygon converter
-         */
         strokeToPolygon(stroke, width) {
             if (stroke.type === 'line') {
                 return this.lineToPolygon(stroke.from, stroke.to, width);
@@ -490,36 +538,25 @@ const Clipper2Defaults = {
             return [];
         },
         
-        /**
-         * Convert line to thick polygon - FIXED VERSION
-         * Creates proper CCW wound polygon with semicircular caps
-         */
         lineToPolygon(from, to, width) {
             const dx = to[0] - from[0];
             const dy = to[1] - from[1];
             const len = Math.sqrt(dx * dx + dy * dy);
             const halfWidth = width / 2;
             
-            // Handle zero-length lines
             if (len === 0) return this.circle(from[0], from[1], halfWidth, 16);
             
-            // Unit vector along the line
             const ux = dx / len;
             const uy = dy / len;
             
-            // Perpendicular vector (rotated 90 degrees CW for proper convex caps)
             const nx = uy * halfWidth;
             const ny = -ux * halfWidth;
             
             const points = [];
             const capSegments = 8;
             
-            // Build polygon in CCW order:
-            
-            // 1. Start at left side of start point
             points.push([from[0] - nx, from[1] - ny]);
             
-            // 2. Start cap (semicircle from left to right)
             const startAngle = Math.atan2(-ny, -nx);
             for (let i = 1; i < capSegments; i++) {
                 const t = i / capSegments;
@@ -530,13 +567,9 @@ const Clipper2Defaults = {
                 ]);
             }
             
-            // 3. Right side of start point
             points.push([from[0] + nx, from[1] + ny]);
-            
-            // 4. Right side of end point
             points.push([to[0] + nx, to[1] + ny]);
             
-            // 5. End cap (semicircle from right to left)
             const endAngle = Math.atan2(ny, nx);
             for (let i = 1; i < capSegments; i++) {
                 const t = i / capSegments;
@@ -547,17 +580,11 @@ const Clipper2Defaults = {
                 ]);
             }
             
-            // 6. Left side of end point
             points.push([to[0] - nx, to[1] - ny]);
-            
-            // 7. Back to start (no need to duplicate first point)
             
             return points;
         },
         
-        /**
-         * Convert arc to thick polygon - FIXED: Proper semicircular caps
-         */
         arcToPolygon(center, radius, startDeg, endDeg, width) {
             const points = [];
             const segments = 32;
@@ -565,11 +592,10 @@ const Clipper2Defaults = {
             const halfWidth = width / 2;
             const innerR = radius - halfWidth;
             const outerR = radius + halfWidth;
-            if (innerR < 0) return []; // Cannot create a valid shape
+            if (innerR < 0) return [];
             const startRad = startDeg * Math.PI / 180;
             const endRad = endDeg * Math.PI / 180;
             
-            // Center points of the caps
             const startCapCenter = [
                 center[0] + radius * Math.cos(startRad),
                 center[1] + radius * Math.sin(startRad)
@@ -579,9 +605,6 @@ const Clipper2Defaults = {
                 center[1] + radius * Math.sin(endRad)
             ];
             
-            // Build a continuous polygon in CCW order
-            
-            // 1. Outer arc (from start to end)
             for (let i = 0; i <= segments; i++) {
                 const t = i / segments;
                 const angle = startRad + (endRad - startRad) * t;
@@ -591,8 +614,6 @@ const Clipper2Defaults = {
                 ]);
             }
             
-            // 2. End cap (semicircle from outer to inner edge)
-            // Sweep 180 degrees CCW around the end point
             for (let i = 1; i <= capSegments; i++) {
                 const t = i / capSegments;
                 const angle = endRad + (Math.PI * t);
@@ -602,7 +623,6 @@ const Clipper2Defaults = {
                 ]);
             }
             
-            // 3. Inner arc (from end to start - reversed direction)
             for (let i = segments; i >= 0; i--) {
                 const t = i / segments;
                 const angle = startRad + (endRad - startRad) * t;
@@ -612,8 +632,6 @@ const Clipper2Defaults = {
                 ]);
             }
             
-            // 4. Start cap (semicircle from inner to outer edge, closing the loop)
-            // Sweep 180 degrees CCW around the start point
             for (let i = 1; i <= capSegments; i++) {
                 const t = i / capSegments;
                 const angle = (startRad + Math.PI) + (Math.PI * t);
@@ -623,6 +641,20 @@ const Clipper2Defaults = {
                 ]);
             }
             
+            return points;
+        },
+        
+        flower(cx, cy, baseRadius, noiseFreq, noiseAmp, segments = 64) {
+            const points = [];
+            for (let i = 0; i < segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                const noise = Math.sin(angle * noiseFreq) * noiseAmp;
+                const r = baseRadius + noise;
+                points.push([
+                    cx + r * Math.cos(angle),
+                    cy + r * Math.sin(angle)
+                ]);
+            }
             return points;
         }
     }

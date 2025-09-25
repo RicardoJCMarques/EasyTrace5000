@@ -292,7 +292,7 @@ class Clipper2Geometry {
         return this.coordinatesToPath64(coords);
     }
 
-    /**
+         /**
      * Convert parametric definition to Path64
      */
     parametricToPath64(definition, options = {}) {
@@ -302,15 +302,16 @@ class Clipper2Geometry {
         switch (definition.shape) {
             case 'circle':
                 coords = this.defaults.generators.circle(
-                    pos[0], pos[1], 
-                    definition.radius,
-                    this.defaults.config.polygonResolution
+                    pos[0], 
+                    pos[1], 
+                    definition.radius
                 );
                 break;
                 
             case 'star':
                 coords = this.defaults.generators.star(
-                    pos[0], pos[1],
+                    pos[0], 
+                    pos[1], 
                     definition.outerRadius,
                     definition.innerRadius,
                     definition.points
@@ -320,7 +321,8 @@ class Clipper2Geometry {
             case 'random':
                 coords = options.randomShape || 
                     this.defaults.generators.randomConvex(
-                        pos[0], pos[1],
+                        pos[0], 
+                        pos[1], 
                         definition.avgRadius,
                         definition.variance,
                         definition.points
@@ -329,8 +331,8 @@ class Clipper2Geometry {
                 
             case 'flower':
                 coords = this.defaults.generators.flower(
-                    definition.center[0],
-                    definition.center[1],
+                    pos[0], 
+                    pos[1], 
                     definition.baseRadius,
                     definition.noiseFrequency,
                     definition.noiseAmplitude,

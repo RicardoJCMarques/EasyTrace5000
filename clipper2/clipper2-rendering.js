@@ -1,7 +1,7 @@
 /**
  * Clipper2 Rendering Module
  * Unified rendering pipeline using coordinate arrays
- * Version 5.2 - Fixed minkowski visualization
+ * Version 5.3 - Fixed offset z-order
  */
 
 class Clipper2Rendering {
@@ -125,7 +125,7 @@ class Clipper2Rendering {
         const opts = {
             ...this.defaults.styles.default,
             clear: true,
-            fillRule: 'evenodd',
+            fillRule: 'nonzero',
             showPoints: false,
             showLabels: false,
             ...options
@@ -569,9 +569,9 @@ class Clipper2Rendering {
     }
 
     /**
-     * Draw multiple offset paths
+     * Draw multiple offset paths with proper z-order - FIXED
      */
-    drawOffsetPaths(offsetPaths, canvasOrId) {
+    drawOffsetPaths(offsetPaths, canvasOrId, type, originalPaths) {
         const canvas = typeof canvasOrId === 'string' ? 
             document.getElementById(canvasOrId) : canvasOrId;
         
@@ -579,17 +579,71 @@ class Clipper2Rendering {
         
         this.clearCanvas(canvas);
         
-        // Draw from largest to smallest
-        offsetPaths.reverse().forEach((paths, i) => {
-            const hue = (i / offsetPaths.length) * 120;
-            const alpha = 0.3 + (i / offsetPaths.length) * 0.3;
-            
-            this.render(paths, canvas, {
-                fillOuter: `hsla(${hue}, 70%, 50%, ${alpha})`,
-                strokeOuter: `hsl(${hue}, 70%, 40%)`,
-                clear: false
-            });
-        });
+        if (type === 'external') {
+            // For external offsets:
+            // 1. Draw largest to smallest offsets (back to front)
+            for (let i = offsetPaths.length - 1; i >= 0; i--) {
+                const result = offsetPaths[i];
+                const t = (i + 1) / offsetPaths.length; // Normalized position
+                const hue = 120 - (t * 60); // Green to yellow gradient
+                const alpha = 0.3 + (t * 0.3);
+                
+                this.render(result, canvas, {
+                    fillOuter: `hsla(${hue}, 70%, 50%, ${alpha})`,
+                    strokeOuter: `hsl(${hue}, 70%, 40%)`,
+                    strokeWidth: 1,
+                    clear: false
+                });
+            }
+            // 2. Draw original shape on top
+            if (originalPaths) {
+                const pathData = this.geometry.paths64ToCoordinates(originalPaths);
+                const ctx = canvas.getContext('2d');
+                
+                // Step A: Fill with opaque canvas background color to "erase" what's behind
+                ctx.save();
+                ctx.fillStyle = this.getCSSVar('--canvas-bg');
+                ctx.beginPath();
+                pathData.forEach(item => this.addPathToContext(ctx, item.coords));
+                ctx.fill('evenodd');
+                ctx.restore();
+
+                // Step B: Render the original shape normally (with its transparent fill and stroke)
+                this.render(originalPaths, canvas, {
+                    ...this.defaults.styles.default,
+                    fillOuter: this.resolveStyleValue('var(--shape-fill)'),
+                    strokeOuter: this.resolveStyleValue('var(--shape-stroke)'),
+                    strokeWidth: 2,
+                    clear: false
+                });
+            }
+        } else {
+            // For internal offsets:
+            // 1. Draw original shape at back
+            if (originalPaths) {
+                this.render(originalPaths, canvas, {
+                    ...this.defaults.styles.default,
+                    fillOuter: this.resolveStyleValue('var(--shape-fill)'),
+                    strokeOuter: this.resolveStyleValue('var(--shape-stroke)'),
+                    strokeWidth: 2,
+                    clear: false
+                });
+            }
+            // 2. Draw offsets from largest to smallest (front to back visually)
+            for (let i = 0; i < offsetPaths.length; i++) {
+                const result = offsetPaths[i];
+                const t = (i + 1) / offsetPaths.length;
+                const hue = 120 - (t * 120); // Green to red gradient
+                const alpha = 0.3 + (t * 0.4);
+                
+                this.render(result, canvas, {
+                    fillOuter: `hsla(${hue}, 70%, 50%, ${alpha})`,
+                    strokeOuter: `hsl(${hue}, 70%, 40%)`,
+                    strokeWidth: 1,
+                    clear: false
+                });
+            }
+        }
     }
 
     /**
@@ -625,7 +679,80 @@ class Clipper2Rendering {
     /**
      * Export paths as SVG
      */
+
+    exportStrokesAsSVG(definition, width, height) {
+        width = width || this.defaults.config.canvasWidth;
+        height = height || this.defaults.config.canvasHeight;
+        const strokeWidth = definition.strokeWidth || 20;
+        const strokeColor = this.getCSSVar('--shape-stroke');
+
+        let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" 
+xmlns="http://www.w3.org/2000/svg">
+<rect width="${width}" height="${height}" fill="white"/>
+<g fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linecap="round">
+`;
+        definition.data.forEach(stroke => {
+            if (stroke.type === 'line') {
+                svg += `    <line x1="${stroke.from[0]}" y1="${stroke.from[1]}" x2="${stroke.to[0]}" y2="${stroke.to[1]}"/>\n`;
+            } else if (stroke.type === 'arc') {
+                const r = stroke.radius;
+                // Convert degrees to radians for JS Math functions
+                const startRad = (stroke.start - 90) * Math.PI / 180; // Adjust for canvas vs SVG angle system
+                const endRad = (stroke.end - 90) * Math.PI / 180;
+                const startX = stroke.center[0] + r * Math.cos(startRad);
+                const startY = stroke.center[1] + r * Math.sin(startRad);
+                const endX = stroke.center[0] + r * Math.cos(endRad);
+                const endY = stroke.center[1] + r * Math.sin(endRad);
+                
+                const angleDiff = Math.abs(stroke.end - stroke.start);
+                const largeArcFlag = angleDiff <= 180 ? '0' : '1';
+                const sweepFlag = '1'; // Assuming CCW arcs
+                
+                svg += `    <path d="M ${startX} ${startY} A ${r} ${r} 0 ${largeArcFlag} ${sweepFlag} ${endX} ${endY}"/>\n`;
+            }
+        });
+
+        svg += '  </g>\n</svg>';
+        return svg;
+    }
+
+    exportPcbAsSVG(definition, width, height) {
+        width = width || this.defaults.config.canvasWidth;
+        height = height || this.defaults.config.canvasHeight;
+        const traceWidth = definition.traceWidth || 24;
+        const strokeColor = this.getCSSVar('--pcb-stroke');
+
+        let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" 
+xmlns="http://www.w3.org/2000/svg">
+<rect width="${width}" height="${height}" fill="white"/>
+<g fill="${strokeColor}" stroke="${strokeColor}" stroke-linecap="round">
+`;
+        // Draw traces as lines
+        definition.traces?.forEach(trace => {
+            svg += `    <line x1="${trace.from[0]}" y1="${trace.from[1]}" x2="${trace.to[0]}" y2="${trace.to[1]}" stroke-width="${traceWidth}"/>\n`;
+        });
+
+        // Draw pads as circles
+        definition.pads?.forEach(pad => {
+            svg += `    <circle cx="${pad.center[0]}" cy="${pad.center[1]}" r="${pad.radius}"/>\n`;
+        });
+
+        svg += '  </g>\n</svg>';
+        return svg;
+    }
+
     exportSVG(input, width = null, height = null) {
+
+        // Check if input is a raw geometry definition that needs special handling
+        if (input && typeof input === 'object' && input.type === 'strokes') {
+            return this.exportStrokesAsSVG(input, width, height);
+        }
+        if (input.type === 'pcb') {
+            return this.exportPcbAsSVG(input, width, height);
+        }
+
         width = width || this.defaults.config.canvasWidth;
         height = height || this.defaults.config.canvasHeight;
         
@@ -651,7 +778,7 @@ class Clipper2Rendering {
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" 
      xmlns="http://www.w3.org/2000/svg">
   <rect width="${width}" height="${height}" fill="white"/>
-  <g fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" fill-rule="evenodd">
+  <g fill="${fillColor}" stroke="${strokeColor}" stroke-width="2">
 `;
         
         // Create path data

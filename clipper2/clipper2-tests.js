@@ -1,7 +1,7 @@
 /**
  * Clipper2 Tests Module
  * Test implementations with state-driven architecture
- * Version 6.9 - Fixed Minkowski diff sweep & area ghost polygon
+ * Version 7.3 - Fixed state initialization and coordinate system
  */
 
 class Clipper2Tests {
@@ -13,55 +13,65 @@ class Clipper2Tests {
         this.ui = null;
         this.testData = new Map();
         this.defaults = Clipper2Defaults;
+        this.arcReconstructor = null;
+        this.rabbitPath = null; // Store parsed rabbit path
         
-        // Centralized test state - single source of truth
+        // Derive initial state from Clipper2Defaults for consistency
         this.testState = {
             boolean: {
                 operation: 'union',
                 clipShape: 'circle',
-                subjectPos: { x: 200, y: 200 }, // Fixed at center
-                clipPos: { x: 100, y: 100 }, // Top-left corner of subject
-                randomShape: null,
-                rabbitPath: null // Store parsed rabbit path
+                subjectPos: { x: 400, y: 400 },
+                clipPos: { 
+                    x: this.defaults.geometries.boolean.clips.circle.initialPos[0], 
+                    y: this.defaults.geometries.boolean.clips.circle.initialPos[1] 
+                },
+                randomShape: null
             },
-            letterB: {
-                // No parameters needed
-            },
-            pcbFusion: {
-                // No parameters needed
-            },
+            letterB: {},
+            pcbFusion: {},
             nested: {
-                island1Pos: { x: 150, y: 150 },
-                island2Pos: { x: 250, y: 250 }
+                island1Pos: { x: 300, y: 300 },
+                island2Pos: { x: 500, y: 500 }
             },
             offset: {
-                shape: 'star',
-                type: 'external',
-                count: 3,
-                distance: 10,
-                joinType: 'Round',
-                miterLimit: 10
+                shape: this.defaults.geometries.offset.defaults.shape,
+                type: this.defaults.geometries.offset.defaults.type,
+                count: this.defaults.geometries.offset.defaults.count,
+                distance: this.defaults.geometries.offset.defaults.distance,
+                joinType: this.defaults.geometries.offset.defaults.joinType,
+                miterLimit: this.defaults.geometries.offset.defaults.miterLimit
             },
             simplify: {
-                tolerance: 2
+                tolerance: this.defaults.geometries.simplify.defaultTolerance
             },
             area: {
                 points: [],
                 isDrawing: false,
-                lastPolygonPath: null // Store the last drawn polygon for cleanup
+                lastPolygonPath: null,
+                animationFrameId: null
             },
             pip: {
                 points: [],
-                edgeTolerance: 3
+                edgeTolerance: this.defaults.geometries.pip.edgeTolerance
             },
             minkowski: {
-                pattern: 'circle',
-                path: 'square',
-                operation: 'sum',
-                pathClosed: true,
-                showSweep: false,
-                showOffset: false,
-                patternPos: { x: 100, y: 200 }  // Pattern starting position
+                pattern: this.defaults.geometries.minkowski.defaults.pattern,
+                path: this.defaults.geometries.minkowski.defaults.path,
+                operation: this.defaults.geometries.minkowski.defaults.operation,
+                pathClosed: this.defaults.geometries.minkowski.defaults.pathClosed,
+                showSweep: this.defaults.geometries.minkowski.defaults.showSweep,
+                showOffset: this.defaults.geometries.minkowski.defaults.showOffset,
+                patternPos: { ...this.defaults.geometries.minkowski.defaults.patternPos }
+            },
+            'arc-reconstruction': {
+                operation: this.defaults.geometries['arc-reconstruction'].defaults.operation,
+                showReconstruction: this.defaults.geometries['arc-reconstruction'].defaults.showReconstruction,
+                showMetadata: this.defaults.geometries['arc-reconstruction'].defaults.showMetadata,
+                circle1Pos: { ...this.defaults.geometries['arc-reconstruction'].defaults.circle1Pos },
+                circle2Pos: { ...this.defaults.geometries['arc-reconstruction'].defaults.circle2Pos },
+                circle1Radius: this.defaults.geometries['arc-reconstruction'].defaults.circle1Radius,
+                circle2Radius: this.defaults.geometries['arc-reconstruction'].defaults.circle2Radius
             }
         };
         
@@ -115,7 +125,7 @@ class Clipper2Tests {
     }
 
     /**
-     * Initialize rabbit path from SVG
+     * Initialize rabbit path from SVG - Store permanently
      */
     initializeRabbitPath() {
         const rabbitDef = this.defaults.geometries.boolean.clips.rabbit;
@@ -127,7 +137,7 @@ class Clipper2Tests {
                 
                 if (coords.length === 0) {
                     console.error('[TESTS] Rabbit path parsing produced no coordinates');
-                    this.testState.boolean.rabbitPath = null;
+                    this.rabbitPath = null;
                     return;
                 }
                 
@@ -136,15 +146,15 @@ class Clipper2Tests {
                 const centerX = (bounds.minX + bounds.maxX) / 2;
                 const centerY = (bounds.minY + bounds.maxY) / 2;
                 
-                this.testState.boolean.rabbitPath = coords.map(pt => [
+                this.rabbitPath = coords.map(pt => [
                     pt[0] - centerX,
                     pt[1] - centerY
                 ]);
                 
-                console.log('[TESTS] Rabbit path initialized with', this.testState.boolean.rabbitPath?.length, 'points');
+                console.log('[TESTS] Rabbit path initialized with', this.rabbitPath?.length, 'points');
             } catch (error) {
                 console.error('[TESTS] Failed to parse rabbit path:', error);
-                this.testState.boolean.rabbitPath = null;
+                this.rabbitPath = null;
             }
         } else {
             console.warn('[TESTS] Rabbit definition not found');
@@ -204,6 +214,135 @@ class Clipper2Tests {
     }
 
     /**
+     * Test Arc Reconstruction demonstration
+     */
+    async testArcReconstruction() {
+        const testName = 'arc-reconstruction';
+        this.setTestStatus(testName, 'pending');
+        
+        try {
+            // Initialize arc reconstructor if not already done
+            if (!this.arcReconstructor) {
+                this.arcReconstructor = new ArcReconstructor(this.core, this.geometry, this.defaults);
+                this.arcReconstructor.registry.debug = this.core.config.debugMode;
+            }
+            
+            // Get test state - use actual positions from dragging
+            const state = this.getTestState(testName);
+            
+            // Create shapes from actual state positions
+            const shapes = [
+                {
+                    type: 'circle',
+                    center: { 
+                        x: state.circle1Pos.x,
+                        y: state.circle1Pos.y
+                    },
+                    radius: state.circle1Radius
+                },
+                {
+                    type: 'circle',
+                    center: { 
+                        x: state.circle2Pos.x,
+                        y: state.circle2Pos.y
+                    },
+                    radius: state.circle2Radius
+                }
+            ];
+            
+            // Run reconstruction pipeline
+            const result = this.arcReconstructor.processWithReconstruction(shapes, state.operation);
+            
+            // Clear canvas
+            const canvas = document.getElementById('arc-reconstruction-canvas');
+            this.rendering.clearCanvas(canvas);
+            
+            // Draw background grid for reference
+            this.rendering.drawGrid(canvas, 20);
+            
+            // Draw the polygonal result
+            this.rendering.render(result.polygons, canvas, {
+                fillOuter: 'rgba(59, 130, 246, 0.2)',
+                strokeOuter: '#3b82f6',
+                strokeWidth: 1,
+                clear: false
+            });
+            
+            // Draw reconstructed curves if enabled
+            if (state.showReconstruction && result.reconstructedCurves.length > 0) {
+                this.arcReconstructor.drawReconstructedCurves(result.reconstructedCurves, canvas, {
+                    strokeColor: '#ff9900',
+                    fillColor: 'rgba(255, 153, 0, 0.1)',
+                    lineWidth: 3,
+                    fill: false
+                });
+            }
+            
+            // Show metadata visualization if enabled
+            if (state.showMetadata) {
+                this.drawMetadataVisualization(result.polygons, canvas);
+            }
+            
+            // Update results
+            const statsText = [
+                `Operation: ${state.operation}`,
+                `Input curves: ${result.stats.inputCurves}`,
+                `Curve groups found: ${result.stats.curveGroups}`,
+                `Reconstructed: ${result.stats.reconstructedCurves}`,
+                `  Full circles: ${result.stats.fullCircles}`,
+                `  Partial arcs: ${result.stats.partialArcs}`
+            ].join('\n');
+            
+            this.setTestStatus(testName, 'success');
+            this.ui?.updateResult('arc-reconstruction-result', 
+                `[OK] Arc reconstruction complete`);
+            this.ui?.updateInfo('arc-reconstruction-info', statsText);
+            
+            return { success: true, stats: result.stats };
+            
+        } catch (error) {
+            console.error('[ERROR] Arc reconstruction test failed:', error);
+            this.setTestStatus(testName, 'error');
+            this.ui?.updateResult('arc-reconstruction-result', `[ERROR] ${error.message}`, false);
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * Draw metadata visualization for arc reconstruction
+     */
+    drawMetadataVisualization(polygonData, canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        
+        // Draw points with curve metadata
+        polygonData.forEach(path => {
+            if (!path.coords) return;
+            
+            path.coords.forEach(point => {
+                if (point.curveId && point.curveId > 0) {
+                    // Point has curve metadata - draw it specially
+                    ctx.beginPath();
+                    ctx.arc(point[0] || point.x, point[1] || point.y, 2, 0, Math.PI * 2);
+                    
+                    // Color based on curve ID
+                    const hue = (point.curveId * 137.5) % 360;
+                    ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+                    ctx.fill();
+                } else {
+                    // Regular point
+                    ctx.beginPath();
+                    ctx.arc(point[0] || point.x, point[1] || point.y, 1, 0, Math.PI * 2);
+                    ctx.fillStyle = '#666';
+                    ctx.fill();
+                }
+            });
+        });
+        
+        ctx.restore();
+    }
+
+    /**
      * Test Minkowski operations with offset comparison
      */
     async testMinkowski() {
@@ -258,8 +397,21 @@ class Clipper2Tests {
                 minkowskiResult = this.operations.minkowskiDiff(patternPath, pathPath, isPathClosed);
             }
             
-            // Store Minkowski result
-            this.testData.set(`${testName}-output`, minkowskiResult);
+            // For closed path difference, show intuitive "carved out" result
+            let visualizationResult = minkowskiResult;
+            if (operation === 'diff' && isPathClosed) {
+                const pathAsPaths = new this.core.clipper2.Paths64();
+                pathAsPaths.push_back(pathPath);
+                
+                // Show Path - MinkowskiDiff for intuitive visualization
+                visualizationResult = this.operations.difference(pathAsPaths, minkowskiResult);
+                pathAsPaths.delete();
+                
+                // Store the visualization result instead
+                this.testData.set(`${testName}-output`, visualizationResult);
+            } else {
+                this.testData.set(`${testName}-output`, minkowskiResult);
+            }
             
             // Calculate equivalent offset if requested
             let offsetResult = null;
@@ -318,7 +470,9 @@ class Clipper2Tests {
                 this.defaults.styles.minkowski.sumResult : 
                 this.defaults.styles.minkowski.diffResult;
             
-            this.rendering.render(minkowskiResult, canvas, {
+            // Render the appropriate result
+            const renderResult = (operation === 'diff' && isPathClosed) ? visualizationResult : minkowskiResult;
+            this.rendering.render(renderResult, canvas, {
                 ...resultStyle,
                 strokeWidth: 2,
                 clear: false
@@ -371,20 +525,28 @@ class Clipper2Tests {
             
             this.setTestStatus(testName, 'success');
             
-            let resultMessage = `[OK] Minkowski ${operation}: ${minkowskiResult.size()} path(s)`;
+            let resultMessage = `[OK] Minkowski ${operation}: ${renderResult.size()} path(s)`;
+            if (operation === 'diff' && isPathClosed) {
+                resultMessage += ' (showing Path - MinkowskiDiff)';
+            }
             if (showOffset && offsetResult) {
                 resultMessage += ` | Offset: ${offsetResult.size()} path(s)`;
                 
                 // Check if results are visually similar
-                if (pattern === 'circle' && minkowskiResult.size() === offsetResult.size()) {
+                if (pattern === 'circle' && renderResult.size() === offsetResult.size()) {
                     resultMessage += ' (equivalent for circle)';
                 }
             }
             
             this.ui?.updateResult('minkowski-result', resultMessage);
-            this.ui?.updateInfo('minkowski-info', this.formatGeometryInfo(minkowskiResult));
+            this.ui?.updateInfo('minkowski-info', this.formatGeometryInfo(renderResult));
             
-            return { success: true, output: minkowskiResult.size() };
+            // Cleanup - only delete minkowskiResult if we created a visualization
+            if (operation === 'diff' && isPathClosed && visualizationResult !== minkowskiResult) {
+                minkowskiResult.delete();
+            }
+            
+            return { success: true, output: renderResult.size() };
             
         } catch (error) {
             console.error('[ERROR] Minkowski test failed:', error);
@@ -532,48 +694,51 @@ class Clipper2Tests {
     }
 
     /**
-     * Test boolean operation
+     * Test boolean operation - Fixed with proper state handling
      */
     async testBooleanOperation() {
         const testName = 'boolean';
         this.setTestStatus(testName, 'pending');
         
+        const subjectPaths = new this.core.clipper2.Paths64();
+        const clipPaths = new this.core.clipper2.Paths64();
+        
         try {
             // Read from centralized state
             const state = this.getTestState(testName);
-            const { operation, clipShape, subjectPos, clipPos, randomShape, rabbitPath } = state;
+            const { operation, clipShape, subjectPos, clipPos } = state;
             
             // Clear canvas
             this.rendering.clearCanvas('boolean-canvas');
             
-            // Create subject from defaults - FIXED at center
+            // Create subject from defaults
             const subjectDef = this.defaults.geometries.boolean.subject;
-            const subjectPaths = new this.core.clipper2.Paths64();
-            
             const subjectCoords = subjectDef.data;
             subjectPaths.push_back(this.geometry.coordinatesToPath64(subjectCoords));
             
             // Create clip from defaults using state position
             const clipDef = this.defaults.geometries.boolean.clips[clipShape];
-            const clipPaths = new this.core.clipper2.Paths64();
             
             let clipPath;
             if (clipShape === 'rabbit') {
                 // Use pre-parsed rabbit path
-                const rabbitCoords = rabbitPath.map(pt => [
+                if (!this.rabbitPath) {
+                    throw new Error("Rabbit path not initialized");
+                }
+                const rabbitCoords = this.rabbitPath.map(pt => [
                     pt[0] + clipPos.x,
                     pt[1] + clipPos.y
                 ]);
                 clipPath = this.geometry.coordinatesToPath64(rabbitCoords);
             } else if (clipShape === 'random') {
-                // Use stored random shape if exists, generate if not
-                let randomCoords = randomShape;
+                // Use stored random shape or generate new one
+                let randomCoords = state.randomShape;
                 if (!randomCoords) {
                     const randomDef = this.defaults.geometries.boolean.clips.random;
                     randomCoords = this.defaults.generators.randomConvex(
                         0, 0, randomDef.avgRadius, randomDef.variance, randomDef.points
                     );
-                    this.testState.boolean.randomShape = randomCoords;
+                    this.updateTestState('boolean', 'randomShape', randomCoords);
                 }
                 const positioned = randomCoords.map(pt => [
                     pt[0] + clipPos.x,
@@ -585,13 +750,11 @@ class Clipper2Tests {
                     position: [clipPos.x, clipPos.y]
                 });
             } else if (clipDef.type === 'polygon') {
-                clipPath = this.geometry.polygonToPath64(clipDef, {
-                    position: [clipPos.x, clipPos.y]
-                });
-            } else if (clipDef.type === 'svg') {
-                clipPath = this.geometry.svgToPath64(clipDef, {
-                    position: [clipPos.x, clipPos.y]
-                });
+                const positioned = clipDef.data.map(pt => [
+                    pt[0] + clipPos.x,
+                    pt[1] + clipPos.y
+                ]);
+                clipPath = this.geometry.coordinatesToPath64(positioned);
             }
             
             clipPaths.push_back(clipPath);
@@ -633,6 +796,10 @@ class Clipper2Tests {
             this.setTestStatus(testName, 'error');
             this.ui?.updateResult('boolean-result', `[ERROR] ${error.message}`, false);
             return { success: false, error: error.message };
+        } finally {
+            // Clean up temporary paths
+            subjectPaths.delete();
+            clipPaths.delete();
         }
     }
 
@@ -668,7 +835,7 @@ class Clipper2Tests {
             this.testData.set(`${testName}-output`, result);
             this.rendering.render(result, 'letter-b-canvas', {
                 ...this.defaults.styles.output,
-                fillRule: 'evenodd'
+                fillRule: 'nonzero'
             });
             
             const validation = this.defaults.validation.letterB;
@@ -724,7 +891,7 @@ class Clipper2Tests {
             this.testData.set(`${testName}-output`, result);
             this.rendering.render(result, 'pcb-fusion-canvas', {
                 ...this.defaults.styles.pcb,
-                fillRule: 'evenodd'
+                fillRule: 'nonzero'
             });
             
             const validation = this.defaults.validation.pcbFusion;
@@ -828,7 +995,7 @@ class Clipper2Tests {
             this.testData.set(`${testName}-output`, result);
             this.rendering.render(result, 'nested-canvas', {
                 ...this.defaults.styles.output,
-                fillRule: 'evenodd'
+                fillRule: 'nonzero'
             });
             
             // Clean up
@@ -865,7 +1032,7 @@ class Clipper2Tests {
             const coords = this.geometry.parseSVGPath(
                 simplifyDef.path,
                 simplifyDef.scale,
-                [85, 10] // Center on canvas
+                simplifyDef.position
             );
             
             if (!coords || coords.length === 0) {
@@ -942,9 +1109,6 @@ class Clipper2Tests {
             // Store input with consistent key
             this.testData.set(`${testName}-input`, paths);
             
-            // Clear canvas first
-            this.rendering.clearCanvas('offset-canvas');
-            
             // Get join type enum
             const joinTypeEnum = this.getJoinTypeEnum(joinType);
             const endTypeEnum = this.core.clipper2.EndType.Polygon;
@@ -966,7 +1130,7 @@ class Clipper2Tests {
                 offsetResults.push(result);
             }
             
-            // Draw offsets with proper z-order based on type
+            // Draw offsets with proper z-order using the fixed rendering method
             this.rendering.drawOffsetPaths(offsetResults, 'offset-canvas', type, paths);
             
             // Store last result
@@ -1025,7 +1189,7 @@ class Clipper2Tests {
             // Clean up temporary paths object
             paths.delete();
             
-            this.setTestStatus(testName, 'success');
+            this.setTestStatus(testName, '');
             this.ui?.updateResult('pip-result', 'Click to add test points, then "Check Locations"');
             
             return { success: true };
@@ -1175,6 +1339,12 @@ class Clipper2Tests {
         
         const areaDef = this.defaults.geometries.area;
         
+        // Cancel any existing animation before starting new test
+        if (this.testState.area.animationFrameId) {
+            cancelAnimationFrame(this.testState.area.animationFrameId);
+            this.testState.area.animationFrameId = null;
+        }
+        
         // Clear and setup
         this.rendering.clearCanvas(canvas);
         this.rendering.drawGrid(canvas, areaDef.gridSize);
@@ -1236,7 +1406,7 @@ class Clipper2Tests {
     }
 
     /**
-     * Calculate area for drawn polygon - IMPROVED winding indicator
+     * Calculate area for drawn polygon - Using native AreaPath64 function
      */
     calculateArea() {
         const testName = 'area';
@@ -1266,15 +1436,11 @@ class Clipper2Tests {
         ctx.lineTo(firstPoint.x, firstPoint.y);
         ctx.stroke();
         
-        // Calculate area using shoelace formula
-        let area = 0;
-        const n = coordArray.length;
-        for (let i = 0; i < n; i++) {
-            const j = (i + 1) % n;
-            area += coordArray[i][0] * coordArray[j][1];
-            area -= coordArray[j][0] * coordArray[i][1];
-        }
-        area = area / 2;
+        // Calculate area using native Clipper2 function
+        const path = this.geometry.coordinatesToPath64(coordArray);
+        const scaledArea = this.core.clipper2.AreaPath64(path);
+        const area = scaledArea / (this.core.config.scale * this.core.config.scale);
+        path.delete();
         
         // In screen coordinates (Y increases downward), CCW is negative, CW is positive
         const orientation = area < 0 ? 'COUNTER-CLOCKWISE' : 'CLOCKWISE';
@@ -1305,7 +1471,7 @@ class Clipper2Tests {
             
             dashOffset = (dashOffset + 1) % 15;
             if (dashOffset < 15) {
-                requestAnimationFrame(animateOutline);
+                this.testState.area.animationFrameId = requestAnimationFrame(animateOutline);
             }
         };
         animateOutline();
@@ -1328,6 +1494,7 @@ class Clipper2Tests {
         ctx.lineWidth = 2;
         
         // Place arrows at a few points along the path
+        const n = coordArray.length;
         for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 4))) {
             const curr = coordArray[i];
             const next = coordArray[(i + 1) % n];
@@ -1468,12 +1635,12 @@ class Clipper2Tests {
                     
                 case 'letter-b':
                     const letterBDef = geometries.letterB;
-                    rawPaths = this.geometry.toClipper2Paths(letterBDef);
+                    return letterBDef;       // Replace old rawPaths = this.geometry.toClipper2Paths(letterBDef);
                     break;
                     
                 case 'pcb-fusion':
                     const pcbDef = geometries.pcbFusion;
-                    rawPaths = this.geometry.toClipper2Paths(pcbDef);
+                    return pcbDef;           // Replace old rawPaths = this.geometry.toClipper2Paths(pcbDef);
                     break;
                     
                 case 'offset':
@@ -1491,7 +1658,7 @@ class Clipper2Tests {
                     const coords = this.geometry.parseSVGPath(
                         simplifyDef.path,
                         simplifyDef.scale,
-                        [85, 10]
+                        simplifyDef.position
                     );
                     rawPaths.push_back(this.geometry.coordinatesToPath64(coords));
                     break;
@@ -1513,7 +1680,7 @@ class Clipper2Tests {
     }
 
     /**
-     * Reset test to initial state
+     * Reset test to initial state - Fixed with proper defaults
      */
     resetTest(testName) {
         // Clear output data
@@ -1522,35 +1689,72 @@ class Clipper2Tests {
         // Reset status
         this.setTestStatus(testName, '');
         
-        // Reset state to defaults
+        // Reset state to defaults from config
         switch(testName) {
             case 'boolean':
-                this.testState.boolean.subjectPos = { x: 200, y: 200 }; // Keep centered
-                this.testState.boolean.clipPos = { x: 150, y: 150 }; // Top-left of subject
-                // Keep random shape if it exists
+                // Reset to actual defaults from config
+                this.testState.boolean.clipShape = 'circle';
+                this.testState.boolean.operation = 'union';
+                this.testState.boolean.subjectPos = { x: 400, y: 400 };
+                this.testState.boolean.clipPos = { 
+                    x: this.defaults.geometries.boolean.clips.circle.initialPos[0], 
+                    y: this.defaults.geometries.boolean.clips.circle.initialPos[1]
+                };
+                // Clear random shape
+                this.testState.boolean.randomShape = null;
+                
+                // Sync UI elements
+                const clipShapeSelect = document.getElementById('boolean-clip-shape');
+                if (clipShapeSelect) clipShapeSelect.value = 'circle';
+                const operationSelect = document.getElementById('boolean-operation');
+                if (operationSelect) operationSelect.value = 'union';
                 break;
+                
             case 'nested':
-                this.testState.nested.island1Pos = { x: 150, y: 150 };
-                this.testState.nested.island2Pos = { x: 250, y: 250 };
+                this.testState.nested.island1Pos = { x: 300, y: 300 };
+                this.testState.nested.island2Pos = { x: 500, y: 500 };
                 break;
+                
             case 'pip':
                 this.testState.pip.points = [];
                 this.testData.delete('pip-polygon');  // Clear stored polygon
                 break;
+                
             case 'area':
+                // Cancel any pending animation frame before resetting
+                if (this.testState.area.animationFrameId) {
+                    cancelAnimationFrame(this.testState.area.animationFrameId);
+                }
                 this.testState.area.points = [];
                 this.testState.area.isDrawing = false;
-                this.testState.area.lastPolygonPath = null; // Clear stored polygon
+                this.testState.area.lastPolygonPath = null;
+                this.testState.area.animationFrameId = null;
                 break;
+                
             case 'minkowski':
                 // Reset to defaults from config
-                this.testState.minkowski.pattern = this.defaults.geometries.minkowski.defaults.pattern;
-                this.testState.minkowski.path = this.defaults.geometries.minkowski.defaults.path;
-                this.testState.minkowski.operation = this.defaults.geometries.minkowski.defaults.operation;
-                this.testState.minkowski.pathClosed = this.defaults.geometries.minkowski.defaults.pathClosed;
-                this.testState.minkowski.showSweep = this.defaults.geometries.minkowski.defaults.showSweep;
-                this.testState.minkowski.showOffset = this.defaults.geometries.minkowski.defaults.showOffset;
-                this.testState.minkowski.patternPos = { x: 100, y: 200 };
+                const minkowskiDefaults = this.defaults.geometries.minkowski.defaults;
+                this.testState.minkowski.pattern = minkowskiDefaults.pattern;
+                this.testState.minkowski.path = minkowskiDefaults.path;
+                this.testState.minkowski.operation = minkowskiDefaults.operation;
+                this.testState.minkowski.pathClosed = minkowskiDefaults.pathClosed;
+                this.testState.minkowski.showSweep = minkowskiDefaults.showSweep;
+                this.testState.minkowski.showOffset = minkowskiDefaults.showOffset;
+                this.testState.minkowski.patternPos = { ...minkowskiDefaults.patternPos };
+                break;
+                
+            case 'arc-reconstruction':
+                // Reset arc reconstruction to defaults
+                const arcDefaults = this.defaults.geometries['arc-reconstruction'].defaults;
+                this.testState['arc-reconstruction'] = {
+                    operation: arcDefaults.operation,
+                    showReconstruction: arcDefaults.showReconstruction,
+                    showMetadata: arcDefaults.showMetadata,
+                    circle1Pos: { ...arcDefaults.circle1Pos },
+                    circle2Pos: { ...arcDefaults.circle2Pos },
+                    circle1Radius: arcDefaults.circle1Radius,
+                    circle2Radius: arcDefaults.circle2Radius
+                };
                 break;
         }
         
