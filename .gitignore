@@ -27,3 +27,6 @@ node_modules/
 # Extras
 Clipper2WASM_Examples.txt
 OriginalClipper2CDocumentation.txt
+/refactor
+/extras2
+/doc

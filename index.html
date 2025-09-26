@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PCB CAM</title>
+    <title>PCB CAM - Advanced Workspace</title>
     <link rel="stylesheet" href="cam.css">
 </head>
 <body>
@@ -14,329 +14,556 @@
         <div id="loading-progress" class="loading-progress">0%</div>
     </div>
 
-    <!-- Main Workspace -->
-    <div class="app-workspace" id="app-workspace">
-        <!-- Canvas Area -->
-        <div class="workspace-canvas">
-            <canvas id="preview-canvas"></canvas>
-            
-            <!-- Canvas Loading Overlay -->
-            <div id="canvas-loading-overlay" class="canvas-loading-overlay hidden">
-                <div class="loading-spinner"></div>
-                <div id="canvas-loading-message" class="loading-message"></div>
-            </div>
-            
-            <!-- Canvas Tools -->
-            <div class="canvas-tools">
-                <button class="btn btn-sm" id="zoom-fit-btn" title="Fit to view">🔍 Fit</button>
-                <button class="btn btn-sm" id="zoom-in-btn" title="Zoom in">🔍 +</button>
-                <button class="btn btn-sm" id="zoom-out-btn" title="Zoom out">🔍 -</button>
+    <!-- Top Toolbar -->
+    <header class="cam-toolbar" id="cam-toolbar">
+        <!-- Quick Actions Menu (left) -->
+        <div class="toolbar-section toolbar-left">
+            <div class="dropdown-menu">
+                <button class="btn-menu" id="quick-actions-btn">
+                    <svg width="20" height="20" viewBox="0 0 20 20">
+                        <rect x="2" y="4" width="16" height="2" fill="currentColor"/>
+                        <rect x="2" y="9" width="16" height="2" fill="currentColor"/>
+                        <rect x="2" y="14" width="16" height="2" fill="currentColor"/>
+                    </svg>
+                    <span>Actions</span>
+                </button>
+                <div class="dropdown-content" id="quick-actions-menu">
+                    <button class="menu-item" id="toolbar-add-files">
+                        <span>📂</span> Add Files...
+                    </button>
+                    <div class="menu-divider"></div>
+                    <button class="menu-item" id="toolbar-generate-toolpaths" disabled>
+                        <span>🔧</span> Generate Toolpaths
+                    </button>
+                    <button class="menu-item" id="toolbar-export-gcode" disabled>
+                        <span>📄</span> Export G-Code
+                    </button>
+                    <button class="menu-item" id="toolbar-export-svg">
+                        <span>📐</span> Export SVG
+                    </button>
+                </div>
             </div>
         </div>
 
-        <!-- Sidebar -->
-        <div class="workspace-sidebar">
-            <!-- Sidebar Header -->
-            <header class="sidebar-header">
-                <div class="sidebar-brand">
-                    <h1>PCB CAM</h1>
-                    <span class="version-badge">v8.0</span>
-                </div>
-                <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
-                    <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="5"></circle>
-                        <line x1="12" y1="1" x2="12" y2="3"></line>
-                        <line x1="12" y1="21" x2="12" y2="23"></line>
-                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                        <line x1="1" y1="12" x2="3" y2="12"></line>
-                        <line x1="21" y1="12" x2="23" y2="12"></line>
-                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                    </svg>
-                    <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                    </svg>
-                </button>
-            </header>
+        <!-- Title/Info (center) -->
+        <div class="toolbar-section toolbar-center">
+            <span class="workspace-title">PCB CAM Workspace</span>
+        </div>
 
-            <!-- Scrollable Content -->
-            <div class="sidebar-content">
-                <!-- Board Info -->
-                <div class="board-info-section">
-                    <div class="board-info">
-                        <span class="label">Board Size:</span>
-                        <span id="board-size" class="value">-- × -- mm</span>
+        <!-- Canvas Tools (right) -->
+        <div class="toolbar-section toolbar-right">
+            <button class="btn-tool" id="zoom-fit-btn" title="Fit to View">
+                <svg width="20" height="20" viewBox="0 0 20 20">
+                    <rect x="3" y="3" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+            <button class="btn-tool" id="zoom-in-btn" title="Zoom In">
+                <svg width="20" height="20" viewBox="0 0 20 20">
+                    <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <path d="M12.5 12.5l5 5M5 8h6M8 5v6" stroke="currentColor" stroke-width="2"/>
+                </svg>
+            </button>
+            <button class="btn-tool" id="zoom-out-btn" title="Zoom Out">
+                <svg width="20" height="20" viewBox="0 0 20 20">
+                    <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <path d="M12.5 12.5l5 5M5 8h6" stroke="currentColor" stroke-width="2"/>
+                </svg>
+            </button>
+            <div class="toolbar-separator"></div>
+            <button class="btn-icon theme-toggle" id="theme-toggle" title="Toggle Theme">
+                <svg class="sun-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="moon-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main CAM Workspace -->
+    <div class="cam-workspace" id="cam-workspace">
+        <!-- Left Sidebar - Operations & Visualization -->
+        <aside class="sidebar sidebar-left" id="sidebar-left">
+            <!-- Operations Tree Section -->
+            <div class="sidebar-section browser-section">
+                <header class="section-header">
+                    <h2>Operations</h2>
+                    <div class="section-actions">
+                        <button class="btn-icon" id="collapse-all-btn" title="Collapse All">
+                            <svg width="16" height="16" viewBox="0 0 16 16">
+                                <path d="M2 8h12M8 2v12" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+                        <button class="btn-icon" id="expand-all-btn" title="Expand All">
+                            <svg width="16" height="16" viewBox="0 0 16 16">
+                                <rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+                    </div>
+                </header>
+                <div class="tree-view" id="operations-tree">
+                    <!-- Operation categories populated dynamically -->
+                    <div class="operation-category" data-op-type="isolation">
+                        <div class="category-header">
+                            <span class="tree-expand-icon">▶</span>
+                            <span class="category-icon">🎯</span>
+                            <span class="category-label">Isolation Routing</span>
+                            <button class="btn-icon btn-tiny add-file-btn" data-op-type="isolation" title="Add File">
+                                <svg width="12" height="12" viewBox="0 0 20 20">
+                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="category-files"></div>
+                    </div>
+                    <div class="operation-category" data-op-type="drill">
+                        <div class="category-header">
+                            <span class="tree-expand-icon">▶</span>
+                            <span class="category-icon">🔧</span>
+                            <span class="category-label">Drilling</span>
+                            <button class="btn-icon btn-tiny add-file-btn" data-op-type="drill" title="Add File">
+                                <svg width="12" height="12" viewBox="0 0 20 20">
+                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="category-files"></div>
+                    </div>
+                    <div class="operation-category" data-op-type="clear">
+                        <div class="category-header">
+                            <span class="tree-expand-icon">▶</span>
+                            <span class="category-icon">🔄</span>
+                            <span class="category-label">Copper Clearing</span>
+                            <button class="btn-icon btn-tiny add-file-btn" data-op-type="clear" title="Add File">
+                                <svg width="12" height="12" viewBox="0 0 20 20">
+                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="category-files"></div>
+                    </div>
+                    <div class="operation-category" data-op-type="cutout">
+                        <div class="category-header">
+                            <span class="tree-expand-icon">▶</span>
+                            <span class="category-icon">✂️</span>
+                            <span class="category-label">Board Cutout</span>
+                            <button class="btn-icon btn-tiny add-file-btn" data-op-type="cutout" title="Add File">
+                                <svg width="12" height="12" viewBox="0 0 20 20">
+                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="category-files"></div>
                     </div>
                 </div>
-
-                <!-- Operations Section (Master Collapsible) -->
-                <section class="sidebar-section collapsible">
-                    <button class="section-toggle" data-target="operations-content">
-                        📂 Operations
-                    </button>
-                    <div class="section-content" id="operations-content" style="display: block;">
-                        <div class="operation-group">
-                            <div class="operation-group-header">
-                                <h3>🎯 Isolation <span class="color-indicator color-isolation"></span></h3>
-                                <button class="btn btn-sm" onclick="addFile('isolation')">+</button>
-                            </div>
-                            <div class="operation-list" id="isolation-operations"></div>
-                        </div>
-
-                        <div class="operation-group">
-                            <div class="operation-group-header">
-                                <h3>🔧 Drilling <span class="color-indicator color-drill"></span></h3>
-                                <button class="btn btn-sm" onclick="addFile('drill')">+</button>
-                            </div>
-                            <div class="operation-list" id="drill-operations"></div>
-                        </div>
-
-                        <div class="operation-group">
-                            <div class="operation-group-header">
-                                <h3>🔄 Clearing <span class="color-indicator color-clear"></span></h3>
-                                <button class="btn btn-sm" onclick="addFile('clear')">+</button>
-                            </div>
-                            <div class="operation-list" id="clear-operations"></div>
-                        </div>
-
-                        <div class="operation-group">
-                            <div class="operation-group-header">
-                                <h3>✂️ Cutout <span class="color-indicator color-cutout"></span></h3>
-                                <button class="btn btn-sm" onclick="addFile('cutout')">+</button>
-                            </div>
-                            <div class="operation-list" id="cutout-operations"></div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Coordinate System Section -->
-                <section class="sidebar-section collapsible">
-                    <button class="section-toggle" data-target="coord-content">
-                        🎯 Coordinate System
-                    </button>
-                    <div class="section-content" id="coord-content">
-                        <p class="hint">Set work coordinate origin</p>
-                        
-                        <div class="button-group">
-                            <button class="btn btn-secondary" id="center-origin-btn">Center</button>
-                            <button class="btn btn-secondary" id="bottom-left-origin-btn">Bottom-Left</button>
-                        </div>
-                        
-                        <div class="input-group">
-                            <label>X Offset</label>
-                            <div class="input-unit">
-                                <input type="number" id="x-offset" value="0" step="0.1">
-                                <span class="unit">mm</span>
-                            </div>
-                        </div>
-                        <div class="input-group">
-                            <label>Y Offset</label>
-                            <div class="input-unit">
-                                <input type="number" id="y-offset" value="0" step="0.1">
-                                <span class="unit">mm</span>
-                            </div>
-                        </div>
-                        
-                        <button class="btn btn-primary btn-block" id="apply-set-origin-btn">Set Origin</button>
-                        <button class="btn btn-secondary btn-block" id="reset-origin-btn">Reset</button>
-                    </div>
-                </section>
-
-                <!-- Board Transform Section -->
-                <section class="sidebar-section collapsible">
-                    <button class="section-toggle" data-target="transform-content">
-                        🔄 Board Transform
-                    </button>
-                    <div class="section-content" id="transform-content">
-                        <div class="input-group">
-                            <label>Rotation Angle</label>
-                            <div class="input-unit">
-                                <input type="number" id="rotation-angle" value="0" step="1">
-                                <span class="unit">°</span>
-                            </div>
-                        </div>
-                        
-                        <div class="button-group">
-                            <button class="btn btn-primary" id="apply-rotation-btn">Apply</button>
-                            <button class="btn btn-secondary" id="reset-rotation-btn">Reset</button>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- View Options Section -->
-                <section class="sidebar-section collapsible">
-                    <button class="section-toggle" data-target="view-content">
-                        👁️ View Options
-                    </button>
-                    <div class="section-content" id="view-content">
-                        <h4>Rendering</h4>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-wireframe">
-                                <span>Wireframe Mode</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="fuse-geometry">
-                                <span>Geometry Fusion</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-preprocessed">
-                                <span>Pre-processed</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="enable-arc-reconstruction">
-                                <span>Arc Reconstruction</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="debug-curve-points">
-                                <span>Debug Curve Points</span>
-                            </label>
-                        </div>
-                        
-                        <h4>Display</h4>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-grid" checked>
-                                <span>Grid</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-rulers" checked>
-                                <span>Rulers</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-bounds">
-                                <span>Bounds</span>
-                            </label>
-                        </div>
-
-                        <h4>Layers</h4>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-regions" checked>
-                                <span>Regions</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-traces" checked>
-                                <span>Traces</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-pads" checked>
-                                <span>Pads</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-drills" checked>
-                                <span>Drills</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="show-cutouts" checked>
-                                <span>Cutouts</span>
-                            </label>
-                        </div>
-
-                        <div id="arc-reconstruction-stats" class="stats-content hidden"></div>
-                    </div>
-                </section>
-
-                <!-- Machine Settings Section -->
-                <section class="sidebar-section collapsible">
-                    <button class="section-toggle" data-target="machine-content">
-                        ⚙️ Machine Settings
-                    </button>
-                    <div class="section-content" id="machine-content">
-                        <div class="input-group">
-                            <label>PCB Thickness</label>
-                            <div class="input-unit">
-                                <input type="number" id="pcb-thickness" value="1.6" min="0.2" step="0.1">
-                                <span class="unit">mm</span>
-                            </div>
-                        </div>
-                        <div class="input-group">
-                            <label>Safe Z</label>
-                            <div class="input-unit">
-                                <input type="number" id="safe-z" value="2" min="0.5" step="0.1">
-                                <span class="unit">mm</span>
-                            </div>
-                        </div>
-                        <div class="input-group">
-                            <label>Travel Z</label>
-                            <div class="input-unit">
-                                <input type="number" id="travel-z" value="1" min="0.1" step="0.1">
-                                <span class="unit">mm</span>
-                            </div>
-                        </div>
-                        <div class="input-group">
-                            <label>Rapid Feed</label>
-                            <div class="input-unit">
-                                <input type="number" id="rapid-feed" value="1000" min="100" step="100">
-                                <span class="unit">mm/min</span>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- G-Code Settings Section -->
-                <section class="sidebar-section collapsible">
-                    <button class="section-toggle" data-target="gcode-content">
-                        📜 G-Code Settings
-                    </button>
-                    <div class="section-content" id="gcode-content">
-                        <div class="input-group">
-                            <label>Post-Processor</label>
-                            <select id="post-processor">
-                                <option value="grbl">GRBL</option>
-                                <option value="marlin">Marlin</option>
-                                <option value="linuxcnc">LinuxCNC</option>
-                            </select>
-                        </div>
-                        <div class="input-group">
-                            <label>Units</label>
-                            <select id="gcode-units">
-                                <option value="mm">Millimeters</option>
-                                <option value="inch">Inches</option>
-                            </select>
-                        </div>
-                    </div>
-                </section>
             </div>
 
-            <!-- Sidebar Footer -->
-            <footer class="sidebar-footer">
-                <button class="btn btn-secondary btn-block" id="export-svg-btn">📄 Export SVG</button>
-                <button class="btn btn-primary btn-block" id="generate-gcode-btn">⚡ Generate G-Code</button>
-            </footer>
+
+        </aside>
+
+        <!-- Main Canvas Area -->
+        <main class="workspace-main">
+            <div class="canvas-container">
+                <canvas id="preview-canvas"></canvas>
+                
+                <!-- Canvas Loading Overlay -->
+                <div id="canvas-loading-overlay" class="canvas-loading-overlay hidden">
+                    <div class="loading-spinner"></div>
+                    <div id="canvas-loading-message" class="loading-message"></div>
+                </div>
+
+                <!-- Coordinate Display -->
+                <div class="coordinate-display" id="coordinate-display">
+                    <span>X: <span id="coord-x">0.00</span></span>
+                    <span>Y: <span id="coord-y">0.00</span></span>
+                    <span>Zoom: <span id="zoom-level">100%</span></span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar - Properties -->
+        <aside class="sidebar sidebar-right" id="sidebar-right">
+            <!-- Property Inspector Section -->
+            <div class="sidebar-section inspector-section">
+                <header class="section-header">
+                    <h2 id="inspector-title">Properties</h2>
+                </header>
+                <div class="property-form" id="property-form">
+                    <div class="property-empty">Select an operation to view properties</div>
+                </div>
+            </div>
+
+            <!-- Coordinate System Controls -->
+            <div class="sidebar-section coordinate-section">
+                <header class="section-header collapsible-header" data-target="coordinate-controls">
+                    <h2>Origin & Rotation</h2>
+                    <span class="collapse-indicator">▼</span>
+                </header>
+                <div class="section-content collapsed" id="coordinate-controls">
+                    <div class="property-field">
+                        <label>Board Size</label>
+                        <span id="board-size" class="info-text">Not loaded</span>
+                    </div>
+                    <div class="property-field">
+                        <label>Origin Offset</label>
+                        <div class="input-row">
+                            <div class="input-with-unit">
+                                <input type="number" id="x-offset" value="0" step="0.1">
+                                <span class="unit">X mm</span>
+                            </div>
+                            <div class="input-with-unit">
+                                <input type="number" id="y-offset" value="0" step="0.1">
+                                <span class="unit">Y mm</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="button-row">
+                        <button class="btn btn-sm" id="center-origin-btn">Center</button>
+                        <button class="btn btn-sm" id="bottom-left-origin-btn">Bottom-Left</button>
+                    </div>
+                    <div class="button-row">
+                        <button class="btn btn-sm" id="apply-set-origin-btn">Apply Origin</button>
+                        <button class="btn btn-sm" id="reset-origin-btn">Reset</button>
+                    </div>
+                    <div class="property-field">
+                        <label>Board Rotation</label>
+                        <div class="input-with-unit">
+                            <input type="number" id="rotation-angle" value="0" step="5">
+                            <span class="unit">degrees</span>
+                        </div>
+                    </div>
+                    <div class="button-row">
+                        <button class="btn btn-sm" id="apply-rotation-btn">Apply</button>
+                        <button class="btn btn-sm" id="reset-rotation-btn">Reset</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Section -->
+            <div class="sidebar-section stats-section">
+                <header class="section-header collapsible-header" data-target="stats-content">
+                    <h2>Statistics</h2>
+                    <span class="collapse-indicator">▼</span>
+                </header>
+                <div class="section-content collapsed" id="stats-content">
+                    <div class="stats-display">
+                        <div class="stat-item">
+                            <span class="stat-label">Files:</span>
+                            <span class="stat-value" id="stat-files">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Operations:</span>
+                            <span class="stat-value" id="stat-operations">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Primitives:</span>
+                            <span class="stat-value" id="stat-primitives">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Toolpaths:</span>
+                            <span class="stat-value" id="stat-toolpaths">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Floating Visualization Panel -->
+    <div class="viz-panel collapsed" id="viz-panel">
+        <header class="section-header" id="viz-panel-header">
+            <h2>Visualization</h2>
+            <span class="collapse-indicator">▲</span>
+        </header>
+        <div class="section-content" id="viz-controls">
+            <!-- Display Options -->
+            <div class="control-group">
+                <h3>Display</h3>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-grid" checked>
+                    <span>Grid</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-wireframe">
+                    <span>Wireframe</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-bounds">
+                    <span>Board Bounds</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-rulers" checked>
+                    <span>Rulers</span>
+                </label>
+            </div>
+
+            <!-- Layer Visibility -->
+            <div class="control-group">
+                <h3>Layers</h3>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-regions" checked>
+                    <span>Regions</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-traces" checked>
+                    <span>Traces</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-pads" checked>
+                    <span>Pads</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-drills" checked>
+                    <span>Drills</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-cutouts" checked>
+                    <span>Cutouts</span>
+                </label>
+            </div>
+
+            <!-- Advanced/Debug -->
+            <div class="control-group">
+                <h3>Advanced</h3>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="fuse-geometry">
+                    <span>Fusion Mode</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="show-preprocessed">
+                    <span>Preprocessed</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="enable-arc-reconstruction">
+                    <span>Arc Reconstruction</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="debug-curve-points">
+                    <span>Debug Curves</span>
+                </label>
+                <label class="checkbox-control">
+                    <input type="checkbox" id="black-and-white">
+                    <span>B&W Mode</span>
+                </label>
+            </div>
+
+            <!-- Arc Reconstruction Stats -->
+            <div id="arc-reconstruction-stats" class="stats-info hidden"></div>
         </div>
     </div>
 
     <!-- Status Bar -->
-    <div class="status" id="status">
-        <span id="status-text">Ready - Add PCB files to begin</span>
-    </div>
+    <footer class="status-bar" id="status-bar">
+        <div class="status-left">
+            <span class="status-text" id="status-text">Ready</span>
+        </div>
+        <div class="status-center">
+            <button class="visibility-toggle-btn" id="visibility-toggle-btn" title="Layer Visibility">
+                <svg width="16" height="16" viewBox="0 0 20 20">
+                    <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z" stroke="currentColor" fill="none"/>
+                    <circle cx="10" cy="10" r="3" stroke="currentColor" fill="none"/>
+                </svg>
+                <span class="visibility-menu" id="visibility-menu">
+                    <label><input type="checkbox" id="vis-source" checked> Source</label>
+                    <label><input type="checkbox" id="vis-fused" checked> Fused</label>
+                    <label><input type="checkbox" id="vis-toolpath"> Toolpaths</label>
+                    <label><input type="checkbox" id="vis-preview"> Preview</label>
+                </span>
+            </button>
+            <span class="status-progress hidden" id="status-progress">
+                <span class="progress-bar" id="progress-bar"></span>
+            </span>
+        </div>
+        <div class="status-right">
+            <span class="status-info" id="status-info"></span>
+        </div>
+    </footer>
+
+    <!-- Templates -->
+    
+    <!-- File Node Template (under operation category) -->
+    <template id="file-node-template">
+        <div class="file-node" data-file-id="">
+            <div class="file-node-content">
+                <span class="tree-expand-icon">▶</span>
+                <span class="file-icon">📄</span>
+                <span class="file-label"></span>
+                <div class="node-actions">
+                    <button class="btn-icon btn-tiny settings-btn" title="Settings">
+                        <svg width="12" height="12" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="2" stroke="currentColor" fill="none"/>
+                            <path d="M10 2v2m0 12v2m6-8h2M2 10h2" stroke="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="btn-icon btn-tiny delete-btn" title="Delete">
+                        <svg width="12" height="12" viewBox="0 0 20 20">
+                            <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
+                            <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="file-geometries"></div>
+        </div>
+    </template>
+
+    <!-- Geometry Node Template (under file) -->
+    <template id="geometry-node-template">
+        <div class="geometry-node" data-geometry-id="" data-geometry-type="">
+            <div class="geometry-node-content">
+                <span class="geometry-icon"></span>
+                <span class="geometry-label"></span>
+                <span class="geometry-info"></span>
+                <button class="btn-icon btn-tiny visibility-btn" title="Toggle Visibility">
+                    <svg width="12" height="12" viewBox="0 0 20 20">
+                        <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z" stroke="currentColor" fill="none"/>
+                        <circle cx="10" cy="10" r="3" stroke="currentColor" fill="none"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Property Form Templates -->
+    <template id="property-operation-template">
+        <div class="property-group">
+            <h3>Operation Settings</h3>
+            <div class="property-field">
+                <label>Type</label>
+                <input type="text" readonly class="readonly" id="prop-type">
+            </div>
+            <div class="property-field">
+                <label>Source File</label>
+                <input type="text" readonly class="readonly" id="prop-source">
+            </div>
+        </div>
+        <div class="property-group">
+            <h3>Tool Selection</h3>
+            <div class="property-field">
+                <label>Tool</label>
+                <select id="prop-tool"></select>
+            </div>
+            <div class="property-field">
+                <label>Tool Diameter</label>
+                <div class="input-with-unit">
+                    <input type="number" id="prop-tool-diameter" readonly>
+                    <span class="unit">mm</span>
+                </div>
+            </div>
+        </div>
+        <div class="property-group">
+            <h3>Cutting Parameters</h3>
+            <div class="property-field">
+                <label>Number of Passes</label>
+                <input type="number" id="prop-passes" min="1" max="10" value="1">
+            </div>
+            <div class="property-field">
+                <label>Step Over</label>
+                <div class="input-with-unit">
+                    <input type="number" id="prop-stepover" min="10" max="100" value="50">
+                    <span class="unit">%</span>
+                </div>
+            </div>
+            <div class="property-field">
+                <label>Cut Depth</label>
+                <div class="input-with-unit">
+                    <input type="number" id="prop-cut-depth" min="0.001" step="0.001" value="0.05">
+                    <span class="unit">mm</span>
+                </div>
+            </div>
+            <div class="property-field">
+                <label>Feed Rate</label>
+                <div class="input-with-unit">
+                    <input type="number" id="prop-feed-rate" min="1" max="5000" value="150">
+                    <span class="unit">mm/min</span>
+                </div>
+            </div>
+            <div class="property-field">
+                <label>Plunge Rate</label>
+                <div class="input-with-unit">
+                    <input type="number" id="prop-plunge-rate" min="1" max="1000" value="50">
+                    <span class="unit">mm/min</span>
+                </div>
+            </div>
+            <div class="property-field">
+                <label>Spindle Speed</label>
+                <div class="input-with-unit">
+                    <input type="number" id="prop-spindle-speed" min="100" max="30000" value="12000">
+                    <span class="unit">RPM</span>
+                </div>
+            </div>
+        </div>
+        <div class="property-group">
+            <h3>Strategy</h3>
+            <div class="property-field">
+                <label>Direction</label>
+                <select id="prop-direction">
+                    <option value="climb">Climb Milling</option>
+                    <option value="conventional">Conventional</option>
+                </select>
+            </div>
+            <div class="property-field">
+                <label>Entry Type</label>
+                <select id="prop-entry">
+                    <option value="plunge">Plunge</option>
+                    <option value="ramp">Ramp</option>
+                    <option value="helix">Helix</option>
+                </select>
+            </div>
+        </div>
+        <div class="property-actions">
+            <button class="btn btn-primary" id="apply-properties-btn">Apply Changes</button>
+            <button class="btn btn-secondary" id="reset-properties-btn">Reset</button>
+        </div>
+    </template>
 
     <!-- Welcome Modal -->
     <div id="welcome-modal" class="modal">
-        <div class="modal-content welcome-modal-content">
+        <div class="modal-content modal-welcome">
             <div class="modal-header">
                 <h2>Welcome to PCB CAM</h2>
-                <button id="welcome-modal-close" class="modal-close">×</button>
+                <button class="modal-close" id="welcome-close">×</button>
             </div>
             <div class="modal-body">
-                <p class="modal-intro">Get started by loading an example project or your own files.</p>
+                <p class="welcome-intro">Advanced isolation routing workspace for PCB manufacturing</p>
                 
-                <div class="example-selector">
-                    <label>Choose an example:</label>
-                    <select id="pcb-example-select">
-                        <!-- Options populated by JavaScript -->
-                    </select>
+                <div class="welcome-options">
+                    <div class="welcome-option">
+                        <button class="btn btn-primary btn-block" id="load-example-btn">
+                            <span>📦</span> Load Example Project
+                        </button>
+                        <p>Start with a sample PCB to explore features</p>
+                        <select id="pcb-example-select" class="example-select">
+                            <option value="xiao">Xiao ESP32 V1</option>
+                        </select>
+                    </div>
+                    
+                    <div class="welcome-option">
+                        <button class="btn btn-secondary btn-block" id="open-files-btn">
+                            <span>📂</span> Open Files
+                        </button>
+                        <p>Load your Gerber, Excellon, or SVG files</p>
+                    </div>
+                    
+                    <div class="welcome-option">
+                        <button class="btn btn-secondary btn-block" id="start-empty-btn">
+                            <span>📋</span> Start Empty
+                        </button>
+                        <p>Begin with a blank workspace</p>
+                    </div>
                 </div>
                 
-                <div class="modal-actions">
-                    <button id="load-example-btn" class="btn btn-primary btn-block">📦 Load Selected Example</button>
-                    <button id="upload-files-btn" class="btn btn-secondary btn-block">📁 Upload Files</button>
-                    <button id="start-empty-btn" class="btn btn-secondary btn-block">📋 Start Empty</button>
-                </div>
-                
-                <div class="modal-options">
+                <div class="welcome-footer">
                     <label class="checkbox-label">
                         <input type="checkbox" id="dont-show-welcome">
                         <span>Don't show this again</span>
@@ -346,168 +573,145 @@
         </div>
     </div>
 
-    <!-- File Upload Modal -->
-    <div id="upload-modal" class="modal">
-        <div class="modal-content upload-modal-content">
+    <!-- Multi-Zone File Upload Modal -->
+    <div id="file-modal" class="modal">
+        <div class="modal-content modal-upload">
             <div class="modal-header">
-                <h2>Upload PCB Files</h2>
-                <button id="upload-modal-close" class="modal-close">×</button>
+                <h2>Add PCB Files</h2>
+                <button class="modal-close" id="file-modal-close">×</button>
             </div>
             <div class="modal-body">
-                <div class="upload-section">
-                    <h3>🎯 Isolation Routing</h3>
-                    <input type="file" id="isolation-file" accept=".gbr,.ger,.gtl,.gbl,.svg">
-                    <div class="file-status" id="isolation-status"></div>
+                <div class="upload-zones">
+                    <!-- Isolation Zone -->
+                    <div class="upload-zone" data-op-type="isolation">
+                        <div class="zone-header">
+                            <span class="zone-icon">🎯</span>
+                            <h3>Isolation Routing</h3>
+                        </div>
+                        <div class="file-drop-zone" id="isolation-drop-zone">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <p>Drop copper layer files</p>
+                            <span class="file-types">.gbr, .ger, .gtl, .gbl</span>
+                            <input type="file" id="isolation-file" accept=".gbr,.ger,.gtl,.gbl,.gts,.gbs" hidden>
+                        </div>
+                        <div class="zone-status" id="isolation-status"></div>
+                    </div>
+
+                    <!-- Drill Zone -->
+                    <div class="upload-zone" data-op-type="drill">
+                        <div class="zone-header">
+                            <span class="zone-icon">🔧</span>
+                            <h3>Drilling</h3>
+                        </div>
+                        <div class="file-drop-zone" id="drill-drop-zone">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <p>Drop drill files</p>
+                            <span class="file-types">.drl, .xln, .txt</span>
+                            <input type="file" id="drill-file" accept=".drl,.xln,.txt,.drill,.exc" hidden>
+                        </div>
+                        <div class="zone-status" id="drill-status"></div>
+                    </div>
+
+                    <!-- Clear Zone -->
+                    <div class="upload-zone" data-op-type="clear">
+                        <div class="zone-header">
+                            <span class="zone-icon">🔄</span>
+                            <h3>Copper Clearing</h3>
+                        </div>
+                        <div class="file-drop-zone" id="clear-drop-zone">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <p>Drop keepout/ground files</p>
+                            <span class="file-types">.gbr, .gpl, .gnd</span>
+                            <input type="file" id="clear-file" accept=".gbr,.ger,.gpl,.gp1,.gnd" hidden>
+                        </div>
+                        <div class="zone-status" id="clear-status"></div>
+                    </div>
+
+                    <!-- Cutout Zone -->
+                    <div class="upload-zone" data-op-type="cutout">
+                        <div class="zone-header">
+                            <span class="zone-icon">✂️</span>
+                            <h3>Board Cutout</h3>
+                        </div>
+                        <div class="file-drop-zone" id="cutout-drop-zone">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <p>Drop outline files</p>
+                            <span class="file-types">.gbr, .gko, .gm1</span>
+                            <input type="file" id="cutout-file" accept=".gbr,.gko,.gm1,.outline,.mill" hidden>
+                        </div>
+                        <div class="zone-status" id="cutout-status"></div>
+                    </div>
                 </div>
-                
-                <div class="upload-section">
-                    <h3>🔧 Drilling</h3>
-                    <input type="file" id="drill-file" accept=".drl,.xln,.txt,.drill,.exc">
-                    <div class="file-status" id="drill-status"></div>
-                </div>
-                
-                <div class="upload-section">
-                    <h3>🔄 Copper Clearing</h3>
-                    <input type="file" id="clear-file" accept=".gbr,.ger,.gpl,.gp1,.gnd,.svg">
-                    <div class="file-status" id="clear-status"></div>
-                </div>
-                
-                <div class="upload-section">
-                    <h3>✂️ Board Cutout</h3>
-                    <input type="file" id="cutout-file" accept=".gbr,.gko,.gm1,.outline,.mill,.svg">
-                    <div class="file-status" id="cutout-status"></div>
-                </div>
-                
                 <div class="modal-actions">
-                    <button id="process-files-btn" class="btn btn-primary btn-block" disabled>Process Files</button>
-                    <button id="cancel-upload-btn" class="btn btn-secondary btn-block">Cancel</button>
+                    <button class="btn btn-primary" id="process-files-btn" disabled>Process Files</button>
+                    <button class="btn btn-secondary" id="cancel-files-btn">Cancel</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Templates -->
-    
-    <!-- Operation Card Template -->
-    <template id="operation-card-template">
-        <div class="operation-card" data-operation-id="">
-            <div class="operation-header">
-                <span class="operation-icon"></span>
-                <span class="operation-name"></span>
-                <span class="operation-status"></span>
-                <button class="expand-btn" data-operation-id="">▶</button>
-                <button class="remove-btn" data-operation-id="">×</button>
-            </div>
-            <div class="operation-settings"></div>
-        </div>
-    </template>
-    
-    <!-- Settings Panel Template -->
-    <template id="settings-panel-template">
-        <div class="settings-panel">
-            <div class="settings-section">
-                <h4>Tool Settings</h4>
-                <div class="input-group">
-                    <label>Tool Diameter</label>
-                    <div class="input-unit">
-                        <input type="number" class="tool-diameter" value="0.1" min="0.01" max="10" step="0.01">
-                        <span>mm</span>
-                    </div>
-                </div>
-                <div class="input-group">
-                    <label>Tool Type</label>
-                    <select class="tool-type">
-                        <option value="end_mill">End Mill</option>
-                        <option value="v_bit">V-Bit</option>
-                        <option value="drill">Drill</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="settings-section">
-                <h4>Cutting Parameters</h4>
-                <div class="input-group">
-                    <label>Cut Feed</label>
-                    <div class="input-unit">
-                        <input type="number" class="cut-feed" value="100" min="1" max="5000" step="1">
-                        <span>mm/min</span>
-                    </div>
-                </div>
-                <div class="input-group">
-                    <label>Cut Depth</label>
-                    <div class="input-unit">
-                        <input type="number" class="cut-depth" value="0.05" min="0.001" max="10" step="0.001">
-                        <span>mm</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="settings-section">
-                <h4>Operation Settings</h4>
-                <div class="operation-specific-content"></div>
-            </div>
-        </div>
-    </template>
-    
-    <!-- Operation Message Template -->
-    <template id="operation-message-template">
-        <div class="operation-message"></div>
-    </template>
-
-    <!-- Operation Stats Item Template -->
-    <template id="operation-stats-item-template">
-        <div class="stats-item-container">
-            <div class="stats-item-header">
-                <span class="stats-item-status"></span>
-                <span class="stats-item-name"></span>
-            </div>
-            <div class="stats-item-details"></div>
-            <div class="stats-item-error"></div>
-        </div>
-    </template>
-
-    <!-- Hidden file input -->
-    <input type="file" id="file-input-temp" class="hidden">
+    <!-- Hidden file input for quick access -->
+    <input type="file" id="file-input-hidden" class="hidden" multiple>
 
     <!-- Scripts -->
     <script src="config.js"></script>
     <script>
+        // Script loading sequence
         const scripts = [
-            // WASM and geometry processing
+            // Geometry and processing
             'geometry/clipper2z.js',
             'geometry/geometry-processor.js',
             'geometry/arc-reconstructor.js',
             'geometry/clipper-wrapper.js',
             'geometry/geometry-utils.js',
+            'geometry/geometry-offsetter.js', // Placeholder module
             
-            // Primitives
+            // Parsers and primitives
             'parsers/primitives.js',
-            
-            // Parser system
             'parsers/parser-core.js',
             'parsers/parser-gerber.js',
             'parsers/parser-excellon.js',
             'parsers/parser-svg.js',
             'parsers/parser-plotter.js',
             
-            // Renderer system
+            // Rendering
             'renderer/renderer-core.js',
             'renderer/renderer-primitives.js',
             'renderer/renderer-overlay.js',
             'renderer/renderer-interaction.js',
             'renderer/layer-renderer.js',
             
-            // Export functionality
+            // Export
             'export/svg-exporter.js',
             
             // Coordinate system
             'coordinate/coordinate-system.js',
             
-            // UI system
+            // UI Components
+            'ui/tool-library.js',
+            'ui/ui-tree-manager.js',
+            'ui/ui-property-inspector.js',
+            'ui/ui-visibility-panel.js',
             'ui/ui-operations.js',
             'ui/ui-controls.js',
             
-            // Core application logic
+            // Core application
             'cam-core.js',
             'cam-ui.js',
             'cam-controller.js'
@@ -524,65 +728,56 @@
                 script.src = src;
                 script.async = false;
                 script.onload = () => {
-                    console.log(`✅ Loaded: ${src}`);
+                    console.log(`✓ Loaded: ${src}`);
                     loadedCount++;
                     updateLoadingProgress();
                     resolve();
                 };
                 script.onerror = () => {
-                    console.error(`❌ Failed to load ${src}`);
+                    console.error(`✗ Failed: ${src}`);
                     failedScripts.push(src);
                     loadedCount++;
-                    updateLoadingProgress(`⚠️ Some modules failed to load`);
-                    // Resolve instead of reject to continue loading other scripts
-                    resolve();
+                    updateLoadingProgress();
+                    resolve(); // Continue loading others
                 };
                 document.head.appendChild(script);
             });
         }
 
-        function updateLoadingProgress(errorMessage = null) {
+        function updateLoadingProgress() {
             const progress = Math.round((loadedCount / totalScripts) * 100);
             const progressElement = document.getElementById('loading-progress');
             const textElement = document.getElementById('loading-text');
 
-            if (errorMessage) {
-                textElement.textContent = errorMessage;
+            if (progressElement) {
+                progressElement.textContent = `${progress}%`;
             }
-
-            progressElement.textContent = `${progress}%`;
 
             if (loadedCount === totalScripts) {
                 const loadTime = Date.now() - loadingStartTime;
                 if (failedScripts.length > 0) {
-                    textElement.textContent = `PCB CAM Ready with warnings (${loadTime}ms)`;
-                    console.warn('Failed to load modules:', failedScripts);
+                    textElement.textContent = `Ready with warnings (${loadTime}ms)`;
+                    console.warn('Failed modules:', failedScripts);
                 } else {
-                    textElement.textContent = `PCB CAM Ready (${loadTime}ms)`;
+                    textElement.textContent = `Ready (${loadTime}ms)`;
                 }
                 setTimeout(() => {
                     document.getElementById('loading-overlay').style.display = 'none';
+                    document.getElementById('cam-toolbar').style.display = 'flex';
+                    document.getElementById('cam-workspace').style.display = 'grid';
                 }, 500);
             }
         }
 
-        async function loadAllScripts() {
-            try {
-                console.log('🚀 Loading PCB CAM v8.0 - Workspace Edition...');
-                for (const scriptPath of scripts) {
-                    await loadScript(scriptPath);
-                }
-                console.log('🎉 Script loading complete.');
-                if (failedScripts.length > 0) {
-                    console.warn('⚠️ Some optional modules failed to load, running with reduced functionality');
-                }
-            } catch (error) {
-                console.error('💥 Error loading PCB CAM:', error);
-                document.getElementById('loading-text').textContent = `Error: ${error.message}`;
+        async function initializeApp() {
+            console.log('🚀 PCB CAM Advanced Workspace v2.0');
+            for (const scriptPath of scripts) {
+                await loadScript(scriptPath);
             }
+            console.log('✅ All modules loaded');
         }
 
-        document.addEventListener('DOMContentLoaded', loadAllScripts);
+        document.addEventListener('DOMContentLoaded', initializeApp);
     </script>
 </body>
 </html>

@@ -1,19 +1,17 @@
 // cam-controller.js
-// Main application controller - Workspace Edition
-// Manages async WASM operations and file processing pipeline
+// Main application controller for PCB CAM Advanced Workspace
 
 (function() {
     'use strict';
     
-    // Get config reference
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
+    const messagesConfig = config.ui?.messages || {};
     const uiConfig = config.ui || {};
     const timingConfig = uiConfig.timing || {};
-    const messagesConfig = uiConfig.messages || {};
     const opsConfig = config.operations || {};
     
-    // PCB Example definitions - can be loaded from server later
+    // PCB Example definitions
     const PCB_EXAMPLES = {
         'xiao': {
             name: 'Xiao ESP32 V1',
@@ -24,12 +22,10 @@
                 cutout: 'examples/xiao/Xiao-Edge_Cuts.gbr'
             }
         },
-        'arduino-shield': {
-            name: 'Arduino Shield',
+        'line': {
+            name: 'Line Test',
             files: {
-                isolation: 'examples/shield_top.gbr',
-                drill: 'examples/shield.drl',
-                cutout: 'examples/shield_edge.gbr'
+                isolation: 'examples/LineTest.svg'
             }
         },
         'smd-adapter': {
@@ -47,10 +43,13 @@
         }
     };
     
-    class SemanticPCBCam {
+    class PCBCAMController {
         constructor() {
-            // Initialization state tracking
-            this.initializationState = {
+            this.core = null;
+            this.ui = null;
+            
+            // Track initialization state
+            this.initState = {
                 coreReady: false,
                 uiReady: false,
                 wasmReady: false,
@@ -58,95 +57,301 @@
                 error: null
             };
             
-            // Operation queue for file processing
-            this.pendingFileOperations = [];
+            // Pending operations queue
+            this.pendingOperations = [];
             
-            // Upload modal file tracking
-            this.uploadedFiles = {};
+            // Upload modal file tracking - one per operation type
+            this.uploadedFiles = {
+                isolation: null,
+                drill: null,
+                clear: null,
+                cutout: null
+            };
             
-            // Initialize core components
-            this.core = new PCBCamCore({ skipInit: true });
-            this.ui = new PCBCamUI(this.core);
-            
-            // Debug mode from config
-            this.debugMode = debugConfig.enabled;
-            
-            // Start initialization
-            this.initializeApp();
+            // Queued files for processing
+            this.queuedFiles = [];
         }
         
-        async initializeApp() {
-            if (debugConfig.enabled) {
-                console.log('🚀 Starting PCB CAM Workspace Edition...');
-            }
+        async initialize() {
+            console.log('🚀 PCB CAM Advanced Workspace v2.0 initializing...');
             
-            // Set theme from config or saved
-            const savedTheme = localStorage.getItem('theme') || uiConfig.theme;
-            document.documentElement.setAttribute('data-theme', savedTheme);
-            
-            // Initialize UI with workspace
-            this.ui.initializeUI();
-            this.ui.setupWorkspace();
-            this.setupEventListeners();
-            this.initializationState.uiReady = true;
-            
-            if (debugConfig.enabled) {
-                console.log('✅ Workspace UI initialized');
-            }
-            
-            // Initialize WASM processors
             try {
+                // Initialize core with skip init flag to control WASM loading
+                this.core = new PCBCamCore({ skipInit: true });
+                
+                // Initialize UI with core reference
+                this.ui = new PCBCamUI(this.core);
+                
+                // Initialize UI (which creates tool library from config)
+                const uiReady = await this.ui.init();
+                this.initState.uiReady = uiReady;
+                
+                if (!uiReady) {
+                    throw new Error('UI initialization failed');
+                }
+                
+                // Pass tool library to core if using advanced UI
+                if (this.ui.toolLibrary) {
+                    this.core.setToolLibrary(this.ui.toolLibrary);
+                }
+                
+                // Initialize WASM modules
+                const wasmReady = await this.initializeWASM();
+                this.initState.wasmReady = wasmReady;
+                
+                if (!wasmReady) {
+                    console.warn('⚠️ WASM modules failed to load - running in fallback mode');
+                    this.ui?.updateStatus(messagesConfig.warning || 'Warning: Clipper2 failed to load - fusion disabled', 'warning');
+                }
+                
+                // Setup global event handlers
+                this.setupGlobalHandlers();
+                
+                // Setup toolbar handlers
+                this.setupToolbarHandlers();
+                
+                // Process any pending operations
+                await this.processPendingOperations();
+                
+                // Hide loading overlay
+                this.hideLoadingOverlay();
+                
+                // Check for first-time user
+                const hideWelcome = localStorage.getItem('pcbcam-hide-welcome');
+                const hasVisited = localStorage.getItem('hasVisited');
+                
+                if (!hideWelcome && !hasVisited) {
+                    this.showWelcomeModal();
+                } else {
+                    // Ensure coordinate system is initialized
+                    this.ensureCoordinateSystem();
+                }
+                
+                this.initState.fullyReady = true;
+                
+                console.log('✅ PCB CAM ready');
+                
+                // Update status
+                this.ui?.updateStatus(messagesConfig.ready || 'Ready - Advanced workspace loaded', 'success');
+                
+            } catch (error) {
+                console.error('❌ Initialization failed:', error);
+                this.initState.error = error.message;
+                this.ui?.updateStatus('Initialization failed: ' + error.message, 'error');
+                this.hideLoadingOverlay();
+            }
+        }
+        
+        async initializeWASM() {
+            try {
+                if (!this.core || typeof this.core.initializeProcessors !== 'function') {
+                    console.warn('Core processor initialization not available');
+                    return false;
+                }
+                
                 if (debugConfig.logging?.wasmOperations) {
                     console.log('⏳ Loading Clipper2 WASM modules...');
                 }
                 
-                const wasmInitialized = await this.core.initializeProcessors();
+                const result = await this.core.initializeProcessors();
                 
-                if (wasmInitialized) {
-                    this.initializationState.wasmReady = true;
+                if (result) {
                     if (debugConfig.enabled) {
                         console.log('✅ Clipper2 WASM modules loaded successfully');
                     }
-                    
-                    // Process pending operations
-                    await this.processPendingFileOperations();
-                } else {
-                    throw new Error('Failed to initialize Clipper2 WASM modules');
                 }
                 
-                this.initializationState.coreReady = true;
-                this.initializationState.fullyReady = true;
-                
-                if (debugConfig.enabled) {
-                    console.log('✅ PCB CAM fully initialized');
-                }
-                
-                this.ui.updateStatus(messagesConfig.ready || 'Ready - Workspace loaded', 'success');
-                
-                // Show welcome modal for first-time users
-                if (!localStorage.getItem('hasVisited')) {
-                    this.showWelcomeModal();
-                }
+                return result;
                 
             } catch (error) {
-                console.error('❌ Failed to initialize Clipper2 WASM:', error);
-                this.initializationState.error = error.message;
+                console.error('❌ WASM initialization error:', error);
+                return false;
+            }
+        }
+        
+        hideLoadingOverlay() {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.style.opacity = '0';
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                }, 300);
+            }
+        }
+        
+        setupToolbarHandlers() {
+            // Quick Actions dropdown
+            const quickActionsBtn = document.getElementById('quick-actions-btn');
+            const quickActionsMenu = document.getElementById('quick-actions-menu');
+            
+            if (quickActionsBtn && quickActionsMenu) {
+                quickActionsBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    quickActionsBtn.classList.toggle('active');
+                    quickActionsMenu.classList.toggle('show');
+                });
                 
-                this.ui.updateStatus(messagesConfig.warning || 'Warning: Clipper2 failed to load - fusion disabled', 'warning');
+                // Close on outside click
+                document.addEventListener('click', () => {
+                    quickActionsBtn.classList.remove('active');
+                    quickActionsMenu.classList.remove('show');
+                });
                 
-                this.initializationState.coreReady = true;
-                this.initializationState.fullyReady = true;
+                quickActionsMenu.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+            }
+            
+            // Toolbar action buttons
+            const addFilesBtn = document.getElementById('toolbar-add-files');
+            if (addFilesBtn) {
+                addFilesBtn.addEventListener('click', () => {
+                    this.showFileModal();
+                    quickActionsBtn.classList.remove('active');
+                    quickActionsMenu.classList.remove('show');
+                });
+            }
+            
+            const genToolpathsBtn = document.getElementById('toolbar-generate-toolpaths');
+            if (genToolpathsBtn) {
+                genToolpathsBtn.addEventListener('click', () => {
+                    this.generateToolpaths();
+                    quickActionsBtn.classList.remove('active');
+                    quickActionsMenu.classList.remove('show');
+                });
+            }
+            
+            const exportGcodeBtn = document.getElementById('toolbar-export-gcode');
+            if (exportGcodeBtn) {
+                exportGcodeBtn.addEventListener('click', () => {
+                    this.exportGcode();
+                    quickActionsBtn.classList.remove('active');
+                    quickActionsMenu.classList.remove('show');
+                });
+            }
+            
+            const exportSvgBtn = document.getElementById('toolbar-export-svg');
+            if (exportSvgBtn) {
+                exportSvgBtn.addEventListener('click', () => {
+                    this.exportSVG();
+                    quickActionsBtn.classList.remove('active');
+                    quickActionsMenu.classList.remove('show');
+                });
+            }
+        }
+        
+        setupGlobalHandlers() {
+            // Handle resize
+            window.addEventListener('resize', () => {
+                if (this.ui?.renderer) {
+                    this.ui.renderer.resizeCanvas();
+                }
+            });
+            
+            // Handle file drops on entire window
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+            });
+            
+            window.addEventListener('drop', (e) => {
+                e.preventDefault();
+                // Only handle if not over a specific drop zone
+                if (!e.target.closest('.file-drop-zone') && !e.target.closest('#file-drop-zone')) {
+                    this.handleGlobalFileDrop(e.dataTransfer.files);
+                }
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                // Skip if typing in input field
+                if (e.target.matches('input, textarea, select')) return;
                 
-                if (debugConfig.enabled) {
-                    console.warn('⚠️ Running in fallback mode without Clipper2 fusion');
+                // Ctrl/Cmd + O: Open files
+                if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                    e.preventDefault();
+                    this.showFileModal();
+                }
+                
+                // Ctrl/Cmd + S: Export SVG
+                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                    e.preventDefault();
+                    this.exportSVG();
+                }
+                
+                // Ctrl/Cmd + G: Generate toolpaths
+                if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
+                    e.preventDefault();
+                    this.generateToolpaths();
+                }
+                
+                // F: Fit to view (when not in input)
+                if (e.key === 'f') {
+                    e.preventDefault();
+                    this.ui?.renderer?.zoomFit();
+                }
+                
+                // W: Toggle wireframe
+                if (e.key === 'w') {
+                    e.preventDefault();
+                    this.ui?.toggleWireframe();
+                }
+                
+                // G: Toggle grid (when not using Ctrl/Cmd)
+                if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    this.ui?.toggleGrid();
+                }
+                
+                // Delete: Remove selected operation
+                if (e.key === 'Delete') {
+                    e.preventDefault();
+                    this.removeSelectedOperation();
+                }
+            });
+            
+            // Theme toggle button
+            const themeToggle = document.getElementById('theme-toggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('click', () => this.toggleTheme());
+            }
+        }
+        
+        toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('pcbcam-theme', newTheme);
+            
+            if (this.ui?.renderer) {
+                this.ui.renderer.setOptions({ theme: newTheme });
+            }
+        }
+        
+        ensureCoordinateSystem() {
+            if (this.core?.coordinateSystem && !this.core.coordinateSystem.initialized) {
+                // Initialize with empty bounds if no operations
+                this.core.coordinateSystem.initializeEmpty();
+                if (this.ui?.renderer) {
+                    this.ui.updateOriginDisplay();
                 }
             }
         }
         
         showWelcomeModal() {
-            this.ui.openModal('welcome-modal'); 
+            // Use the UI's welcome modal method if it exists
+            if (this.ui?.showWelcomeModal) {
+                this.ui.showWelcomeModal();
+                return;
+            }
             
-            // Populate example dropdown from JS
+            // Otherwise, show it directly
+            const modal = document.getElementById('welcome-modal');
+            if (!modal) return;
+            
+            modal.classList.add('active');
+            
+            // Populate example dropdown
             const select = document.getElementById('pcb-example-select');
             if (select) {
                 select.innerHTML = '';
@@ -159,7 +364,7 @@
                 });
             }
             
-            const closeBtn = document.getElementById('welcome-modal-close');
+            const closeBtn = modal.querySelector('.modal-close');
             const dontShowCheckbox = document.getElementById('dont-show-welcome');
             
             // Load example button
@@ -168,27 +373,28 @@
                 loadExampleBtn.onclick = async () => {
                     const select = document.getElementById('pcb-example-select');
                     if (select) {
-                        await this.loadPCBExample(select.value);
+                        await this.loadExample(select.value);
                     }
                     if (dontShowCheckbox && dontShowCheckbox.checked) {
+                        localStorage.setItem('pcbcam-hide-welcome', 'true');
                         localStorage.setItem('hasVisited', 'true');
                     }
-                    this.ui.closeActiveModal();
-                    // Ensure coordinate system is initialized
+                    this.closeModal(modal);
                     this.ensureCoordinateSystem();
                 };
             }
             
             // Upload files button
-            const uploadFilesBtn = document.getElementById('upload-files-btn');
-            if (uploadFilesBtn) {
-                uploadFilesBtn.onclick = () => {
+            const openFilesBtn = document.getElementById('open-files-btn');
+            if (openFilesBtn) {
+                openFilesBtn.onclick = () => {
                     if (dontShowCheckbox && dontShowCheckbox.checked) {
+                        localStorage.setItem('pcbcam-hide-welcome', 'true');
                         localStorage.setItem('hasVisited', 'true');
                     }
-                    this.ui.closeActiveModal();
+                    this.closeModal(modal);
                     this.ensureCoordinateSystem();
-                    this.showUploadModal();
+                    this.showFileModal();
                 };
             }
             
@@ -197,111 +403,232 @@
             if (startEmptyBtn) {
                 startEmptyBtn.onclick = () => {
                     if (dontShowCheckbox && dontShowCheckbox.checked) {
+                        localStorage.setItem('pcbcam-hide-welcome', 'true');
                         localStorage.setItem('hasVisited', 'true');
                     }
-                    this.ui.closeActiveModal();
-                    // Initialize coordinate system for empty workspace
+                    this.closeModal(modal);
+                    this.ensureCoordinateSystem();
+                };
+            }
+            
+            // Close button
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    if (dontShowCheckbox && dontShowCheckbox.checked) {
+                        localStorage.setItem('pcbcam-hide-welcome', 'true');
+                        localStorage.setItem('hasVisited', 'true');
+                    }
+                    this.closeModal(modal);
                     this.ensureCoordinateSystem();
                 };
             }
         }
         
-        ensureCoordinateSystem() {
-            if (this.core.coordinateSystem && !this.core.coordinateSystem.initialized) {
-                // Initialize with empty bounds if no operations
-                this.core.coordinateSystem.initializeEmpty();
-                if (this.ui.renderer) {
-                    this.ui.updateOriginDisplay();
-                }
-            }
-        }
-        
-        showUploadModal() {
-            this.ui.openModal('upload-modal');
-            this.uploadedFiles = {};
+        showFileModal() {
+            const modal = document.getElementById('file-modal');
+            if (!modal) return;
             
-            // Setup file inputs
-            ['isolation', 'drill', 'clear', 'cutout'].forEach(type => {
-                const input = document.getElementById(`${type}-file`);
-                const status = document.getElementById(`${type}-status`);
-                
-                if (input) {
-                    input.value = '';
-                    input.onchange = (e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                            this.uploadedFiles[type] = file;
-                            if (status) {
-                                status.textContent = `Selected: ${file.name}`;
-                                status.style.color = 'var(--success)';
-                            }
-                            this.updateProcessButton();
-                        }
-                    };
-                }
-                
-                if (status) {
-                    status.textContent = '';
-                }
-            });
+            modal.classList.add('active');
             
-            // Process files button
+            // Reset uploaded files
+            this.uploadedFiles = {
+                isolation: null,
+                drill: null,
+                clear: null,
+                cutout: null
+            };
+            
+            // Setup each drop zone
+            this.setupDropZone('isolation');
+            this.setupDropZone('drill');
+            this.setupDropZone('clear');
+            this.setupDropZone('cutout');
+            
+            // Process button
             const processBtn = document.getElementById('process-files-btn');
             if (processBtn) {
                 processBtn.disabled = true;
                 processBtn.onclick = async () => {
                     await this.processUploadedFiles();
-                    this.ui.closeActiveModal();
+                    this.closeModal(modal);
                 };
             }
             
             // Cancel button
-            const cancelBtn = document.getElementById('cancel-upload-btn');
+            const cancelBtn = document.getElementById('cancel-files-btn');
             if (cancelBtn) {
                 cancelBtn.onclick = () => {
-                    this.ui.closeActiveModal();
+                    this.closeModal(modal);
+                    this.uploadedFiles = {};
+                };
+            }
+            
+            // Close button
+            const closeBtn = modal.querySelector('.modal-close');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    this.closeModal(modal);
                     this.uploadedFiles = {};
                 };
             }
         }
         
+        setupDropZone(opType) {
+            const dropZone = document.getElementById(`${opType}-drop-zone`);
+            const fileInput = document.getElementById(`${opType}-file`);
+            const status = document.getElementById(`${opType}-status`);
+            
+            if (!dropZone || !fileInput) return;
+            
+            // Click to browse
+            dropZone.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            // File input change
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    this.handleFileForOperation(file, opType);
+                }
+            });
+            
+            // Drag events
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragging');
+            });
+            
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('dragging');
+            });
+            
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragging');
+                
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length > 0) {
+                    this.handleFileForOperation(files[0], opType);
+                }
+            });
+            
+            // Clear status
+            if (status) {
+                status.textContent = '';
+                status.className = 'zone-status';
+            }
+        }
+        
+        handleFileForOperation(file, opType) {
+            // Validate file type
+            const validation = this.core?.validateFileType(file.name, opType);
+            if (validation && !validation.valid) {
+                const status = document.getElementById(`${opType}-status`);
+                if (status) {
+                    status.textContent = validation.message;
+                    status.className = 'zone-status error';
+                }
+                return;
+            }
+            
+            // Store file
+            this.uploadedFiles[opType] = file;
+            
+            // Update status
+            const status = document.getElementById(`${opType}-status`);
+            if (status) {
+                status.textContent = `✓ ${file.name}`;
+                status.className = 'zone-status success';
+            }
+            
+            // Update process button
+            this.updateProcessButton();
+        }
+        
         updateProcessButton() {
             const processBtn = document.getElementById('process-files-btn');
             if (processBtn) {
-                processBtn.disabled = Object.keys(this.uploadedFiles).length === 0;
+                const hasFiles = Object.values(this.uploadedFiles).some(f => f !== null);
+                processBtn.disabled = !hasFiles;
             }
         }
         
         async processUploadedFiles() {
             for (const [type, file] of Object.entries(this.uploadedFiles)) {
-                await this.processFile(file, type, null);
+                if (file) {
+                    await this.processFile(file, type);
+                }
             }
-            this.uploadedFiles = {};
+            
+            // Reset
+            this.uploadedFiles = {
+                isolation: null,
+                drill: null,
+                clear: null,
+                cutout: null
+            };
             
             // Ensure coordinate system is initialized after file upload
             this.ensureCoordinateSystem();
             
-            // Expand operations after loading
-            this.ui.operationsManager.expandAllOperations();
+            // Update UI
+            if (this.ui?.operationsManager) {
+                this.ui.operationsManager.expandAllOperations();
+            }
+            if (this.ui?.treeManager) {
+                this.ui.treeManager.expandAll();
+            }
         }
         
-        async loadPCBExample(exampleId) {
+        async loadExample(exampleId) {
+            if (!exampleId) {
+                // If no ID provided, try to get from welcome modal select
+                const select = document.getElementById('pcb-example-select');
+                exampleId = select ? select.value : 'xiao';
+            }
+            
             const example = PCB_EXAMPLES[exampleId];
             if (!example) {
                 console.error(`Example ${exampleId} not found`);
+                this.ui?.updateStatus(`Example not found: ${exampleId}`, 'error');
                 return;
             }
-
-            this.ui.updateStatus(`Loading example: ${example.name}...`, 'info');
-
+            
+            this.ui?.updateStatus(`Loading example: ${example.name}...`, 'info');
+            
             // Clear existing operations
-            this.core.operations = [];
-            this.ui.operationsManager.renderAllOperations();
-
+            if (this.core) {
+                this.core.operations = [];
+                this.core.toolpaths.clear();
+                this.core.isToolpathCacheValid = false;
+            }
+            
+            // Clear UI
+            if (this.ui?.treeManager) {
+                this.ui.treeManager.refreshTree();
+            }
+            if (this.ui?.operationsManager) {
+                this.ui.operationsManager.renderAllOperations();
+            }
+            
             // Load all files in parallel
             const filePromises = Object.entries(example.files).map(async ([type, filepath]) => {
                 try {
-                    // Fetch actual file from server
+                    // Map 'clear' in examples to 'clearing' if that's what exists in config
+                    let actualType = type;
+                    if (type === 'clear') {
+                        // If config has 'clearing' but not 'clear', use 'clearing'
+                        if (config.operations.clearing && !config.operations.clear) {
+                            actualType = 'clearing';
+                        }
+                    } else if (type === 'clearing') {
+                        // If config has 'clear' but not 'clearing', use 'clear'
+                        if (config.operations.clear && !config.operations.clearing) {
+                            actualType = 'clear';
+                        }
+                    }
+                    
                     const response = await fetch(filepath);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -310,359 +637,488 @@
                     const fileName = filepath.split('/').pop();
                     const file = new File([content], fileName, { type: 'text/plain' });
                     
-                    // Process the file
-                    await this.processFile(file, type, null);
-
+                    // Process the file with corrected type
+                    await this.processFile(file, actualType);
+                    
                 } catch (e) {
                     console.error(`Failed to load example file ${filepath}:`, e);
-                    this.ui.showOperationMessage(type, `Failed to load ${filepath.split('/').pop()}`, 'error');
+                    this.ui?.updateStatus(`Failed to load ${filepath.split('/').pop()}`, 'error');
+                    this.ui?.showOperationMessage?.(type, `Failed to load ${filepath.split('/').pop()}`, 'error');
                 }
             });
-
+            
             await Promise.all(filePromises);
-
+            
             // Force coordinate system initialization after loading
-            if (this.core.coordinateSystem) {
+            if (this.core?.coordinateSystem) {
                 this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
             }
-
-            this.ui.updateStatus(`Example '${example.name}' loaded successfully.`, 'success');
             
-            // Update renderer
-            if (this.ui.renderer) {
-                await this.ui.updateRendererAsync();
+            this.ui?.updateStatus(`Example '${example.name}' loaded successfully.`, 'success');
+            
+            // Update renderer and fit view
+            if (this.ui?.renderer) {
+                await this.ui.updateRendererAsync?.() || await this.ui.updateRenderer?.();
+                this.ui.renderer.zoomFit();
             }
             
             // Expand operations after loading
-            this.ui.operationsManager.expandAllOperations();
-        }
-        
-        setupEventListeners() {
-            // Theme toggle
-            document.getElementById('theme-toggle')?.addEventListener('click', () => {
-                const currentTheme = document.documentElement.getAttribute('data-theme');
-                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-                document.documentElement.setAttribute('data-theme', newTheme);
-                localStorage.setItem('theme', newTheme);
-                
-                if (this.ui.renderer) {
-                    this.ui.renderer.setOptions({ theme: newTheme });
-                }
-            });
-            
-            // File input
-            document.getElementById('file-input-temp')?.addEventListener('change', (e) => this.handleFileSelect(e));
-            
-            // Canvas zoom controls
-            document.getElementById('zoom-fit-btn')?.addEventListener('click', () => this.ui.renderer?.zoomFit());
-            document.getElementById('zoom-in-btn')?.addEventListener('click', () => this.ui.renderer?.zoomIn());
-            document.getElementById('zoom-out-btn')?.addEventListener('click', () => this.ui.renderer?.zoomOut());
-            
-            // Export controls
-            document.getElementById('export-svg-btn')?.addEventListener('click', async () => {
-                await this.ui.exportSVG();
-            });
-            
-            document.getElementById('generate-gcode-btn')?.addEventListener('click', async () => {
-                await this.exportGcode();
-            });
-            
-            // Machine settings
-            document.getElementById('pcb-thickness')?.addEventListener('change', (e) => {
-                this.core.updateSettings('pcb', { thickness: parseFloat(e.target.value) });
-            });
-            
-            document.getElementById('safe-z')?.addEventListener('change', (e) => {
-                this.core.updateSettings('machine', { safeZ: parseFloat(e.target.value) });
-            });
-            
-            document.getElementById('travel-z')?.addEventListener('change', (e) => {
-                this.core.updateSettings('machine', { travelZ: parseFloat(e.target.value) });
-            });
-            
-            document.getElementById('rapid-feed')?.addEventListener('change', (e) => {
-                this.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
-            });
-            
-            // G-code settings
-            document.getElementById('post-processor')?.addEventListener('change', (e) => {
-                this.core.updateSettings('gcode', { postProcessor: e.target.value });
-            });
-            
-            document.getElementById('gcode-units')?.addEventListener('change', (e) => {
-                this.core.updateSettings('gcode', { units: e.target.value });
-            });
-            
-            // Collapsible sections - including master Operations toggle
-            document.querySelectorAll('.section-toggle').forEach(toggle => {
-                toggle.addEventListener('click', () => {
-                    const targetId = toggle.getAttribute('data-target');
-                    const content = document.getElementById(targetId);
-                    if (content) {
-                        const isActive = content.style.display === 'block';
-                        content.style.display = isActive ? 'none' : 'block';
-                        toggle.classList.toggle('active', !isActive);
-                    }
-                });
-            });
-            
-            if (debugConfig.enabled) {
-                console.log('Event listeners configured');
+            if (this.ui?.operationsManager) {
+                this.ui.operationsManager.expandAllOperations();
+            }
+            if (this.ui?.treeManager) {
+                this.ui.treeManager.expandAll();
             }
         }
         
-        triggerFileInput(type) {
-            const fileInput = document.getElementById('file-input-temp');
-            if (fileInput) {
-                fileInput.setAttribute('data-type', type);
-                
-                const opConfig = opsConfig[type];
-                if (opConfig) {
-                    // Include SVG in accepted extensions
-                    const extensions = [...opConfig.extensions];
-                    if (!extensions.includes('.svg')) {
-                        extensions.push('.svg');
-                    }
-                    fileInput.setAttribute('accept', extensions.join(','));
-                }
-                
-                fileInput.click();
-            }
-        }
-        
-        async handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            const type = event.target.getAttribute('data-type');
-            if (!type) return;
-            
-            // Queue if WASM not ready
-            if (!this.initializationState.wasmReady) {
-                if (debugConfig.logging?.wasmOperations) {
-                    console.log('WASM not ready, queueing file operation...');
-                }
-                this.pendingFileOperations.push({ file, type, event });
-                this.ui.updateStatus(messagesConfig.loading || 'Loading Clipper2 WASM... File will be processed when ready', 'info');
-                event.target.value = '';
+        async processFile(file, type) {
+            if (!file || !type) {
+                console.error('Invalid file or type provided');
                 return;
             }
             
-            await this.processFile(file, type, event);
+            // Validate file type
+            const validation = this.core?.validateFileType(file.name, type);
+            if (validation && !validation.valid) {
+                this.ui?.showOperationMessage?.(type, validation.message, 'error');
+                this.ui?.updateStatus(validation.message, 'error');
+                return;
+            }
+            
+            // Create operation
+            const operation = this.core?.createOperation(type, file);
+            if (!operation) {
+                console.error('Failed to create operation');
+                return;
+            }
+            
+            // Add to UI tree if using advanced UI
+            if (this.ui?.treeManager) {
+                this.ui.treeManager.addFileNode(operation);
+            }
+            
+            // Render in operations manager if using basic UI
+            if (this.ui?.renderOperations) {
+                this.ui.renderOperations(type);
+            }
+            
+            // Show loading status
+            this.ui?.updateStatus(`${messagesConfig.loading || 'Loading'} ${file.name}...`);
+            
+            // Read and parse file
+            const reader = new FileReader();
+            
+            return new Promise((resolve) => {
+                reader.onload = async (e) => {
+                    operation.file.content = e.target.result;
+                    
+                    const success = await this.core.parseOperation(operation);
+                    
+                    if (success) {
+                        const count = operation.primitives.length;
+                        
+                        if (operation.parsed?.hasArcs && debugConfig.enabled) {
+                            console.log(`Preserved ${operation.originalArcs?.length || 0} arcs for potential reconstruction`);
+                        }
+                        
+                        this.ui?.showOperationMessage?.(type, `Successfully loaded ${count} primitives`, 'success');
+                        this.ui?.updateStatus(`Loaded ${operation.file.name}: ${count} primitives`, 'success');
+                        
+                        // Update coordinate system after successful parse
+                        if (this.core?.coordinateSystem) {
+                            this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
+                        }
+                    } else {
+                        this.ui?.showOperationMessage?.(type, `Error: ${operation.error}`, 'error');
+                        this.ui?.updateStatus(`Error processing ${operation.file.name}: ${operation.error}`, 'error');
+                    }
+                    
+                    // Update UI
+                    if (this.ui?.renderOperations) {
+                        this.ui.renderOperations(type);
+                    }
+                    
+                    // Update tree with geometry info if using advanced UI
+                    if (this.ui?.treeManager) {
+                        const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                            .find(n => n.operation?.id === operation.id);
+                        if (fileNode) {
+                            this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                        }
+                    }
+                    
+                    // Update renderer
+                    if (this.ui?.renderer) {
+                        await this.ui.updateRendererAsync?.() || await this.ui.updateRenderer?.();
+                    }
+                    
+                    // Update statistics
+                    this.ui?.updateStatistics?.();
+                    
+                    // Update toolbar button states
+                    this.updateToolbarButtonStates();
+                    
+                    resolve();
+                };
+                
+                reader.onerror = () => {
+                    operation.error = 'Failed to read file';
+                    this.ui?.showOperationMessage?.(type, 'Failed to read file', 'error');
+                    this.ui?.updateStatus(`Failed to read ${file.name}`, 'error');
+                    resolve();
+                };
+                
+                reader.readAsText(file);
+            });
         }
         
-        async processPendingFileOperations() {
-            if (this.pendingFileOperations.length === 0) return;
+        updateToolbarButtonStates() {
+            const hasOperations = this.core?.operations?.length > 0;
+            const hasToolpaths = this.core?.stats?.toolpaths > 0;
+            
+            const genBtn = document.getElementById('toolbar-generate-toolpaths');
+            if (genBtn) {
+                genBtn.disabled = !hasOperations;
+            }
+            
+            const exportGcodeBtn = document.getElementById('toolbar-export-gcode');
+            if (exportGcodeBtn) {
+                exportGcodeBtn.disabled = !hasToolpaths;
+            }
+        }
+        
+        handleGlobalFileDrop(files) {
+            if (!this.ui) return;
+            
+            // Process files directly
+            for (let file of files) {
+                const ext = file.name.toLowerCase().split('.').pop();
+                const opType = this.getOperationTypeFromExtension(ext);
+                
+                if (opType) {
+                    if (this.initState.fullyReady) {
+                        this.processFile(file, opType);
+                    } else {
+                        this.pendingOperations.push({ file, opType });
+                    }
+                }
+            }
+            
+            if (this.pendingOperations.length > 0 && !this.initState.fullyReady) {
+                this.ui?.updateStatus('Files queued - waiting for initialization...', 'info');
+            }
+        }
+        
+        getOperationTypeFromExtension(ext) {
+            const operations = config.operations || {};
+            for (let [type, op] of Object.entries(operations)) {
+                if (op.extensions && op.extensions.some(e => e.slice(1) === ext)) {
+                    return type;
+                }
+            }
+            return null;
+        }
+        
+        async processPendingOperations() {
+            if (this.pendingOperations.length === 0) return;
             
             if (debugConfig.logging?.fileOperations) {
-                console.log(`Processing ${this.pendingFileOperations.length} pending file operations...`);
+                console.log(`Processing ${this.pendingOperations.length} pending files...`);
             }
             
-            for (const operation of this.pendingFileOperations) {
-                await this.processFile(operation.file, operation.type, operation.event);
+            for (let op of this.pendingOperations) {
+                await this.processFile(op.file, op.opType);
             }
             
-            this.pendingFileOperations = [];
+            this.pendingOperations = [];
         }
         
-        async processFile(file, type, event) {
-            const validation = this.core.validateFileType(file.name, type);
-            if (!validation.valid) {
-                this.ui.showOperationMessage(type, validation.message, 'error');
-                if (event) event.target.value = '';
+        removeSelectedOperation() {
+            // Try advanced UI first
+            const selectedNode = this.ui?.treeManager?.selectedNode;
+            if (selectedNode?.type === 'file' && selectedNode.operation) {
+                this.ui.removeOperation(selectedNode.operation.id);
                 return;
             }
             
-            const operation = this.core.createOperation(type, file);
+            // Fall back to basic UI selection method if needed
+            const selectedOp = this.ui?.getSelectedOperation?.();
+            if (selectedOp) {
+                this.ui.removeOperation(selectedOp.id);
+            }
+        }
+        
+        closeModal(modal) {
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        }
+        
+        async generateToolpaths() {
+            if (!this.ui || !this.core) {
+                this.ui?.updateStatus('Not ready for toolpath generation', 'error');
+                return;
+            }
             
-            this.ui.renderOperations(type);
-            this.ui.updateStatus(`${messagesConfig.loading || 'Loading'} ${file.name}...`);
+            this.ui.updateStatus('Generating toolpaths...', 'info');
             
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                operation.file.content = e.target.result;
+            try {
+                const toolpaths = await this.core.generateAllToolpaths();
                 
-                const success = await this.core.parseOperation(operation);
-                
-                if (success) {
-                    const count = operation.primitives.length;
-                    
-                    if (operation.parsed?.hasArcs && debugConfig.enabled) {
-                        console.log(`Preserved ${operation.originalArcs?.length || 0} arcs for potential reconstruction`);
-                    }
-                    
-                    this.ui.showOperationMessage(type, `Successfully loaded ${count} primitives`, 'success');
-                    this.ui.updateStatus(`Loaded ${operation.file.name}: ${count} primitives`, 'success');
-                    
-                    // Update coordinate system after successful parse
-                    if (this.core.coordinateSystem) {
-                        this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
-                    }
-                } else {
-                    this.ui.showOperationMessage(type, `Error: ${operation.error}`, 'error');
-                    this.ui.updateStatus(`Error processing ${operation.file.name}: ${operation.error}`, 'error');
+                if (toolpaths.size === 0) {
+                    this.ui.updateStatus('No toolpaths generated - check operation settings', 'warning');
+                    return;
                 }
                 
-                this.ui.renderOperations(type);
-                
+                // Clear existing toolpath layers
                 if (this.ui.renderer) {
-                    await this.ui.updateRendererAsync();
+                    this.ui.renderer.layers.forEach((layer, name) => {
+                        if (name.startsWith('toolpath_')) {
+                            this.ui.renderer.layers.delete(name);
+                        }
+                    });
+                    
+                    // Add new toolpath layers
+                    for (const [opId, toolpathData] of toolpaths) {
+                        if (toolpathData.paths && toolpathData.paths.length > 0) {
+                            toolpathData.paths.forEach((path, index) => {
+                                if (path.primitives && path.primitives.length > 0) {
+                                    this.ui.renderer.addLayer(
+                                        `toolpath_${opId}_pass_${index + 1}`,
+                                        path.primitives,
+                                        {
+                                            type: 'toolpath',
+                                            visible: true,
+                                            color: '#00ffff'
+                                        }
+                                    );
+                                }
+                            });
+                        }
+                    }
+                    
+                    this.ui.renderer.render();
                 }
-            };
+                
+                // Update tree to show toolpaths if using advanced UI
+                if (this.ui.treeManager) {
+                    this.ui.treeManager.nodes.forEach(node => {
+                        if (node.type === 'file') {
+                            this.ui.treeManager.updateFileGeometries(node.id, node.operation);
+                        }
+                    });
+                }
+                
+                const stats = this.core.getStats();
+                this.ui.updateStatus(`Generated ${stats.toolpaths} toolpaths`, 'success');
+                
+                this.updateToolbarButtonStates();
+                
+            } catch (error) {
+                console.error('Toolpath generation error:', error);
+                this.ui.updateStatus('Toolpath generation failed: ' + error.message, 'error');
+            }
+        }
+        
+        async exportSVG() {
+            if (this.ui?.exportSVG) {
+                await this.ui.exportSVG();
+                return;
+            }
             
-            reader.onerror = () => {
-                operation.error = 'Failed to read file';
-                this.ui.showOperationMessage(type, 'Failed to read file', 'error');
-                this.ui.updateStatus(`Failed to read ${file.name}`, 'error');
-            };
+            // Fallback implementation
+            if (!this.ui?.svgExporter || !this.ui?.renderer) {
+                this.ui?.updateStatus('SVG export not available', 'error');
+                return;
+            }
             
-            reader.readAsText(file);
-            if (event) event.target.value = '';
+            try {
+                const svgString = this.ui.svgExporter.exportSVG({
+                    precision: 2,
+                    padding: 5,
+                    optimizePaths: true,
+                    includeMetadata: true,
+                    includeArcReconstructionStats: this.ui.fusionStats?.arcReconstructionEnabled
+                });
+                
+                if (svgString) {
+                    // Create download
+                    const blob = new Blob([svgString], { type: 'image/svg+xml' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'pcb-export.svg';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    this.ui.updateStatus('SVG exported successfully', 'success');
+                } else {
+                    this.ui.updateStatus('SVG export failed - no content to export', 'warning');
+                }
+            } catch (error) {
+                console.error('SVG export error:', error);
+                this.ui?.updateStatus('SVG export failed: ' + error.message, 'error');
+            }
         }
         
         async exportGcode() {
-            this.ui.updateStatus('G-code generation in development...', 'info');
+            this.ui?.updateStatus('G-code generation in development...', 'info');
+        }
+        
+        // API for external access
+        getCore() {
+            return this.core;
+        }
+        
+        getUI() {
+            return this.ui;
+        }
+        
+        isReady() {
+            return this.initState.fullyReady;
+        }
+        
+        getStats() {
+            return {
+                initialization: this.initState,
+                core: this.core?.getStats ? this.core.getStats() : null,
+                ui: this.ui?.stats,
+                toolLibrary: this.ui?.toolLibrary?.getStats?.(),
+                renderer: {
+                    hasRenderer: !!this.ui?.renderer,
+                    layerCount: this.ui?.renderer?.layers?.size || 0
+                }
+            };
         }
         
         // Debug utilities
-        enableDebugMode() {
-            this.debugMode = true;
+        enableDebug() {
             debugConfig.enabled = true;
-            if (this.core.geometryProcessor) {
+            if (this.core?.geometryProcessor) {
                 this.core.geometryProcessor.options.debug = true;
             }
             console.log('Debug mode enabled');
         }
         
-        disableDebugMode() {
-            this.debugMode = false;
+        disableDebug() {
             debugConfig.enabled = false;
-            if (this.core.geometryProcessor) {
+            if (this.core?.geometryProcessor) {
                 this.core.geometryProcessor.options.debug = false;
             }
             console.log('Debug mode disabled');
         }
         
-        getStats() {
-            return {
-                core: this.core.getProcessorStats(),
-                ui: {
-                    fusionStats: this.ui.fusionStats,
-                    hasRenderer: !!this.ui.renderer
-                },
-                operations: this.core.operations.length,
-                debugMode: this.debugMode,
-                initialization: this.initializationState
-            };
+        logState() {
+            console.group('PCB CAM State');
+            console.log('Initialization:', this.initState);
+            console.log('Statistics:', this.getStats());
+            console.log('Config:', config);
+            console.groupEnd();
         }
     }
     
     // Initialize application
-    async function initializePCBCAM() {
-        if (debugConfig.enabled) {
-            console.log('🎯 Starting PCB CAM Workspace Edition initialization...');
-            console.log('📊 Document state:', document.readyState);
+    let controller = null;
+    
+    async function startApplication() {
+        if (controller) {
+            console.warn('Application already initialized');
+            return;
         }
         
-        // Check for required classes (some may be optional for workspace mode)
+        // Check for required core classes
         const requiredClasses = [
             'PCBCamCore',
             'PCBCamUI',
-            'LayerRenderer',
-            'RendererCore',
-            'PrimitiveRenderer',
-            'OverlayRenderer',
-            'InteractionHandler',
+            'LayerRenderer'
+        ];
+        
+        // Check for optional UI components (may not exist in basic mode)
+        const optionalClasses = [
+            'TreeManager',
+            'PropertyInspector',
+            'VisibilityPanel',
+            'ToolLibrary',
             'OperationsManager',
             'StatusManager',
             'UIControls'
         ];
         
-        const optionalClasses = [
-            'GeometryProcessor',
-            'GerberParser',
-            'ExcellonParser',
-            'SVGParser',
-            'ParserPlotter',
-            'ParserCore',
-            'CoordinateSystemManager'
-        ];
+        const missing = requiredClasses.filter(cls => typeof window[cls] === 'undefined');
         
-        if (debugConfig.enabled) {
-            console.log('📋 Checking required classes:');
-        }
-        
-        let missingClasses = [];
-        requiredClasses.forEach(className => {
-            const exists = typeof window[className] !== 'undefined';
-            if (debugConfig.enabled) {
-                console.log(`  ${exists ? '✅' : '❌'} ${className}`);
+        if (missing.length > 0) {
+            console.error('Missing required classes:', missing);
+            
+            // Update loading text
+            const loadingText = document.getElementById('loading-text');
+            if (loadingText) {
+                loadingText.textContent = 'Loading error - missing modules';
             }
-            if (!exists) {
-                missingClasses.push(className);
-            }
-        });
-        
-        if (missingClasses.length > 0) {
-            console.error('❌ Missing required classes:', missingClasses);
+            
             return false;
         }
         
         // Check optional classes
         if (debugConfig.enabled) {
-            console.log('📋 Checking optional classes:');
-            optionalClasses.forEach(className => {
-                const exists = typeof window[className] !== 'undefined';
-                console.log(`  ${exists ? '✅' : '⚠️'} ${className}`);
+            console.log('Checking optional classes:');
+            optionalClasses.forEach(cls => {
+                const available = typeof window[cls] !== 'undefined';
+                console.log(`  ${available ? '✔' : '○'} ${cls}`);
             });
         }
         
-        try {
-            if (debugConfig.enabled) {
-                console.log('🚀 Creating PCB CAM application...');
-            }
-            window.cam = new SemanticPCBCam();
-            
-            if (debugConfig.enabled) {
-                console.log('✅ PCB CAM controller created');
-            }
-            
-            return true;
-            
-        } catch (error) {
-            console.error('💥 Failed to initialize PCB CAM:', error);
-            return false;
-        }
+        controller = new PCBCAMController();
+        await controller.initialize();
+        
+        // Expose to global scope for debugging
+        window.pcbcam = controller;
+        window.cam = controller; // Also expose as 'cam' for compatibility
+        
+        return true;
     }
     
-    // Initialization strategies
-    document.addEventListener('DOMContentLoaded', () => {
-        if (debugConfig.enabled) {
-            console.log('📌 DOMContentLoaded event fired');
-        }
-        initializePCBCAM();
-    });
-    
+    // Start when ready
     if (document.readyState === 'loading') {
-        if (debugConfig.enabled) {
-            console.log('📌 Document still loading, waiting for DOMContentLoaded...');
-        }
+        document.addEventListener('DOMContentLoaded', startApplication);
     } else {
-        if (debugConfig.enabled) {
-            console.log('📌 Document already loaded, initializing immediately...');
-        }
-        initializePCBCAM();
+        // DOM already loaded
+        startApplication();
     }
     
     // Fallback initialization
     setTimeout(() => {
-        if (!window.cam) {
-            if (debugConfig.enabled) {
-                console.log('📌 Delayed initialization attempt...');
-            }
-            initializePCBCAM();
+        if (!controller) {
+            console.log('Attempting delayed initialization...');
+            startApplication();
         }
-    }, timingConfig.autoSaveInterval || 1000);
+    }, timingConfig.autoSaveInterval || 2000);
+    
+    // Public API functions
+    window.showPCBStats = function() {
+        if (!controller) {
+            console.error('Application not initialized');
+            return;
+        }
+        controller.logState();
+    };
+    
+    window.showCamStats = window.showPCBStats; // Alias for compatibility
+    
+    window.enablePCBDebug = function() {
+        if (controller) {
+            controller.enableDebug();
+        } else {
+            debugConfig.enabled = true;
+        }
+    };
+    
+    window.disablePCBDebug = function() {
+        if (controller) {
+            controller.disableDebug();
+        } else {
+            debugConfig.enabled = false;
+        }
+    };
     
     // Global function for HTML compatibility
     window.addFile = function(type) {
@@ -670,43 +1126,56 @@
             console.log(`🎯 addFile('${type}') called`);
         }
         
-        if (window.cam) {
-            try {
-                window.cam.triggerFileInput(type);
-            } catch (error) {
-                console.error('❌ Error in triggerFileInput:', error);
+        if (controller?.ui) {
+            // Try to use the UI's file input trigger if available
+            if (controller.ui.triggerFileInput) {
+                controller.ui.triggerFileInput(type);
+            } else {
+                // Fall back to direct file input trigger
+                const fileInput = document.getElementById('file-input-temp') || 
+                                 document.getElementById('file-input-hidden');
+                if (fileInput) {
+                    fileInput.setAttribute('data-type', type);
+                    
+                    const opConfig = opsConfig[type];
+                    if (opConfig) {
+                        const extensions = [...opConfig.extensions];
+                        if (!extensions.includes('.svg')) {
+                            extensions.push('.svg');
+                        }
+                        fileInput.setAttribute('accept', extensions.join(','));
+                    }
+                    
+                    fileInput.onchange = async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            await controller.processFile(file, type);
+                        }
+                        fileInput.value = '';
+                    };
+                    
+                    fileInput.click();
+                } else {
+                    console.error('File input element not found');
+                }
             }
         } else {
-            console.error('❌ window.cam not available');
-            
-            if (initializePCBCAM()) {
-                window.cam.triggerFileInput(type);
-            }
+            console.error('Controller not initialized');
         }
     };
     
-    // Console test functions
-    window.showCamStats = function() {
-        if (!window.cam) {
-            console.error('CAM not initialized');
-            return;
-        }
-        console.log('PCB CAM Statistics:', window.cam.getStats());
-    };
-
-    // NEW: Add this function to inspect the curve registry
+    // Arc reconstruction registry inspector
     window.getReconstructionRegistry = function() {
-        if (!window.cam || !window.cam.core.geometryProcessor) {
+        if (!controller?.core?.geometryProcessor) {
             console.error('Geometry processor not initialized');
             return;
         }
-        const registry = window.cam.core.geometryProcessor.arcReconstructor.exportRegistry();
-        console.log(`Arc Reconstructor Registry (${registry.length} curves):`);
-        console.table(registry);
+        const registry = controller.core.geometryProcessor.arcReconstructor?.exportRegistry?.();
+        if (registry) {
+            console.log(`Arc Reconstructor Registry (${registry.length} curves):`);
+            console.table(registry);
+        }
         return registry;
     };
-    
-    // Config access for debugging
-    window.PCBCAMConfig = config;
     
 })();

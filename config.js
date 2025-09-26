@@ -1,99 +1,391 @@
 // config.js
-// Centralized configuration for PCB CAM - constants only
+// PCB CAM Configuration - Advanced Workspace v2.0
 
 window.PCBCAMConfig = {
     // ============================================================================
-    // GEOMETRY PROCESSING
+    // TOOL LIBRARY
     // ============================================================================
-    geometry: {
-        // Clipper2 scale factor for integer conversion
-        // Higher = more precision but smaller max board size
-        // 10000 = 0.1 micron precision, safe for boards up to 460mm
-        clipperScale: 10000,
-        
-        // Coordinate validation
-        maxCoordinate: 1000,           // mm - max reasonable PCB dimension
-        coordinatePrecision: 0.001,    // mm - 1 micron precision threshold
-        
-        // Curve segmentation
-        segments: {
-            targetLength: 0.1,          // mm - target segment length
-            minCircle: 16,              // min segments for circles
-            maxCircle: 128,             // max segments for circles
-            minArc: 8,                  // min segments for arcs
-            maxArc: 64,                 // max segments for arcs
-            obround: 16                 // segments per arc in obrounds
+    tools: [
+        // End Mills
+        {
+            id: 'em_0.1mm_flat',
+            name: '0.1mm Flat End Mill',
+            type: 'end_mill',
+            category: 'micro',
+            geometry: {
+                diameter: 0.1,
+                tipType: 'flat',
+                flutes: 2,
+                cuttingLength: 2.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 100,
+                plungeRate: 30,
+                spindleSpeed: 15000,
+                maxDepthPerPass: 0.03,
+                stepOver: 0.5
+            },
+            operations: ['isolation', 'clearing'],
+            material: 'carbide'
+        },
+        {
+            id: 'em_0.2mm_flat',
+            name: '0.2mm Flat End Mill',
+            type: 'end_mill',
+            category: 'micro',
+            geometry: {
+                diameter: 0.2,
+                tipType: 'flat',
+                flutes: 2,
+                cuttingLength: 3.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 150,
+                plungeRate: 50,
+                spindleSpeed: 12000,
+                maxDepthPerPass: 0.05,
+                stepOver: 0.5
+            },
+            operations: ['isolation', 'clearing'],
+            material: 'carbide'
+        },
+        {
+            id: 'em_0.3mm_flat',
+            name: '0.3mm Flat End Mill',
+            type: 'end_mill',
+            category: 'micro',
+            geometry: {
+                diameter: 0.3,
+                tipType: 'flat',
+                flutes: 2,
+                cuttingLength: 5.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 200,
+                plungeRate: 60,
+                spindleSpeed: 12000,
+                maxDepthPerPass: 0.08,
+                stepOver: 0.5
+            },
+            operations: ['isolation', 'clearing'],
+            material: 'carbide'
+        },
+        {
+            id: 'em_0.5mm_flat',
+            name: '0.5mm Flat End Mill',
+            type: 'end_mill',
+            category: 'standard',
+            geometry: {
+                diameter: 0.5,
+                tipType: 'flat',
+                flutes: 2,
+                cuttingLength: 8.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 250,
+                plungeRate: 80,
+                spindleSpeed: 10000,
+                maxDepthPerPass: 0.1,
+                stepOver: 0.5
+            },
+            operations: ['isolation', 'clearing', 'cutout'],
+            material: 'carbide'
+        },
+        {
+            id: 'em_0.8mm_flat',
+            name: '0.8mm Flat End Mill',
+            type: 'end_mill',
+            category: 'standard',
+            geometry: {
+                diameter: 0.8,
+                tipType: 'flat',
+                flutes: 2,
+                cuttingLength: 10.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 300,
+                plungeRate: 100,
+                spindleSpeed: 10000,
+                maxDepthPerPass: 0.15,
+                stepOver: 0.6
+            },
+            operations: ['clearing', 'cutout'],
+            material: 'carbide'
+        },
+        {
+            id: 'em_1.0mm_flat',
+            name: '1.0mm Flat End Mill',
+            type: 'end_mill',
+            category: 'standard',
+            geometry: {
+                diameter: 1.0,
+                tipType: 'flat',
+                flutes: 2,
+                cuttingLength: 12.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 350,
+                plungeRate: 120,
+                spindleSpeed: 8000,
+                maxDepthPerPass: 0.2,
+                stepOver: 0.6
+            },
+            operations: ['clearing', 'cutout'],
+            material: 'carbide'
         },
         
-        // Path optimization
-        simplifyTolerance: 0.01,       // mm - path simplification tolerance
-        preserveArcs: true,            // preserve arc information
-        adaptiveSegmentation: true,    // adjust segments based on size
-        
-        // Fusion settings
-        fusion: {
-            enabled: false,             // default fusion state
-            preserveHoles: true,        // use PolyTree for hole detection
-            fillRule: 'nonzero'        // nonzero or evenodd
-        }
-    },
-    
-    // ============================================================================
-    // FILE FORMATS
-    // ============================================================================
-    formats: {
-        excellon: {
-            defaultFormat: { integer: 3, decimal: 3 },
-            defaultUnits: 'mm',
-            defaultToolDiameter: 1.0,   // mm
-            minToolDiameter: 0.1,       // mm
-            maxToolDiameter: 10.0       // mm
+        // V-Bits
+        {
+            id: 'vbit_30deg_0.1mm',
+            name: '30° V-Bit 0.1mm Tip',
+            type: 'v_bit',
+            category: 'engraving',
+            geometry: {
+                angle: 30,
+                tipDiameter: 0.1,
+                maxDiameter: 3.175,
+                cuttingLength: 5.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 100,
+                plungeRate: 30,
+                spindleSpeed: 15000,
+                maxDepthPerPass: 0.05,
+                stepOver: 0.4
+            },
+            operations: ['isolation', 'engraving'],
+            material: 'carbide'
+        },
+        {
+            id: 'vbit_60deg_0.2mm',
+            name: '60° V-Bit 0.2mm Tip',
+            type: 'v_bit',
+            category: 'engraving',
+            geometry: {
+                angle: 60,
+                tipDiameter: 0.2,
+                maxDiameter: 3.175,
+                cuttingLength: 8.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 150,
+                plungeRate: 50,
+                spindleSpeed: 12000,
+                maxDepthPerPass: 0.1,
+                stepOver: 0.4
+            },
+            operations: ['isolation', 'engraving'],
+            material: 'carbide'
         },
         
-        gerber: {
-            defaultFormat: { integer: 3, decimal: 3 },
-            defaultUnits: 'mm',
-            defaultAperture: 0.1,       // mm
-            minAperture: 0.01,          // mm
-            maxAperture: 10.0           // mm
+        // Drill Bits
+        {
+            id: 'drill_0.3mm',
+            name: '0.3mm Drill',
+            type: 'drill',
+            category: 'micro',
+            geometry: {
+                diameter: 0.3,
+                pointAngle: 118,
+                fluteLength: 8.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 40,
+                plungeRate: 20,
+                spindleSpeed: 15000,
+                peckDepth: 0.3,
+                dwellTime: 0.1
+            },
+            operations: ['drill'],
+            material: 'carbide'
+        },
+        {
+            id: 'drill_0.5mm',
+            name: '0.5mm Drill',
+            type: 'drill',
+            category: 'micro',
+            geometry: {
+                diameter: 0.5,
+                pointAngle: 118,
+                fluteLength: 10.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 50,
+                plungeRate: 25,
+                spindleSpeed: 12000,
+                peckDepth: 0.5,
+                dwellTime: 0.1
+            },
+            operations: ['drill'],
+            material: 'carbide'
+        },
+        {
+            id: 'drill_0.8mm',
+            name: '0.8mm Drill',
+            type: 'drill',
+            category: 'standard',
+            geometry: {
+                diameter: 0.8,
+                pointAngle: 118,
+                fluteLength: 15.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 60,
+                plungeRate: 30,
+                spindleSpeed: 10000,
+                peckDepth: 0.8,
+                dwellTime: 0.1
+            },
+            operations: ['drill'],
+            material: 'carbide'
+        },
+        {
+            id: 'drill_1.0mm',
+            name: '1.0mm Drill',
+            type: 'drill',
+            category: 'standard',
+            geometry: {
+                diameter: 1.0,
+                pointAngle: 118,
+                fluteLength: 18.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 80,
+                plungeRate: 40,
+                spindleSpeed: 8000,
+                peckDepth: 1.0,
+                dwellTime: 0.1
+            },
+            operations: ['drill'],
+            material: 'carbide'
+        },
+        {
+            id: 'drill_1.5mm',
+            name: '1.5mm Drill',
+            type: 'drill',
+            category: 'standard',
+            geometry: {
+                diameter: 1.5,
+                pointAngle: 118,
+                fluteLength: 20.0,
+                shankDiameter: 3.175,
+                totalLength: 38
+            },
+            cutting: {
+                feedRate: 100,
+                plungeRate: 50,
+                spindleSpeed: 6000,
+                peckDepth: 1.5,
+                dwellTime: 0.1
+            },
+            operations: ['drill'],
+            material: 'carbide'
         }
-    },
-    
+    ],
+
     // ============================================================================
-    // OPERATION DEFINITIONS
+    // OPERATION DEFAULTS
     // ============================================================================
     operations: {
         isolation: {
-            extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs', '.gto', '.gbo', '.gtp', '.gbp'],
+            name: 'Isolation Routing',
+            icon: '🎯',
             color: '#ff8844',
-            icon: '🔄',
+            extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs'],
+            defaultTool: 'em_0.2mm_flat',
             tool: {
-                diameter: 0.1,          // mm
+                diameter: 0.1,
                 type: 'end_mill',
                 material: 'carbide',
                 flutes: 2
             },
             cutting: {
-                cutDepth: 0.05,         // mm
-                passDepth: 0.05,        // mm
-                cutFeed: 100,           // mm/min
-                plungeFeed: 50,         // mm/min
-                spindleSpeed: 10000     // RPM
+                cutDepth: 0.05,
+                passDepth: 0.05,
+                cutFeed: 100,
+                plungeFeed: 50,
+                spindleSpeed: 10000
             },
             strategy: {
                 passes: 1,
-                overlap: 50,            // %
+                overlap: 50,
                 method: 'offset',
                 direction: 'outside',
                 cornerHandling: true,
                 preserveArcs: true
+            },
+            defaultSettings: {
+                passes: 1,
+                stepOver: 50,
+                cutDepth: 0.05,
+                direction: 'climb',
+                entryType: 'plunge',
+                preserveArcs: true
             }
         },
-        
+        drill: {
+            name: 'Drilling',
+            icon: '🔧',
+            color: '#4488ff',
+            extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'],
+            defaultTool: 'drill_0.8mm',
+            tool: {
+                diameter: 1.0,
+                type: 'drill',
+                material: 'carbide',
+                pointAngle: 118
+            },
+            cutting: {
+                cutDepth: 1.8,
+                passDepth: 0.2,
+                cutFeed: 50,
+                plungeFeed: 25,
+                spindleSpeed: 10000
+            },
+            strategy: {
+                peckDepth: 0.5,
+                dwellTime: 0.1,
+                retractHeight: 1,
+                chipBreaking: false
+            },
+            defaultSettings: {
+                peckDepth: 0.5,
+                dwellTime: 0.1,
+                retractHeight: 1.0,
+                autoToolChange: true,
+                depthCompensation: true
+            }
+        },
         clear: {
-            extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd'],
-            color: '#44ff88',
+            name: 'Copper Clearing',
             icon: '🔄',
+            color: '#44ff88',
+            extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd'],
+            defaultTool: 'em_0.8mm_flat',
             tool: {
                 diameter: 0.8,
                 type: 'end_mill',
@@ -113,38 +405,60 @@ window.PCBCAMConfig = {
                 angle: 0,
                 margin: 0.1,
                 stepDown: 0.1
+            },
+            defaultSettings: {
+                passes: 3,
+                stepOver: 60,
+                cutDepth: 0.1,
+                pattern: 'offset',
+                direction: 'climb',
+                entryType: 'ramp',
+                preserveIslands: true
             }
         },
-        
-        drill: {
-            extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'],
-            color: '#4488ff',
-            icon: '🔧',
+        clearing: {
+            // Alias for 'clear' to handle both naming conventions
+            name: 'Copper Clearing',
+            icon: '🔄',
+            color: '#44ff88',
+            extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd'],
+            defaultTool: 'em_0.8mm_flat',
             tool: {
-                diameter: 1.0,
-                type: 'drill',
+                diameter: 0.8,
+                type: 'end_mill',
                 material: 'carbide',
-                pointAngle: 118
+                flutes: 2
             },
             cutting: {
-                cutDepth: 1.8,
-                passDepth: 0.2,
-                cutFeed: 50,
-                plungeFeed: 25,
+                cutDepth: 0.1,
+                passDepth: 0.05,
+                cutFeed: 200,
+                plungeFeed: 50,
                 spindleSpeed: 10000
             },
             strategy: {
-                peckDepth: 0.5,
-                dwellTime: 0.1,
-                retractHeight: 1,
-                chipBreaking: false
+                overlap: 50,
+                pattern: 'parallel',
+                angle: 0,
+                margin: 0.1,
+                stepDown: 0.1
+            },
+            defaultSettings: {
+                passes: 3,
+                stepOver: 60,
+                cutDepth: 0.1,
+                pattern: 'offset',
+                direction: 'climb',
+                entryType: 'ramp',
+                preserveIslands: true
             }
         },
-        
         cutout: {
-            extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill'],
+            name: 'Board Cutout',
+            icon: '✂️',
             color: '#ff00ff',
-            icon: '🔄',
+            extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill'],
+            defaultTool: 'em_1.0mm_flat',
             tool: {
                 diameter: 1.0,
                 type: 'end_mill',
@@ -167,19 +481,66 @@ window.PCBCAMConfig = {
                 leadIn: 0.5,
                 leadOut: 0.5,
                 preserveArcs: true
+            },
+            defaultSettings: {
+                passes: 8,
+                stepOver: 100,
+                cutDepth: 0.2,
+                tabs: 4,
+                tabWidth: 3.0,
+                tabHeight: 0.5,
+                direction: 'climb',
+                entryType: 'ramp',
+                leadIn: 0.5,
+                leadOut: 0.5
             }
         }
     },
-    
+
+    // ============================================================================
+    // UI LAYOUT
+    // ============================================================================
+    layout: {
+        sidebarLeftWidth: 320,
+        sidebarRightWidth: 380,
+        statusBarHeight: 32,
+        sectionHeaderHeight: 36,
+        defaultTheme: 'dark',
+        
+        treeView: {
+            indentSize: 16,
+            nodeHeight: 28,
+            showIcons: true,
+            animateExpansion: true
+        },
+        
+        canvas: {
+            defaultZoom: 10,
+            minZoom: 0.01,
+            maxZoom: 1000,
+            zoomStep: 1.2,
+            panSensitivity: 1.0,
+            wheelZoomSpeed: 0.002
+        },
+        
+        visibility: {
+            defaultLayers: {
+                source: true,
+                fused: true,
+                toolpath: false,
+                preview: false
+            }
+        }
+    },
+
     // ============================================================================
     // RENDERING
     // ============================================================================
     rendering: {
-        // Color schemes
         themes: {
             dark: {
                 canvas: {
-                    background: '#1a1a1a',
+                    background: '#0f0f0f',
                     grid: '#333333',
                     origin: '#ffffff',
                     originOutline: '#000000',
@@ -189,14 +550,16 @@ window.PCBCAMConfig = {
                 },
                 layers: {
                     isolation: '#ff8844',
+                    clearing: '#44ff88',
                     clear: '#44ff88',
                     drill: '#4488ff',
                     cutout: '#ff00ff',
                     copper: '#ff8844',
                     fused: '#00ff00',
-                    nonConductor: '#666666',
-                    toolpath: '#ffff00',
-                    selection: '#00ffff'
+                    toolpath: '#00ffff',
+                    preview: '#ffff00',
+                    selection: '#00ffff',
+                    nonConductor: '#666666'
                 },
                 debug: {
                     holeDebug: '#ff00ff',
@@ -216,14 +579,16 @@ window.PCBCAMConfig = {
                 },
                 layers: {
                     isolation: '#cc6600',
+                    clearing: '#008844',
                     clear: '#008844',
                     drill: '#0066cc',
                     cutout: '#cc00cc',
                     copper: '#cc6600',
                     fused: '#00aa00',
-                    nonConductor: '#999999',
-                    toolpath: '#cccc00',
-                    selection: '#0099cc'
+                    toolpath: '#0099cc',
+                    preview: '#ccaa00',
+                    selection: '#0099cc',
+                    nonConductor: '#999999'
                 },
                 debug: {
                     holeDebug: '#ff00ff',
@@ -233,36 +598,6 @@ window.PCBCAMConfig = {
             }
         },
         
-        // Canvas settings
-        canvas: {
-            minZoom: 0.01,
-            maxZoom: 1000,
-            defaultZoom: 10,
-            zoomStep: 1.2,              // multiplier for zoom in/out
-            panSensitivity: 1.0,
-            
-            // Sizes in pixels
-            rulerSize: 20,
-            rulerTickLength: 5,
-            originMarkerSize: 10,
-            originCircleSize: 3,
-            
-            // Stroke widths
-            wireframe: {
-                baseThickness: 0.08,
-                minThickness: 0.02,
-                maxThickness: 0.2
-            }
-        },
-        
-        // Grid configuration
-        grid: {
-            minPixelSpacing: 40,        // pixels
-            steps: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 
-                   0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100]
-        },
-        
-        // Default render options
         defaultOptions: {
             showWireframe: false,
             showPads: true,
@@ -280,66 +615,153 @@ window.PCBCAMConfig = {
             showHoles: true,
             holeRenderMode: 'proper',
             debugHoleWinding: false,
-            showStats: false
+            showStats: false,
+            debugCurvePoints: false
+        },
+        
+        canvas: {
+            minZoom: 0.01,
+            maxZoom: 1000,
+            defaultZoom: 10,
+            zoomStep: 1.2,
+            panSensitivity: 1.0,
+            rulerSize: 20,
+            rulerTickLength: 5,
+            originMarkerSize: 10,
+            originCircleSize: 3,
+            wireframe: {
+                baseThickness: 0.08,
+                minThickness: 0.02,
+                maxThickness: 0.2
+            }
+        },
+        
+        grid: {
+            enabled: true,
+            minPixelSpacing: 40,
+            steps: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100]
+        },
+        
+        toolpath: {
+            strokeWidth: 1.5,
+            showDirection: true,
+            showStartPoint: true,
+            animatePreview: false
         }
     },
+
+    // ============================================================================
+    // GEOMETRY PROCESSING
+    // ============================================================================
+    geometry: {
+        clipperScale: 10000,
+        maxCoordinate: 1000,
+        coordinatePrecision: 0.001,
+        
+        offsetting: {
+            joinType: 'round',
+            miterLimit: 2.0,
+            arcTolerance: 0.01,
+            selfIntersectionCheck: true,
+            preserveCollinear: false
+        },
+        
+        fusion: {
+            enabled: false,
+            preserveHoles: true,
+            preserveArcs: true,
+            fillRule: 'nonzero'
+        },
+        
+        segments: {
+            targetLength: 0.1,
+            minCircle: 16,
+            maxCircle: 128,
+            minArc: 8,
+            maxArc: 64,
+            obround: 16,
+            adaptiveSegmentation: true
+        },
+        
+        simplifyTolerance: 0.01,
+        preserveArcs: true
+    },
     
+    // ============================================================================
+    // FILE FORMATS
+    // ============================================================================
+    formats: {
+        excellon: {
+            defaultFormat: { integer: 3, decimal: 3 },
+            defaultUnits: 'mm',
+            defaultToolDiameter: 1.0,
+            minToolDiameter: 0.1,
+            maxToolDiameter: 10.0
+        },
+        
+        gerber: {
+            defaultFormat: { integer: 3, decimal: 3 },
+            defaultUnits: 'mm',
+            defaultAperture: 0.1,
+            minAperture: 0.01,
+            maxAperture: 10.0
+        }
+    },
+
     // ============================================================================
     // MACHINE SETTINGS
     // ============================================================================
     machine: {
         pcb: {
-            thickness: 1.6,             // mm - standard FR4
-            copperThickness: 0.035,    // mm - 1oz copper
-            minFeatureSize: 0.1        // mm
+            thickness: 1.6,
+            copperThickness: 0.035,
+            minFeatureSize: 0.1
         },
         
         heights: {
-            safeZ: 2,                   // mm - safe height for rapids
-            travelZ: 1,                 // mm - travel between cuts
-            probeZ: -5,                 // mm - max probe depth
-            homeZ: 10                   // mm - home position Z
+            safeZ: 5.0,
+            travelZ: 2.0,
+            probeZ: -5.0,
+            homeZ: 10.0
         },
         
         speeds: {
-            rapidFeed: 1000,            // mm/min
-            probeFeed: 25,              // mm/min
-            maxFeed: 2000,              // mm/min
-            maxAcceleration: 100        // mm/s²
+            rapidFeed: 1000,
+            probeFeed: 25,
+            maxFeed: 2000,
+            maxAcceleration: 100
         },
         
         workspace: {
-            system: 'G54',              // work coordinate system
-            maxX: 200,                  // mm
-            maxY: 200,                  // mm
-            maxZ: 50,                   // mm
-            minX: 0,                    // mm
-            minY: 0,                    // mm
-            minZ: -5                    // mm
+            system: 'G54',
+            maxX: 200,
+            maxY: 200,
+            maxZ: 50,
+            minX: 0,
+            minY: 0,
+            minZ: -5
         }
     },
-    
+
     // ============================================================================
     // G-CODE GENERATION
     // ============================================================================
     gcode: {
-        postProcessor: 'grbl',         // grbl, marlin, linuxcnc, mach3
-        units: 'mm',                    // mm or inch
+        postProcessor: 'grbl',
+        units: 'mm',
         
-        // Number formatting
         precision: {
-            coordinates: 3,             // decimal places for X,Y,Z
-            feedrate: 0,               // decimal places for F
-            spindle: 0,                // decimal places for S
-            arc: 3                     // decimal places for I,J,K
+            coordinates: 3,
+            feedrate: 0,
+            spindle: 0,
+            arc: 3
         },
         
-        // Templates per post-processor
         templates: {
             grbl: {
-                start: 'G90 G21 G17\nM3 S1000\nG4 P1',
-                end: 'M5\nG0 Z10\nM2',
-                toolChange: 'M5\nG0 Z{safeZ}\nM0\nM3 S{speed}\nG4 P1'
+                start: 'G90 G21 G17\nG94\nM3 S{spindleSpeed}\nG4 P1',
+                end: 'M5\nG0 Z{safeZ}\nM2',
+                toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P1'
             },
             marlin: {
                 start: 'G90 G21\nM3 S255\nG4 P1000',
@@ -358,14 +780,13 @@ window.PCBCAMConfig = {
             }
         },
         
-        // Feature support
         features: {
-            arcCommands: true,          // G02/G03 support
-            helicalMoves: false,        // helical interpolation
-            cannedCycles: false,        // G81-G89 drilling cycles
-            workOffsets: true,          // G54-G59 support
-            toolCompensation: false,    // G41/G42 support
-            variableSpindle: true       // M3 S commands
+            arcCommands: true,
+            helicalMoves: false,
+            cannedCycles: false,
+            workOffsets: true,
+            toolCompensation: false,
+            variableSpindle: true
         }
     },
     
@@ -373,43 +794,39 @@ window.PCBCAMConfig = {
     // UI CONFIGURATION
     // ============================================================================
     ui: {
-        theme: 'dark',                  // default theme
+        theme: 'dark',
         showTooltips: true,
         language: 'en',
         
-        // Timing (milliseconds)
         timing: {
             statusMessageDuration: 5000,
             modalAnimationDuration: 300,
             inputDebounceDelay: 300,
-            renderThrottle: 16,         // ~60fps
-            autoSaveInterval: 30000     // 30 seconds
+            renderThrottle: 16,
+            autoSaveInterval: 30000
         },
         
-        // Input validation
         validation: {
-            minToolDiameter: 0.01,      // mm
-            maxToolDiameter: 10,        // mm
-            minFeedRate: 1,             // mm/min
-            maxFeedRate: 5000,          // mm/min
-            minSpindleSpeed: 100,       // RPM
-            maxSpindleSpeed: 30000,     // RPM
-            minDepth: 0.001,            // mm
-            maxDepth: 10                // mm
+            minToolDiameter: 0.01,
+            maxToolDiameter: 10,
+            minFeedRate: 1,
+            maxFeedRate: 5000,
+            minSpindleSpeed: 100,
+            maxSpindleSpeed: 30000,
+            minDepth: 0.001,
+            maxDepth: 10
         },
         
-        // Modal configuration
         modal: {
             totalPages: 3,
             titles: [
-                '🔍 PCB Preview & Fusion Setup',
+                '📋 PCB Preview & Fusion Setup',
                 '⚙️ Offset Geometry Configuration',
                 '🛠️ Toolpath Generation'
             ],
             defaultPage: 1
         },
         
-        // Status messages
         messages: {
             ready: 'Ready - Add PCB files to begin',
             loading: 'Loading...',
@@ -419,49 +836,51 @@ window.PCBCAMConfig = {
             warning: 'Warning'
         }
     },
-    
+
     // ============================================================================
     // PERFORMANCE
     // ============================================================================
     performance: {
-        // WASM settings
         wasm: {
-            memoryLimit: 256,           // MB
-            stackSize: 1024 * 1024,     // bytes
+            memoryLimit: 256,
+            stackSize: 1024 * 1024,
             enableSIMD: true,
             enableThreads: false
         },
         
-        // Batch processing
         batching: {
             maxPrimitivesPerBatch: 1000,
             fusionBatchSize: 100,
             renderBatchSize: 500,
-            parseChunkSize: 10000       // lines per chunk
+            parseChunkSize: 10000
         },
         
-        // Caching
         cache: {
             enableGeometryCache: true,
-            maxCacheSize: 100,          // MB
-            cacheTimeout: 300000        // 5 minutes
+            enableToolpathCache: true,
+            maxCacheSize: 100,
+            cacheTimeout: 300000
         },
         
-        // Optimization thresholds
         optimization: {
-            simplifyThreshold: 10000,   // primitives count
-            decimateThreshold: 0.01,    // mm
-            mergeThreshold: 0.001       // mm
+            simplifyThreshold: 10000,
+            decimateThreshold: 0.01,
+            mergeThreshold: 0.001
+        },
+        
+        debounce: {
+            propertyChanges: 300,
+            treeSelection: 100,
+            canvasInteraction: 16
         }
     },
-    
+
     // ============================================================================
     // DEBUG & DEVELOPMENT
     // ============================================================================
     debug: {
         enabled: false,
         
-        // Logging flags
         logging: {
             wasmOperations: false,
             coordinateConversion: false,
@@ -471,20 +890,26 @@ window.PCBCAMConfig = {
             fusionOperations: true,
             fileOperations: false,
             toolpathGeneration: false,
-            curveRegistration: true      // Track curve registration
+            curveRegistration: true,
+            operations: false,
+            toolpaths: false,
+            rendering: false,
+            interactions: false,
+            cache: false
         },
         
-        // Visualization
         visualization: {
             showBounds: false,
             showStats: false,
             showCoordinates: false,
             showPrimitiveIndices: false,
             showWindingDirection: false,
-            highlightHoles: false
+            highlightHoles: false,
+            showToolpathNodes: false,
+            highlightOffsetSegments: false,
+            showJoinTypes: false
         },
         
-        // Validation
         validation: {
             validateGeometry: true,
             validateCoordinates: true,
@@ -493,9 +918,9 @@ window.PCBCAMConfig = {
             warnOnInvalidData: true
         }
     },
-    
+
     // ============================================================================
-    // CONFIG-SPECIFIC HELPER METHODS
+    // HELPER METHODS
     // ============================================================================
     
     // Get operation configuration by type
@@ -518,6 +943,65 @@ window.PCBCAMConfig = {
     formatGcode: function(value, type = 'coordinates') {
         const precision = this.gcode.precision[type] || 3;
         return value.toFixed(precision).replace(/\.?0+$/, '');
+    },
+    
+    // Get default tool for an operation type
+    getDefaultTool: function(operationType) {
+        const op = this.operations[operationType];
+        if (!op) return null;
+        
+        const toolId = op.defaultTool;
+        return this.tools.find(tool => tool.id === toolId);
+    },
+    
+    // Get tools compatible with an operation
+    getToolsForOperation: function(operationType) {
+        return this.tools.filter(tool => 
+            tool.operations.includes(operationType)
+        );
+    },
+    
+    // Calculate offset distances for multi-pass
+    calculateOffsetDistances: function(toolDiameter, passes, stepOverPercent) {
+        const stepOver = stepOverPercent / 100;
+        const stepDistance = toolDiameter * (1 - stepOver);
+        const offsets = [];
+        
+        for (let i = 0; i < passes; i++) {
+            offsets.push(-(toolDiameter / 2 + i * stepDistance));
+        }
+        
+        return offsets;
+    },
+    
+    // Validate tool definition
+    validateTool: function(tool) {
+        const required = ['id', 'name', 'type', 'geometry', 'cutting', 'operations'];
+        const geometryRequired = ['diameter'];
+        const cuttingRequired = ['feedRate', 'plungeRate', 'spindleSpeed'];
+        
+        for (const field of required) {
+            if (!tool[field]) {
+                console.error(`Tool validation failed: missing '${field}'`);
+                return false;
+            }
+        }
+        
+        for (const field of geometryRequired) {
+            if (tool.geometry[field] === undefined) {
+                console.error(`Tool validation failed: missing 'geometry.${field}'`);
+                return false;
+            }
+        }
+        
+        for (const field of cuttingRequired) {
+            if (tool.cutting[field] === undefined) {
+                console.error(`Tool validation failed: missing 'cutting.${field}'`);
+                return false;
+            }
+        }
+        
+        return true;
     }
 };
 
@@ -556,11 +1040,9 @@ window.PCBCAMConfig = {
             if (metadata.type === 'arc') {
                 const roundedStartAngle = Math.round((metadata.startAngle || 0) * this.hashPrecision) / this.hashPrecision;
                 const roundedEndAngle = Math.round((metadata.endAngle || Math.PI * 2) * this.hashPrecision) / this.hashPrecision;
-                // Include direction in hash for arcs
                 str += `_${roundedStartAngle}_${roundedEndAngle}_${metadata.isOriginalDirectionCW === true}`;
             }
             
-            // Simple string hash
             let hash = 0;
             for (let i = 0; i < str.length; i++) {
                 const char = str.charCodeAt(i);
@@ -576,7 +1058,6 @@ window.PCBCAMConfig = {
                 return null;
             }
             
-            // Ensure we have explicit direction information
             if (metadata.isOriginalDirectionCW === undefined) {
                 if (window.PCBCAMConfig?.debug?.enabled) {
                     console.warn('[GlobalRegistry] Missing direction information, defaulting to CCW for:', metadata);
@@ -586,23 +1067,19 @@ window.PCBCAMConfig = {
             
             const hash = this.generateHash(metadata);
             
-            // Check if already registered
             if (this.hashToId.has(hash)) {
                 return this.hashToId.get(hash);
             }
             
-            // Store with explicit direction
             const curveData = {
                 ...metadata,
                 isOriginalDirectionCW: metadata.isOriginalDirectionCW
             };
             
-            // Register new curve
             const id = this.nextId++;
             this.registry.set(id, curveData);
             this.hashToId.set(hash, id);
             
-            // Track primitive association if provided
             if (metadata.primitiveId) {
                 if (!this.primitiveIdToCurves.has(metadata.primitiveId)) {
                     this.primitiveIdToCurves.set(metadata.primitiveId, []);
@@ -610,7 +1087,6 @@ window.PCBCAMConfig = {
                 this.primitiveIdToCurves.get(metadata.primitiveId).push(id);
             }
             
-            // Update stats
             this.stats.registered++;
             if (metadata.type === 'circle') this.stats.circles++;
             else if (metadata.type === 'arc') this.stats.arcs++;
