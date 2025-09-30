@@ -573,9 +573,6 @@
             this.ensureCoordinateSystem();
             
             // Update UI
-            if (this.ui?.operationsManager) {
-                this.ui.operationsManager.expandAllOperations();
-            }
             if (this.ui?.treeManager) {
                 this.ui.treeManager.expandAll();
             }
@@ -607,9 +604,6 @@
             // Clear UI
             if (this.ui?.treeManager) {
                 this.ui.treeManager.refreshTree();
-            }
-            if (this.ui?.operationsManager) {
-                this.ui.operationsManager.renderAllOperations();
             }
             
             // Load all files in parallel
@@ -663,9 +657,6 @@
             }
             
             // Expand operations after loading
-            if (this.ui?.operationsManager) {
-                this.ui.operationsManager.expandAllOperations();
-            }
             if (this.ui?.treeManager) {
                 this.ui.treeManager.expandAll();
             }
@@ -1039,7 +1030,6 @@
             'PropertyInspector',
             'VisibilityPanel',
             'ToolLibrary',
-            'OperationsManager',
             'StatusManager',
             'UIControls'
         ];
