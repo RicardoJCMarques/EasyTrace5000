@@ -1,4 +1,4 @@
-// geometry/arc-reconstructor.js
+// geometry/geometry-arc-reconstructor.js
 // Arc detection and reconstruction with consistent orientation
 // FIXED: Use registered clockwise property instead of index progression
 

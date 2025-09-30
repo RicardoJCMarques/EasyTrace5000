@@ -43,12 +43,11 @@
             
             // Setup expand/collapse all buttons
             const collapseAllBtn = document.getElementById('collapse-all-btn');
-            const expandAllBtn = document.getElementById('expand-all-btn');
-            
             if (collapseAllBtn) {
                 collapseAllBtn.addEventListener('click', () => this.collapseAll());
             }
-            
+
+            const expandAllBtn = document.getElementById('expand-all-btn');
             if (expandAllBtn) {
                 expandAllBtn.addEventListener('click', () => this.expandAll());
             }
@@ -322,40 +321,45 @@
             const geometriesContainer = fileData.element.querySelector('.file-geometries');
             if (!geometriesContainer) return;
             
-            // Clear existing geometries
+            // Clear existing
             geometriesContainer.innerHTML = '';
             fileData.geometries.clear();
             
-            // Add source geometry node
+            // Add source node
             if (operation.primitives && operation.primitives.length > 0) {
-                this.addGeometryNode(fileId, 'source', 'Source', operation.primitives.length);
+                this.addGeometryNode(fileId, 'source', 'Source', 
+                    operation.primitives.length);
             }
             
-            // Add fused geometry node if fusion is enabled
+            // Add fused node if fusion enabled
             if (this.ui.viewState?.fuseGeometry) {
-                const fusedData = this.core.getFusedPrimitives ? this.core.getFusedPrimitives() : null;
+                const fusedData = this.ui.core.getFusedPrimitives?.() || 
+                                this.ui.core.geometryProcessor?.getCachedState('fusedGeometry');
                 if (fusedData) {
-                    this.addGeometryNode(fileId, 'fused', 'Fused', fusedData.length);
+                    this.addGeometryNode(fileId, 'fused', 'Fused', 
+                        fusedData.length);
                 }
             }
             
-            // Add offset geometry nodes if they exist
-            const offsets = operation.offsets;
-            if (offsets && offsets.length > 0) {
-                offsets.forEach((offset, index) => {
+            // Add offset nodes (NEW)
+            if (operation.offsets && operation.offsets.length > 0) {
+                operation.offsets.forEach((offset, index) => {
                     const label = `Pass ${index + 1}`;
-                    this.addGeometryNode(fileId, `offset_${index}`, label, offset.primitives?.length || 0, {
-                        offset: offset.distance.toFixed(2)
+                    const count = offset.primitives?.length || 0;
+                    this.addGeometryNode(fileId, `offset_${index}`, label, count, {
+                        offset: offset.distance.toFixed(2),
+                        color: '#ff0000'
                     });
                 });
             }
             
-            // Add toolpath nodes if they exist
-            const toolpaths = this.core.toolpaths?.get(operation.id);
+            // Add toolpath nodes if exist
+            const toolpaths = this.ui.core.toolpaths?.get(operation.id);
             if (toolpaths && toolpaths.paths) {
                 toolpaths.paths.forEach((path, index) => {
-                    const label = `Toolpath ${index + 1}`;
-                    this.addGeometryNode(fileId, `toolpath_${index}`, label, path.primitives?.length || 0);
+                    this.addGeometryNode(fileId, `toolpath_${index}`, 
+                        `Toolpath ${index + 1}`, 
+                        path.primitives?.length || 0);
                 });
             }
         }
@@ -380,6 +384,7 @@
             const labelEl = nodeElement.querySelector('.geometry-label');
             const infoEl = nodeElement.querySelector('.geometry-info');
             const visBtn = nodeElement.querySelector('.visibility-btn');
+            const deleteBtn = nodeElement.querySelector('.delete-geometry-btn');
             
             // Set icon based on type
             const icons = {
@@ -388,6 +393,18 @@
                 'offset': '↔️',
                 'toolpath': '🔧'
             };
+
+            const baseType = geometryType.startsWith('offset') ? 'offset' :
+                            geometryType.startsWith('toolpath') ? 'toolpath' :
+                            geometryType;
+            
+            iconEl.textContent = icons[baseType] || '📊';
+            
+            // Color code offset nodes in red
+            if (baseType === 'offset') {
+                nodeElement.style.setProperty('--accent-color', '#ff0000');
+            }
+
             iconEl.textContent = icons[nodeElement.dataset.geometryType] || '📊';
             
             labelEl.textContent = label;
@@ -419,6 +436,14 @@
             content.addEventListener('mouseleave', () => {
                 this.hideTooltip();
             });
+
+            // Delete Geometry
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.deleteGeometry(fileId, geometryId);
+                });
+            }
             
             // Visibility toggle
             if (visBtn) {
@@ -484,6 +509,34 @@
             if (this.ui.propertyInspector) {
                 this.ui.propertyInspector.showGeometryInfo(operation, geometryType);
             }
+        }
+
+        deleteGeometry(fileId, geometryId) {
+            const fileData = this.nodes.get(fileId);
+            if (!fileData) return;
+            
+            const geoData = fileData.geometries.get(geometryId);
+            if (!geoData) return;
+            
+            // Remove from operation.offsets if it's an offset
+            if (geoData.type.startsWith('offset_')) {
+                const passIndex = parseInt(geoData.type.split('_')[1]);
+                if (fileData.operation.offsets) {
+                    fileData.operation.offsets.splice(passIndex, 1);
+                }
+            }
+            
+            // Remove layer from renderer
+            const layerName = `${geoData.type}_${fileData.operation.id}`;
+            if (this.ui.renderer.layers.has(layerName)) {
+                this.ui.renderer.layers.delete(layerName);
+            }
+            
+            // Remove from UI
+            geoData.element.remove();
+            fileData.geometries.delete(geometryId);
+            
+            this.ui.renderer.render();
         }
         
         toggleGeometryVisibility(geometryId, geometryType) {

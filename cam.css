@@ -280,6 +280,7 @@ body {
 
 .sidebar-section {
     display: flex;
+    overflow: auto;
     flex-direction: column;
     border-bottom: 1px solid var(--border-primary);
 }

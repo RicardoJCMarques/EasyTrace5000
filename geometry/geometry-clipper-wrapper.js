@@ -1,4 +1,4 @@
-// geometry/clipper-wrapper.js
+// geometry/geometry-clipper-wrapper.js
 // Abstraction layer for Clipper2 WASM - isolates all low-level WASM interaction
 // ENHANCED: 64-bit metadata packing for lossless arc reconstruction
 // FIXED: Preserve clockwise property during metadata unpacking

@@ -1,6 +1,5 @@
 // cam-ui.js
 // UI orchestrator for PCB CAM - manages components and coordinates interactions
-// This is THE interface - no mode detection, no fallbacks
 
 (function() {
     'use strict';
@@ -14,7 +13,7 @@
         constructor(core) {
             this.core = core;
             
-            // UI Components - initialize what's available
+            // UI Components
             this.treeManager = null;
             this.propertyInspector = null;
             this.visibilityPanel = null;
@@ -63,7 +62,6 @@
                 if (typeof ToolLibrary !== 'undefined') {
                     this.toolLibrary = new ToolLibrary();
                     await this.toolLibrary.init();
-                    // Pass to core for toolpath generation
                     if (this.core.setToolLibrary) {
                         this.core.setToolLibrary(this.toolLibrary);
                     }
@@ -82,7 +80,6 @@
                 
                 if (typeof VisibilityPanel !== 'undefined') {
                     this.visibilityPanel = new VisibilityPanel(this);
-                    // Init after renderer
                 }
                 
                 if (typeof OperationsManager !== 'undefined') {
@@ -243,53 +240,8 @@
                 exportSvgBtn.addEventListener('click', async () => await this.exportSVG());
             }
             
-            /* DOCUMENTATION - View Controls Needed:
-               These controls exist in backend but need HTML elements:
-               
-               #show-wireframe (checkbox) - Wireframe mode
-               #show-grid (checkbox) - Grid display
-               #show-bounds (checkbox) - Board bounds
-               #show-rulers (checkbox) - Canvas rulers
-               #show-regions (checkbox) - Filled regions
-               #show-traces (checkbox) - Trace lines
-               #show-pads (checkbox) - Pad display
-               #show-drills (checkbox) - Drill holes
-               #show-cutouts (checkbox) - Board cutouts
-               
-               #fuse-geometry (checkbox) - Enable fusion
-               #show-preprocessed (checkbox) - Show preprocessed vs fused
-               #enable-arc-reconstruction (checkbox) - Arc reconstruction
-               #debug-curve-points (checkbox) - Debug curve points
-               #black-and-white (checkbox) - B&W mode
-            */
             this.setupViewControls();
-            
-            /* DOCUMENTATION - Coordinate System Controls Needed:
-               These exist in UIControls but need HTML elements:
-               
-               #x-offset (input) - X offset for origin preview
-               #y-offset (input) - Y offset for origin preview
-               #center-origin-btn (button) - Center origin
-               #bottom-left-origin-btn (button) - Bottom-left origin
-               #reset-origin-btn (button) - Reset to saved
-               #apply-set-origin-btn (button) - Save current origin
-               #rotation-angle (input) - Board rotation angle
-               #apply-rotation-btn (button) - Apply rotation
-               #reset-rotation-btn (button) - Reset rotation
-               #board-size (span) - Display board dimensions
-            */
             this.setupCoordinateControls();
-            
-            /* DOCUMENTATION - Machine Settings Needed:
-               Backend exists but needs UI panel:
-               
-               #pcb-thickness (input) - PCB thickness in mm
-               #safe-z (input) - Safe Z height
-               #travel-z (input) - Travel Z height
-               #rapid-feed (input) - Rapid feed rate
-               #post-processor (select) - G-code post processor
-               #gcode-units (select) - Units (mm/inch)
-            */
             this.setupMachineSettings();
             
             // File input handler
@@ -411,7 +363,6 @@
                             this.renderer.setOptions({ [option]: e.target.checked });
                         }
                         
-                        // Some options need re-render
                         if (option === 'showPreprocessed') {
                             await this.updateRendererAsync();
                         } else if (this.renderer) {
@@ -423,7 +374,6 @@
         }
         
         setupCoordinateControls() {
-            // These delegate to UIControls when available
             const centerBtn = document.getElementById('center-origin-btn');
             if (centerBtn) {
                 centerBtn.addEventListener('click', () => {
@@ -484,7 +434,6 @@
         }
         
         setupMachineSettings() {
-            // Machine settings update core settings
             const thicknessInput = document.getElementById('pcb-thickness');
             if (thicknessInput) {
                 thicknessInput.addEventListener('change', (e) => {
@@ -528,26 +477,46 @@
             }
         }
         
-        // Renderer updates
+        // Renderer updates - FIXED: Add debouncing to prevent spam
         async updateRendererAsync() {
             if (!this.renderer) return;
             
-            this.renderer.clearLayers();
-            
-            if (this.viewState.fuseGeometry) {
-                await this.performFusion();
-            } else {
-                this.addIndividualLayers();
+            // Debounce: If update already pending, queue this request
+            if (this._updatePending) {
+                this._updateQueued = true;
+                return;
             }
             
-            // Update visibility panel
-            if (this.visibilityPanel) {
-                this.visibilityPanel.onLayersChanged();
-            }
+            this._updatePending = true;
             
-            this.renderer.render();
-            this.updateOriginDisplay();
-            this.updateStatistics();
+            try {
+                this.renderer.clearLayers();
+                
+                if (this.viewState.fuseGeometry) {
+                    await this.performFusion();
+                } else {
+                    this.addIndividualLayers();
+                }
+                
+                // Add offset layers in both paths
+                this.addOffsetLayers();
+                
+                if (this.visibilityPanel) {
+                    this.visibilityPanel.onLayersChanged();
+                }
+                
+                this.renderer.render();
+                this.updateOriginDisplay();
+                this.updateStatistics();
+            } finally {
+                this._updatePending = false;
+                
+                // If another update was queued, process it
+                if (this._updateQueued) {
+                    this._updateQueued = false;
+                    setTimeout(() => this.updateRendererAsync(), 50);
+                }
+            }
         }
         
         async updateRenderer() {
@@ -562,20 +531,17 @@
             try {
                 const fused = await this.core.fuseAllPrimitives(fusionOptions);
                 
-                // Update arc stats
                 if (this.viewState.enableArcReconstruction && this.core.geometryProcessor) {
                     const arcStats = this.core.geometryProcessor.getArcReconstructionStats();
                     this.fusionStats.curvesRegistered = arcStats.curvesRegistered || 0;
                     this.fusionStats.curvesReconstructed = arcStats.curvesReconstructed || 0;
                     this.fusionStats.curvesLost = arcStats.curvesLost || 0;
                     
-                    // Update UI if controls exist
                     if (this.controls && this.controls.updateArcReconstructionStats) {
                         this.controls.updateArcReconstructionStats();
                     }
                 }
                 
-                // Add appropriate layer
                 if (this.viewState.showPreprocessed) {
                     this.addPreprocessedLayer();
                 } else {
@@ -646,6 +612,34 @@
             });
         }
         
+        // FIXED: New method to add offset layers from operation data
+        addOffsetLayers() {
+            const passColors = ['#ff0000', '#ff6600', '#ffcc00', '#00ff00'];
+            
+            this.core.operations.forEach(operation => {
+                if (operation.offsets && operation.offsets.length > 0) {
+                    operation.offsets.forEach((offset, index) => {
+                        if (offset.primitives && offset.primitives.length > 0) {
+                            const colorIndex = Math.min(index, passColors.length - 1);
+                            
+                            this.renderer.addLayer(
+                                `offset_${operation.id}_pass_${index + 1}`,
+                                offset.primitives,
+                                {
+                                    type: 'offset',
+                                    visible: true,
+                                    color: passColors[colorIndex],
+                                    operationId: operation.id,
+                                    pass: index + 1,
+                                    distance: offset.distance
+                                }
+                            );
+                        }
+                    });
+                }
+            });
+        }
+        
         // UI updates
         updateOriginDisplay() {
             if (!this.coordinateSystem) return;
@@ -656,7 +650,6 @@
                 sizeElement.textContent = status.boardSize.width.toFixed(1) + ' × ' + status.boardSize.height.toFixed(1) + ' mm';
             }
             
-            // Update offset inputs if controls exist
             if (this.controls && this.controls.updateOffsetInputsWithTracking) {
                 this.controls.updateOffsetInputsWithTracking();
             }
@@ -686,7 +679,6 @@
                 toolpathStat.textContent = stats.toolpaths;
             }
             
-            // Enable/disable action buttons
             const hasOperations = stats.operations > 0;
             const generateBtn = document.getElementById('generate-toolpaths-btn');
             if (generateBtn) {
@@ -720,20 +712,16 @@
         async processFile(file, type) {
             if (!file || !type) return;
             
-            // This delegates to controller if available
             if (window.pcbcam && window.pcbcam.processFile) {
                 return window.pcbcam.processFile(file, type);
             }
             
-            // Otherwise handle directly
             const operation = this.core.createOperation(type, file);
             
-            // Add to tree if available
             if (this.treeManager) {
                 this.treeManager.addFileNode(operation);
             }
             
-            // Read and parse
             const reader = new FileReader();
             return new Promise((resolve) => {
                 reader.onload = async (e) => {
@@ -743,7 +731,6 @@
                     if (success) {
                         this.updateStatus('Loaded ' + file.name + ': ' + operation.primitives.length + ' primitives', 'success');
                         
-                        // Update tree with geometry info
                         if (this.treeManager) {
                             const nodes = this.treeManager.nodes;
                             let fileNode = null;
@@ -778,16 +765,6 @@
         }
         
         async generateToolpaths() {
-            /* DOCUMENTATION - Toolpath Generation Flow:
-               1. Get selected operation from tree (or all operations)
-               2. Validate tool selection (from PropertyInspector)
-               3. Call core.generateAllToolpaths() with settings
-               4. Add toolpath layers to renderer
-               5. Update tree with toolpath nodes
-               
-               Needs: Tool selection UI, offset parameters
-            */
-            
             if (window.pcbcam && window.pcbcam.generateToolpaths) {
                 return window.pcbcam.generateToolpaths();
             }
@@ -830,35 +807,37 @@
         }
         
         async exportGCode() {
-            /* DOCUMENTATION - G-Code Export Flow:
-               1. Get toolpaths from core.toolpaths
-               2. Apply coordinate transform
-               3. Generate G-code with headers/footers
-               4. Include tool changes
-               5. Download file
-               
-               Needs: GCodeExporter class, machine settings UI
-            */
-            
             this.updateStatus('G-code export not yet implemented', 'warning');
         }
         
         // Operation management
         removeOperation(operationId) {
             if (this.core.removeOperation(operationId)) {
-                // Update tree
                 if (this.treeManager) {
                     this.treeManager.removeFileNode(operationId);
                 }
                 
-                // Update renderer
                 this.updateRendererAsync();
-                
-                // Update stats
                 this.updateStatistics();
                 
                 this.updateStatus('Operation removed', 'info');
             }
+        }
+        
+        // FIXED: New method for granular offset layer removal
+        removeOffsetLayer(operationId, passIndex) {
+            const layerName = `offset_${operationId}_pass_${passIndex}`;
+            
+            if (this.renderer.layers.has(layerName)) {
+                this.renderer.layers.delete(layerName);
+                this.renderer.render();
+                
+                if (debugConfig.enabled) {
+                    console.log(`[UI] Removed offset layer: ${layerName}`);
+                }
+                return true;
+            }
+            return false;
         }
         
         // Status management
@@ -899,7 +878,6 @@
         }
     }
     
-    // Export the class
     window.PCBCamUI = PCBCamUI;
     
 })();

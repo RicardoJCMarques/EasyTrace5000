@@ -430,6 +430,7 @@
                         <circle cx="10" cy="10" r="3" stroke="currentColor" fill="none"/>
                     </svg>
                 </button>
+                <button class="btn-icon btn-tiny delete-geometry-btn" title="Delete Geometry">D</button>
             </div>
         </div>
     </template>
@@ -523,6 +524,7 @@
         </div>
         <div class="property-actions">
             <button class="btn btn-primary" id="apply-properties-btn">Apply Changes</button>
+            <button class="btn btn-primary" id="generate-offsets-btn">Generate Offset Geometry</button>
             <button class="btn btn-secondary" id="reset-properties-btn">Reset</button>
         </div>
     </template>
@@ -677,10 +679,12 @@
             // Geometry and processing
             'geometry/clipper2z.js',
             'geometry/geometry-processor.js',
-            'geometry/arc-reconstructor.js',
-            'geometry/clipper-wrapper.js',
+            'geometry/geometry-arc-reconstructor.js',
+            'geometry/geometry-clipper-wrapper.js',
             'geometry/geometry-utils.js',
-            'geometry/geometry-offsetter.js', // Placeholder module
+            'geometry/geometry-line-intersections.js',
+            'geometry/geometry-offset-engine.js',
+            'geometry/geometry-offsetter.js',
             
             // Parsers and primitives
             'parsers/primitives.js',
@@ -695,7 +699,7 @@
             'renderer/renderer-primitives.js',
             'renderer/renderer-overlay.js',
             'renderer/renderer-interaction.js',
-            'renderer/layer-renderer.js',
+            'renderer/renderer-layer.js',
             
             // Export
             'export/svg-exporter.js',

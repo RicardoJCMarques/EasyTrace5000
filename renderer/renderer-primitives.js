@@ -1,6 +1,7 @@
 // renderer/renderer-primitives.js
 // Handles drawing all primitive types
 // FIXED: Arc direction for Y-flipped coordinates
+// FIXED: Offset primitive rendering with correct stroke width and color
 
 (function() {
     'use strict';
@@ -17,35 +18,83 @@
             this.debugStats = {
                 totalPoints: 0,
                 taggedPoints: 0,
-                curvePoints: new Map() // curveId -> point count
+                curvePoints: new Map()
             };
         }
         
         renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false) {
             this.ctx.save();
-            
-            // Check if this is a reconstructed arc/circle
-            const isReconstructed = primitive.properties?.reconstructed === true;
-            
-            if (isReconstructed) {
-                // Special styling for reconstructed arcs
-                this.renderReconstructedPrimitive(primitive, fillColor, strokeColor);
-            } else {
-                // Normal rendering
-                this.ctx.fillStyle = fillColor;
-                this.ctx.strokeStyle = strokeColor;
-                
-                if (this.core.options.showWireframe) {
-                    this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
-                    this.renderPrimitiveWireframe(primitive);
-                } else {
-                    this.renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed);
-                }
+
+            // FIXED: Check if offset geometry - render with special handling
+            const isOffset = primitive.properties?.isOffset === true;
+            if (isOffset) {
+                this.renderOffsetPrimitive(primitive, fillColor, strokeColor);
+                this.ctx.restore();
+                return; // Early return - no debug overlay
             }
             
-            // Debug visualization of curve metadata for all paths
-            if (this.core.options.debugCurvePoints && primitive.type === 'path') {
-                this.renderCurveMetadataDebug(primitive);
+            // Check if reconstructed
+            const isReconstructed = primitive.properties?.reconstructed === true;
+            if (isReconstructed) {
+                this.renderReconstructedPrimitive(primitive, fillColor, strokeColor);
+                this.ctx.restore();
+                return;
+            }
+            
+            // Normal rendering
+            this.ctx.fillStyle = fillColor;
+            this.ctx.strokeStyle = strokeColor;
+            
+            if (this.core.options.showWireframe) {
+                this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
+                this.renderPrimitiveWireframe(primitive);
+            } else {
+                this.renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed);
+            }
+            
+            this.ctx.restore();
+        }
+        
+        // FIXED: Offset rendering with correct stroke and no fill
+        renderOffsetPrimitive(primitive, fillColor, strokeColor) {
+            this.ctx.save();
+            
+            // FIXED: Correct stroke width calculation (inverse of scale)
+            this.ctx.lineWidth = 2 / this.core.viewScale;
+            
+            // FIXED: Explicitly set stroke color and no fill
+            this.ctx.strokeStyle = strokeColor;
+            this.ctx.fillStyle = 'transparent';
+            
+            if (debugConfig.enabled) {
+                console.log(`[Renderer] Offset render: width=${this.ctx.lineWidth.toFixed(3)}, color=${strokeColor}`);
+            }
+            
+            // Render based on type - STROKE ONLY
+            if (primitive.type === 'path') {
+                if (primitive.arcSegments?.length > 0) {
+                    // Use hybrid rendering for paths with arcs
+                    this.renderHybridPathStrokeOnly(primitive, strokeColor);
+                } else {
+                    this.ctx.beginPath();
+                    primitive.points.forEach((p, i) => {
+                        if (i === 0) this.ctx.moveTo(p.x, p.y);
+                        else this.ctx.lineTo(p.x, p.y);
+                    });
+                    if (primitive.closed) this.ctx.closePath();
+                    this.ctx.stroke();
+                }
+            } else if (primitive.type === 'circle') {
+                this.ctx.beginPath();
+                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
+                this.ctx.stroke();
+            } else if (primitive.type === 'arc') {
+                this.ctx.beginPath();
+                this.ctx.arc(
+                    primitive.center.x, primitive.center.y, primitive.radius,
+                    primitive.startAngle, primitive.endAngle, primitive.clockwise
+                );
+                this.ctx.stroke();
             }
             
             this.ctx.restore();
@@ -58,49 +107,38 @@
             
             if (!points || points.length === 0) return;
             
-            // Sort segments by start index
             const segments = (primitive.arcSegments || []).slice().sort((a, b) => a.startIndex - b.startIndex);
             
             let currentIndex = 0;
             
-            // Start path
             path2d.moveTo(points[0].x, points[0].y);
             currentIndex = 1;
             
-            // Process each arc segment
             for (const arc of segments) {
-                // Draw straight lines up to arc start
                 for (let i = currentIndex; i < arc.startIndex; i++) {
                     if (points[i]) path2d.lineTo(points[i].x, points[i].y);
                 }
                 
-                // Ensure we're at the arc start point
                 if (points[arc.startIndex]) {
                     path2d.lineTo(points[arc.startIndex].x, points[arc.startIndex].y);
                 }
                 
-                // FIXED: For Y-flipped coordinates, use clockwise directly
-                // When Y is flipped: Canvas interprets anticlockwise in the flipped space
-                // To maintain visual direction, we use the geometric clockwise value directly
                 path2d.arc(
                     arc.center.x,
                     arc.center.y,
                     arc.radius,
                     arc.startAngle,
                     arc.endAngle,
-                    arc.clockwise  // FIXED: Use directly, no inversion!
+                    arc.clockwise
                 );
                 
-                // Skip interpolated points
                 currentIndex = arc.endIndex + 1;
             }
             
-            // Draw remaining straight segments
             for (let i = currentIndex; i < points.length; i++) {
                 if (points[i]) path2d.lineTo(points[i].x, points[i].y);
             }
             
-            // Handle holes if present
             if (primitive.holes && primitive.holes.length > 0) {
                 primitive.holes.forEach(hole => {
                     if (hole.length > 0) {
@@ -117,7 +155,6 @@
                 path2d.closePath();
             }
             
-            // Render the optimized path
             if (primitive.properties?.fill !== false) {
                 this.ctx.fillStyle = fillColor;
                 this.ctx.fill(path2d, 'nonzero');
@@ -130,30 +167,69 @@
             }
         }
         
+        // NEW: Hybrid path stroke-only for offsets
+        renderHybridPathStrokeOnly(primitive, strokeColor) {
+            const path2d = new Path2D();
+            const points = primitive.points;
+            
+            if (!points || points.length === 0) return;
+            
+            const segments = (primitive.arcSegments || []).slice().sort((a, b) => a.startIndex - b.startIndex);
+            
+            let currentIndex = 0;
+            
+            path2d.moveTo(points[0].x, points[0].y);
+            currentIndex = 1;
+            
+            for (const arc of segments) {
+                for (let i = currentIndex; i < arc.startIndex; i++) {
+                    if (points[i]) path2d.lineTo(points[i].x, points[i].y);
+                }
+                
+                if (points[arc.startIndex]) {
+                    path2d.lineTo(points[arc.startIndex].x, points[arc.startIndex].y);
+                }
+                
+                path2d.arc(
+                    arc.center.x, arc.center.y, arc.radius,
+                    arc.startAngle, arc.endAngle, arc.clockwise
+                );
+                
+                currentIndex = arc.endIndex + 1;
+            }
+            
+            for (let i = currentIndex; i < points.length; i++) {
+                if (points[i]) path2d.lineTo(points[i].x, points[i].y);
+            }
+            
+            if (primitive.closed !== false) {
+                path2d.closePath();
+            }
+            
+            this.ctx.strokeStyle = strokeColor;
+            this.ctx.stroke(path2d);
+        }
+        
         // Debug visualization for curve metadata survival
         renderCurveMetadataDebug(primitive) {
             if (!primitive.points || primitive.points.length === 0) return;
             
-            // Reset stats for this primitive
             this.debugStats.totalPoints = 0;
             this.debugStats.taggedPoints = 0;
             this.debugStats.curvePoints.clear();
             
             this.ctx.save();
             
-            // Use screen space for consistent visualization
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             
             const pointRadius = 4;
             const fontSize = 10;
             const labelOffset = 8;
             
-            // === PHASE 1: Render detected arc segments ===
             if (primitive.arcSegments && primitive.arcSegments.length > 0) {
                 this.renderDetectedArcSegments(primitive);
             }
             
-            // === PHASE 2: Draw connecting lines to show point order ===
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             this.ctx.lineWidth = 1;
             this.ctx.setLineDash([2, 2]);
@@ -170,14 +246,12 @@
                 }
             });
             
-            // Show if polygon is closed
             if (primitive.closed !== false) {
                 this.ctx.closePath();
                 this.ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
             }
             this.ctx.stroke();
             
-            // === PHASE 3: Draw points with metadata visualization ===
             primitive.points.forEach((p, index) => {
                 const canvasX = this.core.worldToCanvasX(p.x);
                 const canvasY = this.core.worldToCanvasY(p.y);
@@ -185,27 +259,22 @@
                 this.debugStats.totalPoints++;
                 
                 if (p.curveId !== undefined && p.curveId > 0) {
-                    // Point has curve metadata
                     this.debugStats.taggedPoints++;
                     const count = this.debugStats.curvePoints.get(p.curveId) || 0;
                     this.debugStats.curvePoints.set(p.curveId, count + 1);
                     
-                    // Use different colors for different curve IDs
-                    const hue = (p.curveId * 137) % 360; // Golden angle for color distribution
+                    const hue = (p.curveId * 137) % 360;
                     this.ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
                     
-                    // Draw larger point for curve points
                     this.ctx.beginPath();
                     this.ctx.arc(canvasX, canvasY, pointRadius, 0, 2 * Math.PI);
                     this.ctx.fill();
                     
-                    // Draw black outline
                     this.ctx.strokeStyle = '#000000';
                     this.ctx.lineWidth = 1;
                     this.ctx.setLineDash([]);
                     this.ctx.stroke();
                     
-                    // Draw metadata label
                     this.ctx.fillStyle = '#FFFFFF';
                     this.ctx.strokeStyle = '#000000';
                     this.ctx.lineWidth = 3;
@@ -215,28 +284,22 @@
                     const segLabel = p.segmentIndex !== undefined ? `:${p.segmentIndex}` : '';
                     const fullLabel = label + segLabel;
                     
-                    // Draw text with outline for visibility
                     this.ctx.strokeText(fullLabel, canvasX + labelOffset, canvasY - labelOffset);
                     this.ctx.fillText(fullLabel, canvasX + labelOffset, canvasY - labelOffset);
                     
-                    // Show additional metadata on hover (stored for potential interaction)
                     if (p.segmentIndex !== undefined) {
-                        // Draw small index number below point
                         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
                         this.ctx.font = `${fontSize - 2}px monospace`;
                         this.ctx.fillText(`[${index}]`, canvasX - 10, canvasY + labelOffset + 10);
                     }
                     
                 } else {
-                    // Point has no curve metadata - straight segment point
                     this.ctx.fillStyle = 'rgba(128, 128, 128, 0.5)';
                     
-                    // Draw smaller point for straight segments
                     this.ctx.beginPath();
                     this.ctx.arc(canvasX, canvasY, pointRadius - 1, 0, 2 * Math.PI);
                     this.ctx.fill();
                     
-                    // Draw index for first and last points
                     if (index === 0 || index === primitive.points.length - 1) {
                         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
                         this.ctx.font = `${fontSize - 2}px monospace`;
@@ -246,59 +309,47 @@
                 }
             });
             
-            // Draw statistics overlay
             this.renderDebugStatistics(primitive);
-            
-            // Highlight potential issues
             this.highlightPotentialIssues(primitive);
             
             this.ctx.restore();
         }
         
-        // Render detected arc segments as overlay curves
         renderDetectedArcSegments(primitive) {
             if (!primitive.arcSegments || primitive.arcSegments.length === 0) return;
             
             this.ctx.save();
             
-            // Draw each detected arc segment with unique colors
             primitive.arcSegments.forEach((segment, idx) => {
-                // Transform arc center to canvas coordinates
                 const centerX = this.core.worldToCanvasX(segment.center.x);
                 const centerY = this.core.worldToCanvasY(segment.center.y);
                 const radiusCanvas = segment.radius * this.core.viewScale;
                 
-                // Use unique color for EACH arc segment
                 const hue = ((idx * 137) + 60) % 360;
                 const color = `hsl(${hue}, 100%, 50%)`;
                 
-                // Draw arc curve with thicker stroke
                 this.ctx.strokeStyle = color;
                 this.ctx.lineWidth = 5;
                 this.ctx.setLineDash([]);
                 this.ctx.globalAlpha = 0.8;
                 
                 this.ctx.beginPath();
-                // FIXED: With Y-flip, use clockwise directly for visual consistency
-                const startAngle = -segment.startAngle;  // Negate for Y-flip
-                const endAngle = -segment.endAngle;      // Negate for Y-flip
+                const startAngle = -segment.startAngle;
+                const endAngle = -segment.endAngle;
                 this.ctx.arc(centerX, centerY, radiusCanvas, endAngle, startAngle, segment.clockwise);
                 this.ctx.stroke();
                 
-                // Draw center marker
                 this.ctx.fillStyle = color;
                 this.ctx.globalAlpha = 1.0;
                 this.ctx.beginPath();
                 this.ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
                 this.ctx.fill();
                 
-                // Draw radius lines to endpoints with thicker dashed lines
                 this.ctx.strokeStyle = color;
                 this.ctx.lineWidth = 2;
                 this.ctx.setLineDash([4, 4]);
                 this.ctx.globalAlpha = 0.6;
                 
-                // Start point radius line
                 const startX = centerX + radiusCanvas * Math.cos(-segment.startAngle);
                 const startY = centerY + radiusCanvas * Math.sin(-segment.startAngle);
                 this.ctx.beginPath();
@@ -306,14 +357,12 @@
                 this.ctx.lineTo(startX, startY);
                 this.ctx.stroke();
                 
-                // Draw start point marker
                 this.ctx.fillStyle = '#00FF00';
                 this.ctx.globalAlpha = 1.0;
                 this.ctx.beginPath();
                 this.ctx.arc(startX, startY, 5, 0, 2 * Math.PI);
                 this.ctx.fill();
                 
-                // End point radius line
                 const endX = centerX + radiusCanvas * Math.cos(-segment.endAngle);
                 const endY = centerY + radiusCanvas * Math.sin(-segment.endAngle);
                 this.ctx.strokeStyle = color;
@@ -325,14 +374,12 @@
                 this.ctx.lineTo(endX, endY);
                 this.ctx.stroke();
                 
-                // Draw end point marker
                 this.ctx.fillStyle = '#FF0000';
                 this.ctx.globalAlpha = 1.0;
                 this.ctx.beginPath();
                 this.ctx.arc(endX, endY, 5, 0, 2 * Math.PI);
                 this.ctx.fill();
                 
-                // Draw arc info label
                 this.ctx.fillStyle = '#FFFFFF';
                 this.ctx.strokeStyle = '#000000';
                 this.ctx.lineWidth = 3;
@@ -350,7 +397,6 @@
                 this.ctx.strokeText(label, labelX, labelY);
                 this.ctx.fillText(label, labelX, labelY);
                 
-                // Draw actual point indices at start/end
                 if (primitive.points[segment.startIndex]) {
                     const p = primitive.points[segment.startIndex];
                     const px = this.core.worldToCanvasX(p.x);
@@ -378,38 +424,31 @@
         }
         
         renderReconstructedPrimitive(primitive, fillColor, strokeColor) {
-            // Highlight reconstructed arcs with special styling
             const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
             
-            // Use a bright accent color for reconstructed arcs
-            const accentColor = '#00ffff'; // Cyan for reconstructed arcs
-            const glowColor = '#00ff00';   // Green glow
+            const accentColor = '#00ffff';
+            const glowColor = '#00ff00';
             
             this.ctx.save();
             
-            // Add glow effect for visibility
             this.ctx.shadowColor = glowColor;
             this.ctx.shadowBlur = 10 / this.core.viewScale;
             
-            // Render based on type
             if (primitive.type === 'circle') {
-                // Reconstructed circle
                 this.ctx.strokeStyle = accentColor;
                 this.ctx.lineWidth = 2 / this.core.viewScale;
-                this.ctx.fillStyle = fillColor + '40'; // Semi-transparent fill
+                this.ctx.fillStyle = fillColor + '40';
                 
                 this.ctx.beginPath();
                 this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
                 this.ctx.fill();
                 this.ctx.stroke();
                 
-                // Add center marker
                 this.ctx.fillStyle = accentColor;
                 this.ctx.beginPath();
                 this.ctx.arc(primitive.center.x, primitive.center.y, 2 / this.core.viewScale, 0, 2 * Math.PI);
                 this.ctx.fill();
             } else if (primitive.type === 'arc') {
-                // Reconstructed arc
                 this.ctx.strokeStyle = accentColor;
                 this.ctx.lineWidth = 2 / this.core.viewScale;
                 
@@ -420,11 +459,10 @@
                     primitive.radius,
                     primitive.startAngle,
                     primitive.endAngle,
-                    primitive.clockwise  // FIXED: Use directly for Y-flipped coordinates
+                    primitive.clockwise
                 );
                 this.ctx.stroke();
                 
-                // Add endpoint markers
                 this.ctx.fillStyle = accentColor;
                 
                 const startX = primitive.center.x + primitive.radius * Math.cos(primitive.startAngle);
@@ -439,8 +477,7 @@
                 this.ctx.arc(endX, endY, 3 / this.core.viewScale, 0, 2 * Math.PI);
                 this.ctx.fill();
             } else if (primitive.type === 'path' && primitive.properties?.wasPartial) {
-                // Partially reconstructed arc as path
-                this.ctx.strokeStyle = '#ffff00'; // Yellow for partial
+                this.ctx.strokeStyle = '#ffff00';
                 this.ctx.lineWidth = 2 / this.core.viewScale;
                 this.ctx.setLineDash([5 / this.core.viewScale, 5 / this.core.viewScale]);
                 
@@ -449,7 +486,6 @@
             
             this.ctx.restore();
             
-            // Add label if debug enabled
             if (debugConfig.enabled && primitive.properties?.originalCurveId) {
                 this.ctx.save();
                 this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -497,20 +533,16 @@
         }
         
         renderPathNormal(primitive, props, fillColor, strokeColor, isPreprocessed = false) {
-            // Use hybrid rendering for paths with reconstructed arcs
             if (props.hasReconstructedArcs && primitive.arcSegments?.length > 0) {
                 this.renderHybridPath(primitive, fillColor, strokeColor);
                 return;
             }
             
-            // Check if this is preprocessed geometry
             if (isPreprocessed) {
-                // Preprocessed geometry should always be filled, never stroked
                 this.renderSimplePath(primitive, props, fillColor);
                 return;
             }
             
-            // Regular rendering logic for non-preprocessed primitives
             if ((props.hasHoles || primitive.holes) && primitive.holes && primitive.holes.length > 0) {
                 this.renderCompoundPath(primitive, props, fillColor, strokeColor);
             } else if (props.isCompound) {
@@ -707,17 +739,14 @@
             }
         }
         
-        // FIXED: Arc rendering with correct direction
         renderArcNormal(primitive, props, strokeColor) {
             let radius, startAngle, endAngle;
             
             if (primitive.radius !== undefined) {
-                // New ArcPrimitive structure with direct properties
                 radius = primitive.radius;
                 startAngle = primitive.startAngle;
                 endAngle = primitive.endAngle;
             } else if (primitive.startPoint && primitive.endPoint && primitive.center) {
-                // Fallback for calculated properties
                 radius = Math.sqrt(
                     Math.pow(primitive.startPoint.x - primitive.center.x, 2) +
                     Math.pow(primitive.startPoint.y - primitive.center.y, 2)
@@ -732,7 +761,6 @@
                     primitive.endPoint.x - primitive.center.x
                 );
             } else {
-                // Legacy fallback
                 console.warn('Arc primitive missing required properties');
                 return;
             }
@@ -744,7 +772,7 @@
                 radius,
                 startAngle,
                 endAngle,
-                primitive.clockwise  // FIXED: Use directly for Y-flipped coordinates
+                primitive.clockwise
             );
             
             this.ctx.lineWidth = props.strokeWidth || 0.1;
@@ -846,14 +874,11 @@
             this.ctx.stroke();
         }
         
-        // FIXED: Wireframe arc rendering
         renderArcWireframe(primitive) {
-            // Use stored properties if available
             let radius = primitive.radius;
             let startAngle = primitive.startAngle;
             let endAngle = primitive.endAngle;
             
-            // Fallback calculation
             if (radius === undefined && primitive.start && primitive.center) {
                 radius = Math.sqrt(
                     Math.pow(primitive.start.x - primitive.center.x, 2) +
@@ -877,7 +902,7 @@
                 radius,
                 startAngle,
                 endAngle,
-                primitive.clockwise  // FIXED: Use directly
+                primitive.clockwise
             );
             this.ctx.stroke();
         }
@@ -932,31 +957,26 @@
             this.ctx.restore();
         }
         
-        // Show debug statistics overlay
         renderDebugStatistics(primitive) {
             const stats = this.debugStats;
             if (stats.totalPoints === 0) return;
             
             this.ctx.save();
             
-            // Position in top-left corner
             const x = 10;
             const y = 60;
             const lineHeight = 16;
             
-            // Background
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
             const width = 250;
             let height = (3 + stats.curvePoints.size) * lineHeight + 10;
             
-            // Add space for arc segments if present
             if (primitive && primitive.arcSegments && primitive.arcSegments.length > 0) {
                 height += (primitive.arcSegments.length + 2) * lineHeight;
             }
             
             this.ctx.fillRect(x, y, width, height);
             
-            // Text
             this.ctx.fillStyle = '#FFFFFF';
             this.ctx.font = '12px monospace';
             
@@ -979,7 +999,6 @@
                 });
             }
             
-            // Arc segments summary
             if (primitive && primitive.arcSegments && primitive.arcSegments.length > 0) {
                 currentY += lineHeight;
                 this.ctx.fillStyle = '#00FFFF';
@@ -997,13 +1016,11 @@
             this.ctx.restore();
         }
         
-        // Highlight potential reconstruction issues
         highlightPotentialIssues(primitive) {
             if (!primitive.points || primitive.points.length < 3) return;
             
             this.ctx.save();
             
-            // Check for gaps in curve sequences
             let lastCurveId = null;
             let gapStart = null;
             const gaps = [];
@@ -1012,9 +1029,7 @@
                 const curveId = p.curveId > 0 ? p.curveId : null;
                 
                 if (lastCurveId !== null && curveId !== lastCurveId) {
-                    // Found a transition
                     if (gapStart !== null && curveId === gapStart.curveId) {
-                        // Same curve ID appearing again - potential split
                         gaps.push({
                             startIndex: gapStart.index,
                             endIndex: index,
@@ -1026,7 +1041,6 @@
                 lastCurveId = curveId;
             });
             
-            // Highlight gaps with warning indicators
             this.ctx.strokeStyle = '#FF0000';
             this.ctx.lineWidth = 2;
             this.ctx.setLineDash([5, 5]);
@@ -1045,7 +1059,6 @@
                 this.ctx.lineTo(endX, endY);
                 this.ctx.stroke();
                 
-                // Draw warning icon
                 this.ctx.fillStyle = '#FF0000';
                 this.ctx.font = '16px sans-serif';
                 const midX = (startX + endX) / 2;
@@ -1057,7 +1070,6 @@
         }
     }
     
-    // Export
     window.PrimitiveRenderer = PrimitiveRenderer;
     
 })();

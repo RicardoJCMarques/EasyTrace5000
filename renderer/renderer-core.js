@@ -119,16 +119,133 @@
             
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
+            let validCount = 0;
+            let errorCount = 0;
             
-            primitives.forEach(primitive => {
-                const bounds = primitive.getBounds();
-                minX = Math.min(minX, bounds.minX);
-                minY = Math.min(minY, bounds.minY);
-                maxX = Math.max(maxX, bounds.maxX);
-                maxY = Math.max(maxY, bounds.maxY);
+            primitives.forEach((primitive, index) => {
+                try {
+                    // Check for getBounds method
+                    if (typeof primitive.getBounds !== 'function') {
+                        console.error(`[RendererCore] Primitive ${index} missing getBounds() method`);
+                        console.error(`  Type: ${primitive.type || 'unknown'}`);
+                        console.error(`  Available methods:`, Object.keys(primitive).filter(k => typeof primitive[k] === 'function'));
+                        errorCount++;
+                        
+                        // Attempt fallback based on primitive type
+                        const fallbackBounds = this.getFallbackBounds(primitive);
+                        if (fallbackBounds) {
+                            minX = Math.min(minX, fallbackBounds.minX);
+                            minY = Math.min(minY, fallbackBounds.minY);
+                            maxX = Math.max(maxX, fallbackBounds.maxX);
+                            maxY = Math.max(maxY, fallbackBounds.maxY);
+                            validCount++;
+                        }
+                        return;
+                    }
+                    
+                    const bounds = primitive.getBounds();
+                    
+                    // Validate bounds values
+                    if (!bounds || 
+                        !isFinite(bounds.minX) || !isFinite(bounds.minY) ||
+                        !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
+                        console.error(`[RendererCore] Primitive ${index} returned invalid bounds:`, bounds);
+                        errorCount++;
+                        return;
+                    }
+                    
+                    minX = Math.min(minX, bounds.minX);
+                    minY = Math.min(minY, bounds.minY);
+                    maxX = Math.max(maxX, bounds.maxX);
+                    maxY = Math.max(maxY, bounds.maxY);
+                    validCount++;
+                    
+                } catch (error) {
+                    console.error(`[RendererCore] Error calculating bounds for primitive ${index}:`, error.message);
+                    errorCount++;
+                }
             });
             
+            if (validCount === 0) {
+                console.error(`[RendererCore] No valid bounds calculated from ${primitives.length} primitives`);
+                // Return safe default bounds
+                return { minX: -10, minY: -10, maxX: 10, maxY: 10 };
+            }
+            
+            if (errorCount > 0) {
+                console.warn(`[RendererCore] Bounds calculated from ${validCount}/${primitives.length} primitives (${errorCount} errors)`);
+            }
+            
             return { minX, minY, maxX, maxY };
+        }
+
+        // NEW: Fallback bounds calculation for primitives without getBounds
+        getFallbackBounds(primitive) {
+            if (!primitive || !primitive.type) {
+                return null;
+            }
+            
+            try {
+                switch (primitive.type) {
+                    case 'circle':
+                        if (primitive.center && primitive.radius !== undefined) {
+                            return {
+                                minX: primitive.center.x - primitive.radius,
+                                minY: primitive.center.y - primitive.radius,
+                                maxX: primitive.center.x + primitive.radius,
+                                maxY: primitive.center.y + primitive.radius
+                            };
+                        }
+                        break;
+                        
+                    case 'path':
+                        if (primitive.points && primitive.points.length > 0) {
+                            let minX = Infinity, minY = Infinity;
+                            let maxX = -Infinity, maxY = -Infinity;
+                            
+                            primitive.points.forEach(p => {
+                                if (p && isFinite(p.x) && isFinite(p.y)) {
+                                    minX = Math.min(minX, p.x);
+                                    minY = Math.min(minY, p.y);
+                                    maxX = Math.max(maxX, p.x);
+                                    maxY = Math.max(maxY, p.y);
+                                }
+                            });
+                            
+                            if (isFinite(minX)) {
+                                return { minX, minY, maxX, maxY };
+                            }
+                        }
+                        break;
+                        
+                    case 'rectangle':
+                        if (primitive.position && primitive.width !== undefined && primitive.height !== undefined) {
+                            return {
+                                minX: primitive.position.x,
+                                minY: primitive.position.y,
+                                maxX: primitive.position.x + primitive.width,
+                                maxY: primitive.position.y + primitive.height
+                            };
+                        }
+                        break;
+                        
+                    case 'arc':
+                        if (primitive.center && primitive.radius !== undefined) {
+                            // Conservative bounds (could be tighter with angle analysis)
+                            return {
+                                minX: primitive.center.x - primitive.radius,
+                                minY: primitive.center.y - primitive.radius,
+                                maxX: primitive.center.x + primitive.radius,
+                                maxY: primitive.center.y + primitive.radius
+                            };
+                        }
+                        break;
+                }
+            } catch (error) {
+                console.error(`[RendererCore] Fallback bounds failed for ${primitive.type}:`, error.message);
+            }
+            
+            return null;
         }
         
         calculateOverallBounds() {

@@ -957,17 +957,202 @@
             
             return this.geometryProcessor.prepareForOffset(fusedPrimitives);
         }
-        
-        async generateOffsetGeometry(offsetDistance, options = {}) {
+
+        async generateOffsetGeometry(operation, offsetDistances, settings) {
+            console.log(`[Core] === OFFSET GENERATION START ===`);
+            console.log(`[Core] Operation: ${operation.id} (${operation.type})`);
+            console.log(`[Core] Generating ${offsetDistances.length} offset pass(es)`);
+            console.log(`[Core] Tool diameter: ${settings.tool?.diameter}mm`);
+            console.log(`[Core] Join type: ${settings.joinType || 'round'}`);
+            
             await this.ensureProcessorReady();
             
-            if (!this.geometryProcessor) {
-                throw new Error('Geometry processor not available');
+            // Validate offsetter
+            if (!this.geometryOffsetter) {
+                this.geometryOffsetter = new GeometryOffsetter({
+                    precision: geomConfig.coordinatePrecision || 0.001,
+                    joinType: settings.joinType || 'round',
+                    miterLimit: settings.miterLimit || 2.0,
+                    debug: debugConfig.enabled
+                });
             }
             
-            const preparedGeometry = await this.prepareForOffsetGeneration();
+            if (!this.geometryOffsetter.initialized) {
+                throw new Error('Geometry offsetter failed to initialize');
+            }
             
-            return this.geometryProcessor.generateOffset(preparedGeometry, offsetDistance, options);
+            // FIXED: Ensure fusion before offsetting
+            let sourceGeometry = this.geometryProcessor?.getCachedState('fusedGeometry');
+            
+            if (!sourceGeometry || sourceGeometry.length === 0) {
+                console.log('[Core] Fused geometry not cached, running fusion with arc reconstruction...');
+                
+                // Run fusion with arc reconstruction enabled
+                sourceGeometry = await this.fuseAllPrimitives({
+                    enableArcReconstruction: true
+                });
+                
+                if (!sourceGeometry || sourceGeometry.length === 0) {
+                    throw new Error('Fusion produced no geometry for offsetting');
+                }
+                
+                console.log(`[Core] Fusion complete: ${sourceGeometry.length} fused primitives`);
+            } else {
+                console.log(`[Core] Using cached fused geometry: ${sourceGeometry.length} primitives`);
+            }
+
+            // Validate geometry types
+            const typeStats = {};
+            sourceGeometry.forEach(p => {
+                typeStats[p.type] = (typeStats[p.type] || 0) + 1;
+            });
+            console.log(`[Core] Source geometry types:`, typeStats);
+            
+            // FIXED: Don't warn about reconstructed circles/arcs - they're valid
+            const nonPathNonReconstructed = sourceGeometry.filter(p => 
+                p.type !== 'path' && !p.properties?.reconstructed
+            ).length;
+            
+            if (nonPathNonReconstructed > 0) {
+                console.warn(`[Core] ${nonPathNonReconstructed} non-path unreconstructed primitives - may cause issues`);
+            }
+            
+            // Initialize offsets array
+            if (!operation.offsets) {
+                operation.offsets = [];
+            }
+            operation.offsets = [];
+            
+            // Generate offsets
+            for (let i = 0; i < offsetDistances.length; i++) {
+                const distance = offsetDistances[i];
+                console.log(`[Core] === PASS ${i + 1}/${offsetDistances.length} ===`);
+                console.log(`[Core] Offset distance: ${distance.toFixed(3)}mm`);
+
+                const offsetPrimitives = [];
+                const passStats = {
+                    attempted: 0,
+                    succeeded: 0,
+                    failed: 0,
+                    skipped: 0,
+                    errors: [],
+                    byType: {}
+                };
+                
+                for (const primitive of sourceGeometry) {
+                    passStats.attempted++;
+                    
+                    try {
+                        if (!this.validatePrimitiveForOffset(primitive)) {
+                            passStats.skipped++;
+                            continue;
+                        }
+                        
+                        const offsetResult = await this.geometryOffsetter.offsetPrimitive(
+                            primitive,
+                            distance,
+                            settings
+                        );
+                        
+                        if (offsetResult) {
+                            if (typeof offsetResult.getBounds !== 'function') {
+                                console.warn(`[Core] Offset result missing getBounds() for ${primitive.type}`);
+                                passStats.failed++;
+                                continue;
+                            }
+                            
+                            if (Array.isArray(offsetResult)) {
+                                offsetPrimitives.push(...offsetResult);
+                                passStats.succeeded += offsetResult.length;
+                            } else {
+                                offsetPrimitives.push(offsetResult);
+                                passStats.succeeded++;
+                            }
+                            
+                            const resultType = offsetResult.type || primitive.type;
+                            passStats.byType[resultType] = (passStats.byType[resultType] || 0) + 1;
+                        } else {
+                            passStats.failed++;
+                        }
+                    } catch (error) {
+                        console.error(`[Core] Failed to offset primitive ${primitive.type}:`, error.message);
+                        passStats.failed++;
+                        passStats.errors.push({
+                            type: primitive.type,
+                            message: error.message
+                        });
+                    }
+                }
+                
+                console.log(`[Core] Pass ${i + 1} complete:`);
+                console.log(`  Attempted: ${passStats.attempted}`);
+                console.log(`  Succeeded: ${passStats.succeeded}`);
+                console.log(`  Failed: ${passStats.failed}`);
+                console.log(`  Skipped: ${passStats.skipped}`);
+                if (Object.keys(passStats.byType).length > 0) {
+                    console.log(`  By type:`, passStats.byType);
+                }
+                
+                if (offsetPrimitives.length === 0) {
+                    console.warn(`[Core] Pass ${i + 1} generated no offset geometry`);
+                }
+                
+                operation.offsets.push({
+                    id: `offset_${operation.id}_${i}`,
+                    distance: distance,
+                    pass: i + 1,
+                    primitives: offsetPrimitives,
+                    settings: { ...settings },
+                    metadata: {
+                        sourceGeometry: 'fused',
+                        generatedAt: Date.now(),
+                        toolDiameter: settings.tool?.diameter,
+                        stats: passStats
+                    }
+                });
+            }
+            
+            const totalPrimitives = operation.offsets.reduce((sum, o) => sum + o.primitives.length, 0);
+            console.log(`[Core] === OFFSET GENERATION COMPLETE ===`);
+            console.log(`[Core] Generated ${operation.offsets.length} passes with ${totalPrimitives} total primitives`);
+            
+            this.isToolpathCacheValid = false;
+            return operation.offsets;
+        }
+
+        validatePrimitiveForOffset(primitive) {
+            if (!primitive || !primitive.type) {
+                return false;
+            }
+            
+            if (primitive.type === 'path') {
+                if (!primitive.points || primitive.points.length < 2) {
+                    return false;
+                }
+            }
+            
+            if (primitive.type === 'circle') {
+                if (!primitive.center || primitive.radius === undefined || primitive.radius <= 0) {
+                    return false;
+                }
+            }
+            
+            if (primitive.type === 'arc') {
+                if (!primitive.center || primitive.radius === undefined || primitive.radius <= 0) {
+                    return false;
+                }
+                if (primitive.startAngle === undefined || primitive.endAngle === undefined) {
+                    return false;
+                }
+            }
+            
+            if (primitive.type === 'rectangle') {
+                if (!primitive.position || primitive.width === undefined || primitive.height === undefined) {
+                    return false;
+                }
+            }
+            
+            return true;
         }
         
         // Settings management
@@ -1001,13 +1186,11 @@
             if (this.geometryProcessor) {
                 stats.geometryProcessor = this.geometryProcessor.getStats();
                 
-                // Include cached states info
                 stats.cachedStates = {
                     hasPreprocessed: !!this.geometryProcessor.getCachedState('preprocessedGeometry'),
                     hasFused: !!this.geometryProcessor.getCachedState('fusedGeometry')
                 };
                 
-                // Include arc reconstruction stats
                 stats.arcReconstruction = this.geometryProcessor.getArcReconstructionStats();
             }
             
@@ -1048,7 +1231,6 @@
             console.log(`   Strokes converted: ${this.stats.strokesConverted}`);
             console.log(`   Toolpaths generated: ${this.stats.toolpaths}`);
             
-            // Include arc reconstruction stats if available
             if (this.geometryProcessor) {
                 const arcStats = this.geometryProcessor.getArcReconstructionStats();
                 if (arcStats.registrySize > 0 || arcStats.curvesRegistered > 0) {

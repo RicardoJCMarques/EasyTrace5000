@@ -32,10 +32,7 @@
             if (this.initialized) return;
             
             this.toolLibrary = toolLibrary;
-            
-            // Setup apply/reset button handlers if template is loaded
             this.setupButtons();
-            
             this.initialized = true;
             
             if (debugConfig.enabled) {
@@ -44,8 +41,7 @@
         }
         
         setupButtons() {
-            // These buttons are part of the property template
-            // We'll bind them when the template is rendered
+            // Buttons are bound when template is rendered
         }
         
         clearProperties() {
@@ -81,24 +77,19 @@
             
             title.textContent = `${operation.file.name}`;
             
-            // Get template
             const template = document.getElementById('property-operation-template');
             if (!template) {
                 container.innerHTML = '<div class="property-error">Property template not found</div>';
                 return;
             }
             
-            // Clone and populate template
             const content = template.content.cloneNode(true);
             
-            // Populate fields
             this.populateOperationFields(content, operation);
             
-            // Clear container and add new content
             container.innerHTML = '';
             container.appendChild(content);
             
-            // Setup event handlers for all inputs
             this.attachEventHandlers(container, operation);
         }
         
@@ -106,31 +97,26 @@
             const opConfig = config.operations[operation.type];
             if (!opConfig) return;
             
-            // Operation type
             const typeField = content.querySelector('#prop-type');
             if (typeField) {
                 typeField.value = operation.type.charAt(0).toUpperCase() + operation.type.slice(1);
             }
             
-            // Source file
             const sourceField = content.querySelector('#prop-source');
             if (sourceField) {
                 sourceField.value = operation.file.name;
             }
             
-            // Tool selection - using embedded tools from config
             const toolSelect = content.querySelector('#prop-tool');
             if (toolSelect && config.tools) {
                 toolSelect.innerHTML = '';
                 
-                // Get compatible tools from config
                 const compatibleTools = config.getToolsForOperation(operation.type);
                 compatibleTools.forEach(tool => {
                     const option = document.createElement('option');
                     option.value = tool.id;
                     option.textContent = tool.name;
                     
-                    // Select current tool
                     if (operation.settings?.tool?.id === tool.id ||
                         (!operation.settings?.tool && tool === config.getDefaultTool(operation.type))) {
                         option.selected = true;
@@ -139,14 +125,11 @@
                     toolSelect.appendChild(option);
                 });
                 
-                // Update tool diameter field
                 this.updateToolDiameter(toolSelect.value);
             }
             
-            // Populate settings with current or default values
             const settings = operation.settings || opConfig.strategy || {};
             
-            // Cutting parameters
             const fields = {
                 'prop-passes': settings.passes || 1,
                 'prop-stepover': settings.overlap || 50,
@@ -167,7 +150,6 @@
         }
         
         attachEventHandlers(container, operation) {
-            // Tool selection change
             const toolSelect = container.querySelector('#prop-tool');
             if (toolSelect) {
                 toolSelect.addEventListener('change', (e) => {
@@ -177,7 +159,6 @@
                 });
             }
             
-            // All input fields
             const inputs = container.querySelectorAll('input[type="number"], select');
             inputs.forEach(input => {
                 input.addEventListener('change', () => {
@@ -185,7 +166,6 @@
                     this.debouncedSave();
                 });
                 
-                // For number inputs, also handle input event for real-time updates
                 if (input.type === 'number') {
                     input.addEventListener('input', () => {
                         this.markDirty();
@@ -193,7 +173,6 @@
                 }
             });
             
-            // Apply button
             const applyBtn = container.querySelector('#apply-properties-btn');
             if (applyBtn) {
                 applyBtn.addEventListener('click', () => {
@@ -203,8 +182,14 @@
                     }
                 });
             }
+
+            const generateBtn = container.querySelector('#generate-offsets-btn');
+            if (generateBtn) {
+                generateBtn.addEventListener('click', async () => {
+                    await this.generateOffsetGeometry(operation);
+                });
+            }
             
-            // Reset button
             const resetBtn = container.querySelector('#reset-properties-btn');
             if (resetBtn) {
                 resetBtn.addEventListener('click', () => {
@@ -222,7 +207,6 @@
                 diameterField.value = tool.diameter;
             }
             
-            // Also update feed/speed defaults from tool
             const feedField = document.querySelector('#prop-feed-rate');
             const plungeField = document.querySelector('#prop-plunge-rate');
             const spindleField = document.querySelector('#prop-spindle-speed');
@@ -256,7 +240,6 @@
         markDirty() {
             this.isDirty = true;
             
-            // Enable apply button
             const applyBtn = document.querySelector('#apply-properties-btn');
             if (applyBtn) {
                 applyBtn.disabled = false;
@@ -267,7 +250,6 @@
         markClean() {
             this.isDirty = false;
             
-            // Disable apply button
             const applyBtn = document.querySelector('#apply-properties-btn');
             if (applyBtn) {
                 applyBtn.disabled = true;
@@ -280,7 +262,6 @@
             
             const operation = this.currentOperation;
             
-            // Gather all settings from form
             const settings = {
                 tool: {},
                 passes: parseInt(document.querySelector('#prop-passes')?.value) || 1,
@@ -293,7 +274,6 @@
                 entryType: document.querySelector('#prop-entry')?.value || 'plunge'
             };
             
-            // Get selected tool
             const toolId = document.querySelector('#prop-tool')?.value;
             if (toolId) {
                 const tool = config.tools.find(t => t.id === toolId);
@@ -306,15 +286,12 @@
                 }
             }
             
-            // Update operation
             operation.settings = settings;
             
-            // Invalidate toolpath cache if exists
             if (this.core.toolpaths) {
                 this.core.isToolpathCacheValid = false;
             }
             
-            // Update original settings reference
             this.originalSettings = JSON.parse(JSON.stringify(settings));
             
             this.markClean();
@@ -323,7 +300,6 @@
                 console.log('Settings saved for operation:', operation.id, settings);
             }
             
-            // Trigger any necessary updates
             if (this.ui.treeManager) {
                 this.ui.treeManager.updateNodeCounts();
             }
@@ -332,10 +308,8 @@
         resetSettings() {
             if (!this.currentOperation || !this.originalSettings) return;
             
-            // Restore original settings
             this.currentOperation.settings = JSON.parse(JSON.stringify(this.originalSettings));
             
-            // Refresh the display
             this.showOperationProperties(this.currentOperation);
             
             this.markClean();
@@ -346,7 +320,6 @@
         }
         
         showGeometryInfo(operation, geometryType) {
-            // Show simplified info for geometry nodes
             const container = document.getElementById('property-form');
             const title = document.getElementById('inspector-title');
             
@@ -394,8 +367,6 @@
         }
         
         updateForToolpathGeneration() {
-            // Called when toolpaths are generated
-            // Could show additional info or statistics
             if (this.currentOperation && this.ui.treeManager) {
                 this.ui.treeManager.updateFileGeometries(
                     this.ui.treeManager.selectedNode?.id,
@@ -404,7 +375,6 @@
             }
         }
         
-        // Utility function for debouncing
         debounce(func, wait) {
             let timeout;
             return function executedFunction(...args) {
@@ -417,7 +387,6 @@
             };
         }
         
-        // Validation helpers
         validateNumericInput(input, min, max) {
             const value = parseFloat(input.value);
             if (isNaN(value)) {
@@ -439,25 +408,21 @@
         validateAllInputs() {
             let isValid = true;
             
-            // Validate passes (1-10)
             const passesInput = document.querySelector('#prop-passes');
             if (passesInput) {
                 isValid = this.validateNumericInput(passesInput, 1, 10) && isValid;
             }
             
-            // Validate stepover (10-100%)
             const stepOverInput = document.querySelector('#prop-stepover');
             if (stepOverInput) {
                 isValid = this.validateNumericInput(stepOverInput, 10, 100) && isValid;
             }
             
-            // Validate cut depth (0.001-10mm)
             const cutDepthInput = document.querySelector('#prop-cut-depth');
             if (cutDepthInput) {
                 isValid = this.validateNumericInput(cutDepthInput, 0.001, 10) && isValid;
             }
             
-            // Validate feed rate (1-5000mm/min)
             const feedRateInput = document.querySelector('#prop-feed-rate');
             if (feedRateInput) {
                 isValid = this.validateNumericInput(feedRateInput, 1, 5000) && isValid;
@@ -465,9 +430,90 @@
             
             return isValid;
         }
+
+        // FIXED: Simplified offset generation - core handles fusion, UI rebuilds layers
+        async generateOffsetGeometry(operation) {
+            const settings = {
+                tool: {
+                    diameter: parseFloat(
+                        document.querySelector('#prop-tool-diameter')?.value
+                    ) || 0.2
+                },
+                passes: parseInt(
+                    document.querySelector('#prop-passes')?.value
+                ) || 1,
+                stepOver: parseFloat(
+                    document.querySelector('#prop-stepover')?.value
+                ) || 50,
+                joinType: document.querySelector('#prop-join-type')?.value || 'round',
+                direction: document.querySelector('#prop-direction')?.value || 'climb'
+            };
+            
+            if (settings.tool.diameter <= 0) {
+                this.ui.updateStatus('Invalid tool diameter', 'error');
+                return;
+            }
+            
+            const offsets = this.calculateOffsetDistances(
+                settings.tool.diameter,
+                settings.passes,
+                settings.stepOver
+            );
+            
+            this.ui.updateStatus(`Generating ${settings.passes} pass(es) for ${settings.tool.diameter}mm tool...`, 'info');
+            
+            if (debugConfig.enabled) {
+                console.log(`[PropertyInspector] Offset Strategy:`);
+                console.log(`  Tool: ${settings.tool.diameter}mm diameter`);
+                console.log(`  Passes: ${settings.passes}`);
+                offsets.forEach((offset, i) => {
+                    console.log(`  Pass ${i+1}: ${Math.abs(offset).toFixed(3)}mm outward`);
+                });
+            }
+            
+            try {
+                // Core will handle fusion internally and store results in operation.offsets
+                await this.core.generateOffsetGeometry(operation, offsets, settings);
+                
+                // Update tree to show offset nodes
+                if (this.ui.treeManager) {
+                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                        .find(n => n.operation?.id === operation.id);
+                    if (fileNode) {
+                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                    }
+                }
+                
+                // Rebuild renderer - it will pick up offset layers from operation.offsets
+                await this.ui.updateRendererAsync();
+                
+                this.ui.updateStatus(
+                    `Generated ${operation.offsets.length} offset pass(es)`,
+                    'success'
+                );
+                
+            } catch (error) {
+                console.error('Offset generation failed:', error);
+                this.ui.updateStatus(
+                    'Offset generation failed: ' + error.message,
+                    'error'
+                );
+            }
+        }
+
+        calculateOffsetDistances(toolDiameter, passes, stepOverPercent) {
+            const stepOver = stepOverPercent / 100;
+            const stepDistance = toolDiameter * (1 - stepOver);
+            const offsets = [];
+            
+            for (let i = 0; i < passes; i++) {
+                offsets.push(-(toolDiameter / 2 + i * stepDistance));
+            }
+            
+            return offsets;
+        }
     }
     
-    // Export
     window.PropertyInspector = PropertyInspector;
     
 })();
