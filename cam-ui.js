@@ -1,5 +1,5 @@
 // cam-ui.js
-// UI orchestrator for PCB CAM - manages components and coordinates interactions
+// REFACTORED: Fixed offset layer handling with operation-specific naming
 
 (function() {
     'use strict';
@@ -54,11 +54,15 @@
                 toolpaths: 0,
                 processingTime: 0
             };
+            
+            // Debounce tracker
+            this._updatePending = false;
+            this._updateQueued = false;
         }
         
         async init() {
             try {
-                // Initialize tool library first (embedded in config)
+                // Initialize tool library
                 if (typeof ToolLibrary !== 'undefined') {
                     this.toolLibrary = new ToolLibrary();
                     await this.toolLibrary.init();
@@ -67,7 +71,7 @@
                     }
                 }
                 
-                // Initialize available UI components
+                // Initialize UI components
                 if (typeof TreeManager !== 'undefined') {
                     this.treeManager = new TreeManager(this);
                     this.treeManager.init();
@@ -120,7 +124,7 @@
                 return true;
                 
             } catch (error) {
-                console.error('Failed to initialize UI:', error);
+                console.error('UI initialization failed:', error);
                 this.updateStatus('Initialization error: ' + error.message, 'error');
                 return false;
             }
@@ -477,11 +481,10 @@
             }
         }
         
-        // Renderer updates - FIXED: Add debouncing to prevent spam
+        // REFACTORED: Debounced renderer updates
         async updateRendererAsync() {
             if (!this.renderer) return;
             
-            // Debounce: If update already pending, queue this request
             if (this._updatePending) {
                 this._updateQueued = true;
                 return;
@@ -498,7 +501,7 @@
                     this.addIndividualLayers();
                 }
                 
-                // Add offset layers in both paths
+                // FIXED: Always add offset layers
                 this.addOffsetLayers();
                 
                 if (this.visibilityPanel) {
@@ -511,16 +514,11 @@
             } finally {
                 this._updatePending = false;
                 
-                // If another update was queued, process it
                 if (this._updateQueued) {
                     this._updateQueued = false;
                     setTimeout(() => this.updateRendererAsync(), 50);
                 }
             }
-        }
-        
-        async updateRenderer() {
-            return this.updateRendererAsync();
         }
         
         async performFusion() {
@@ -558,32 +556,57 @@
         }
         
         addPreprocessedLayer() {
-            let preprocessed = null;
-            if (this.core.getPreprocessedPrimitives) {
-                preprocessed = this.core.getPreprocessedPrimitives();
-            } else if (this.core.geometryProcessor && this.core.geometryProcessor.getPreprocessedPrimitives) {
-                preprocessed = this.core.geometryProcessor.getPreprocessedPrimitives();
-            }
+            const allPreprocessed = this.core.getPreprocessedPrimitives();
+            if (!allPreprocessed || allPreprocessed.length === 0) return;
             
-            if (preprocessed && preprocessed.length > 0) {
-                this.renderer.addLayer('preprocessed', preprocessed, {
-                    type: 'isolation',
-                    visible: true,
-                    color: (opsConfig.isolation && opsConfig.isolation.color),
-                    isPreprocessed: true
-                });
-            }
+            // Group by operation
+            const byOperation = new Map();
+            allPreprocessed.forEach(p => {
+                const opId = p.properties?.operationId || p._originalOperationId;
+                if (opId) {
+                    if (!byOperation.has(opId)) byOperation.set(opId, []);
+                    byOperation.get(opId).push(p);
+                }
+            });
+            
+            byOperation.forEach((primitives, opId) => {
+                const operation = this.core.operations.find(op => op.id === opId);
+                if (operation) {
+                    this.renderer.addLayer(`preprocessed_${opId}`, primitives, {
+                        type: operation.type,
+                        visible: true,
+                        color: operation.color,
+                        isPreprocessed: true
+                    });
+                }
+            });
         }
         
         addFusedLayer(fused) {
-            if (fused && fused.length > 0) {
-                this.renderer.addLayer('fused', fused, {
-                    type: 'isolation',
-                    visible: true,
-                    isFused: true,
-                    color: (opsConfig.isolation && opsConfig.isolation.color)
-                });
-            }
+            if (!fused || fused.length === 0) return;
+            
+            // Group by source operation
+            const byOperation = new Map();
+            fused.forEach(p => {
+                const opId = p.properties?.sourceOperationId;
+                if (opId) {
+                    if (!byOperation.has(opId)) byOperation.set(opId, []);
+                    byOperation.get(opId).push(p);
+                }
+            });
+            
+            // Add layer per operation
+            byOperation.forEach((primitives, opId) => {
+                const operation = this.core.operations.find(op => op.id === opId);
+                if (operation) {
+                    this.renderer.addLayer(`fused_${opId}`, primitives, {
+                        type: operation.type,
+                        visible: true,
+                        isFused: true,
+                        color: operation.color || (opsConfig[operation.type] && opsConfig[operation.type].color)
+                    });
+                }
+            });
         }
         
         addNonFusableLayers() {
@@ -612,25 +635,26 @@
             });
         }
         
-        // FIXED: New method to add offset layers from operation data
+        // Operation-specific offset layer naming
         addOffsetLayers() {
-            const passColors = ['#ff0000', '#ff6600', '#ffcc00', '#00ff00'];
+            const passColors = ['#a00000ff']; // add more colors with , '#ff6600', '#ffcc00', '#00ff00', etc
             
             this.core.operations.forEach(operation => {
                 if (operation.offsets && operation.offsets.length > 0) {
-                    operation.offsets.forEach((offset, index) => {
+                    operation.offsets.forEach((offset, passIndex) => {
                         if (offset.primitives && offset.primitives.length > 0) {
-                            const colorIndex = Math.min(index, passColors.length - 1);
+                            const colorIndex = Math.min(passIndex, passColors.length - 1);
                             
+                            // Include operation ID to prevent cross-operation mixing
                             this.renderer.addLayer(
-                                `offset_${operation.id}_pass_${index + 1}`,
+                                `offset_${operation.id}_pass_${passIndex + 1}`,
                                 offset.primitives,
                                 {
                                     type: 'offset',
                                     visible: true,
                                     color: passColors[colorIndex],
                                     operationId: operation.id,
-                                    pass: index + 1,
+                                    pass: passIndex + 1,
                                     distance: offset.distance
                                 }
                             );
@@ -824,7 +848,7 @@
             }
         }
         
-        // FIXED: New method for granular offset layer removal
+        // REFACTORED: Granular offset layer removal
         removeOffsetLayer(operationId, passIndex) {
             const layerName = `offset_${operationId}_pass_${passIndex}`;
             

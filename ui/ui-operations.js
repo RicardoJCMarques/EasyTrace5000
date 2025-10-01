@@ -26,7 +26,7 @@
                 if (this.ui.treeManager) {
                     this.ui.treeManager.removeFileNode(operationId);
                 }
-                this.ui.updateRenderer();
+                this.ui.updateRendererAsync();
                 this.ui.updateStatistics();
             }
         }

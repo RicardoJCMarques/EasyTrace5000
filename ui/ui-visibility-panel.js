@@ -240,34 +240,29 @@
         }
         
         applyAllVisibility() {
-            if (!this.renderer) return;
+            if (!this.renderer || !this.renderer.layers) return; // Add layers check
+
+            const prefixMap = {
+                'source': 'source_',
+                'fused': 'fused_',
+                'toolpath': 'toolpath_',
+                'preview': 'preview_'
+            };
             
-            Object.entries(this.layerVisibility).forEach(([type, visible]) => {
-                this.applyVisibilityToLayers(type, visible);
+            // First, update the visibility state of all layers without rendering
+            this.renderer.layers.forEach((layer, name) => {
+                for (const type in prefixMap) {
+                    if (name.startsWith(prefixMap[type])) {
+                        layer.visible = this.layerVisibility[type];
+                        break; // Move to the next layer once type is found
+                    }
+                }
             });
+
+            // Now, trigger a single render with all changes applied
+            this.renderer.render();
             
             this.updateToggleButton();
-        }
-        
-        // Quick toggles for specific layer types
-        toggleSourceLayers() {
-            const newState = !this.layerVisibility.source;
-            this.setLayerVisibility('source', newState);
-        }
-        
-        toggleFusedLayers() {
-            const newState = !this.layerVisibility.fused;
-            this.setLayerVisibility('fused', newState);
-        }
-        
-        toggleToolpathLayers() {
-            const newState = !this.layerVisibility.toolpath;
-            this.setLayerVisibility('toolpath', newState);
-        }
-        
-        togglePreviewLayers() {
-            const newState = !this.layerVisibility.preview;
-            this.setLayerVisibility('preview', newState);
         }
         
         // Persistence

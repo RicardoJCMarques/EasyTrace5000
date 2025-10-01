@@ -28,6 +28,9 @@
             // FIXED: Check if offset geometry - render with special handling
             const isOffset = primitive.properties?.isOffset === true;
             if (isOffset) {
+                if (debugConfig.enabled && debugConfig.logging?.renderOperations) {
+                    console.log('[Renderer] Rendering offset primitive:', primitive.type, primitive.properties);
+                }
                 this.renderOffsetPrimitive(primitive, fillColor, strokeColor);
                 this.ctx.restore();
                 return; // Early return - no debug overlay

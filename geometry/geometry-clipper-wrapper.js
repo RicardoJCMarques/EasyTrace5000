@@ -442,7 +442,7 @@
                 if (polygon && polygon.size() > 2) {
                     const points = [];
                     const curveIds = new Set();
-                    const metadataMap = new Map(); // Track metadata statistics
+                    const metadataMap = new Map();
                     
                     for (let i = 0; i < polygon.size(); i++) {
                         const pt = polygon.get(i);
@@ -451,22 +451,16 @@
                             y: Number(pt.y) / this.scale
                         };
                         
-                        // Extract and unpack metadata from Z
                         if (this.supportsZ && pt.z !== undefined) {
                             const z = BigInt(pt.z);
-                            
                             if (z > 0n) {
                                 const metadata = this.unpackMetadata(z);
-                                
                                 if (metadata.curveId > 0) {
                                     point.curveId = metadata.curveId;
                                     point.segmentIndex = metadata.segmentIndex;
-                                    // FIXED: Preserve clockwise in point metadata
                                     point.clockwise = metadata.clockwise;
-                                    
                                     curveIds.add(metadata.curveId);
                                     
-                                    // Track metadata for debugging
                                     if (!metadataMap.has(metadata.curveId)) {
                                         metadataMap.set(metadata.curveId, {
                                             count: 0,
@@ -486,15 +480,17 @@
                         points.push(point);
                     }
                     
-                    if (this.debug && metadataMap.size > 0) {
-                        this.log(`Unpacked metadata for polygon with ${points.length} points:`);
-                        metadataMap.forEach((stats, curveId) => {
-                            this.log(`  Curve ${curveId}: ${stats.count} points, indices ${stats.minIndex}-${stats.maxIndex}, ${stats.clockwise ? 'CW' : 'CCW'}`);
-                        });
+                    // FIXED: Ensure CCW winding for toolpaths
+                    const area = this.calculateSignedAreaRaw(points.map(p => ({
+                        x: Math.round(p.x * this.scale),
+                        y: Math.round(p.y * this.scale)
+                    })));
+                    
+                    if (area < 0) {
+                        points.reverse();
                     }
                     
                     if (!isHole) {
-                        // Create proper PathPrimitive
                         const primitive = this._createPathPrimitive(points, {
                             isFused: true,
                             fill: true,
@@ -507,56 +503,11 @@
                             primitive.hasReconstructableCurves = true;
                         }
                         
-                        // Process children as holes
+                        // Process children recursively
                         for (let i = 0; i < node.count(); i++) {
-                            const child = node.child(i);
-                            const childPolygon = child.polygon();
-                            
-                            if (childPolygon && childPolygon.size() > 2) {
-                                const holePoints = [];
-                                const holeCurveIds = new Set();
-                                
-                                for (let j = 0; j < childPolygon.size(); j++) {
-                                    const pt = childPolygon.get(j);
-                                    const holePoint = {
-                                        x: Number(pt.x) / this.scale,
-                                        y: Number(pt.y) / this.scale
-                                    };
-                                    
-                                    // Unpack metadata for hole points
-                                    if (this.supportsZ && pt.z !== undefined) {
-                                        const z = BigInt(pt.z);
-                                        if (z > 0n) {
-                                            const metadata = this.unpackMetadata(z);
-                                            if (metadata.curveId > 0) {
-                                                holePoint.curveId = metadata.curveId;
-                                                holePoint.segmentIndex = metadata.segmentIndex;
-                                                holePoint.clockwise = metadata.clockwise;  // FIXED
-                                                holeCurveIds.add(metadata.curveId);
-                                            }
-                                        }
-                                    }
-                                    
-                                    holePoints.push(holePoint);
-                                }
-                                
-                                primitive.holes.push(holePoints);
-                                
-                                // Store hole curve IDs for potential reconstruction
-                                if (holeCurveIds.size > 0) {
-                                    if (!primitive.holeCurveIds) {
-                                        primitive.holeCurveIds = [];
-                                    }
-                                    primitive.holeCurveIds.push(Array.from(holeCurveIds));
-                                }
-                                
-                                // Recursively process hole's children (islands)
-                                for (let k = 0; k < child.count(); k++) {
-                                    const grandchildren = traverse(child.child(k), false);
-                                    if (grandchildren) {
-                                        primitives.push(...grandchildren);
-                                    }
-                                }
+                            const grandchildren = traverse(node.child(i), false);
+                            if (grandchildren) {
+                                primitives.push(...grandchildren);
                             }
                         }
                         

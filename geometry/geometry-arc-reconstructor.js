@@ -381,7 +381,7 @@
             return enhancedPrimitive;
         }
         
-        // FIXED: Calculate arc parameters using registered direction
+        // Calculate arc parameters detecting actual point traversal
         calculateArcFromPoints(points, curveData) {
             if (points.length < 2) return null;
             
@@ -397,24 +397,66 @@
                 endPoint.x - curveData.center.x
             );
             
-            // FIXED: Use the registered clockwise property directly
-            // If not specified (e.g., circles), default to CCW (false)
-            const clockwise = curveData.clockwise === true;
+            // Detect actual traversal by checking angular progression
+            let actuallyClockwise = false;
             
-            // Calculate sweep angle respecting registered direction
+            if (points.length >= 3) {
+                // Check multiple sample points for robustness
+                const sampleCount = Math.min(5, points.length);
+                let cwVotes = 0;
+                let ccwVotes = 0;
+                
+                for (let i = 1; i < sampleCount; i++) {
+                    const idx = Math.floor((i / sampleCount) * points.length);
+                    if (idx >= points.length) continue;
+                    
+                    const prevIdx = Math.floor(((i - 1) / sampleCount) * points.length);
+                    
+                    const angle1 = Math.atan2(
+                        points[prevIdx].y - curveData.center.y,
+                        points[prevIdx].x - curveData.center.x
+                    );
+                    const angle2 = Math.atan2(
+                        points[idx].y - curveData.center.y,
+                        points[idx].x - curveData.center.x
+                    );
+                    
+                    // Check if going CW or CCW between these points
+                    let angleDelta = angle2 - angle1;
+                    
+                    // Normalize to [-π, π]
+                    while (angleDelta > Math.PI) angleDelta -= 2 * Math.PI;
+                    while (angleDelta < -Math.PI) angleDelta += 2 * Math.PI;
+                    
+                    // In screen coords (Y-down): positive delta = CCW, negative = CW
+                    if (angleDelta > 0) {
+                        ccwVotes++;
+                    } else if (angleDelta < 0) {
+                        cwVotes++;
+                    }
+                }
+                
+                actuallyClockwise = cwVotes > ccwVotes;
+                
+            } else {
+                // 2-point arc: use shortest path
+                let angleDiff = endAngle - startAngle;
+                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+                actuallyClockwise = angleDiff < 0;
+            }
+            
+            // Calculate sweep angle
             let sweepAngle = endAngle - startAngle;
             
-            // Normalize sweep angle based on registered direction
-            if (clockwise) {
-                // For CW, we want negative sweep
+            if (actuallyClockwise) {
                 if (sweepAngle > 0) sweepAngle -= 2 * Math.PI;
             } else {
-                // For CCW, we want positive sweep  
                 if (sweepAngle < 0) sweepAngle += 2 * Math.PI;
             }
             
-            if (this.debug) {
-                console.log(`[ArcReconstructor] Arc from registry: ${clockwise ? 'CW' : 'CCW'} (registered), sweep: ${(sweepAngle * 180 / Math.PI).toFixed(1)}°`);
+            if (this.debug && curveData.clockwise !== actuallyClockwise) {
+                console.log(`[ArcReconstructor] Corrected: ${curveData.clockwise ? 'CW' : 'CCW'} → ${actuallyClockwise ? 'CW' : 'CCW'}`);
             }
             
             return {
@@ -423,7 +465,7 @@
                 startAngle: startAngle,
                 endAngle: endAngle,
                 sweepAngle: sweepAngle,
-                clockwise: clockwise
+                clockwise: actuallyClockwise
             };
         }
         

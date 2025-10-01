@@ -1,5 +1,5 @@
 // cam-core.js
-// Core PCB CAM application logic with toolpath management support
+// REFACTORED: Offset-first pipeline with Clipper2 unions per pass
 
 (function() {
     'use strict';
@@ -10,7 +10,6 @@
     const gcodeConfig = config.gcode || {};
     const opsConfig = config.operations || {};
     const debugConfig = config.debug || {};
-    const perfConfig = config.performance || {};
     
     class PCBCamCore {
         constructor(options = {}) {
@@ -25,13 +24,12 @@
             // Tool library reference
             this.toolLibrary = null;
             
-            // Add initialization control
+            // Initialization control
             this.skipInit = options.skipInit || false;
             this.isInitializing = false;
             this.isInitialized = false;
             
-            // CRITICAL FIX: Initialize fileTypes from config
-            // This maps operation types to their UI representations
+            // Initialize fileTypes from config
             this.fileTypes = {};
             Object.keys(opsConfig).forEach(type => {
                 const op = opsConfig[type];
@@ -61,26 +59,24 @@
                 toolpaths: 0
             };
             
-            // Coordinate system (will be set by UI)
+            // Coordinate system
             this.coordinateSystem = null;
             
-            // Geometry processor
+            // Geometry processors
             this.geometryProcessor = null;
             this.geometryOffsetter = null;
             this.processorInitialized = false;
             this.initializationPromise = null;
             
-            // Only initialize if not skipped
             if (!this.skipInit) {
                 this.initializeProcessors();
             }
         }
         
         async initializeProcessors() {
-            // Prevent double initialization
             if (this.isInitializing || this.isInitialized) {
                 if (debugConfig.enabled) {
-                    console.log('Processors already initializing or initialized, skipping...');
+                    console.log('Processors already initializing or initialized');
                 }
                 return this.initializationPromise || true;
             }
@@ -90,15 +86,9 @@
                 console.log('Initializing processors with Clipper2...');
             }
             
-            // Check for required classes
-            const requiredClasses = [
-                'GerberParser',
-                'ExcellonParser',
-                'ParserPlotter',
-                'GeometryProcessor'
-            ];
+            // Check required classes
+            const requiredClasses = ['GerberParser', 'ExcellonParser', 'ParserPlotter', 'GeometryProcessor'];
             
-            // Also check for base class
             if (typeof ParserCore === 'undefined') {
                 console.error('ParserCore base class not available');
                 this.isInitializing = false;
@@ -107,23 +97,20 @@
             
             let allAvailable = true;
             requiredClasses.forEach(className => {
-                if (typeof window[className] !== 'undefined') {
-                    if (debugConfig.enabled) {
-                        console.log(`✅ ${className} available`);
-                    }
-                } else {
+                if (typeof window[className] === 'undefined') {
                     console.error(`❌ ${className} not available`);
                     allAvailable = false;
+                } else if (debugConfig.enabled) {
+                    console.log(`✅ ${className} available`);
                 }
             });
             
             if (!allAvailable) {
-                console.error('Required classes not available');
                 this.isInitializing = false;
                 return false;
             }
             
-            // Initialize GeometryProcessor with Clipper2 using config
+            // Initialize GeometryProcessor
             if (typeof GeometryProcessor !== 'undefined') {
                 this.geometryProcessor = new GeometryProcessor({
                     debug: debugConfig.enabled,
@@ -131,14 +118,20 @@
                     preserveOriginals: true
                 });
                 
-                // Initialize GeometryOffsetter if available
+                // Initialize GeometryOffsetter
                 if (typeof GeometryOffsetter !== 'undefined') {
                     this.geometryOffsetter = new GeometryOffsetter({
-                        precision: geomConfig.coordinatePrecision || 0.001
+                        precision: geomConfig.coordinatePrecision || 0.001,
+                        debug: debugConfig.enabled
                     });
+                    
+                    // Link processor for union operations
+                    if (this.geometryOffsetter.setGeometryProcessor) {
+                        this.geometryOffsetter.setGeometryProcessor(this.geometryProcessor);
+                    }
                 }
                 
-                // Wait for Clipper2 WASM to initialize
+                // Wait for Clipper2 WASM
                 this.initializationPromise = this.geometryProcessor.initPromise;
                 
                 try {
@@ -146,51 +139,42 @@
                     this.processorInitialized = true;
                     this.isInitialized = true;
                     if (debugConfig.enabled) {
-                        console.log('✅ Clipper2 GeometryProcessor initialized');
+                        console.log('✅ Clipper2 initialized');
                     }
                     return true;
                 } catch (error) {
-                    console.error('❌ Failed to initialize Clipper2:', error);
+                    console.error('❌ Clipper2 initialization failed:', error);
                     this.processorInitialized = false;
                     return false;
                 } finally {
                     this.isInitializing = false;
                 }
-            } else {
-                console.error('❌ GeometryProcessor not available');
-                this.isInitializing = false;
-                return false;
             }
+            
+            console.error('❌ GeometryProcessor not available');
+            this.isInitializing = false;
+            return false;
         }
         
-        // Set tool library reference
         setToolLibrary(toolLibrary) {
             this.toolLibrary = toolLibrary;
             if (debugConfig.enabled) {
-                console.log('Tool library set in core');
+                console.log('Tool library set');
             }
         }
         
-        // Get cached states from geometry processor
         getPreprocessedPrimitives() {
-            if (this.geometryProcessor) {
-                return this.geometryProcessor.getCachedState('preprocessedGeometry');
-            }
-            return null;
+            return this.geometryProcessor?.getCachedState('preprocessedGeometry') || null;
         }
         
         getFusedPrimitives() {
-            if (this.geometryProcessor) {
-                return this.geometryProcessor.getCachedState('fusedGeometry');
-            }
-            return null;
+            return this.geometryProcessor?.getCachedState('fusedGeometry') || null;
         }
         
-        // Ensure processor is ready before geometry operations
         async ensureProcessorReady() {
             if (!this.processorInitialized && this.initializationPromise) {
                 if (debugConfig.logging?.wasmOperations) {
-                    console.log('Waiting for Clipper2 initialization...');
+                    console.log('Waiting for Clipper2...');
                 }
                 await this.initializationPromise;
             }
@@ -236,7 +220,7 @@
                 const saved = localStorage.getItem('pcbcam-settings');
                 return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
             } catch (error) {
-                console.warn('Error loading saved settings:', error);
+                console.warn('Error loading settings:', error);
                 return defaults;
             }
         }
@@ -252,7 +236,6 @@
         getDefaultOperationSettings(operationType) {
             const operation = opsConfig[operationType] || opsConfig.isolation;
             
-            // Get default tool from config or tool library
             let defaultTool = null;
             if (this.toolLibrary) {
                 defaultTool = this.toolLibrary.getDefaultToolForOperation(operationType);
@@ -304,12 +287,11 @@
                     preservedShapes: [],
                     hasStrokes: false,
                     strokeCount: 0
-                }
+                },
+                offsets: []
             };
             
             this.operations.push(operation);
-            
-            // Invalidate toolpath cache when new operation added
             this.isToolpathCacheValid = false;
             
             return operation;
@@ -323,23 +305,18 @@
                 
                 let parseResult;
                 
-                // Create parser instances with debug from config
                 if (operation.type === 'drill') {
                     if (typeof ExcellonParser === 'undefined') {
                         throw new Error('Excellon parser not available');
                     }
-                    const excellonParser = new ExcellonParser({
-                        debug: debugConfig.enabled
-                    });
-                    parseResult = excellonParser.parse(operation.file.content);
+                    const parser = new ExcellonParser({ debug: debugConfig.enabled });
+                    parseResult = parser.parse(operation.file.content);
                 } else {
                     if (typeof GerberParser === 'undefined') {
                         throw new Error('Gerber parser not available');
                     }
-                    const gerberParser = new GerberParser({
-                        debug: debugConfig.enabled
-                    });
-                    parseResult = gerberParser.parse(operation.file.content);
+                    const parser = new GerberParser({ debug: debugConfig.enabled });
+                    parseResult = parser.parse(operation.file.content);
                 }
                 
                 if (!parseResult.success) {
@@ -349,7 +326,6 @@
                 
                 operation.parsed = parseResult;
                 
-                // Create plotter instance with debug
                 if (typeof ParserPlotter === 'undefined') {
                     throw new Error('Plotter not available');
                 }
@@ -358,7 +334,6 @@
                     markStrokes: true
                 });
                 
-                // ParserPlotter has a unified plot method that handles both types
                 const plotResult = plotter.plot(parseResult);
                 
                 if (!plotResult.success) {
@@ -366,33 +341,22 @@
                     return false;
                 }
                 
-                // Process cutout primitives
                 let primitives = plotResult.primitives;
+                
                 if (operation.type === 'cutout') {
                     primitives = this.processCutoutPrimitives(primitives);
-                    if (debugConfig.logging?.parseOperations) {
-                        console.log(`Cutout processing: ${primitives.length} primitives`);
-                    }
                 }
                 
-                // Add polarity to all primitives based on operation type
                 primitives = primitives.map(primitive => {
-                    if (!primitive.properties) {
-                        primitive.properties = {};
-                    }
-                    // All copper operations use dark polarity
+                    if (!primitive.properties) primitive.properties = {};
                     primitive.properties.polarity = 'dark';
                     primitive.properties.operationType = operation.type;
                     primitive.properties.operationId = operation.id;
                     primitive.properties.layerType = operation.type === 'drill' ? 'drill' : operation.type;
-                    
                     return primitive;
                 });
                 
-                // Analyze geometric context
                 this.analyzeGeometricContext(operation, primitives);
-                
-                // Validate and optimize primitives
                 const validPrimitives = this.validateAndOptimizePrimitives(primitives);
                 
                 operation.primitives = validPrimitives;
@@ -400,27 +364,17 @@
                 
                 this.updateStatistics();
                 operation.processed = true;
-                
-                // Invalidate toolpath cache when operation changes
                 this.isToolpathCacheValid = false;
                 
                 if (debugConfig.logging?.parseOperations) {
-                    console.log(`Successfully parsed ${operation.file.name}: ${operation.primitives.length} primitives`);
-                }
-                
-                // Log geometric context if present
-                if (operation.geometricContext.analyticCount > 0 && debugConfig.enabled) {
-                    console.log(`  Analytic shapes: ${operation.geometricContext.analyticCount}`);
-                    console.log(`  Has arcs: ${operation.geometricContext.hasArcs}`);
-                    console.log(`  Has circles: ${operation.geometricContext.hasCircles}`);
-                    console.log(`  Stroked primitives: ${operation.geometricContext.strokeCount}`);
+                    console.log(`Parsed ${operation.file.name}: ${operation.primitives.length} primitives`);
                 }
                 
                 return true;
                 
             } catch (error) {
                 operation.error = error.message;
-                console.error(`Error processing ${operation.file.name}:`, error);
+                console.error(`Parse error for ${operation.file.name}:`, error);
                 return false;
             }
         }
@@ -442,22 +396,11 @@
                     });
                 }
                 
-                if (primitive.type === 'circle') {
-                    hasCircles = true;
-                }
+                if (primitive.type === 'circle') hasCircles = true;
+                if (primitive.type === 'arc' || (primitive.arcSegments && primitive.arcSegments.length > 0)) hasArcs = true;
                 
-                if (primitive.type === 'arc' ||
-                    (primitive.arcSegments && primitive.arcSegments.length > 0)) {
-                    hasArcs = true;
-                }
-                
-                // Track stroked primitives
                 if (primitive.properties) {
-                    if (primitive.properties.stroke && !primitive.properties.fill) {
-                        hasStrokes = true;
-                        strokeCount++;
-                    }
-                    if (primitive.properties.isTrace) {
+                    if ((primitive.properties.stroke && !primitive.properties.fill) || primitive.properties.isTrace) {
                         hasStrokes = true;
                         strokeCount++;
                     }
@@ -465,12 +408,7 @@
             });
             
             operation.geometricContext = {
-                hasArcs,
-                hasCircles,
-                analyticCount,
-                preservedShapes,
-                hasStrokes,
-                strokeCount
+                hasArcs, hasCircles, analyticCount, preservedShapes, hasStrokes, strokeCount
             };
             
             this.stats.analyticPrimitives += analyticCount;
@@ -483,10 +421,9 @@
             
             primitives.forEach((primitive, index) => {
                 try {
-                    // Validate bounds
                     if (typeof primitive.getBounds !== 'function') {
                         if (debugConfig.validation?.warnOnInvalidData) {
-                            console.warn(`Primitive ${index} missing getBounds method`);
+                            console.warn(`Primitive ${index} missing getBounds()`);
                         }
                         return;
                     }
@@ -495,17 +432,16 @@
                     if (!isFinite(bounds.minX) || !isFinite(bounds.minY) ||
                         !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
                         if (debugConfig.validation?.warnOnInvalidData) {
-                            console.warn(`Primitive ${index} has invalid bounds:`, bounds);
+                            console.warn(`Primitive ${index} invalid bounds:`, bounds);
                         }
                         return;
                     }
                     
-                    // Check bounds against max coordinate
                     if (debugConfig.validation?.validateCoordinates) {
                         const maxCoord = geomConfig.maxCoordinate || 1000;
                         if (Math.abs(bounds.minX) > maxCoord || Math.abs(bounds.minY) > maxCoord ||
                             Math.abs(bounds.maxX) > maxCoord || Math.abs(bounds.maxY) > maxCoord) {
-                            console.warn(`Primitive ${index} exceeds maximum coordinate ${maxCoord}`);
+                            console.warn(`Primitive ${index} exceeds max coordinate ${maxCoord}`);
                         }
                     }
                     
@@ -519,7 +455,7 @@
             });
             
             if (validPrimitives.length !== primitives.length && debugConfig.enabled) {
-                console.warn(`Filtered out ${primitives.length - validPrimitives.length} invalid primitives`);
+                console.warn(`Filtered ${primitives.length - validPrimitives.length} invalid primitives`);
             }
             
             return validPrimitives;
@@ -528,40 +464,22 @@
         processCutoutPrimitives(primitives) {
             if (!primitives || primitives.length === 0) return primitives;
             
-            if (debugConfig.logging?.parseOperations) {
-                console.log(`Processing cutout primitives: ${primitives.length} total`);
-            }
-            
-            const processedPrimitives = [];
-            
-            primitives.forEach(p => {
-                if (!p.properties) {
-                    p.properties = {};
-                }
-                
-                // Mark as cutout
+            return primitives.map(p => {
+                if (!p.properties) p.properties = {};
                 p.properties.isCutout = true;
                 
-                // Cutout paths should be stroked, not filled
                 if (p.type === 'path') {
                     p.properties.fill = false;
                     p.properties.stroke = true;
                     p.properties.strokeWidth = 0.1;
                 }
                 
-                // Preserve arc information in cutouts
                 if (p.geometricContext && p.geometricContext.containsArcs) {
                     p.properties.preserveArcs = true;
                 }
                 
-                processedPrimitives.push(p);
+                return p;
             });
-            
-            if (debugConfig.logging?.parseOperations) {
-                console.log(`Cutout processing complete: ${processedPrimitives.length} primitives`);
-            }
-            
-            return processedPrimitives;
         }
         
         recalculateBounds(primitives) {
@@ -588,14 +506,10 @@
             if (index === -1) return false;
             
             this.operations.splice(index, 1);
-            
-            // Remove from toolpath cache
             this.toolpaths.delete(operationId);
             
             this.updateStatistics();
             this.updateCoordinateSystem();
-            
-            // Invalidate cache
             this.isToolpathCacheValid = false;
             
             return true;
@@ -606,8 +520,6 @@
             if (!operation) return false;
             
             Object.assign(operation.settings, settings);
-            
-            // Invalidate toolpath cache when settings change
             this.isToolpathCacheValid = false;
             
             return true;
@@ -623,11 +535,9 @@
             return primitives;
         }
         
-        // Get only fuseable primitives (isolation + clear/clearing)
         getFuseablePrimitives() {
             const primitives = [];
             this.operations.forEach(op => {
-                // Only include isolation and clear operations in fusion
                 if ((op.type === 'isolation' || op.type === 'clear' || op.type === 'clearing') && 
                     op.primitives && op.primitives.length > 0) {
                     primitives.push(...op.primitives);
@@ -659,7 +569,6 @@
                 .filter(op => op.type === 'drill')
                 .reduce((sum, op) => sum + (op.primitives ? op.primitives.length : 0), 0);
             
-            // Update toolpath count
             this.stats.toolpaths = Array.from(this.toolpaths.values())
                 .reduce((sum, data) => sum + (data.paths?.length || 0), 0);
         }
@@ -675,10 +584,7 @@
             const config = this.fileTypes[operationType];
             
             if (!config) {
-                return {
-                    valid: false,
-                    message: `Unknown operation type: ${operationType}`
-                };
+                return { valid: false, message: `Unknown operation type: ${operationType}` };
             }
             
             if (config.extensions.includes(extension)) {
@@ -704,9 +610,268 @@
             return this.operations.some(op => op.primitives && op.primitives.length > 0);
         }
         
-        // Toolpath Generation Pipeline
+        // =====================================================================
+        // OFFSET-FIRST PIPELINE: Offset individuals → Union per pass
+        // =====================================================================
+        
+        async generateOffsetGeometry(operation, offsetDistances, settings) {
+            console.log(`[Core] === OFFSET-FIRST PIPELINE START ===`);
+            console.log(`[Core] Operation: ${operation.id} (${operation.type})`);
+            console.log(`[Core] Passes: ${offsetDistances.length}`);
+            console.log(`[Core] Tool: ${settings.tool?.diameter}mm`);
+            
+            await this.ensureProcessorReady();
+            
+            if (!this.geometryOffsetter) {
+                throw new Error('Geometry offsetter not initialized');
+            }
+            
+            if (!this.geometryProcessor) {
+                throw new Error('Geometry processor not initialized');
+            }
+            
+            if (!operation.primitives || operation.primitives.length === 0) {
+                throw new Error('No source primitives to offset');
+            }
+            
+            console.log(`[Core] Source: ${operation.primitives.length} primitives`);
+            
+            operation.offsets = [];
+            
+            // Process each pass independently
+            for (let passIndex = 0; passIndex < offsetDistances.length; passIndex++) {
+                const distance = offsetDistances[passIndex];
+                console.log(`[Core] === PASS ${passIndex + 1}/${offsetDistances.length} ===`);
+                console.log(`[Core] Distance: ${distance.toFixed(3)}mm`);
+                
+                // Step 1: Offset individual primitives
+                const offsetPrimitives = [];
+                let successCount = 0;
+                let failCount = 0;
+                const failuresByType = {};
+                
+                for (const primitive of operation.primitives) {
+                    try {
+                        if (!this.validatePrimitiveForOffset(primitive)) {
+                            failCount++;
+                            failuresByType[primitive.type] = (failuresByType[primitive.type] || 0) + 1;
+                            continue;
+                        }
+                        
+                        let primToOffset = primitive;
+                        if (primitive.type === 'path' && primitive.arcSegments && primitive.arcSegments.length > 0) {
+                            primToOffset = {
+                                type: 'path',
+                                points: primitive.points,
+                                closed: primitive.closed,
+                                properties: { ...primitive.properties, hadArcs: true }
+                            };
+                        }
+                        
+                        const offsetResult = await this.geometryOffsetter.offsetPrimitive(
+                            primToOffset,
+                            distance,
+                            settings
+                        );
+                        
+                        // FIXED: Handle both single primitives and arrays
+                        if (offsetResult) {
+                            if (Array.isArray(offsetResult)) {
+                                offsetPrimitives.push(...offsetResult);
+                                successCount += offsetResult.length;
+                            } else {
+                                offsetPrimitives.push(offsetResult);
+                                successCount++;
+                            }
+                        } else {
+                            failCount++;
+                            failuresByType[primitive.type] = (failuresByType[primitive.type] || 0) + 1;
+                        }
+                    } catch (error) {
+                        console.error(`[Core] Offset failed for ${primitive.type}:`, error.message);
+                        failCount++;
+                        failuresByType[primitive.type] = (failuresByType[primitive.type] || 0) + 1;
+                    }
+                }
+                
+                console.log(`[Core] Offset: ${successCount} success, ${failCount} failed`);
+                if (Object.keys(failuresByType).length > 0) {
+                    console.log(`[Core] Failures by type:`, failuresByType);
+                }
+                
+                if (offsetPrimitives.length === 0) {
+                    console.warn(`[Core] Pass ${passIndex + 1} produced no geometry`);
+                    continue;
+                }
+                
+                // Step 2: Polygonize all offset primitives using proper protocols
+                console.log(`[Core] Polygonizing ${offsetPrimitives.length} offset primitives...`);
+                const polygonizedPrimitives = [];
+                
+                for (const primitive of offsetPrimitives) {
+                    try {
+                        if (primitive.type === 'circle') {
+                            // Use toPolygon or GeometryUtils
+                            if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
+                                polygonizedPrimitives.push(primitive.toPolygon());
+                            } else if (typeof GeometryUtils !== 'undefined') {
+                                const segments = GeometryUtils.getOptimalSegments(primitive.radius);
+                                const points = [];
+                                for (let i = 0; i < segments; i++) {
+                                    const angle = (i / segments) * 2 * Math.PI;
+                                    points.push({
+                                        x: primitive.center.x + primitive.radius * Math.cos(angle),
+                                        y: primitive.center.y + primitive.radius * Math.sin(angle)
+                                    });
+                                }
+                                polygonizedPrimitives.push(this._createPathPrimitive(points, {
+                                    ...primitive.properties,
+                                    closed: true,
+                                    polygonized: true
+                                }));
+                            }
+                        } else if (primitive.type === 'path') {
+                            // Check if stroked path needing polygonization
+                            const isStroke = primitive.properties && 
+                                           (primitive.properties.stroke || primitive.properties.isTrace) &&
+                                           primitive.properties.strokeWidth !== undefined;
+                            
+                            if (isStroke && typeof GeometryUtils !== 'undefined') {
+                                // Use GeometryUtils to convert stroked path to polygon
+                                let polygonPoints;
+                                
+                                if (primitive.points.length === 2) {
+                                    // Single line segment
+                                    polygonPoints = GeometryUtils.lineToPolygon(
+                                        primitive.points[0],
+                                        primitive.points[1],
+                                        primitive.properties.strokeWidth
+                                    );
+                                } else {
+                                    // Polyline
+                                    polygonPoints = GeometryUtils.polylineToPolygon(
+                                        primitive.points,
+                                        primitive.properties.strokeWidth
+                                    );
+                                }
+                                
+                                if (polygonPoints && polygonPoints.length >= 3) {
+                                    polygonizedPrimitives.push(this._createPathPrimitive(polygonPoints, {
+                                        ...primitive.properties,
+                                        closed: true,
+                                        fill: true,
+                                        stroke: false,
+                                        polygonized: true
+                                    }));
+                                }
+                            } else if (!isStroke) {
+                                // Already a filled path polygon
+                                polygonizedPrimitives.push(primitive);
+                            }
+                        } else if (primitive.type === 'arc') {
+                            if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
+                                polygonizedPrimitives.push(primitive.toPolygon());
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`[Core] Polygonization failed for ${primitive.type}:`, error.message);
+                    }
+                }
+                
+                console.log(`[Core] Polygonized: ${offsetPrimitives.length} → ${polygonizedPrimitives.length} path primitives`);
+                
+                if (polygonizedPrimitives.length === 0) {
+                    console.warn(`[Core] No valid primitives after polygonization`);
+                    continue;
+                }
+                
+                // Step 3: Union overlapping offsets
+                console.log(`[Core] Unioning ${polygonizedPrimitives.length} path primitives...`);
+
+                let finalGeometry;
+                try {
+                    const unionResult = await this.geometryProcessor.unionGeometry(
+                        polygonizedPrimitives,
+                        { fillRule: 'nonzero' }
+                    );
+                    
+                    console.log(`[Core] Union: ${polygonizedPrimitives.length} → ${unionResult.length} primitives`);
+                    
+                    // FIXED: Always run arc reconstruction in offset pipeline
+                    console.log(`[Core] Running arc reconstruction...`);
+                    finalGeometry = this.geometryProcessor.arcReconstructor.processForReconstruction(unionResult);
+                    console.log(`[Core] Reconstructed: ${unionResult.length} → ${finalGeometry.length} primitives`);
+                    
+                    finalGeometry = finalGeometry.map(p => {
+                        if (!p.properties) p.properties = {};
+                        p.properties.isOffset = true;
+                        p.properties.pass = passIndex + 1;
+                        p.properties.offsetDistance = distance;
+                        return p;
+                    });
+                    
+                } catch (error) {
+                    console.error(`[Core] Union failed for pass ${passIndex + 1}:`, error);
+                    finalGeometry = polygonizedPrimitives.map(p => {
+                        if (!p.properties) p.properties = {};
+                        p.properties.isOffset = true;
+                        p.properties.pass = passIndex + 1;
+                        p.properties.offsetDistance = distance;
+                        p.properties.unionFailed = true;
+                        return p;
+                    });
+                }
+                
+                // Store pass geometry
+                operation.offsets.push({
+                    id: `offset_${operation.id}_${passIndex}`,
+                    distance: distance,
+                    pass: passIndex + 1,
+                    primitives: finalGeometry,
+                    settings: { ...settings },
+                    metadata: {
+                        sourceCount: operation.primitives.length,
+                        offsetCount: offsetPrimitives.length,
+                        finalCount: finalGeometry.length,
+                        generatedAt: Date.now(),
+                        toolDiameter: settings.tool?.diameter
+                    }
+                });
+            }
+            
+            const totalPrimitives = operation.offsets.reduce((sum, o) => sum + o.primitives.length, 0);
+            console.log(`[Core] === OFFSET-FIRST PIPELINE COMPLETE ===`);
+            console.log(`[Core] Generated ${operation.offsets.length} passes, ${totalPrimitives} primitives`);
+            
+            this.isToolpathCacheValid = false;
+            return operation.offsets;
+        }
+
+        validatePrimitiveForOffset(primitive) {
+            if (!primitive || !primitive.type) return false;
+            
+            if (primitive.type === 'path') {
+                return primitive.points && primitive.points.length >= 2;
+            }
+            
+            if (primitive.type === 'circle') {
+                return primitive.center && primitive.radius > 0;
+            }
+            
+            if (primitive.type === 'arc') {
+                return primitive.center && primitive.radius > 0 &&
+                       primitive.startAngle !== undefined && primitive.endAngle !== undefined;
+            }
+            
+            if (primitive.type === 'rectangle') {
+                return primitive.position && primitive.width !== undefined && primitive.height !== undefined;
+            }
+            
+            return true;
+        }
+        
+        // Toolpath management
         async generateAllToolpaths() {
-            // Check cache first
             if (this.isToolpathCacheValid && this.toolpaths.size > 0) {
                 if (debugConfig.enabled) {
                     console.log('Using cached toolpaths');
@@ -719,18 +884,8 @@
                 return this.toolpaths;
             }
             
-            if (!this.geometryOffsetter) {
-                console.warn('Geometry offsetter not available - toolpath generation not implemented yet');
-                // For now, return empty toolpaths until offsetter is implemented
-                this.toolpaths.clear();
-                this.isToolpathCacheValid = true;
-                return this.toolpaths;
-            }
-            
-            // Clear old toolpaths
             this.toolpaths.clear();
             
-            // Generate toolpaths for each operation
             for (const operation of this.operations) {
                 if (operation.type === 'isolation' || operation.type === 'clearing' || operation.type === 'clear') {
                     const toolpathData = await this.generateOperationToolpaths(operation);
@@ -740,10 +895,7 @@
                 }
             }
             
-            // Update statistics
             this.updateStatistics();
-            
-            // Mark cache as valid
             this.isToolpathCacheValid = true;
             
             if (debugConfig.enabled) {
@@ -760,11 +912,10 @@
             
             const settings = operation.settings;
             if (!settings.tool) {
-                console.warn(`No tool selected for operation ${operation.id}`);
+                console.warn(`No tool for operation ${operation.id}`);
                 return null;
             }
             
-            // Calculate offset distances for multi-pass
             const offsets = this.calculateOffsetDistances(
                 settings.tool.diameter,
                 settings.passes || 1,
@@ -777,19 +928,12 @@
                 paths: []
             };
             
-            // For each pass, generate offset geometry
             for (let i = 0; i < offsets.length; i++) {
-                const offset = offsets[i];
-                
-                // This is where we'd call the geometry offsetter
-                // For now, create placeholder
-                const offsetPath = {
-                    offset: offset,
+                toolpathData.paths.push({
+                    offset: offsets[i],
                     pass: i + 1,
-                    primitives: [] // Would be filled by offsetter
-                };
-                
-                toolpathData.paths.push(offsetPath);
+                    primitives: []
+                });
             }
             
             return toolpathData;
@@ -801,36 +945,26 @@
             const offsets = [];
             
             for (let i = 0; i < passes; i++) {
-                // Negative for external offset (tool outside geometry)
                 offsets.push(-(toolDiameter / 2 + i * stepDistance));
             }
             
             return offsets;
         }
         
-        // Get transformed toolpaths for export
         async getTransformedToolpathsForExport() {
             if (!this.isToolpathCacheValid) {
                 await this.generateAllToolpaths();
             }
             
-            if (!this.coordinateSystem) {
-                return Array.from(this.toolpaths.values());
-            }
-            
-            // Apply coordinate transform
-            const transform = this.coordinateSystem.getCoordinateTransform();
             const finalToolpaths = [];
-            
             for (const [opId, toolpathData] of this.toolpaths) {
-                // Transform would be applied here
                 finalToolpaths.push(toolpathData);
             }
             
             return finalToolpaths;
         }
         
-        // Fusion methods for geometry processing
+        // Fusion for visualization (separate from offsetting)
         async fuseAllPrimitives(options = {}) {
             await this.ensureProcessorReady();
             
@@ -838,324 +972,30 @@
                 throw new Error('Geometry processor not available');
             }
             
-            const fuseablePrimitives = this.getFuseablePrimitives();
+            const fusedResults = [];
             
-            if (fuseablePrimitives.length === 0) {
-                if (debugConfig.enabled) {
-                    console.log('No fuseable primitives (isolation/clear) to fuse');
-                }
-                return [];
-            }
-            
-            if (debugConfig.logging?.fusionOperations) {
-                console.log(`=== FUSION INPUT ===`);
-                
-                // Count by operation type
-                const isolationPrimitives = [];
-                const clearPrimitives = [];
-                const darkCount = fuseablePrimitives.filter(p => p.properties?.polarity === 'dark').length;
-                const clearCount = fuseablePrimitives.filter(p => p.properties?.polarity === 'clear').length;
-                
-                this.operations.forEach(op => {
-                    if (op.primitives && op.primitives.length > 0) {
-                        if (op.type === 'isolation') {
-                            isolationPrimitives.push(...op.primitives);
-                        } else if (op.type === 'clear' || op.type === 'clearing') {
-                            clearPrimitives.push(...op.primitives);
-                        }
-                    }
-                });
-                
-                console.log(`Isolation primitives: ${isolationPrimitives.length}`);
-                console.log(`Clear/Clearing primitives: ${clearPrimitives.length}`);
-                console.log(`Dark polarity count: ${darkCount}`);
-                console.log(`Clear polarity count: ${clearCount}`);
-                console.log(`Total fuseable primitives: ${fuseablePrimitives.length}`);
-                
-                // Log excluded operations
-                const drillOps = this.getOperationsByType('drill');
-                const cutoutOps = this.getOperationsByType('cutout');
-                if (drillOps.length > 0 || cutoutOps.length > 0) {
-                    console.log(`EXCLUDED from fusion:`);
-                    if (drillOps.length > 0) {
-                        const drillCount = drillOps.reduce((sum, op) => 
-                            sum + (op.primitives ? op.primitives.length : 0), 0);
-                        console.log(`  Drill operations: ${drillOps.length} files, ${drillCount} primitives`);
-                    }
-                    if (cutoutOps.length > 0) {
-                        const cutoutCount = cutoutOps.reduce((sum, op) => 
-                            sum + (op.primitives ? op.primitives.length : 0), 0);
-                        console.log(`  Cutout operations: ${cutoutOps.length} files, ${cutoutCount} primitives`);
-                    }
-                }
-                
-                // Log arc reconstruction state
-                if (options.enableArcReconstruction) {
-                    console.log(`Arc reconstruction: ENABLED`);
-                }
-            }
-            
-            try {
-                // Pass options through to geometry processor
-                const fused = await this.geometryProcessor.fuseGeometry(fuseablePrimitives, options);
-                
-                // Invalidate toolpath cache when geometry changes
-                this.isToolpathCacheValid = false;
-                
-                if (debugConfig.logging?.fusionOperations) {
-                    console.log(`=== FUSION COMPLETE ===`);
-                    console.log(`Result: ${fused.length} primitives`);
+            // Fuse each operation independently
+            for (const operation of this.operations) {
+                if ((operation.type === 'isolation' || operation.type === 'clear' || operation.type === 'clearing') &&
+                    operation.primitives && operation.primitives.length > 0) {
                     
-                    // Count preserved holes
-                    let preservedHoles = 0;
+                    const fused = await this.geometryProcessor.fuseGeometry(operation.primitives, options);
+                    
+                    // Tag with operation ID
                     fused.forEach(p => {
-                        if (p.holes && p.holes.length > 0) {
-                            preservedHoles += p.holes.length;
-                        }
+                        if (!p.properties) p.properties = {};
+                        p.properties.sourceOperationId = operation.id;
+                        p.properties.operationType = operation.type;
                     });
                     
-                    if (preservedHoles > 0) {
-                        console.log(`Preserved ${preservedHoles} holes in fused geometry`);
-                    }
-                    
-                    // Log arc reconstruction results if enabled
-                    if (options.enableArcReconstruction && this.geometryProcessor) {
-                        const arcStats = this.geometryProcessor.getArcReconstructionStats();
-                        if (arcStats.curvesRegistered > 0) {
-                            console.log(`Arc reconstruction results:`);
-                            console.log(`  Curves registered: ${arcStats.curvesRegistered}`);
-                            console.log(`  Curves reconstructed: ${arcStats.curvesReconstructed}`);
-                            console.log(`  Success rate: ${((arcStats.curvesReconstructed / arcStats.curvesRegistered) * 100).toFixed(1)}%`);
-                        }
-                    }
+                    fusedResults.push(...fused);
                 }
-                
-                return fused;
-            } catch (error) {
-                console.error('Fusion operation failed:', error);
-                throw error;
             }
-        }
-        
-        async prepareForOffsetGeneration() {
-            await this.ensureProcessorReady();
-            
-            if (!this.geometryProcessor) {
-                throw new Error('Geometry processor not available');
-            }
-            
-            const fusedPrimitives = await this.fuseAllPrimitives();
-            
-            // Check for preserved analytic shapes
-            const analyticShapes = fusedPrimitives.filter(p =>
-                p.canOffsetAnalytically && p.canOffsetAnalytically()
-            );
-            
-            if (analyticShapes.length > 0 && debugConfig.enabled) {
-                console.log(`${analyticShapes.length} shapes can be offset analytically`);
-            }
-            
-            return this.geometryProcessor.prepareForOffset(fusedPrimitives);
-        }
-
-        async generateOffsetGeometry(operation, offsetDistances, settings) {
-            console.log(`[Core] === OFFSET GENERATION START ===`);
-            console.log(`[Core] Operation: ${operation.id} (${operation.type})`);
-            console.log(`[Core] Generating ${offsetDistances.length} offset pass(es)`);
-            console.log(`[Core] Tool diameter: ${settings.tool?.diameter}mm`);
-            console.log(`[Core] Join type: ${settings.joinType || 'round'}`);
-            
-            await this.ensureProcessorReady();
-            
-            // Validate offsetter
-            if (!this.geometryOffsetter) {
-                this.geometryOffsetter = new GeometryOffsetter({
-                    precision: geomConfig.coordinatePrecision || 0.001,
-                    joinType: settings.joinType || 'round',
-                    miterLimit: settings.miterLimit || 2.0,
-                    debug: debugConfig.enabled
-                });
-            }
-            
-            if (!this.geometryOffsetter.initialized) {
-                throw new Error('Geometry offsetter failed to initialize');
-            }
-            
-            // FIXED: Ensure fusion before offsetting
-            let sourceGeometry = this.geometryProcessor?.getCachedState('fusedGeometry');
-            
-            if (!sourceGeometry || sourceGeometry.length === 0) {
-                console.log('[Core] Fused geometry not cached, running fusion with arc reconstruction...');
-                
-                // Run fusion with arc reconstruction enabled
-                sourceGeometry = await this.fuseAllPrimitives({
-                    enableArcReconstruction: true
-                });
-                
-                if (!sourceGeometry || sourceGeometry.length === 0) {
-                    throw new Error('Fusion produced no geometry for offsetting');
-                }
-                
-                console.log(`[Core] Fusion complete: ${sourceGeometry.length} fused primitives`);
-            } else {
-                console.log(`[Core] Using cached fused geometry: ${sourceGeometry.length} primitives`);
-            }
-
-            // Validate geometry types
-            const typeStats = {};
-            sourceGeometry.forEach(p => {
-                typeStats[p.type] = (typeStats[p.type] || 0) + 1;
-            });
-            console.log(`[Core] Source geometry types:`, typeStats);
-            
-            // FIXED: Don't warn about reconstructed circles/arcs - they're valid
-            const nonPathNonReconstructed = sourceGeometry.filter(p => 
-                p.type !== 'path' && !p.properties?.reconstructed
-            ).length;
-            
-            if (nonPathNonReconstructed > 0) {
-                console.warn(`[Core] ${nonPathNonReconstructed} non-path unreconstructed primitives - may cause issues`);
-            }
-            
-            // Initialize offsets array
-            if (!operation.offsets) {
-                operation.offsets = [];
-            }
-            operation.offsets = [];
-            
-            // Generate offsets
-            for (let i = 0; i < offsetDistances.length; i++) {
-                const distance = offsetDistances[i];
-                console.log(`[Core] === PASS ${i + 1}/${offsetDistances.length} ===`);
-                console.log(`[Core] Offset distance: ${distance.toFixed(3)}mm`);
-
-                const offsetPrimitives = [];
-                const passStats = {
-                    attempted: 0,
-                    succeeded: 0,
-                    failed: 0,
-                    skipped: 0,
-                    errors: [],
-                    byType: {}
-                };
-                
-                for (const primitive of sourceGeometry) {
-                    passStats.attempted++;
-                    
-                    try {
-                        if (!this.validatePrimitiveForOffset(primitive)) {
-                            passStats.skipped++;
-                            continue;
-                        }
-                        
-                        const offsetResult = await this.geometryOffsetter.offsetPrimitive(
-                            primitive,
-                            distance,
-                            settings
-                        );
-                        
-                        if (offsetResult) {
-                            if (typeof offsetResult.getBounds !== 'function') {
-                                console.warn(`[Core] Offset result missing getBounds() for ${primitive.type}`);
-                                passStats.failed++;
-                                continue;
-                            }
-                            
-                            if (Array.isArray(offsetResult)) {
-                                offsetPrimitives.push(...offsetResult);
-                                passStats.succeeded += offsetResult.length;
-                            } else {
-                                offsetPrimitives.push(offsetResult);
-                                passStats.succeeded++;
-                            }
-                            
-                            const resultType = offsetResult.type || primitive.type;
-                            passStats.byType[resultType] = (passStats.byType[resultType] || 0) + 1;
-                        } else {
-                            passStats.failed++;
-                        }
-                    } catch (error) {
-                        console.error(`[Core] Failed to offset primitive ${primitive.type}:`, error.message);
-                        passStats.failed++;
-                        passStats.errors.push({
-                            type: primitive.type,
-                            message: error.message
-                        });
-                    }
-                }
-                
-                console.log(`[Core] Pass ${i + 1} complete:`);
-                console.log(`  Attempted: ${passStats.attempted}`);
-                console.log(`  Succeeded: ${passStats.succeeded}`);
-                console.log(`  Failed: ${passStats.failed}`);
-                console.log(`  Skipped: ${passStats.skipped}`);
-                if (Object.keys(passStats.byType).length > 0) {
-                    console.log(`  By type:`, passStats.byType);
-                }
-                
-                if (offsetPrimitives.length === 0) {
-                    console.warn(`[Core] Pass ${i + 1} generated no offset geometry`);
-                }
-                
-                operation.offsets.push({
-                    id: `offset_${operation.id}_${i}`,
-                    distance: distance,
-                    pass: i + 1,
-                    primitives: offsetPrimitives,
-                    settings: { ...settings },
-                    metadata: {
-                        sourceGeometry: 'fused',
-                        generatedAt: Date.now(),
-                        toolDiameter: settings.tool?.diameter,
-                        stats: passStats
-                    }
-                });
-            }
-            
-            const totalPrimitives = operation.offsets.reduce((sum, o) => sum + o.primitives.length, 0);
-            console.log(`[Core] === OFFSET GENERATION COMPLETE ===`);
-            console.log(`[Core] Generated ${operation.offsets.length} passes with ${totalPrimitives} total primitives`);
             
             this.isToolpathCacheValid = false;
-            return operation.offsets;
-        }
-
-        validatePrimitiveForOffset(primitive) {
-            if (!primitive || !primitive.type) {
-                return false;
-            }
-            
-            if (primitive.type === 'path') {
-                if (!primitive.points || primitive.points.length < 2) {
-                    return false;
-                }
-            }
-            
-            if (primitive.type === 'circle') {
-                if (!primitive.center || primitive.radius === undefined || primitive.radius <= 0) {
-                    return false;
-                }
-            }
-            
-            if (primitive.type === 'arc') {
-                if (!primitive.center || primitive.radius === undefined || primitive.radius <= 0) {
-                    return false;
-                }
-                if (primitive.startAngle === undefined || primitive.endAngle === undefined) {
-                    return false;
-                }
-            }
-            
-            if (primitive.type === 'rectangle') {
-                if (!primitive.position || primitive.width === undefined || primitive.height === undefined) {
-                    return false;
-                }
-            }
-            
-            return true;
+            return fusedResults;
         }
         
-        // Settings management
         updateSettings(category, settings) {
             if (this.settings[category]) {
                 Object.assign(this.settings[category], settings);
@@ -1167,7 +1007,6 @@
             return this.settings[category]?.[key];
         }
         
-        // Debug and testing utilities
         getProcessorStats() {
             const stats = {
                 core: this.getStats(),
@@ -1185,66 +1024,45 @@
             
             if (this.geometryProcessor) {
                 stats.geometryProcessor = this.geometryProcessor.getStats();
-                
                 stats.cachedStates = {
                     hasPreprocessed: !!this.geometryProcessor.getCachedState('preprocessedGeometry'),
                     hasFused: !!this.geometryProcessor.getCachedState('fusedGeometry')
                 };
-                
                 stats.arcReconstruction = this.geometryProcessor.getArcReconstructionStats();
             }
             
             return stats;
         }
         
-        checkGeometricContextPreservation() {
-            if (!debugConfig.enabled) return;
-            
-            console.log('🔍 Checking geometric context preservation...');
-            console.log('=====================================');
-            
-            this.operations.forEach((op, index) => {
-                if (op.geometricContext) {
-                    console.log(`\n📄 Operation ${index + 1}: ${op.type} - ${op.file.name}`);
-                    console.log(`   Analytic shapes: ${op.geometricContext.analyticCount}`);
-                    console.log(`   Has arcs: ${op.geometricContext.hasArcs}`);
-                    console.log(`   Has circles: ${op.geometricContext.hasCircles}`);
-                    console.log(`   Has strokes: ${op.geometricContext.hasStrokes}`);
-                    console.log(`   Stroke count: ${op.geometricContext.strokeCount}`);
-                    
-                    if (op.geometricContext.preservedShapes.length > 0) {
-                        console.log(`   Preserved shape types:`);
-                        const types = {};
-                        op.geometricContext.preservedShapes.forEach(shape => {
-                            types[shape.type] = (types[shape.type] || 0) + 1;
-                        });
-                        Object.entries(types).forEach(([type, count]) => {
-                            console.log(`     ${type}: ${count}`);
-                        });
-                    }
-                }
-            });
-            
-            console.log(`\n📊 Global totals:`);
-            console.log(`   Analytic primitives: ${this.stats.analyticPrimitives}`);
-            console.log(`   Polygonized primitives: ${this.stats.polygonizedPrimitives}`);
-            console.log(`   Strokes converted: ${this.stats.strokesConverted}`);
-            console.log(`   Toolpaths generated: ${this.stats.toolpaths}`);
-            
-            if (this.geometryProcessor) {
-                const arcStats = this.geometryProcessor.getArcReconstructionStats();
-                if (arcStats.registrySize > 0 || arcStats.curvesRegistered > 0) {
-                    console.log(`\n🔄 Arc Reconstruction:`);
-                    console.log(`   Registry size: ${arcStats.registrySize}`);
-                    console.log(`   Curves registered: ${arcStats.curvesRegistered}`);
-                    console.log(`   Curves reconstructed: ${arcStats.curvesReconstructed}`);
-                    console.log(`   Curves lost: ${arcStats.curvesLost}`);
-                }
+        // Helper to create path primitive with getBounds
+        _createPathPrimitive(points, properties) {
+            if (typeof PathPrimitive !== 'undefined') {
+                return new PathPrimitive(points, properties);
             }
+            
+            return {
+                type: 'path',
+                points: points,
+                properties: properties || {},
+                closed: properties?.closed !== false,
+                getBounds: function() {
+                    if (this.points.length === 0) {
+                        return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+                    }
+                    let minX = Infinity, minY = Infinity;
+                    let maxX = -Infinity, maxY = -Infinity;
+                    this.points.forEach(p => {
+                        minX = Math.min(minX, p.x);
+                        minY = Math.min(minY, p.y);
+                        maxX = Math.max(maxX, p.x);
+                        maxY = Math.max(maxY, p.y);
+                    });
+                    return { minX, minY, maxX, maxY };
+                }
+            };
         }
     }
     
-    // Export
     window.PCBCamCore = PCBCamCore;
     
 })();

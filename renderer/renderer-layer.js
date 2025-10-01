@@ -32,6 +32,10 @@
             
             // Create property accessors for compatibility
             this._createPropertyAccessors();
+
+            // Rendering refresh-rate limits
+            this._renderQueued = false;
+            this._renderTimeout = null;
             
             if (debugConfig.enabled) {
                 console.log('LayerRenderer initialized with modular architecture');
@@ -53,8 +57,18 @@
                 });
             });
         }
-        
+
         render() {
+            // Render refresh-rate limiter
+            if (this._renderQueued) return;
+            this._renderQueued = true;
+            this._renderTimeout = setTimeout(() => {
+                this._renderQueued = false;
+                this._actualRender();
+            }, 16); // ~60fps
+        }
+        
+        _actualRender() {
             const startTime = this.core.beginRender();
             
             // Clear debug primitives tracking
@@ -139,8 +153,9 @@
             const regularLayers = [];
             
 
-            console.log('[Renderer] renderLayers called, total layers:', this.layers.size);
-
+            if (debugConfig.enabled && debugConfig.logging?.renderOperations) {
+                console.log('[Renderer] renderLayers called, total layers:', this.layers.size);
+            }
             this.layers.forEach((layer, name) => {
                 if (layer.isFused) {
                     fusedLayers.push(layer);
@@ -181,7 +196,9 @@
                     }
                 });
             });
-            console.log('[Renderer] Offset layers found:', offsetLayers);
+            if (debugConfig.enabled && debugConfig.logging?.renderOperations) {
+                console.log('[Renderer] Offset layers found:', offsetLayers);
+            }
         }
         
         renderLayerDirect(layer, isPreprocessed = false) {
@@ -270,41 +287,29 @@
         }
 
         renderOffsetLayer(layer) {
-            console.log(`[Renderer] Rendering offset layer: ${layer.primitives.length} primitives`);
-            // Use pass-specific colors
-            const passColors = [
-                '#ff0000',  // Red for pass 1
-                '#ff6600',  // Orange for pass 2
-                '#ffcc00',  // Yellow for pass 3
-                '#00ff00',  // Green for pass 4+
-            ];
+            if (debugConfig.enabled && debugConfig.logging?.renderOperations) {
+                console.log(`[Renderer] Rendering offset layer: ${layer.primitives.length} primitives`);
+            }
             
-            const pass = layer.pass || 0;
-            const offsetColor = passColors[Math.min(pass - 1, passColors.length - 1)];
+            // Use layer color directly - it's set by addOffsetLayers
+            const offsetColor = layer.color || '#a00000ff';
             
             layer.primitives.forEach(primitive => {
                 this.renderStats.primitives++;
                 this.renderStats.renderedPrimitives++;
                 
-                // Use thicker stroke for visibility
                 this.ctx.save();
-                this.ctx.lineWidth = 2 / this.core.viewScale;
-                
-                // Don't include in debug overlay
-                const originalDebugState = this.options.debugCurvePoints;
-                this.options.debugCurvePoints = false;
+                this.ctx.lineWidth = 1 / this.core.viewScale / 4;
                 
                 this.primitiveRenderer.renderPrimitive(
                     primitive,
-                    'transparent',  // No fill for offsets
-                    offsetColor,     // Stroke only
+                    'transparent',
+                    offsetColor,  // Use the layer's color
                     false
                 );
                 
-                this.options.debugCurvePoints = originalDebugState;
                 this.ctx.restore();
             });
-            console.log(`[Renderer] Offset layer rendered`);
         }
         
         renderCutoutPrimitive(primitive, color) {

@@ -652,7 +652,7 @@
             
             // Update renderer and fit view
             if (this.ui?.renderer) {
-                await this.ui.updateRendererAsync?.() || await this.ui.updateRenderer?.();
+                await this.ui.updateRendererAsync();
                 this.ui.renderer.zoomFit();
             }
             
