@@ -1,5 +1,6 @@
 // config.js
 // PCB CAM Configuration - Advanced Workspace v2.0
+// NOTE: Global curve registry moved to geometry-curve-registry.js
 
 window.PCBCAMConfig = {
     // ============================================================================
@@ -663,7 +664,8 @@ window.PCBCAMConfig = {
             miterLimit: 2.0,
             arcTolerance: 0.01,
             selfIntersectionCheck: true,
-            preserveCollinear: false
+            preserveCollinear: false,
+            unionPasses: true  // Enable multi-pass union by default
         },
         
         fusion: {
@@ -923,29 +925,24 @@ window.PCBCAMConfig = {
     // HELPER METHODS
     // ============================================================================
     
-    // Get operation configuration by type
     getOperation: function(type) {
         return this.operations[type] || this.operations.isolation;
     },
     
-    // Get current theme colors
     getTheme: function(themeName) {
         return this.rendering.themes[themeName || this.ui.theme] || this.rendering.themes.dark;
     },
     
-    // Get G-code template
     getGcodeTemplate: function(processor, type) {
         const templates = this.gcode.templates[processor || this.gcode.postProcessor];
         return templates ? templates[type] : '';
     },
     
-    // Format number for G-code
     formatGcode: function(value, type = 'coordinates') {
         const precision = this.gcode.precision[type] || 3;
         return value.toFixed(precision).replace(/\.?0+$/, '');
     },
     
-    // Get default tool for an operation type
     getDefaultTool: function(operationType) {
         const op = this.operations[operationType];
         if (!op) return null;
@@ -954,14 +951,12 @@ window.PCBCAMConfig = {
         return this.tools.find(tool => tool.id === toolId);
     },
     
-    // Get tools compatible with an operation
     getToolsForOperation: function(operationType) {
         return this.tools.filter(tool => 
             tool.operations.includes(operationType)
         );
     },
     
-    // Calculate offset distances for multi-pass
     calculateOffsetDistances: function(toolDiameter, passes, stepOverPercent) {
         const stepOver = stepOverPercent / 100;
         const stepDistance = toolDiameter * (1 - stepOver);
@@ -974,7 +969,6 @@ window.PCBCAMConfig = {
         return offsets;
     },
     
-    // Validate tool definition
     validateTool: function(tool) {
         const required = ['id', 'name', 'type', 'geometry', 'cutting', 'operations'];
         const geometryRequired = ['diameter'];
@@ -1004,132 +998,3 @@ window.PCBCAMConfig = {
         return true;
     }
 };
-
-// ============================================================================
-// GLOBAL CURVE REGISTRY - Initialized immediately
-// ============================================================================
-(function() {
-    'use strict';
-    
-    class GlobalCurveRegistry {
-        constructor() {
-            this.registry = new Map();
-            this.hashToId = new Map();
-            this.primitiveIdToCurves = new Map();
-            this.nextId = 1;
-            this.hashPrecision = 1000;
-            
-            // Statistics
-            this.stats = {
-                registered: 0,
-                circles: 0,
-                arcs: 0,
-                endCaps: 0
-            };
-        }
-        
-        generateHash(metadata) {
-            const roundedCenter = {
-                x: Math.round(metadata.center.x * this.hashPrecision) / this.hashPrecision,
-                y: Math.round(metadata.center.y * this.hashPrecision) / this.hashPrecision
-            };
-            const roundedRadius = Math.round(metadata.radius * this.hashPrecision) / this.hashPrecision;
-            
-            let str = `${metadata.type}_${roundedCenter.x}_${roundedCenter.y}_${roundedRadius}`;
-            
-            if (metadata.type === 'arc') {
-                const roundedStartAngle = Math.round((metadata.startAngle || 0) * this.hashPrecision) / this.hashPrecision;
-                const roundedEndAngle = Math.round((metadata.endAngle || Math.PI * 2) * this.hashPrecision) / this.hashPrecision;
-                str += `_${roundedStartAngle}_${roundedEndAngle}_${metadata.isOriginalDirectionCW === true}`;
-            }
-            
-            let hash = 0;
-            for (let i = 0; i < str.length; i++) {
-                const char = str.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash;
-            }
-            
-            return Math.abs(hash);
-        }
-        
-        register(metadata) {
-            if (!metadata || !metadata.center || metadata.radius === undefined) {
-                return null;
-            }
-            
-            if (metadata.isOriginalDirectionCW === undefined) {
-                if (window.PCBCAMConfig?.debug?.enabled) {
-                    console.warn('[GlobalRegistry] Missing direction information, defaulting to CCW for:', metadata);
-                }
-                metadata.isOriginalDirectionCW = false;
-            }
-            
-            const hash = this.generateHash(metadata);
-            
-            if (this.hashToId.has(hash)) {
-                return this.hashToId.get(hash);
-            }
-            
-            const curveData = {
-                ...metadata,
-                isOriginalDirectionCW: metadata.isOriginalDirectionCW
-            };
-            
-            const id = this.nextId++;
-            this.registry.set(id, curveData);
-            this.hashToId.set(hash, id);
-            
-            if (metadata.primitiveId) {
-                if (!this.primitiveIdToCurves.has(metadata.primitiveId)) {
-                    this.primitiveIdToCurves.set(metadata.primitiveId, []);
-                }
-                this.primitiveIdToCurves.get(metadata.primitiveId).push(id);
-            }
-            
-            this.stats.registered++;
-            if (metadata.type === 'circle') this.stats.circles++;
-            else if (metadata.type === 'arc') this.stats.arcs++;
-            if (metadata.source === 'end_cap' || metadata.source === 'arc_end_cap') this.stats.endCaps++;
-            
-            if (window.PCBCAMConfig?.debug?.logging?.curveRegistration) {
-                const dirStr = metadata.isOriginalDirectionCW ? 'CW' : 'CCW';
-                console.log(`[GlobalRegistry] Registered curve ${id}: ${metadata.type} r=${metadata.radius.toFixed(3)} ${dirStr} (source: ${metadata.source || 'unknown'})`);
-            }
-            
-            return id;
-        }
-        
-        getCurve(id) {
-            return this.registry.get(id);
-        }
-        
-        getCurvesForPrimitive(primitiveId) {
-            return this.primitiveIdToCurves.get(primitiveId) || [];
-        }
-        
-        clear() {
-            this.registry.clear();
-            this.hashToId.clear();
-            this.primitiveIdToCurves.clear();
-            this.nextId = 1;
-            this.stats = {
-                registered: 0,
-                circles: 0,
-                arcs: 0,
-                endCaps: 0
-            };
-        }
-        
-        getStats() {
-            return {
-                ...this.stats,
-                registrySize: this.registry.size
-            };
-        }
-    }
-    
-    // Create and expose global registry
-    window.globalCurveRegistry = new GlobalCurveRegistry();
-    
-})();

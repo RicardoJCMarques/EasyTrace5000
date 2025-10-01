@@ -1,4 +1,5 @@
 // geometry/geometry-offsetter.js
+// High-level offsetting interface with multi-pass union support
 
 class GeometryOffsetter {
     constructor(options = {}) {
@@ -6,6 +7,14 @@ class GeometryOffsetter {
         this.precision = options.precision || 0.001;
         this.debug = options.debug || false;
         this.initialized = true;
+        
+        // Reference to geometry processor for union operations
+        this.geometryProcessor = options.geometryProcessor || null;
+    }
+    
+    // Set geometry processor reference for union operations
+    setGeometryProcessor(processor) {
+        this.geometryProcessor = processor;
     }
     
     async offsetPrimitive(primitive, distance, options = {}) {
@@ -15,7 +24,6 @@ class GeometryOffsetter {
         
         if (distance === 0) return primitive;
         
-        // Validate input
         if (!primitive || !primitive.type) {
             throw new Error('Invalid primitive: missing type');
         }
@@ -24,11 +32,8 @@ class GeometryOffsetter {
             if (primitive.type === 'circle') {
                 return this.offsetCircle(primitive, distance);
             } else if (primitive.type === 'path') {
-                if (this.debug) {
-                    console.log(`[Offsetter] Path has ${primitive.points?.length || 0} points, ${primitive.arcSegments?.length || 0} arc segments`);
-                }
                 if (!primitive.points || primitive.points.length < 2) {
-                    console.warn(`[Offsetter] Path primitive has insufficient points: ${primitive.points?.length || 0}`);
+                    console.warn(`[Offsetter] Path has insufficient points: ${primitive.points?.length || 0}`);
                     return null;
                 }
                 return this.offsetEngine.offsetPath(primitive, distance, options);
@@ -44,12 +49,11 @@ class GeometryOffsetter {
             return null;
             
         } catch (error) {
-            console.error(`[Offsetter] Failed to offset ${primitive.type} by ${distance}mm:`, error);
+            console.error(`[Offsetter] Failed to offset ${primitive.type}:`, error);
             return null;
         }
     }
     
-    // FIXED: Return CirclePrimitive instance instead of plain object
     offsetCircle(circle, distance) {
         const newRadius = circle.radius - distance;
         
@@ -60,11 +64,18 @@ class GeometryOffsetter {
             return null;
         }
         
-        if (this.debug) {
-            console.log(`[Offsetter] Circle offset: ${circle.radius}mm -> ${newRadius}mm`);
-        }
+        // Register offset-derived curve
+        const offsetCurveId = window.globalCurveRegistry?.register({
+            type: 'circle',
+            center: { ...circle.center },
+            radius: newRadius,
+            clockwise: false, // Circles are CCW
+            isOffsetDerived: true,
+            sourceCurveId: circle.properties?.originalCurveId || null,
+            offsetDistance: distance,
+            source: 'circle_offset'
+        });
         
-        // CRITICAL FIX: Use CirclePrimitive constructor if available
         if (typeof CirclePrimitive !== 'undefined') {
             return new CirclePrimitive(
                 circle.center,
@@ -72,14 +83,10 @@ class GeometryOffsetter {
                 {
                     ...circle.properties,
                     isOffset: true,
-                    offsetDistance: distance
+                    offsetDistance: distance,
+                    originalCurveId: offsetCurveId
                 }
             );
-        }
-        
-        // Fallback with getBounds method
-        if (this.debug) {
-            console.warn('[Offsetter] CirclePrimitive not available, using fallback');
         }
         
         return {
@@ -89,7 +96,8 @@ class GeometryOffsetter {
             properties: {
                 ...circle.properties,
                 isOffset: true,
-                offsetDistance: distance
+                offsetDistance: distance,
+                originalCurveId: offsetCurveId
             },
             getBounds: function() {
                 return {
@@ -102,17 +110,11 @@ class GeometryOffsetter {
         };
     }
     
-    // FIXED: Return ArcPrimitive instance instead of plain object
     offsetArc(arc, distance) {
         const newRadius = arc.radius - distance;
         
         if (newRadius <= this.precision) {
             // Collapsed to line
-            if (this.debug) {
-                console.log(`[Offsetter] Arc collapsed to line: ${arc.radius}mm -> ${newRadius}mm`);
-            }
-            
-            // Return as PathPrimitive
             if (typeof PathPrimitive !== 'undefined') {
                 return new PathPrimitive([arc.startPoint, arc.endPoint], {
                     ...arc.properties,
@@ -144,11 +146,20 @@ class GeometryOffsetter {
             };
         }
         
-        if (this.debug) {
-            console.log(`[Offsetter] Arc offset: ${arc.radius}mm -> ${newRadius}mm`);
-        }
+        // Register offset-derived arc
+        const offsetCurveId = window.globalCurveRegistry?.register({
+            type: 'arc',
+            center: { ...arc.center },
+            radius: newRadius,
+            startAngle: arc.startAngle,
+            endAngle: arc.endAngle,
+            clockwise: arc.clockwise,
+            isOffsetDerived: true,
+            sourceCurveId: arc.properties?.originalCurveId || null,
+            offsetDistance: distance,
+            source: 'arc_offset'
+        });
         
-        // CRITICAL FIX: Use ArcPrimitive constructor if available
         if (typeof ArcPrimitive !== 'undefined') {
             return new ArcPrimitive(
                 arc.center,
@@ -159,14 +170,10 @@ class GeometryOffsetter {
                 {
                     ...arc.properties,
                     isOffset: true,
-                    offsetDistance: distance
+                    offsetDistance: distance,
+                    originalCurveId: offsetCurveId
                 }
             );
-        }
-        
-        // Fallback with getBounds
-        if (this.debug) {
-            console.warn('[Offsetter] ArcPrimitive not available, using fallback');
         }
         
         const startPoint = {
@@ -191,7 +198,8 @@ class GeometryOffsetter {
             properties: {
                 ...arc.properties,
                 isOffset: true,
-                offsetDistance: distance
+                offsetDistance: distance,
+                originalCurveId: offsetCurveId
             },
             getBounds: function() {
                 const points = [this.startPoint, this.endPoint, this.center];
@@ -208,13 +216,8 @@ class GeometryOffsetter {
         };
     }
     
-    // NEW: Rectangle offsetting - convert to path and offset
     offsetRectangle(rectangle, distance, options = {}) {
-        if (this.debug) {
-            console.log(`[Offsetter] Converting rectangle to path for offsetting`);
-        }
-        
-        // Convert rectangle to closed path
+        // Convert to path and offset
         const { x, y } = rectangle.position;
         const w = rectangle.width || 0;
         const h = rectangle.height || 0;
@@ -226,7 +229,6 @@ class GeometryOffsetter {
             { x, y: y + h }
         ];
         
-        // Create temporary path primitive
         let pathPrimitive;
         if (typeof PathPrimitive !== 'undefined') {
             pathPrimitive = new PathPrimitive(points, {
@@ -246,30 +248,18 @@ class GeometryOffsetter {
             };
         }
         
-        // Offset the path
-        const offsetPath = this.offsetEngine.offsetPath(pathPrimitive, distance, options);
-        
-        if (offsetPath && this.debug) {
-            console.log(`[Offsetter] Rectangle converted and offset successfully`);
-        }
-        
-        return offsetPath;
+        return this.offsetEngine.offsetPath(pathPrimitive, distance, options);
     }
     
-    // NEW: Obround offsetting - convert to path and offset
     offsetObround(obround, distance, options = {}) {
-        if (this.debug) {
-            console.log(`[Offsetter] Converting obround to path for offsetting`);
-        }
-        
-        // Convert obround to path with rounded ends
+        // Convert to path and offset
         const { x, y } = obround.position;
         const w = obround.width || 0;
         const h = obround.height || 0;
         const r = Math.min(w, h) / 2;
         
         const points = [];
-        const segments = 16; // Quarter circle segments
+        const segments = 16;
         
         if (w > h) {
             // Horizontal obround
@@ -277,7 +267,6 @@ class GeometryOffsetter {
             const c2x = x + w - r;
             const cy = y + r;
             
-            // Left semicircle
             for (let i = 0; i <= segments; i++) {
                 const angle = Math.PI / 2 + (i / segments) * Math.PI;
                 points.push({ 
@@ -286,7 +275,6 @@ class GeometryOffsetter {
                 });
             }
             
-            // Right semicircle
             for (let i = 0; i <= segments; i++) {
                 const angle = -Math.PI / 2 + (i / segments) * Math.PI;
                 points.push({ 
@@ -300,7 +288,6 @@ class GeometryOffsetter {
             const c1y = y + r;
             const c2y = y + h - r;
             
-            // Bottom semicircle
             for (let i = 0; i <= segments; i++) {
                 const angle = Math.PI + (i / segments) * Math.PI;
                 points.push({ 
@@ -309,7 +296,6 @@ class GeometryOffsetter {
                 });
             }
             
-            // Top semicircle
             for (let i = 0; i <= segments; i++) {
                 const angle = (i / segments) * Math.PI;
                 points.push({ 
@@ -319,7 +305,6 @@ class GeometryOffsetter {
             }
         }
         
-        // Create path primitive
         let pathPrimitive;
         if (typeof PathPrimitive !== 'undefined') {
             pathPrimitive = new PathPrimitive(points, {
@@ -339,14 +324,69 @@ class GeometryOffsetter {
             };
         }
         
-        // Offset the path
-        const offsetPath = this.offsetEngine.offsetPath(pathPrimitive, distance, options);
-        
-        if (offsetPath && this.debug) {
-            console.log(`[Offsetter] Obround converted and offset successfully`);
+        return this.offsetEngine.offsetPath(pathPrimitive, distance, options);
+    }
+    
+    // NEW: Multi-pass offsetting with optional union
+    async offsetMultiPass(primitives, offsets, options = {}) {
+        if (this.debug) {
+            console.log(`[Offsetter] Multi-pass offset: ${offsets.length} passes`);
         }
         
-        return offsetPath;
+        const passResults = [];
+        
+        // Generate each pass
+        for (let i = 0; i < offsets.length; i++) {
+            const distance = offsets[i];
+            const passGeometry = [];
+            
+            for (const primitive of primitives) {
+                const offset = await this.offsetPrimitive(primitive, distance, options);
+                if (offset) {
+                    if (Array.isArray(offset)) {
+                        passGeometry.push(...offset);
+                    } else {
+                        passGeometry.push(offset);
+                    }
+                }
+            }
+            
+            passResults.push({
+                pass: i + 1,
+                distance: distance,
+                primitives: passGeometry
+            });
+        }
+        
+        // Optionally union all passes
+        if (options.unionPasses && this.geometryProcessor) {
+            if (this.debug) {
+                console.log(`[Offsetter] Unioning ${passResults.length} passes`);
+            }
+            
+            try {
+                // Collect all primitives from all passes
+                const allPrimitives = [];
+                passResults.forEach(pass => {
+                    allPrimitives.push(...pass.primitives);
+                });
+                
+                // Perform union
+                const united = await this.geometryProcessor.unionGeometry(allPrimitives);
+                
+                return [{
+                    pass: 'merged',
+                    distance: offsets[0], // Outermost
+                    primitives: united,
+                    sourcePassCount: offsets.length
+                }];
+            } catch (error) {
+                console.error('[Offsetter] Union failed, returning individual passes:', error);
+                return passResults;
+            }
+        }
+        
+        return passResults;
     }
     
     // Calculate offset parameters for a tool
@@ -373,3 +413,6 @@ class GeometryOffsetter {
         };
     }
 }
+
+// Export
+window.GeometryOffsetter = GeometryOffsetter;

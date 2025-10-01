@@ -1,4 +1,6 @@
 // geometry/geometry-offset-engine.js
+// Core offsetting algorithm with arc segment support
+// FIXED: Closing segment handling, improved join geometry
 
 class OffsetGeometry {
     constructor(options = {}) {
@@ -13,10 +15,6 @@ class OffsetGeometry {
         if (!primitive.points || primitive.points.length < 2) {
             if (this.debug) console.log('[OffsetEngine] Path has insufficient points');
             return null;
-        }
-        
-        if (this.debug) {
-            console.log(`[OffsetEngine] Offsetting path: ${primitive.points.length} points, ${primitive.arcSegments?.length || 0} arc segments`);
         }
         
         // Step 1: Decompose into segments (lines and arcs)
@@ -44,11 +42,16 @@ class OffsetGeometry {
             options.joinType || 'round'
         );
         
-        // Step 4: Detect and resolve self-intersections
-        const cleanSegments = this.resolveSelfIntersections(joinedSegments);
+        // Step 4: Detect self-intersections (for debugging/future trimming)
+        if (options.detectIntersections) {
+            const intersections = this.detectAllIntersections(joinedSegments);
+            if (this.debug && intersections.length > 0) {
+                console.log(`[OffsetEngine] Detected ${intersections.length} self-intersections`);
+            }
+        }
         
         // Step 5: Reconstruct as PathPrimitive with arc segments
-        return this.reconstructPathPrimitive(cleanSegments, primitive, distance);
+        return this.reconstructPathPrimitive(joinedSegments, primitive, distance);
     }
     
     decomposePath(primitive) {
@@ -56,25 +59,22 @@ class OffsetGeometry {
         const points = primitive.points;
         const arcMap = new Map();
 
-        // Validate inputs
         if (!points || points.length < 2) {
             return [];
         }
-
-        if (this.debug) {
-            console.log(`[OffsetEngine] Decomposing path: ${points.length} points, ${primitive.arcSegments?.length || 0} arc segments`);
-        }
         
-        // Validate and handle wrapped arcs
+        // Build arc map with wrapped arc handling
         if (primitive.arcSegments) {
             primitive.arcSegments.forEach((arc, idx) => {
-                // Detect wrapped arcs
+                // Validate arc indices
+                if (arc.startIndex < 0 || arc.endIndex < 0) {
+                    if (this.debug) console.warn(`[OffsetEngine] Arc ${idx} has negative indices`);
+                    return;
+                }
+                
+                // Detect wrapped arcs (end before start in closed paths)
                 if (arc.startIndex >= arc.endIndex && primitive.closed) {
-                    if (this.debug) {
-                        console.log(`[OffsetEngine] Splitting wrapped arc ${idx}: ${arc.startIndex}..end,0..${arc.endIndex}`);
-                    }
-                    
-                    // Part 1: startIndex to points.length-1
+                    // Split into two arcs: start to end of array, then 0 to endIndex
                     const arc1 = {
                         ...arc,
                         endIndex: points.length - 1,
@@ -83,7 +83,6 @@ class OffsetGeometry {
                     };
                     arcMap.set(arc.startIndex, arc1);
                     
-                    // Part 2: 0 to endIndex
                     if (!arcMap.has(0)) {
                         const arc2 = {
                             ...arc,
@@ -93,16 +92,11 @@ class OffsetGeometry {
                         };
                         arcMap.set(0, arc2);
                     }
-                    
                 } else if (arc.startIndex >= arc.endIndex) {
-                    if (this.debug) {
-                        console.warn(`[OffsetEngine] Skipping invalid arc ${idx}`);
-                    }
+                    if (this.debug) console.warn(`[OffsetEngine] Skipping invalid arc ${idx}`);
                     return;
                 } else if (arc.endIndex >= points.length) {
-                    if (this.debug) {
-                        console.warn(`[OffsetEngine] Arc ${idx} endIndex out of bounds`);
-                    }
+                    if (this.debug) console.warn(`[OffsetEngine] Arc ${idx} endIndex out of bounds`);
                     return;
                 } else {
                     arcMap.set(arc.startIndex, arc);
@@ -110,6 +104,7 @@ class OffsetGeometry {
             });
         }
         
+        // Main decomposition loop
         let i = 0;
         let safetyCounter = 0;
         const maxIterations = points.length * 3;
@@ -119,15 +114,13 @@ class OffsetGeometry {
             
             if (arcMap.has(i)) {
                 const arcInfo = arcMap.get(i);
-                
-                // Validate progression
                 const newI = arcInfo.endIndex;
+                
                 if (newI <= i) {
-                    console.error(`[OffsetEngine] Arc segment would move index backward: ${i} -> ${newI}`);
-                    throw new Error(`Invalid arc segment index progression`);
+                    console.error(`[OffsetEngine] Arc would move index backward: ${i} -> ${newI}`);
+                    throw new Error('Invalid arc segment progression');
                 }
                 
-                // Add arc segment
                 segments.push({
                     type: 'arc',
                     center: arcInfo.center,
@@ -154,14 +147,33 @@ class OffsetGeometry {
             }
         }
         
+        // CRITICAL FIX: Add closing segment for closed paths
+        if (primitive.closed && points.length > 2) {
+            const lastIndex = points.length - 1;
+            
+            // Check if an arc already handles the closure
+            const hasClosingArc = arcMap.has(lastIndex) && 
+                (arcMap.get(lastIndex).endIndex === 0 || 
+                 arcMap.get(lastIndex).wrappedPart === 1);
+            
+            if (!hasClosingArc) {
+                // Add closing line segment
+                segments.push({
+                    type: 'line',
+                    start: points[lastIndex],
+                    end: points[0],
+                    startIndex: lastIndex,
+                    endIndex: 0,
+                    isClosingSegment: true
+                });
+            }
+        }
+        
         if (safetyCounter >= maxIterations) {
-            console.error(`[OffsetEngine] Decomposition exceeded maximum iterations: ${safetyCounter}/${maxIterations}`);
-            throw new Error(`Path decomposition exceeded maximum iterations`);
+            console.error(`[OffsetEngine] Decomposition exceeded ${maxIterations} iterations`);
+            throw new Error('Path decomposition exceeded maximum iterations');
         }
 
-        if (this.debug) {
-            console.log(`[OffsetEngine] Decomposition complete: ${segments.length} segments`);
-        }
         return segments;
     }
     
@@ -181,7 +193,7 @@ class OffsetGeometry {
         
         if (length < this.precision) return null;
         
-        // Perpendicular normal (90° left)
+        // Perpendicular normal (90° left for standard offset)
         const nx = -dy / length;
         const ny = dx / length;
         
@@ -196,6 +208,7 @@ class OffsetGeometry {
                 y: segment.end.y + ny * distance
             },
             normal: { x: nx, y: ny },
+            direction: { x: dx / length, y: dy / length },
             originalSegment: segment
         };
     }
@@ -247,7 +260,7 @@ class OffsetGeometry {
             
             result.push(current);
             
-            if (!next) continue;
+            if (!next || i === segments.length - 1) continue;
             
             // Check if segments connect naturally
             const currentEnd = current.type === 'line' ? 
@@ -260,8 +273,8 @@ class OffsetGeometry {
                 Math.pow(nextStart.y - currentEnd.y, 2)
             );
             
+            // If gap is significant, create a join
             if (gap > this.precision) {
-                // Need a join
                 const joinGeometry = this.createJoin(
                     current, next, distance, joinType
                 );
@@ -274,7 +287,26 @@ class OffsetGeometry {
         return result;
     }
 
+    createJoin(seg1, seg2, distance, joinType) {
+        const isConvex = this.isConvexCorner(seg1, seg2, distance);
+        
+        // For concave corners, always use miter (simplest)
+        if (!isConvex) {
+            return this.createMiterJoin(seg1, seg2);
+        }
+        
+        // For convex corners, use specified join type
+        if (joinType === 'round') {
+            return this.createRoundJoin(seg1, seg2, distance);
+        } else if (joinType === 'bevel') {
+            return this.createBevelJoin(seg1, seg2);
+        }
+        
+        return this.createLimitedMiterJoin(seg1, seg2, distance);
+    }
+
     createMiterJoin(seg1, seg2) {
+        // For line-to-line, try to find intersection
         if (seg1.type !== 'line' || seg2.type !== 'line') {
             const end1 = seg1.type === 'line' ? seg1.end : seg1.endPoint;
             const start2 = seg2.type === 'line' ? seg2.start : seg2.startPoint;
@@ -292,11 +324,13 @@ class OffsetGeometry {
         );
         
         if (intersection) {
+            // Update segment endpoints to meet at miter point
             seg1.end = { x: intersection.x, y: intersection.y };
             seg2.start = { x: intersection.x, y: intersection.y };
             return [];
         }
         
+        // No intersection found - create simple connecting line
         return [{
             type: 'line',
             start: seg1.end,
@@ -307,14 +341,7 @@ class OffsetGeometry {
 
     createLimitedMiterJoin(seg1, seg2, distance) {
         if (seg1.type !== 'line' || seg2.type !== 'line') {
-            const end1 = seg1.type === 'line' ? seg1.end : seg1.endPoint;
-            const start2 = seg2.type === 'line' ? seg2.start : seg2.startPoint;
-            return [{
-                type: 'line',
-                start: end1,
-                end: start2,
-                isJoin: true
-            }];
+            return this.createBevelJoin(seg1, seg2);
         }
         
         const intersection = this.intersections.lineLineIntersection(
@@ -323,35 +350,41 @@ class OffsetGeometry {
         );
         
         if (!intersection) {
-            return [{
-                type: 'line',
-                start: seg1.end,
-                end: seg2.start,
-                isJoin: true
-            }];
+            return this.createBevelJoin(seg1, seg2);
         }
         
+        // Check miter length against limit
         const miterDistance = Math.sqrt(
             Math.pow(intersection.x - seg1.end.x, 2) +
             Math.pow(intersection.y - seg1.end.y, 2)
         );
         
         if (miterDistance > this.miterLimit * Math.abs(distance)) {
-            return [{
-                type: 'line',
-                start: seg1.end,
-                end: seg2.start,
-                isJoin: true,
-                isBevel: true
-            }];
+            // Miter too long - use bevel instead
+            return this.createBevelJoin(seg1, seg2);
         }
         
+        // Accept miter
         seg1.end = { x: intersection.x, y: intersection.y };
         seg2.start = { x: intersection.x, y: intersection.y };
         return [];
     }
 
+    createBevelJoin(seg1, seg2) {
+        const end1 = seg1.type === 'line' ? seg1.end : seg1.endPoint;
+        const start2 = seg2.type === 'line' ? seg2.start : seg2.startPoint;
+        
+        return [{
+            type: 'line',
+            start: end1,
+            end: start2,
+            isJoin: true,
+            isBevel: true
+        }];
+    }
+
     createRoundJoin(seg1, seg2, distance) {
+        // Find the original corner point
         let cornerPoint;
         if (seg1.originalSegment && seg2.originalSegment) {
             if (seg1.originalSegment.type === 'line') {
@@ -362,14 +395,7 @@ class OffsetGeometry {
         }
         
         if (!cornerPoint) {
-            const end1 = seg1.type === 'line' ? seg1.end : seg1.endPoint;
-            const start2 = seg2.type === 'line' ? seg2.start : seg2.startPoint;
-            return [{
-                type: 'line',
-                start: end1,
-                end: start2,
-                isJoin: true
-            }];
+            return this.createBevelJoin(seg1, seg2);
         }
         
         const seg1End = seg1.type === 'line' ? seg1.end : seg1.endPoint;
@@ -427,63 +453,51 @@ class OffsetGeometry {
             Math.abs(p1.y - p2.y) < this.precision;
     }
     
-    createJoin(seg1, seg2, distance, joinType) {
-        const isConvex = this.isConvexCorner(seg1, seg2, distance);
-        
-        if (!isConvex) {
-            return this.createMiterJoin(seg1, seg2);
-        }
-        
-        if (joinType === 'round') {
-            return this.createRoundJoin(seg1, seg2, distance);
-        }
-        
-        return this.createLimitedMiterJoin(seg1, seg2, distance);
-    }
-    
     isConvexCorner(seg1, seg2, distance) {
         let v1, v2;
         
+        // Get direction vectors for each segment
         if (seg1.type === 'line') {
-            const dx = seg1.end.x - seg1.start.x;
-            const dy = seg1.end.y - seg1.start.y;
-            const len = Math.sqrt(dx * dx + dy * dy);
-            v1 = { x: dx / len, y: dy / len };
+            v1 = seg1.direction || {
+                x: (seg1.end.x - seg1.start.x),
+                y: (seg1.end.y - seg1.start.y)
+            };
+            const len = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+            v1 = { x: v1.x / len, y: v1.y / len };
         } else {
-            const angle = seg1.endAngle + 
-                (seg1.clockwise ? -Math.PI/2 : Math.PI/2);
+            // For arcs, use tangent at end point
+            const angle = seg1.endAngle + (seg1.clockwise ? -Math.PI/2 : Math.PI/2);
             v1 = { x: Math.cos(angle), y: Math.sin(angle) };
         }
         
         if (seg2.type === 'line') {
-            const dx = seg2.end.x - seg2.start.x;
-            const dy = seg2.end.y - seg2.start.y;
-            const len = Math.sqrt(dx * dx + dy * dy);
-            v2 = { x: dx / len, y: dy / len };
+            v2 = seg2.direction || {
+                x: (seg2.end.x - seg2.start.x),
+                y: (seg2.end.y - seg2.start.y)
+            };
+            const len = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+            v2 = { x: v2.x / len, y: v2.y / len };
         } else {
-            const angle = seg2.startAngle + 
-                (seg2.clockwise ? -Math.PI/2 : Math.PI/2);
+            // For arcs, use tangent at start point
+            const angle = seg2.startAngle + (seg2.clockwise ? -Math.PI/2 : Math.PI/2);
             v2 = { x: Math.cos(angle), y: Math.sin(angle) };
         }
         
+        // Cross product determines turn direction
         const cross = v1.x * v2.y - v1.y * v2.x;
         
-        return (distance < 0 && cross > 0) || 
-               (distance > 0 && cross < 0);
+        // Convex if turning in same direction as offset
+        return (distance < 0 && cross > 0) || (distance > 0 && cross < 0);
     }
     
-    // FIXED: Return proper PathPrimitive instance instead of plain object
     reconstructPathPrimitive(segments, originalPrimitive, distance) {
         const points = [];
         const arcSegments = [];
         let currentIndex = 0;
         
-        if (this.debug) {
-            console.log(`[OffsetEngine] Reconstructing path from ${segments.length} segments`);
-        }
-        
         for (const segment of segments) {
             if (segment.type === 'line') {
+                // Add line segment points
                 if (points.length === 0 || 
                     !this.pointsEqual(points[points.length - 1], segment.start)) {
                     points.push(segment.start);
@@ -494,16 +508,18 @@ class OffsetGeometry {
             } else if (segment.type === 'arc') {
                 const startIdx = currentIndex;
                 
+                // Sample arc into points
                 const sampledPoints = this.sampleArc(segment);
                 sampledPoints.forEach((p, i) => {
                     if (i === 0 && points.length > 0 &&
                         this.pointsEqual(points[points.length - 1], p)) {
-                        return;
+                        return; // Skip duplicate
                     }
                     points.push(p);
                     currentIndex++;
                 });
                 
+                // Store arc segment metadata
                 arcSegments.push({
                     startIndex: startIdx,
                     endIndex: currentIndex - 1,
@@ -517,11 +533,7 @@ class OffsetGeometry {
             }
         }
         
-        if (this.debug) {
-            console.log(`[OffsetEngine] Reconstructed: ${points.length} points, ${arcSegments.length} arc segments`);
-        }
-        
-        // CRITICAL FIX: Use PathPrimitive constructor if available
+        // Use PathPrimitive constructor if available
         if (typeof PathPrimitive !== 'undefined') {
             const pathPrim = new PathPrimitive(points, {
                 ...originalPrimitive.properties,
@@ -533,18 +545,10 @@ class OffsetGeometry {
             pathPrim.arcSegments = arcSegments;
             pathPrim.closed = originalPrimitive.closed || false;
             
-            if (this.debug) {
-                console.log('[OffsetEngine] Created PathPrimitive instance');
-            }
-            
             return pathPrim;
         }
         
-        // Fallback: Create object with getBounds method
-        if (this.debug) {
-            console.warn('[OffsetEngine] PathPrimitive not available, using fallback');
-        }
-        
+        // Fallback
         return {
             type: 'path',
             points: points,
@@ -573,44 +577,32 @@ class OffsetGeometry {
         };
     }
 
-    resolveSelfIntersections(segments) {
-        if (segments.length < 3) return segments;
-        
-        const result = [];
-        const processed = new Set();
+    // NEW: Detect all self-intersections (for debugging and future trimming)
+    detectAllIntersections(segments) {
+        const intersections = [];
         
         for (let i = 0; i < segments.length; i++) {
-            if (processed.has(i)) continue;
-            
-            const currentSeg = segments[i];
-            let hasIntersection = false;
-            
-            for (let j = 0; j < result.length - 1; j++) {
-                const prevSeg = result[j];
-                
+            for (let j = i + 2; j < segments.length; j++) {
+                // Skip adjacent segments and near-adjacent (closing)
                 if (Math.abs(i - j) <= 1 || 
-                    Math.abs(i - j) >= segments.length - 1) {
+                    (i === 0 && j === segments.length - 1)) {
                     continue;
                 }
                 
-                const intersection = this.segmentIntersection(
-                    currentSeg, 
-                    prevSeg
-                );
-                
+                const intersection = this.segmentIntersection(segments[i], segments[j]);
                 if (intersection) {
-                    hasIntersection = true;
-                    this.trimLoop(result, j, currentSeg, intersection);
-                    break;
+                    intersections.push({
+                        point: intersection,
+                        segment1Index: i,
+                        segment2Index: j,
+                        segment1: segments[i],
+                        segment2: segments[j]
+                    });
                 }
-            }
-            
-            if (!hasIntersection) {
-                result.push(currentSeg);
             }
         }
         
-        return result;
+        return intersections;
     }
 
     segmentIntersection(seg1, seg2) {
@@ -625,27 +617,7 @@ class OffsetGeometry {
         }
         return null;
     }
-
-    trimLoop(result, intersectionIndex, currentSegment, intersection) {
-        const prevSeg = result[intersectionIndex];
-        if (prevSeg.type === 'line') {
-            prevSeg.end = intersection;
-        } else if (prevSeg.type === 'arc') {
-            const dx = intersection.x - prevSeg.center.x;
-            const dy = intersection.y - prevSeg.center.y;
-            prevSeg.endAngle = Math.atan2(dy, dx);
-            prevSeg.endPoint = intersection;
-        }
-        
-        result.splice(intersectionIndex + 1);
-        
-        if (currentSegment.type === 'line') {
-            currentSegment.start = intersection;
-        } else if (currentSegment.type === 'arc') {
-            const dx = intersection.x - currentSegment.center.x;
-            const dy = intersection.y - currentSegment.center.y;
-            currentSegment.startAngle = Math.atan2(dy, dx);
-            currentSegment.startPoint = intersection;
-        }
-    }
 }
+
+// Export
+window.OffsetGeometry = OffsetGeometry;

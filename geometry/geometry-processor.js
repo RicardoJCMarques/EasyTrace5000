@@ -1,6 +1,6 @@
 // geometry/geometry-processor.js
 // High-level geometry processing pipeline orchestrator
-// SIMPLIFIED: Removed unnecessary Clipper2 orientation connection
+// ENHANCED: Added unionGeometry method for offset merging
 
 (function() {
     'use strict';
@@ -45,7 +45,8 @@
                 strokesConverted: 0,
                 holesDetected: 0,
                 curvesRegistered: 0,
-                curvesReconstructed: 0
+                curvesReconstructed: 0,
+                unionOperations: 0
             };
             
             // Initialize promise
@@ -124,7 +125,6 @@
             if (fusionOptions.enableArcReconstruction && window.globalCurveRegistry?.registry?.size > 0) {
                 this.debug(`=== RECONSTRUCTION PHASE ===`);
                 
-                // Store pre-reconstruction state for debugging
                 const preReconstructionCount = fused.length;
                 
                 finalGeometry = this.arcReconstructor.processForReconstruction(fused);
@@ -138,7 +138,6 @@
                 this.debug(`  Partial arcs found: ${stats.partialArcs}`);
                 this.debug(`  Groups with gaps merged: ${stats.wrappedGroups}`);
                 
-                // Verify reconstruction results
                 if (this.options.debug) {
                     this.verifyReconstructionResults(finalGeometry);
                 }
@@ -155,6 +154,64 @@
             this.debug(`Result: ${primitives.length} → ${finalGeometry.length} primitives`);
             
             return finalGeometry;
+        }
+        
+        // NEW: Union geometry for offset pass merging
+        async unionGeometry(primitives, options = {}) {
+            await this.ensureInitialized();
+            
+            if (!primitives || primitives.length === 0) return [];
+            
+            this.debug(`=== UNION OPERATION START ===`);
+            this.debug(`Input: ${primitives.length} primitives`);
+            
+            // Ensure all primitives have dark polarity for union
+            const darkPrimitives = primitives.map(p => {
+                const copy = { ...p };
+                if (!copy.properties) copy.properties = {};
+                copy.properties.polarity = 'dark';
+                return copy;
+            });
+            
+            try {
+                // Use Clipper union operation
+                const result = await this.clipper.union(darkPrimitives);
+                
+                // Count holes in result
+                let holesFound = 0;
+                result.forEach(p => {
+                    if (p.holes && p.holes.length > 0) {
+                        holesFound += p.holes.length;
+                    }
+                });
+                
+                if (holesFound > 0) {
+                    this.debug(`Union preserved ${holesFound} holes`);
+                }
+                
+                // Update statistics
+                this.stats.unionOperations++;
+                
+                this.debug(`=== UNION OPERATION COMPLETE ===`);
+                this.debug(`Result: ${primitives.length} → ${result.length} primitives`);
+                
+                // Ensure proper primitive structure
+                return result.map(p => {
+                    if (typeof PathPrimitive !== 'undefined' && !(p instanceof PathPrimitive)) {
+                        return this._createPathPrimitive(p.points, {
+                            ...p.properties,
+                            holes: p.holes || [],
+                            curveIds: p.curveIds,
+                            hasReconstructableCurves: p.hasReconstructableCurves
+                        });
+                    }
+                    return p;
+                });
+                
+            } catch (error) {
+                console.error('Union operation failed:', error);
+                throw error;
+            }
         }
         
         // Verify metadata propagation through pipeline
@@ -227,17 +284,13 @@
             for (const primitive of primitives) {
                 if (!this._validatePrimitive(primitive)) continue;
                 
-                // Preserve original index
                 const originalIndex = primitive._originalIndex;
-                
-                // Get curve IDs from primitive itself (already registered)
                 const curveIds = primitive.curveIds || [];
                 
                 if (this.options.debug && curveIds.length > 0) {
                     this.debug(`Primitive ${originalIndex} has ${curveIds.length} registered curves: [${curveIds.join(', ')}]`);
                 }
                 
-                // Determine if stroke conversion is needed
                 const operationType = primitive.properties?.operationType;
                 const isStroke = (primitive.properties?.stroke && !primitive.properties?.fill) || 
                                primitive.properties?.isTrace;
@@ -252,9 +305,7 @@
                 }
                 
                 if (processedPrimitive) {
-                    // Preserve the original index through preprocessing
                     processedPrimitive._originalIndex = originalIndex;
-                    // Store curve IDs at primitive level
                     if (curveIds.length > 0) {
                         processedPrimitive.curveIds = curveIds;
                     }
@@ -277,12 +328,10 @@
             
             if (primitive.type === 'path') {
                 points = primitive.points;
-                // Preserve arc segments from path
                 if (primitive.arcSegments) {
                     arcSegments = primitive.arcSegments;
                 }
             } else if (primitive.type === 'circle') {
-                // Convert to polygon with curve metadata
                 if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
                     const pathPrimitive = primitive.toPolygon();
                     
@@ -295,7 +344,6 @@
                     
                     return pathPrimitive;
                 } else {
-                    // Fallback conversion
                     const segments = GeometryUtils.getOptimalSegments(primitive.radius);
                     for (let i = 0; i < segments; i++) {
                         const angle = (i / segments) * 2 * Math.PI;
@@ -303,7 +351,6 @@
                             x: primitive.center.x + primitive.radius * Math.cos(angle),
                             y: primitive.center.y + primitive.radius * Math.sin(angle)
                         };
-                        // Tag points with curve ID if available
                         if (curveIds.length > 0) {
                             point.curveId = curveIds[0];
                             point.segmentIndex = i;
@@ -322,7 +369,6 @@
                     { x, y: y + h }
                 ];
             } else if (primitive.type === 'obround') {
-                // Convert to polygon with curve metadata
                 if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
                     const pathPrimitive = primitive.toPolygon();
                     
@@ -338,7 +384,6 @@
                     points = GeometryUtils.obroundToPoints(primitive);
                 }
             } else if (primitive.type === 'arc') {
-                // Convert to polygon with curve metadata
                 if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
                     const pathPrimitive = primitive.toPolygon();
                     
@@ -357,7 +402,6 @@
                         primitive.center,
                         primitive.clockwise
                     );
-                    // Tag points with curve ID if available
                     if (curveIds.length > 0) {
                         points = points.map((p, i) => ({ 
                             ...p, 
@@ -374,12 +418,10 @@
                     originalType: primitive.type
                 });
                 
-                // Preserve arc segments
                 if (arcSegments.length > 0) {
                     pathPrimitive.arcSegments = arcSegments;
                 }
                 
-                // Store curve IDs at primitive level
                 if (curveIds.length > 0) {
                     pathPrimitive.curveIds = curveIds;
                 }
@@ -392,7 +434,6 @@
         
         // Perform boolean fusion
         async _performFusion(primitives, options) {
-            // Separate by polarity
             const darkPrimitives = [];
             const clearPrimitives = [];
             
@@ -408,10 +449,8 @@
             
             this.debug(`Fusion input: ${darkPrimitives.length} dark, ${clearPrimitives.length} clear`);
             
-            // Execute boolean difference
             const result = await this.clipper.difference(darkPrimitives, clearPrimitives);
             
-            // Count holes
             let holesFound = 0;
             result.forEach(p => {
                 if (p.holes && p.holes.length > 0) {
@@ -424,7 +463,6 @@
                 this.debug(`Detected ${holesFound} holes in fused geometry`);
             }
             
-            // Ensure proper primitive structure
             return result.map(p => {
                 if (typeof PathPrimitive !== 'undefined' && !(p instanceof PathPrimitive)) {
                     return this._createPathPrimitive(p.points, {
@@ -480,17 +518,14 @@
             if (typeof PathPrimitive !== 'undefined') {
                 const primitive = new PathPrimitive(points, properties);
                 
-                // Restore arc segments if present
                 if (properties.arcSegments) {
                     primitive.arcSegments = properties.arcSegments;
                 }
                 
-                // Store curve IDs if present
                 if (properties.curveIds) {
                     primitive.curveIds = properties.curveIds;
                 }
                 
-                // Mark if has reconstructable curves
                 if (properties.hasReconstructableCurves) {
                     primitive.hasReconstructableCurves = true;
                 }
@@ -517,7 +552,6 @@
                         maxX = Math.max(maxX, p.x);
                         maxY = Math.max(maxY, p.y);
                     });
-                    // Include holes in bounds
                     if (this.holes && this.holes.length > 0) {
                         this.holes.forEach(hole => {
                             hole.forEach(p => {
@@ -581,20 +615,6 @@
             }
         }
         
-        // Placeholder methods for future offset functionality
-        async prepareForOffsetGeneration() {
-            await this.ensureInitialized();
-            const fusedPrimitives = await this.fuseGeometry(this.getFuseablePrimitives());
-            this.debug('Offset preparation not yet implemented');
-            return fusedPrimitives;
-        }
-        
-        async generateOffsetGeometry(offsetDistance, options = {}) {
-            await this.ensureInitialized();
-            this.debug(`Offset generation (${offsetDistance}mm) not yet implemented`);
-            return [];
-        }
-        
         // Compatibility methods
         getPreprocessedPrimitives() {
             return this.getCachedState('preprocessedGeometry');
@@ -602,11 +622,6 @@
         
         getFusedPrimitives() {
             return this.getCachedState('fusedGeometry');
-        }
-        
-        getFuseablePrimitives() {
-            // This should be called by cam-core.js
-            return [];
         }
     }
     
