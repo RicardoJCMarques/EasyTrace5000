@@ -1,7 +1,5 @@
 // renderer/renderer-primitives.js
-// Handles drawing all primitive types
-// FIXED: Arc direction for Y-flipped coordinates
-// FIXED: Offset primitive rendering with correct stroke width and color
+// FIXED: Preview check BEFORE offset check, dedicated preview renderer
 
 (function() {
     'use strict';
@@ -14,7 +12,6 @@
             this.core = core;
             this.ctx = core.ctx;
             
-            // Track debug statistics
             this.debugStats = {
                 totalPoints: 0,
                 taggedPoints: 0,
@@ -25,7 +22,15 @@
         renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false) {
             this.ctx.save();
 
-            // FIXED: Check if offset geometry - render with special handling
+            // FIXED: Check preview FIRST before offset
+            const isPreview = primitive.properties?.isPreview === true;
+            if (isPreview) {
+                this.renderPreviewPrimitive(primitive, strokeColor);
+                this.ctx.restore();
+                return;
+            }
+            
+            // Then check offset
             const isOffset = primitive.properties?.isOffset === true;
             if (isOffset) {
                 if (debugConfig.enabled && debugConfig.logging?.renderOperations) {
@@ -33,10 +38,10 @@
                 }
                 this.renderOffsetPrimitive(primitive, fillColor, strokeColor);
                 this.ctx.restore();
-                return; // Early return - no debug overlay
+                return;
             }
             
-            // Check if reconstructed
+            // Check reconstructed
             const isReconstructed = primitive.properties?.reconstructed === true;
             if (isReconstructed) {
                 this.renderReconstructedPrimitive(primitive, fillColor, strokeColor);
@@ -58,25 +63,59 @@
             this.ctx.restore();
         }
         
-        // FIXED: Offset rendering with correct stroke and no fill
+        // NEW: Dedicated preview renderer using tool diameter
+        renderPreviewPrimitive(primitive, strokeColor) {
+            const toolDiameter = primitive.properties.toolDiameter || 0.2;
+            
+            this.ctx.fillStyle = 'transparent';
+            this.ctx.strokeStyle = strokeColor;
+            this.ctx.lineWidth = toolDiameter;  // Use tool diameter directly
+            this.ctx.lineCap = 'round';
+            this.ctx.lineJoin = 'round';
+            
+            if (debugConfig.enabled) {
+                console.log(`[Renderer] Preview: tool=${toolDiameter}mm, type=${primitive.type}`);
+            }
+            
+            if (primitive.type === 'circle') {
+                // For drill preview - just stroke the circle at tool diameter
+                this.ctx.beginPath();
+                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
+                this.ctx.stroke();
+            } else if (primitive.type === 'path') {
+                // For isolation preview
+                if (primitive.arcSegments?.length > 0) {
+                    this.renderHybridPathStrokeOnly(primitive, strokeColor);
+                } else {
+                    this.ctx.beginPath();
+                    primitive.points.forEach((p, i) => {
+                        if (i === 0) this.ctx.moveTo(p.x, p.y);
+                        else this.ctx.lineTo(p.x, p.y);
+                    });
+                    if (primitive.closed) this.ctx.closePath();
+                    this.ctx.stroke();
+                }
+            }
+        }
+        
+        // Offset rendering with correct stroke width
         renderOffsetPrimitive(primitive, fillColor, strokeColor) {
             this.ctx.save();
             
-            // FIXED: Correct stroke width calculation (inverse of scale)
+            // Inverse of scale for consistent screen-space width
             this.ctx.lineWidth = 2 / this.core.viewScale;
-            
-            // FIXED: Explicitly set stroke color and no fill
-            this.ctx.strokeStyle = strokeColor;
+             // Use different colors for internal vs external offsets
+            const offsetDistance = primitive.properties?.offsetDistance || 0;
+            const isInternal = offsetDistance > 0;
+            this.ctx.strokeStyle = isInternal ? '#00aa00ff' : strokeColor; // Green for internal, red for external
             this.ctx.fillStyle = 'transparent';
             
             if (debugConfig.enabled) {
-                console.log(`[Renderer] Offset render: width=${this.ctx.lineWidth.toFixed(3)}, color=${strokeColor}`);
+                console.log(`[Renderer] Offset: width=${this.ctx.lineWidth.toFixed(3)}, color=${strokeColor}`);
             }
             
-            // Render based on type - STROKE ONLY
             if (primitive.type === 'path') {
                 if (primitive.arcSegments?.length > 0) {
-                    // Use hybrid rendering for paths with arcs
                     this.renderHybridPathStrokeOnly(primitive, strokeColor);
                 } else {
                     this.ctx.beginPath();
@@ -103,7 +142,7 @@
             this.ctx.restore();
         }
         
-        // FIXED: Hybrid path rendering with correct arc direction
+        // Hybrid path rendering - ensure complete arc coverage
         renderHybridPath(primitive, fillColor, strokeColor) {
             const path2d = new Path2D();
             const points = primitive.points;
@@ -113,31 +152,31 @@
             const segments = (primitive.arcSegments || []).slice().sort((a, b) => a.startIndex - b.startIndex);
             
             let currentIndex = 0;
-            
             path2d.moveTo(points[0].x, points[0].y);
             currentIndex = 1;
             
             for (const arc of segments) {
+                // FIXED: Only render lines up to arc start (not including it)
                 for (let i = currentIndex; i < arc.startIndex; i++) {
                     if (points[i]) path2d.lineTo(points[i].x, points[i].y);
                 }
                 
-                if (points[arc.startIndex]) {
+                // Move to arc start if not already there
+                if (currentIndex <= arc.startIndex && points[arc.startIndex]) {
                     path2d.lineTo(points[arc.startIndex].x, points[arc.startIndex].y);
                 }
                 
+                // Render arc
                 path2d.arc(
-                    arc.center.x,
-                    arc.center.y,
-                    arc.radius,
-                    arc.startAngle,
-                    arc.endAngle,
-                    arc.clockwise
+                    arc.center.x, arc.center.y, arc.radius,
+                    arc.startAngle, arc.endAngle, arc.clockwise
                 );
                 
+                // Skip all interpolated points covered by arc
                 currentIndex = arc.endIndex + 1;
             }
             
+            // Render remaining lines after last arc
             for (let i = currentIndex; i < points.length; i++) {
                 if (points[i]) path2d.lineTo(points[i].x, points[i].y);
             }
@@ -170,7 +209,6 @@
             }
         }
         
-        // NEW: Hybrid path stroke-only for offsets
         renderHybridPathStrokeOnly(primitive, strokeColor) {
             const path2d = new Path2D();
             const points = primitive.points;
@@ -180,16 +218,16 @@
             const segments = (primitive.arcSegments || []).slice().sort((a, b) => a.startIndex - b.startIndex);
             
             let currentIndex = 0;
-            
             path2d.moveTo(points[0].x, points[0].y);
             currentIndex = 1;
             
             for (const arc of segments) {
+                // Only render lines up to arc start
                 for (let i = currentIndex; i < arc.startIndex; i++) {
                     if (points[i]) path2d.lineTo(points[i].x, points[i].y);
                 }
                 
-                if (points[arc.startIndex]) {
+                if (currentIndex <= arc.startIndex && points[arc.startIndex]) {
                     path2d.lineTo(points[arc.startIndex].x, points[arc.startIndex].y);
                 }
                 
@@ -213,7 +251,6 @@
             this.ctx.stroke(path2d);
         }
         
-        // Debug visualization for curve metadata survival
         renderCurveMetadataDebug(primitive) {
             if (!primitive.points || primitive.points.length === 0) return;
             
@@ -222,7 +259,6 @@
             this.debugStats.curvePoints.clear();
             
             this.ctx.save();
-            
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             
             const pointRadius = 4;
@@ -676,16 +712,41 @@
             this.ctx.fill();
         }
         
+        // Drill rendering using diameter property
         renderCircleNormal(primitive, props, fillColor, strokeColor) {
             this.ctx.beginPath();
+            
+            // Special rendering for drill holes
+            if (props.isDrillHole) {
+                // Use the primitive's actual radius - it was already calculated correctly
+                const displayRadius = primitive.radius;
+                
+                // Draw outline
+                this.ctx.arc(primitive.center.x, primitive.center.y, displayRadius, 0, 2 * Math.PI);
+                this.ctx.strokeStyle = strokeColor;
+                this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
+                this.ctx.stroke();
+                
+                // Draw center mark
+                const markSize = Math.min(0.2, displayRadius * 0.4);
+                this.ctx.beginPath();
+                this.ctx.moveTo(primitive.center.x - markSize, primitive.center.y);
+                this.ctx.lineTo(primitive.center.x + markSize, primitive.center.y);
+                this.ctx.moveTo(primitive.center.x, primitive.center.y - markSize);
+                this.ctx.lineTo(primitive.center.x, primitive.center.y + markSize);
+                this.ctx.stroke();
+                return;
+            }
+            
+            // Normal circle rendering continues...
             this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
             
-            if (props.isDrillHole || props.isBranchJunction || props.isFlash || props.fill !== false) {
+            if (props.isBranchJunction || props.isFlash || props.fill !== false) {
                 this.ctx.fillStyle = fillColor;
                 this.ctx.fill();
             }
             
-            if (props.stroke && !props.isDrillHole) {
+            if (props.stroke) {
                 this.ctx.lineWidth = props.strokeWidth || 0.1;
                 this.ctx.strokeStyle = strokeColor;
                 this.ctx.stroke();

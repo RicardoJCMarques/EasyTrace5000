@@ -130,7 +130,7 @@
                         maxDepthPerPass: 0.05,
                         stepOver: 0.5
                     },
-                    operations: ['isolation', 'clearing', 'cutout'],
+                    operations: ['isolation', 'clear', 'cutout'],
                     material: 'carbide'
                 },
                 {

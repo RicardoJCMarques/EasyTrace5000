@@ -16,7 +16,6 @@
 
     <!-- Top Toolbar -->
     <header class="cam-toolbar" id="cam-toolbar">
-        <!-- Quick Actions Menu (left) -->
         <div class="toolbar-section toolbar-left">
             <div class="dropdown-menu">
                 <button class="btn-menu" id="quick-actions-btn">
@@ -39,18 +38,16 @@
                         <span>📄</span> Export G-Code
                     </button>
                     <button class="menu-item" id="toolbar-export-svg">
-                        <span>📐</span> Export SVG
+                        <span>🖼</span> Export SVG
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- Title/Info (center) -->
         <div class="toolbar-section toolbar-center">
             <span class="workspace-title">PCB CAM Workspace</span>
         </div>
 
-        <!-- Canvas Tools (right) -->
         <div class="toolbar-section toolbar-right">
             <button class="btn-tool" id="zoom-fit-btn" title="Fit to View">
                 <svg width="20" height="20" viewBox="0 0 20 20">
@@ -92,9 +89,8 @@
 
     <!-- Main CAM Workspace -->
     <div class="cam-workspace" id="cam-workspace">
-        <!-- Left Sidebar - Operations & Visualization -->
+        <!-- Left Sidebar -->
         <aside class="sidebar sidebar-left" id="sidebar-left">
-            <!-- Operations Tree Section -->
             <div class="sidebar-section browser-section">
                 <header class="section-header">
                     <h2>Operations</h2>
@@ -112,7 +108,6 @@
                     </div>
                 </header>
                 <div class="tree-view" id="operations-tree">
-                    <!-- Operation categories populated dynamically -->
                     <div class="operation-category" data-op-type="isolation">
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
@@ -167,8 +162,6 @@
                     </div>
                 </div>
             </div>
-
-
         </aside>
 
         <!-- Main Canvas Area -->
@@ -176,13 +169,11 @@
             <div class="canvas-container">
                 <canvas id="preview-canvas"></canvas>
                 
-                <!-- Canvas Loading Overlay -->
                 <div id="canvas-loading-overlay" class="canvas-loading-overlay hidden">
                     <div class="loading-spinner"></div>
                     <div id="canvas-loading-message" class="loading-message"></div>
                 </div>
 
-                <!-- Coordinate Display -->
                 <div class="coordinate-display" id="coordinate-display">
                     <span>X: <span id="coord-x">0.00</span></span>
                     <span>Y: <span id="coord-y">0.00</span></span>
@@ -191,19 +182,8 @@
             </div>
         </main>
 
-        <!-- Right Sidebar - Properties -->
+        <!-- Right Sidebar -->
         <aside class="sidebar sidebar-right" id="sidebar-right">
-            <!-- Property Inspector Section -->
-            <div class="sidebar-section inspector-section">
-                <header class="section-header">
-                    <h2 id="inspector-title">Properties</h2>
-                </header>
-                <div class="property-form" id="property-form">
-                    <div class="property-empty">Select an operation to view properties</div>
-                </div>
-            </div>
-
-            <!-- Coordinate System Controls -->
             <div class="sidebar-section coordinate-section">
                 <header class="section-header collapsible-header" data-target="coordinate-controls">
                     <h2>Origin & Rotation</h2>
@@ -249,33 +229,16 @@
                 </div>
             </div>
 
-            <!-- Statistics Section -->
-            <div class="sidebar-section stats-section">
-                <header class="section-header collapsible-header" data-target="stats-content">
-                    <h2>Statistics</h2>
-                    <span class="collapse-indicator">▼</span>
+            <div class="sidebar-section inspector-section">
+                <header class="section-header">
+                    <h2 id="inspector-title">Properties</h2>
                 </header>
-                <div class="section-content collapsed" id="stats-content">
-                    <div class="stats-display">
-                        <div class="stat-item">
-                            <span class="stat-label">Files:</span>
-                            <span class="stat-value" id="stat-files">0</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Operations:</span>
-                            <span class="stat-value" id="stat-operations">0</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Primitives:</span>
-                            <span class="stat-value" id="stat-primitives">0</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Toolpaths:</span>
-                            <span class="stat-value" id="stat-toolpaths">0</span>
-                        </div>
-                    </div>
+                <div class="property-form" id="property-form">
+                    <div class="property-empty">Select an operation to view properties</div>
                 </div>
             </div>
+
+
         </aside>
     </div>
 
@@ -286,7 +249,6 @@
             <span class="collapse-indicator">▲</span>
         </header>
         <div class="section-content" id="viz-controls">
-            <!-- Display Options -->
             <div class="control-group">
                 <h3>Display</h3>
                 <label class="checkbox-control">
@@ -307,7 +269,6 @@
                 </label>
             </div>
 
-            <!-- Layer Visibility -->
             <div class="control-group">
                 <h3>Layers</h3>
                 <label class="checkbox-control">
@@ -332,7 +293,6 @@
                 </label>
             </div>
 
-            <!-- Advanced/Debug -->
             <div class="control-group">
                 <h3>Advanced</h3>
                 <label class="checkbox-control">
@@ -357,7 +317,6 @@
                 </label>
             </div>
 
-            <!-- Arc Reconstruction Stats -->
             <div id="arc-reconstruction-stats" class="stats-info hidden"></div>
         </div>
     </div>
@@ -390,8 +349,6 @@
     </footer>
 
     <!-- Templates -->
-    
-    <!-- File Node Template (under operation category) -->
     <template id="file-node-template">
         <div class="file-node" data-file-id="">
             <div class="file-node-content">
@@ -417,7 +374,6 @@
         </div>
     </template>
 
-    <!-- Geometry Node Template (under file) -->
     <template id="geometry-node-template">
         <div class="geometry-node" data-geometry-id="" data-geometry-type="">
             <div class="geometry-node-content">
@@ -430,102 +386,13 @@
                         <circle cx="10" cy="10" r="3" stroke="currentColor" fill="none"/>
                     </svg>
                 </button>
-                <button class="btn-icon btn-tiny delete-geometry-btn" title="Delete Geometry">D</button>
+                <button class="btn-icon btn-tiny delete-geometry-btn" title="Delete Geometry">
+                    <svg width="12" height="12" viewBox="0 0 20 20">
+                        <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
+                        <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </button>
             </div>
-        </div>
-    </template>
-
-    <!-- Property Form Templates -->
-    <template id="property-operation-template">
-        <div class="property-group">
-            <h3>Operation Settings</h3>
-            <div class="property-field">
-                <label>Type</label>
-                <input type="text" readonly class="readonly" id="prop-type">
-            </div>
-            <div class="property-field">
-                <label>Source File</label>
-                <input type="text" readonly class="readonly" id="prop-source">
-            </div>
-        </div>
-        <div class="property-group">
-            <h3>Tool Selection</h3>
-            <div class="property-field">
-                <label>Tool</label>
-                <select id="prop-tool"></select>
-            </div>
-            <div class="property-field">
-                <label>Tool Diameter</label>
-                <div class="input-with-unit">
-                    <input type="number" id="prop-tool-diameter" readonly>
-                    <span class="unit">mm</span>
-                </div>
-            </div>
-        </div>
-        <div class="property-group">
-            <h3>Cutting Parameters</h3>
-            <div class="property-field">
-                <label>Number of Passes</label>
-                <input type="number" id="prop-passes" min="1" max="10" value="1">
-            </div>
-            <div class="property-field">
-                <label>Step Over</label>
-                <div class="input-with-unit">
-                    <input type="number" id="prop-stepover" min="10" max="100" value="50">
-                    <span class="unit">%</span>
-                </div>
-            </div>
-            <div class="property-field">
-                <label>Cut Depth</label>
-                <div class="input-with-unit">
-                    <input type="number" id="prop-cut-depth" min="0.001" step="0.001" value="0.05">
-                    <span class="unit">mm</span>
-                </div>
-            </div>
-            <div class="property-field">
-                <label>Feed Rate</label>
-                <div class="input-with-unit">
-                    <input type="number" id="prop-feed-rate" min="1" max="5000" value="150">
-                    <span class="unit">mm/min</span>
-                </div>
-            </div>
-            <div class="property-field">
-                <label>Plunge Rate</label>
-                <div class="input-with-unit">
-                    <input type="number" id="prop-plunge-rate" min="1" max="1000" value="50">
-                    <span class="unit">mm/min</span>
-                </div>
-            </div>
-            <div class="property-field">
-                <label>Spindle Speed</label>
-                <div class="input-with-unit">
-                    <input type="number" id="prop-spindle-speed" min="100" max="30000" value="12000">
-                    <span class="unit">RPM</span>
-                </div>
-            </div>
-        </div>
-        <div class="property-group">
-            <h3>Strategy</h3>
-            <div class="property-field">
-                <label>Direction</label>
-                <select id="prop-direction">
-                    <option value="climb">Climb Milling</option>
-                    <option value="conventional">Conventional</option>
-                </select>
-            </div>
-            <div class="property-field">
-                <label>Entry Type</label>
-                <select id="prop-entry">
-                    <option value="plunge">Plunge</option>
-                    <option value="ramp">Ramp</option>
-                    <option value="helix">Helix</option>
-                </select>
-            </div>
-        </div>
-        <div class="property-actions">
-            <button class="btn btn-primary" id="apply-properties-btn">Apply Changes</button>
-            <button class="btn btn-primary" id="generate-offsets-btn">Generate Offset Geometry</button>
-            <button class="btn btn-secondary" id="reset-properties-btn">Reset</button>
         </div>
     </template>
 
@@ -584,7 +451,6 @@
             </div>
             <div class="modal-body">
                 <div class="upload-zones">
-                    <!-- Isolation Zone -->
                     <div class="upload-zone" data-op-type="isolation">
                         <div class="zone-header">
                             <span class="zone-icon">🎯</span>
@@ -603,7 +469,6 @@
                         <div class="zone-status" id="isolation-status"></div>
                     </div>
 
-                    <!-- Drill Zone -->
                     <div class="upload-zone" data-op-type="drill">
                         <div class="zone-header">
                             <span class="zone-icon">🔧</span>
@@ -622,7 +487,6 @@
                         <div class="zone-status" id="drill-status"></div>
                     </div>
 
-                    <!-- Clear Zone -->
                     <div class="upload-zone" data-op-type="clear">
                         <div class="zone-header">
                             <span class="zone-icon">🔄</span>
@@ -641,7 +505,6 @@
                         <div class="zone-status" id="clear-status"></div>
                     </div>
 
-                    <!-- Cutout Zone -->
                     <div class="upload-zone" data-op-type="cutout">
                         <div class="zone-header">
                             <span class="zone-icon">✂️</span>
@@ -668,13 +531,77 @@
         </div>
     </div>
 
-    <!-- Hidden file input for quick access -->
+    <!-- Multi-Operation G-code Export Modal -->
+    <div id="gcode-export-modal" class="modal">
+        <div class="modal-content modal-gcode">
+            <div class="modal-header">
+                <h2>Export G-code</h2>
+                <button class="modal-close" id="gcode-modal-close">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="gcode-options">
+                    <h3>Select Operations to Export</h3>
+                    <div class="operation-checklist" id="gcode-operation-list">
+                        <!-- Dynamically populated -->
+                    </div>
+
+                    <h3>Export Order</h3>
+                    <p class="help-text">Drag operations to reorder. Operations will be exported in this sequence.</p>
+                    <div class="operation-order" id="gcode-operation-order">
+                        <!-- Dynamically populated, sortable -->
+                    </div>
+
+                    <h3>Output Options</h3>
+                    <div class="property-field">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="gcode-single-file" checked>
+                            <span>Export as single file</span>
+                        </label>
+                    </div>
+                    
+                    <div class="property-field">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="gcode-include-comments" checked>
+                            <span>Include operation comments</span>
+                        </label>
+                    </div>
+
+                    <div class="property-field">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="gcode-tool-changes">
+                            <span>Insert tool change commands</span>
+                        </label>
+                    </div>
+
+                    <div class="property-field">
+                        <label>Output Filename</label>
+                        <input type="text" id="gcode-filename" value="pcb-output.nc" placeholder="output.nc">
+                    </div>
+                </div>
+
+                <div class="gcode-preview">
+                    <h3>G-code Preview</h3>
+                    <div class="preview-stats" id="gcode-preview-stats">
+                        <span>Lines: <strong id="gcode-line-count">0</strong></span>
+                        <span>Operations: <strong id="gcode-op-count">0</strong></span>
+                        <span>Est. Time: <strong id="gcode-est-time">--:--</strong></span>
+                    </div>
+                    <textarea id="gcode-preview-text" readonly rows="15" placeholder="G-code preview will appear here..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="gcode-cancel-btn">Cancel</button>
+                <button class="btn btn-secondary" id="gcode-preview-btn">Update Preview</button>
+                <button class="btn btn-primary" id="gcode-export-btn">Export G-code</button>
+            </div>
+        </div>
+    </div>
+
     <input type="file" id="file-input-hidden" class="hidden" multiple>
 
     <!-- Scripts -->
     <script src="config.js"></script>
     <script>
-        // Script loading sequence
         const scripts = [
             // Geometry and processing
             'geometry/clipper2z.js',
@@ -684,7 +611,6 @@
             'geometry/geometry-clipper-wrapper.js',
             'geometry/geometry-utils.js',
             'geometry/geometry-offsetter.js',
-            
             // Parsers and primitives
             'parsers/primitives.js',
             'parsers/parser-core.js',
@@ -692,28 +618,25 @@
             'parsers/parser-excellon.js',
             'parsers/parser-svg.js',
             'parsers/parser-plotter.js',
-            
             // Rendering
             'renderer/renderer-core.js',
             'renderer/renderer-primitives.js',
             'renderer/renderer-overlay.js',
             'renderer/renderer-interaction.js',
             'renderer/renderer-layer.js',
-            
-            // Export
+            // Exports
             'export/svg-exporter.js',
-            
             // Coordinate system
             'coordinate/coordinate-system.js',
-            
             // UI Components
+            'ui/ui-tooltip.js',
             'ui/tool-library.js',
+            'ui/ui-parameter-manager.js',
             'ui/ui-tree-manager.js',
             'ui/ui-property-inspector.js',
             'ui/ui-visibility-panel.js',
-            'ui/ui-operations.js',
+            'ui/ui-status-manager.js',
             'ui/ui-controls.js',
-            
             // Core application
             'cam-core.js',
             'cam-ui.js',
@@ -726,7 +649,7 @@
         let failedScripts = [];
 
         function loadScript(src) {
-            return new Promise((resolve, reject) => {
+            return new Promise((resolve) => {
                 const script = document.createElement('script');
                 script.src = src;
                 script.async = false;
@@ -741,7 +664,7 @@
                     failedScripts.push(src);
                     loadedCount++;
                     updateLoadingProgress();
-                    resolve(); // Continue loading others
+                    resolve();
                 };
                 document.head.appendChild(script);
             });

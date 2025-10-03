@@ -1,33 +1,25 @@
 // geometry/geometry-offsetter.js
-// REFACTORED: Simplified offsetter - individual primitive offsetting ONLY
-// All unions, intersections, joins handled by Clipper2
+// FIXED: Cutout offsetting works for both positive and negative distance
 
 class GeometryOffsetter {
     constructor(options = {}) {
         this.precision = options.precision || 0.001;
         this.debug = options.debug || false;
         this.initialized = true;
-        
-        // Reference to geometry processor for union operations (set externally)
         this.geometryProcessor = null;
     }
     
     setGeometryProcessor(processor) {
         this.geometryProcessor = processor;
     }
+
+    isInternalOffset(distance) {
+        return distance > 0;
+    }
     
-    /**
-     * Offset a single primitive by distance
-     * Returns single primitive or null if collapsed
-     */
     async offsetPrimitive(primitive, distance, options = {}) {
-        if (!primitive || !primitive.type) {
-            return null;
-        }
-        
-        if (distance === 0) {
-            return primitive;
-        }
+        if (!primitive || !primitive.type) return null;
+        if (distance === 0) return primitive;
         
         switch (primitive.type) {
             case 'circle':
@@ -42,23 +34,25 @@ class GeometryOffsetter {
                 return this.offsetObround(primitive, distance);
             default:
                 if (this.debug) {
-                    console.warn(`[Offsetter] Unknown primitive type: ${primitive.type}`);
+                    console.warn(`[Offsetter] Unknown type: ${primitive.type}`);
                 }
                 return null;
         }
     }
     
     offsetCircle(circle, distance) {
-        const newRadius = circle.radius - distance;
+        const isInternal = distance > 0;
+        const newRadius = isInternal ? 
+            circle.radius - distance : 
+            circle.radius + Math.abs(distance);
         
         if (newRadius <= this.precision) {
             if (this.debug) {
-                console.log(`[Offsetter] Circle collapsed: ${circle.radius}mm → ${newRadius}mm`);
+                console.log(`[Offsetter] Circle collapsed`);
             }
             return null;
         }
         
-        // Register offset-derived curve
         const offsetCurveId = window.globalCurveRegistry?.register({
             type: 'circle',
             center: { ...circle.center },
@@ -71,16 +65,12 @@ class GeometryOffsetter {
         });
         
         if (typeof CirclePrimitive !== 'undefined') {
-            return new CirclePrimitive(
-                circle.center,
-                newRadius,
-                {
-                    ...circle.properties,
-                    isOffset: true,
-                    offsetDistance: distance,
-                    originalCurveId: offsetCurveId
-                }
-            );
+            return new CirclePrimitive(circle.center, newRadius, {
+                ...circle.properties,
+                isOffset: true,
+                offsetDistance: distance,
+                originalCurveId: offsetCurveId
+            });
         }
         
         return {
@@ -104,110 +94,113 @@ class GeometryOffsetter {
         };
     }
     
-    offsetArc(arc, distance) {
-        const newRadius = arc.radius - distance;
-        
-        if (newRadius <= this.precision) {
-            // Collapsed to line
-            if (typeof PathPrimitive !== 'undefined') {
-                return new PathPrimitive([arc.startPoint, arc.endPoint], {
-                    ...arc.properties,
-                    isOffset: true,
-                    wasArc: true,
-                    closed: false
-                });
+    offsetPath(path, distance) {
+        if (!path.points || path.points.length < 2) {
+            if (this.debug) {
+                console.log('[Offsetter] Insufficient points');
             }
+            return null;
+        }
+        
+        const isStroke = path.properties && 
+                        (path.properties.stroke || path.properties.isTrace) &&
+                        path.properties.strokeWidth !== undefined;
+        
+        if (isStroke) {
+            const isInternal = distance > 0;
+            const newStrokeWidth = isInternal ?
+                path.properties.strokeWidth - (2 * distance) :
+                path.properties.strokeWidth + (2 * Math.abs(distance));
+            
+            if (newStrokeWidth <= this.precision) return null;
             
             return {
                 type: 'path',
-                points: [arc.startPoint, arc.endPoint],
-                closed: false,
+                points: [...path.points],
+                closed: path.closed || false,
                 properties: {
-                    ...arc.properties,
+                    ...path.properties,
+                    strokeWidth: newStrokeWidth,
                     isOffset: true,
-                    wasArc: true
-                },
-                getBounds: function() {
-                    const xs = this.points.map(p => p.x);
-                    const ys = this.points.map(p => p.y);
-                    return {
-                        minX: Math.min(...xs),
-                        minY: Math.min(...ys),
-                        maxX: Math.max(...xs),
-                        maxY: Math.max(...ys)
-                    };
+                    offsetDistance: distance
                 }
             };
         }
         
-        // Register offset arc
-        const offsetCurveId = window.globalCurveRegistry?.register({
-            type: 'arc',
-            center: { ...arc.center },
-            radius: newRadius,
-            startAngle: arc.startAngle,
-            endAngle: arc.endAngle,
-            clockwise: arc.clockwise,
-            isOffsetDerived: true,
-            sourceCurveId: arc.properties?.originalCurveId || null,
-            offsetDistance: distance,
-            source: 'arc_offset'
-        });
-        
-        if (typeof ArcPrimitive !== 'undefined') {
-            return new ArcPrimitive(
-                arc.center,
-                newRadius,
-                arc.startAngle,
-                arc.endAngle,
-                arc.clockwise,
-                {
-                    ...arc.properties,
-                    isOffset: true,
-                    offsetDistance: distance,
-                    originalCurveId: offsetCurveId
-                }
-            );
+        // Closed paths (regions and cutouts)
+        if (path.closed && path.properties?.fill !== false) {
+            const isCutout = path.properties?.isCutout === true;
+            const strokeWidth = Math.abs(distance * 2);
+            const segmentPrimitives = [];
+            
+            // FIXED: For non-cutout regions with external offset, include original fill
+            if (!isCutout && distance < 0) {
+                segmentPrimitives.push(typeof PathPrimitive !== 'undefined' ?
+                    new PathPrimitive([...path.points], {
+                        ...path.properties,
+                        closed: true,
+                        fill: true,
+                        isOffset: true,
+                        offsetDistance: distance,
+                        isOriginalFill: true
+                    }) : {
+                        type: 'path',
+                        points: [...path.points],
+                        closed: true,
+                        properties: {
+                            ...path.properties,
+                            fill: true,
+                            isOffset: true,
+                            offsetDistance: distance,
+                            isOriginalFill: true
+                        }
+                    });
+            }
+            
+            // Generate offset perimeter segments
+            for (let i = 0; i < path.points.length; i++) {
+                const p1 = path.points[i];
+                const p2 = path.points[(i + 1) % path.points.length];
+                
+                const segmentPolygon = GeometryUtils.lineToPolygon(p1, p2, strokeWidth);
+                
+                segmentPrimitives.push(typeof PathPrimitive !== 'undefined' ?
+                    new PathPrimitive(segmentPolygon, {
+                        ...path.properties,
+                        originalType: isCutout ? 'cutout_segment' : 'region_segment',
+                        closed: true,
+                        fill: true,
+                        stroke: false,
+                        isOffset: true,
+                        offsetDistance: distance,
+                        polygonized: true,
+                        segmentIndex: i,
+                        isCutout: isCutout
+                    }) : {
+                        type: 'path',
+                        points: segmentPolygon,
+                        closed: true,
+                        properties: {
+                            ...path.properties,
+                            originalType: isCutout ? 'cutout_segment' : 'region_segment',
+                            fill: true,
+                            stroke: false,
+                            isOffset: true,
+                            offsetDistance: distance,
+                            polygonized: true,
+                            segmentIndex: i,
+                            isCutout: isCutout
+                        }
+                    });
+            }
+            
+            return segmentPrimitives;
         }
         
-        const startPoint = {
-            x: arc.center.x + newRadius * Math.cos(arc.startAngle),
-            y: arc.center.y + newRadius * Math.sin(arc.startAngle)
-        };
-        
-        const endPoint = {
-            x: arc.center.x + newRadius * Math.cos(arc.endAngle),
-            y: arc.center.y + newRadius * Math.sin(arc.endAngle)
-        };
-        
-        return {
-            type: 'arc',
-            center: arc.center,
-            radius: newRadius,
-            startAngle: arc.startAngle,
-            endAngle: arc.endAngle,
-            startPoint: startPoint,
-            endPoint: endPoint,
-            clockwise: arc.clockwise,
-            properties: {
-                ...arc.properties,
-                isOffset: true,
-                offsetDistance: distance,
-                originalCurveId: offsetCurveId
-            },
-            getBounds: function() {
-                const points = [this.startPoint, this.endPoint, this.center];
-                const xs = points.map(p => p.x);
-                const ys = points.map(p => p.y);
-                const padding = this.radius;
-                return {
-                    minX: Math.min(...xs) - padding,
-                    minY: Math.min(...ys) - padding,
-                    maxX: Math.max(...xs) + padding,
-                    maxY: Math.max(...ys) + padding
-                };
-            }
-        };
+        if (this.debug) {
+            console.log('[Offsetter] Cannot offset path');
+        }
+        return null;
     }
     
     offsetRectangle(rectangle, distance) {
@@ -215,18 +208,16 @@ class GeometryOffsetter {
         const w = rectangle.width || 0;
         const h = rectangle.height || 0;
         
-        // Split rectangle into 4 individual line segments
         const segments = [
-            [{ x, y }, { x: x + w, y }],                    // top
-            [{ x: x + w, y }, { x: x + w, y: y + h }],      // right
-            [{ x: x + w, y: y + h }, { x, y: y + h }],      // bottom
-            [{ x, y: y + h }, { x, y }]                     // left
+            [{ x, y }, { x: x + w, y }],
+            [{ x: x + w, y }, { x: x + w, y: y + h }],
+            [{ x: x + w, y: y + h }, { x, y: y + h }],
+            [{ x, y: y + h }, { x, y }]
         ];
         
         const strokeWidth = Math.abs(distance * 2);
-        
-        // Convert each segment separately, then combine
         const allPoints = [];
+        
         segments.forEach(segment => {
             const segmentPolygon = GeometryUtils.lineToPolygon(
                 segment[0], segment[1], strokeWidth
@@ -264,22 +255,19 @@ class GeometryOffsetter {
     }
     
     offsetObround(obround, distance) {
-        // Treat obround outline as stroked path for proper corner handling
         const { x, y } = obround.position;
         const w = obround.width || 0;
         const h = obround.height || 0;
         const r = Math.min(w, h) / 2;
         
         const points = [];
-        const segments = 8; // Reduced for outline only
+        const segments = 8;
         
         if (w > h) {
-            // Horizontal obround - simplified outline
             const c1x = x + r;
             const c2x = x + w - r;
             const cy = y + r;
             
-            // Left semicircle
             for (let i = 0; i <= segments; i++) {
                 const angle = Math.PI / 2 + (i / segments) * Math.PI;
                 points.push({ 
@@ -288,7 +276,6 @@ class GeometryOffsetter {
                 });
             }
             
-            // Right semicircle
             for (let i = 0; i <= segments; i++) {
                 const angle = -Math.PI / 2 + (i / segments) * Math.PI;
                 points.push({ 
@@ -297,7 +284,6 @@ class GeometryOffsetter {
                 });
             }
         } else {
-            // Vertical obround
             const cx = x + r;
             const c1y = y + r;
             const c2y = y + h - r;
@@ -319,7 +305,6 @@ class GeometryOffsetter {
             }
         }
         
-        // Treat as stroked outline
         const strokeWidth = Math.abs(distance * 2);
         
         if (typeof PathPrimitive !== 'undefined') {
@@ -350,115 +335,6 @@ class GeometryOffsetter {
             }
         };
     }
-    
-    offsetPath(path, distance) {
-        if (!path.points || path.points.length < 2) {
-            if (this.debug) {
-                console.log('[Offsetter] Path has insufficient points');
-            }
-            return null;
-        }
-        
-        const isStroke = path.properties && 
-                        (path.properties.stroke || path.properties.isTrace) &&
-                        path.properties.strokeWidth !== undefined;
-        
-        if (isStroke) {
-            const newStrokeWidth = path.properties.strokeWidth - (2 * distance);
-            
-            if (newStrokeWidth <= this.precision) {
-                if (this.debug) {
-                    console.log(`[Offsetter] Stroke collapsed: ${path.properties.strokeWidth}mm → ${newStrokeWidth}mm`);
-                }
-                return null;
-            }
-            
-            return {
-                type: 'path',
-                points: [...path.points],
-                closed: path.closed || false,
-                properties: {
-                    ...path.properties,
-                    strokeWidth: newStrokeWidth,
-                    isOffset: true,
-                    offsetDistance: distance
-                }
-            };
-        }
-        
-        // FIXED: Handle closed filled paths (regions) - return array of segment primitives
-        if (path.closed && path.properties?.fill !== false) {
-            const strokeWidth = Math.abs(distance * 2);
-            const segmentPrimitives = [];
-            
-            // CRITICAL: Include original filled region
-            const originalRegion = typeof PathPrimitive !== 'undefined' ?
-                new PathPrimitive([...path.points], {
-                    ...path.properties,
-                    closed: true,
-                    fill: true,
-                    isOffset: true,
-                    offsetDistance: distance,
-                    isOriginalFill: true
-                }) : {
-                    type: 'path',
-                    points: [...path.points],
-                    closed: true,
-                    properties: {
-                        ...path.properties,
-                        fill: true,
-                        isOffset: true,
-                        offsetDistance: distance,
-                        isOriginalFill: true
-                    }
-                };
-            
-            segmentPrimitives.push(originalRegion);
-            
-            // Add offset perimeter segments
-            for (let i = 0; i < path.points.length; i++) {
-                const p1 = path.points[i];
-                const p2 = path.points[(i + 1) % path.points.length];
-                
-                const segmentPolygon = GeometryUtils.lineToPolygon(p1, p2, strokeWidth);
-                
-                segmentPrimitives.push(typeof PathPrimitive !== 'undefined' ?
-                    new PathPrimitive(segmentPolygon, {
-                        ...path.properties,
-                        originalType: 'region_segment',
-                        closed: true,
-                        fill: true,
-                        stroke: false,
-                        isOffset: true,
-                        offsetDistance: distance,
-                        polygonized: true,
-                        segmentIndex: i
-                    }) : {
-                        type: 'path',
-                        points: segmentPolygon,
-                        closed: true,
-                        properties: {
-                            ...path.properties,
-                            originalType: 'region_segment',
-                            fill: true,
-                            stroke: false,
-                            isOffset: true,
-                            offsetDistance: distance,
-                            polygonized: true,
-                            segmentIndex: i
-                        }
-                    });
-            }
-            
-            return segmentPrimitives;
-        }
-        
-        if (this.debug) {
-            console.log('[Offsetter] Cannot offset complex path');
-        }
-        return null;
-    }
 }
 
-// Export
 window.GeometryOffsetter = GeometryOffsetter;

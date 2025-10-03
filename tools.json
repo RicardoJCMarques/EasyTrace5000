@@ -1,0 +1,300 @@
+{
+  "version": "1.0",
+  "lastModified": "2025-01-01",
+  "tools": [
+    {
+      "id": "em_0.1mm_flat",
+      "name": "0.1mm Flat End Mill",
+      "type": "end_mill",
+      "category": "micro",
+      "geometry": {
+        "diameter": 0.1,
+        "tipType": "flat",
+        "flutes": 2,
+        "cuttingLength": 2.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 100,
+        "plungeRate": 30,
+        "spindleSpeed": 15000,
+        "maxDepthPerPass": 0.03,
+        "stepOver": 0.5
+      },
+      "operations": ["isolation", "clear"],
+      "material": "carbide"
+    },
+    {
+      "id": "em_0.2mm_flat",
+      "name": "0.2mm Flat End Mill",
+      "type": "end_mill",
+      "category": "micro",
+      "geometry": {
+        "diameter": 0.2,
+        "tipType": "flat",
+        "flutes": 2,
+        "cuttingLength": 3.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 150,
+        "plungeRate": 50,
+        "spindleSpeed": 12000,
+        "maxDepthPerPass": 0.05,
+        "stepOver": 0.5
+      },
+      "operations": ["isolation", "clear"],
+      "material": "carbide"
+    },
+    {
+      "id": "em_0.3mm_flat",
+      "name": "0.3mm Flat End Mill",
+      "type": "end_mill",
+      "category": "micro",
+      "geometry": {
+        "diameter": 0.3,
+        "tipType": "flat",
+        "flutes": 2,
+        "cuttingLength": 5.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 200,
+        "plungeRate": 60,
+        "spindleSpeed": 12000,
+        "maxDepthPerPass": 0.08,
+        "stepOver": 0.5
+      },
+      "operations": ["isolation", "clear"],
+      "material": "carbide"
+    },
+    {
+      "id": "em_0.5mm_flat",
+      "name": "0.5mm Flat End Mill",
+      "type": "end_mill",
+      "category": "standard",
+      "geometry": {
+        "diameter": 0.5,
+        "tipType": "flat",
+        "flutes": 2,
+        "cuttingLength": 8.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 250,
+        "plungeRate": 80,
+        "spindleSpeed": 10000,
+        "maxDepthPerPass": 0.1,
+        "stepOver": 0.5
+      },
+      "operations": ["isolation", "clear", "cutout"],
+      "material": "carbide"
+    },
+    {
+      "id": "em_0.8mm_flat",
+      "name": "0.8mm Flat End Mill",
+      "type": "end_mill",
+      "category": "standard",
+      "geometry": {
+        "diameter": 0.8,
+        "tipType": "flat",
+        "flutes": 2,
+        "cuttingLength": 10.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 300,
+        "plungeRate": 100,
+        "spindleSpeed": 10000,
+        "maxDepthPerPass": 0.15,
+        "stepOver": 0.6
+      },
+      "operations": ["clear", "cutout"],
+      "material": "carbide"
+    },
+    {
+      "id": "em_1.0mm_flat",
+      "name": "1.0mm Flat End Mill",
+      "type": "end_mill",
+      "category": "standard",
+      "geometry": {
+        "diameter": 1.0,
+        "tipType": "flat",
+        "flutes": 2,
+        "cuttingLength": 12.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 350,
+        "plungeRate": 120,
+        "spindleSpeed": 8000,
+        "maxDepthPerPass": 0.2,
+        "stepOver": 0.6
+      },
+      "operations": ["clear", "cutout"],
+      "material": "carbide"
+    },
+    {
+      "id": "vbit_30deg_0.1mm",
+      "name": "30° V-Bit 0.1mm Tip",
+      "type": "v_bit",
+      "category": "engraving",
+      "geometry": {
+        "angle": 30,
+        "tipDiameter": 0.1,
+        "maxDiameter": 3.175,
+        "cuttingLength": 5.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 100,
+        "plungeRate": 30,
+        "spindleSpeed": 15000,
+        "maxDepthPerPass": 0.05,
+        "stepOver": 0.4
+      },
+      "operations": ["isolation", "engraving"],
+      "material": "carbide"
+    },
+    {
+      "id": "vbit_60deg_0.2mm",
+      "name": "60° V-Bit 0.2mm Tip",
+      "type": "v_bit",
+      "category": "engraving",
+      "geometry": {
+        "angle": 60,
+        "tipDiameter": 0.2,
+        "maxDiameter": 3.175,
+        "cuttingLength": 8.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 150,
+        "plungeRate": 50,
+        "spindleSpeed": 12000,
+        "maxDepthPerPass": 0.1,
+        "stepOver": 0.4
+      },
+      "operations": ["isolation", "engraving"],
+      "material": "carbide"
+    },
+    {
+      "id": "drill_0.3mm",
+      "name": "0.3mm Drill",
+      "type": "drill",
+      "category": "micro",
+      "geometry": {
+        "diameter": 0.3,
+        "pointAngle": 118,
+        "fluteLength": 8.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 40,
+        "plungeRate": 20,
+        "spindleSpeed": 15000,
+        "peckDepth": 0.3,
+        "dwellTime": 0.1
+      },
+      "operations": ["drill"],
+      "material": "carbide"
+    },
+    {
+      "id": "drill_0.5mm",
+      "name": "0.5mm Drill",
+      "type": "drill",
+      "category": "micro",
+      "geometry": {
+        "diameter": 0.5,
+        "pointAngle": 118,
+        "fluteLength": 10.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 50,
+        "plungeRate": 25,
+        "spindleSpeed": 12000,
+        "peckDepth": 0.5,
+        "dwellTime": 0.1
+      },
+      "operations": ["drill"],
+      "material": "carbide"
+    },
+    {
+      "id": "drill_0.8mm",
+      "name": "0.8mm Drill",
+      "type": "drill",
+      "category": "standard",
+      "geometry": {
+        "diameter": 0.8,
+        "pointAngle": 118,
+        "fluteLength": 15.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 60,
+        "plungeRate": 30,
+        "spindleSpeed": 10000,
+        "peckDepth": 0.8,
+        "dwellTime": 0.1
+      },
+      "operations": ["drill"],
+      "material": "carbide"
+    },
+    {
+      "id": "drill_1.0mm",
+      "name": "1.0mm Drill",
+      "type": "drill",
+      "category": "standard",
+      "geometry": {
+        "diameter": 1.0,
+        "pointAngle": 118,
+        "fluteLength": 18.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 80,
+        "plungeRate": 40,
+        "spindleSpeed": 8000,
+        "peckDepth": 1.0,
+        "dwellTime": 0.1
+      },
+      "operations": ["drill"],
+      "material": "carbide"
+    },
+    {
+      "id": "drill_1.5mm",
+      "name": "1.5mm Drill",
+      "type": "drill",
+      "category": "standard",
+      "geometry": {
+        "diameter": 1.5,
+        "pointAngle": 118,
+        "fluteLength": 20.0,
+        "shankDiameter": 3.175,
+        "totalLength": 38
+      },
+      "cutting": {
+        "feedRate": 100,
+        "plungeRate": 50,
+        "spindleSpeed": 6000,
+        "peckDepth": 1.5,
+        "dwellTime": 0.1
+      },
+      "operations": ["drill"],
+      "material": "carbide"
+    }
+  ]
+}

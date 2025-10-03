@@ -638,15 +638,15 @@ body {
    PROPERTY INSPECTOR
    ============================================================================ */
 .property-form {
-    padding: var(--spacing-md);
+    height: 100%;
     overflow-y: auto;
+    padding: var(--spacing-md);
 }
 
 .property-empty {
     padding: var(--spacing-xl);
     text-align: center;
     color: var(--text-hint);
-    font-style: italic;
 }
 
 .property-group {
@@ -742,6 +742,191 @@ body {
     display: flex;
     gap: var(--spacing-sm);
     margin-top: var(--spacing-lg);
+}
+
+/* Origin Section - Static at top */
+.origin-section {
+    margin-bottom: var(--spacing-xl);
+    padding-bottom: var(--spacing-lg);
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.origin-section h3 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-md);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.origin-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+}
+
+.offset-inputs,
+.rotation-input {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.input-group {
+    display: flex;
+    flex: 1;
+}
+
+.input-group input {
+    flex: 1;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius) 0 0 var(--radius);
+    border-right: none;
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+}
+
+.input-group .unit {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-secondary);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+}
+
+.origin-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-xs);
+}
+
+.btn-small {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius);
+    font-size: var(--font-size-xs);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-small:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+}
+
+/* Parameter Sections */
+.param-section {
+    margin-bottom: var(--spacing-xl);
+}
+
+.param-section h3 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-md);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.param-field {
+    margin-bottom: var(--spacing-md);
+}
+
+.param-field label {
+    display: block;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.param-field input,
+.param-field select {
+    width: 100%;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+}
+
+.param-field input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.param-field input:focus,
+.param-field select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+}
+
+.input-unit {
+    display: flex;
+}
+
+.input-unit input {
+    border-radius: var(--radius) 0 0 var(--radius);
+    border-right: none;
+    flex: 1;
+}
+
+.input-unit .unit {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-secondary);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    cursor: pointer;
+}
+
+/* Action Button - Sticky at bottom */
+.action-button {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-secondary);
+    padding: var(--spacing-md) 0 0 0;
+    margin-top: var(--spacing-lg);
+    border-top: 1px solid var(--border-primary);
+}
+
+.btn-primary.btn-block {
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--accent-primary);
+    border: none;
+    border-radius: var(--radius);
+    color: white;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-primary.btn-block:hover {
+    background: var(--accent-hover);
+}
+
+.btn-primary.btn-block:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* ============================================================================
@@ -949,6 +1134,7 @@ body {
    STATUS BAR
    ============================================================================ */
 .status-bar {
+    z-index: 999;
     position: fixed;
     bottom: 0;
     left: 0;
@@ -1350,6 +1536,229 @@ body {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/* ============================================================================
+   TOOLTIPS
+   ============================================================================ */
+
+/* Generic UI Tooltip */
+.ui-tooltip {
+    position: fixed;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius);
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    color: var(--text-primary);
+    pointer-events: none;
+    z-index: 10000;
+    max-width: 300px;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.ui-tooltip.visible {
+    opacity: 1;
+}
+
+.ui-tooltip .tooltip-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.ui-tooltip .tooltip-title {
+    font-weight: 600;
+    color: var(--accent-primary);
+    margin-bottom: var(--spacing-xs);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.ui-tooltip .tooltip-text {
+    line-height: 1.4;
+}
+
+.ui-tooltip .tooltip-example {
+    margin-top: var(--spacing-xs);
+    padding-top: var(--spacing-xs);
+    border-top: 1px solid var(--border-primary);
+    font-family: var(--font-mono);
+    color: var(--text-hint);
+    font-size: 10px;
+}
+
+/* Tooltip Trigger Icon */
+.tooltip-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-left: 4px;
+    border: 1px solid var(--text-secondary);
+    border-radius: 50%;
+    font-size: 9px;
+    font-weight: 600;
+    cursor: help;
+    opacity: 0.6;
+    transition: opacity var(--transition-fast), border-color var(--transition-fast);
+    user-select: none;
+}
+
+.tooltip-trigger:hover,
+.tooltip-trigger:focus {
+    opacity: 1;
+    border-color: var(--accent-primary);
+    outline: none;
+}
+
+/* Property Field Labels with Tooltips */
+.property-field label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+/* Checkbox Controls with Tooltips */
+.checkbox-control {
+    position: relative;
+}
+
+.checkbox-control .tooltip-trigger {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+
+
+
+
+
+/* ============================================================================
+   Multi-operation modal (temp css, needs converging)
+   ============================================================================ */
+
+.modal-gcode {
+    max-width: 900px;
+    width: 90%;
+}
+
+.modal-gcode .modal-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.gcode-options h3,
+.gcode-preview h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.operation-checklist,
+.operation-order {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px;
+    margin-bottom: 16px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.operation-item {
+    padding: 8px;
+    margin: 4px 0;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    cursor: move;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.operation-item:hover {
+    background: var(--bg-hover);
+}
+
+.operation-item.dragging {
+    opacity: 0.5;
+}
+
+.operation-item .drag-handle {
+    cursor: grab;
+    opacity: 0.5;
+}
+
+.operation-item .drag-handle:active {
+    cursor: grabbing;
+}
+
+.help-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 4px 0 8px;
+}
+
+.gcode-preview {
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-stats {
+    display: flex;
+    gap: 16px;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+.preview-stats span {
+    color: var(--text-secondary);
+}
+
+.preview-stats strong {
+    color: var(--text-primary);
+}
+
+#gcode-preview-text {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px;
+    resize: vertical;
+    color: var(--text-primary);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+
+
+
+
+
+
+
+
+
 
 /* ============================================================================
    UTILITIES

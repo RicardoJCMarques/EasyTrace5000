@@ -1,5 +1,5 @@
 // ui/ui-tree-manager.js
-// Manages the operation-based hierarchical navigation tree with tooltip support
+// REFACTORED: No source node (file IS source), combined offset support, stage-aware selection
 
 (function() {
     'use strict';
@@ -12,19 +12,12 @@
             this.ui = ui;
             this.core = ui.core;
             
-            // Track tree state
-            this.nodes = new Map(); // nodeId -> node data
+            this.nodes = new Map();
             this.selectedNode = null;
             this.expandedCategories = new Set(['isolation', 'drill', 'clear', 'cutout']);
             
-            // Node ID generation
             this.nextNodeId = 1;
             
-            // Tooltip element
-            this.tooltip = null;
-            this.tooltipTimeout = null;
-            
-            // Event handlers bound to this instance
             this.handleCategoryClick = this._handleCategoryClick.bind(this);
             this.handleFileClick = this._handleFileClick.bind(this);
             this.handleGeometryClick = this._handleGeometryClick.bind(this);
@@ -35,13 +28,8 @@
         init() {
             if (this.initialized) return;
             
-            // Create tooltip element
-            this.createTooltip();
-            
-            // Setup operation category event handlers
             this.setupCategories();
             
-            // Setup expand/collapse all buttons
             const collapseAllBtn = document.getElementById('collapse-all-btn');
             if (collapseAllBtn) {
                 collapseAllBtn.addEventListener('click', () => this.collapseAll());
@@ -52,7 +40,6 @@
                 expandAllBtn.addEventListener('click', () => this.expandAll());
             }
             
-            // Setup visualization panel toggle
             const vizPanelHeader = document.getElementById('viz-panel-header');
             if (vizPanelHeader) {
                 vizPanelHeader.addEventListener('click', () => {
@@ -70,96 +57,8 @@
             this.initialized = true;
             
             if (debugConfig.enabled) {
-                console.log('TreeManager initialized with tooltip support');
+                console.log('TreeManager initialized');
             }
-        }
-        
-        createTooltip() {
-            this.tooltip = document.createElement('div');
-            this.tooltip.className = 'tooltip';
-            this.tooltip.innerHTML = '<div class="tooltip-content"></div>';
-            document.body.appendChild(this.tooltip);
-        }
-        
-        showTooltip(element, data) {
-            if (this.tooltipTimeout) {
-                clearTimeout(this.tooltipTimeout);
-            }
-            
-            // Build tooltip content
-            const content = this.tooltip.querySelector('.tooltip-content');
-            let html = '';
-            
-            if (data.type === 'file') {
-                html = `
-                    <div class="tooltip-row">
-                        <span class="tooltip-label">File:</span>
-                        <span class="tooltip-value">${data.fileName}</span>
-                    </div>
-                    <div class="tooltip-row">
-                        <span class="tooltip-label">Type:</span>
-                        <span class="tooltip-value">${data.operationType}</span>
-                    </div>
-                    <div class="tooltip-row">
-                        <span class="tooltip-label">Primitives:</span>
-                        <span class="tooltip-value">${data.primitiveCount || 0}</span>
-                    </div>
-                `;
-                
-                if (data.hasArcs) {
-                    html += `
-                        <div class="tooltip-row">
-                            <span class="tooltip-label">Arcs:</span>
-                            <span class="tooltip-value">Yes</span>
-                        </div>
-                    `;
-                }
-                
-                if (data.hasCircles) {
-                    html += `
-                        <div class="tooltip-row">
-                            <span class="tooltip-label">Circles:</span>
-                            <span class="tooltip-value">Yes</span>
-                        </div>
-                    `;
-                }
-            } else if (data.type === 'geometry') {
-                html = `
-                    <div class="tooltip-row">
-                        <span class="tooltip-label">Type:</span>
-                        <span class="tooltip-value">${data.geometryType}</span>
-                    </div>
-                    <div class="tooltip-row">
-                        <span class="tooltip-label">Count:</span>
-                        <span class="tooltip-value">${data.count || 0}</span>
-                    </div>
-                `;
-                
-                if (data.offset) {
-                    html += `
-                        <div class="tooltip-row">
-                            <span class="tooltip-label">Offset:</span>
-                            <span class="tooltip-value">${data.offset}mm</span>
-                        </div>
-                    `;
-                }
-            }
-            
-            content.innerHTML = html;
-            
-            // Position tooltip
-            const rect = element.getBoundingClientRect();
-            this.tooltip.style.left = rect.right + 10 + 'px';
-            this.tooltip.style.top = rect.top + 'px';
-            
-            // Show tooltip
-            this.tooltip.classList.add('visible');
-        }
-        
-        hideTooltip() {
-            this.tooltipTimeout = setTimeout(() => {
-                this.tooltip.classList.remove('visible');
-            }, 100);
         }
         
         setupCategories() {
@@ -171,7 +70,6 @@
                 const addBtn = category.querySelector('.add-file-btn');
                 
                 if (header) {
-                    // Toggle expand/collapse on header click
                     header.addEventListener('click', (e) => {
                         if (!e.target.closest('.add-file-btn')) {
                             this.toggleCategory(opType);
@@ -180,14 +78,12 @@
                 }
                 
                 if (addBtn) {
-                    // Handle add file button
                     addBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         this.ui.triggerFileInput(opType);
                     });
                 }
                 
-                // Set initial expanded state
                 if (this.expandedCategories.has(opType)) {
                     category.classList.add('expanded');
                 }
@@ -210,7 +106,6 @@
         }
         
         expandAll() {
-            // Expand all categories only (not files)
             document.querySelectorAll('.operation-category').forEach(cat => {
                 cat.classList.add('expanded');
                 const opType = cat.dataset.opType;
@@ -219,14 +114,12 @@
         }
         
         collapseAll() {
-            // Collapse all categories only
             document.querySelectorAll('.operation-category').forEach(cat => {
                 cat.classList.remove('expanded');
             });
             this.expandedCategories.clear();
         }
         
-        // Add a new file to the tree
         addFileNode(operation) {
             const category = document.querySelector(`.operation-category[data-op-type="${operation.type}"] .category-files`);
             if (!category) {
@@ -248,33 +141,48 @@
             const label = nodeElement.querySelector('.file-label');
             const settingsBtn = nodeElement.querySelector('.settings-btn');
             const deleteBtn = nodeElement.querySelector('.delete-btn');
+
+            // Add statistics tooltip to file node
+            const fileContent = nodeElement.querySelector('.file-node-content');
+            if (fileContent && operation.primitives) {
+                const bounds = operation.bounds || { width: 0, height: 0 };
+                const ctx = operation.geometricContext || {};
+                
+                let statsText = `${operation.file.name}\n\n` +
+                    `Type: ${operation.type}\n` +
+                    `Primitives: ${operation.primitives.length}\n` +
+                    `Size: ${(operation.file.size / 1024).toFixed(1)} KB\n` +
+                    `Bounds: ${bounds.width?.toFixed(1) || 0} × ${bounds.height?.toFixed(1) || 0} mm`;
+                
+                if (ctx.hasArcs) statsText += '\n✓ Contains arcs';
+                if (ctx.hasCircles) statsText += '\n✓ Contains circles';
+                if (ctx.analyticCount > 0) statsText += `\n✓ Analytic shapes: ${ctx.analyticCount}`;
+                if (ctx.strokeCount > 0) statsText += `\n✓ Strokes: ${ctx.strokeCount}`;
+                
+                // Add offset/preview stats if available
+                if (operation.offsets && operation.offsets.length > 0) {
+                    const totalOffsetPrims = operation.offsets.reduce((sum, o) => sum + (o.primitives?.length || 0), 0);
+                    statsText += `\n\nOffsets: ${operation.offsets.length} pass(es)`;
+                    statsText += `\nOffset primitives: ${totalOffsetPrims}`;
+                }
+                
+                if (operation.preview && operation.preview.primitives) {
+                    statsText += `\n\nPreview: ${operation.preview.primitives.length} primitives`;
+                }
+                
+                if (window.TooltipManager) {
+                    window.TooltipManager.attach(fileContent, { text: statsText });
+                }
+            }
             
             label.textContent = operation.file.name;
             
-            // Click handler for selection
             content.addEventListener('click', (e) => {
                 if (!e.target.closest('.btn-icon')) {
                     this.selectFile(fileId, operation);
                 }
             });
             
-            // Hover handlers for tooltip
-            content.addEventListener('mouseenter', () => {
-                this.showTooltip(content, {
-                    type: 'file',
-                    fileName: operation.file.name,
-                    operationType: operation.type,
-                    primitiveCount: operation.primitives?.length || 0,
-                    hasArcs: operation.geometricContext?.hasArcs,
-                    hasCircles: operation.geometricContext?.hasCircles
-                });
-            });
-            
-            content.addEventListener('mouseleave', () => {
-                this.hideTooltip();
-            });
-            
-            // Settings button
             if (settingsBtn) {
                 settingsBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -282,7 +190,6 @@
                 });
             }
             
-            // Delete button
             if (deleteBtn) {
                 deleteBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -290,7 +197,6 @@
                 });
             }
             
-            // Store node data
             this.nodes.set(fileId, {
                 id: fileId,
                 type: 'file',
@@ -301,14 +207,12 @@
             
             category.appendChild(fileNode);
             
-            // Auto-expand category
             const categoryElement = category.closest('.operation-category');
             if (categoryElement && !categoryElement.classList.contains('expanded')) {
                 categoryElement.classList.add('expanded');
                 this.expandedCategories.add(operation.type);
             }
             
-            // Add default geometry nodes
             this.updateFileGeometries(fileId, operation);
             
             return fileId;
@@ -321,35 +225,39 @@
             const geometriesContainer = fileData.element.querySelector('.file-geometries');
             if (!geometriesContainer) return;
             
-            // Clear existing
             geometriesContainer.innerHTML = '';
             fileData.geometries.clear();
             
-            // Add source node
-            if (operation.primitives && operation.primitives.length > 0) {
-                this.addGeometryNode(fileId, 'source', 'Source', 
-                    operation.primitives.length);
-            }
-            
-            // Add fused node if fusion enabled
-            if (this.ui.viewState?.fuseGeometry) {
-                const fusedData = this.ui.core.getFusedPrimitives?.() || 
-                                this.ui.core.geometryProcessor?.getCachedState('fusedGeometry');
-                if (fusedData) {
-                    this.addGeometryNode(fileId, 'fused', 'Fused', 
-                        fusedData.length);
+            // Add offset nodes
+            if (operation.offsets && operation.offsets.length > 0) {
+                if (operation.offsets[0]?.combined) {
+                    // Single combined offset node
+                    const passes = operation.offsets[0].passes || operation.offsets.length;
+                    const label = `Offsets (combined, ${passes} passes)`;
+                    this.addGeometryNode(fileId, 'offsets_combined', label, 
+                        operation.offsets[0].primitives?.length || 0, {
+                        offset: operation.offsets[0].distance.toFixed(2),
+                        combined: true,
+                        passes: passes
+                    });
+                } else {
+                    // Individual offset nodes
+                    operation.offsets.forEach((offset, index) => {
+                        const label = `Pass ${index + 1}`;
+                        const count = offset.primitives?.length || 0;
+                        this.addGeometryNode(fileId, `offset_${index}`, label, count, {
+                            offset: offset.distance.toFixed(2)
+                        });
+                    });
                 }
             }
             
-            // Add offset nodes (NEW)
-            if (operation.offsets && operation.offsets.length > 0) {
-                operation.offsets.forEach((offset, index) => {
-                    const label = `Pass ${index + 1}`;
-                    const count = offset.primitives?.length || 0;
-                    this.addGeometryNode(fileId, `offset_${index}`, label, count, {
-                        offset: offset.distance.toFixed(2),
-                        color: '#ff0000'
-                    });
+            // Add preview node if exists
+            if (operation.preview && operation.preview.primitives) {
+                this.addGeometryNode(fileId, 'preview', 'Preview',
+                    operation.preview.primitives.length, {
+                    generated: true,
+                    sourceOffsets: operation.preview.metadata?.sourceOffsets || 0
                 });
             }
             
@@ -376,8 +284,7 @@
             const geometryId = `geometry_${this.nextNodeId++}`;
             
             nodeElement.dataset.geometryId = geometryId;
-            nodeElement.dataset.geometryType = geometryType.startsWith('offset') ? 'offset' : 
-                                              geometryType.startsWith('toolpath') ? 'toolpath' : geometryType;
+            nodeElement.dataset.geometryType = geometryType;
             
             const content = nodeElement.querySelector('.geometry-node-content');
             const iconEl = nodeElement.querySelector('.geometry-icon');
@@ -386,58 +293,38 @@
             const visBtn = nodeElement.querySelector('.visibility-btn');
             const deleteBtn = nodeElement.querySelector('.delete-geometry-btn');
             
-            // Set icon based on type
             const icons = {
-                'source': '📄',
-                'fused': '🔀',
+                'offsets_combined': '⇔️',
                 'offset': '↔️',
+                'preview': '👁️',
                 'toolpath': '🔧'
             };
 
             const baseType = geometryType.startsWith('offset') ? 'offset' :
+                            geometryType === 'offsets_combined' ? 'offsets_combined' :
                             geometryType.startsWith('toolpath') ? 'toolpath' :
-                            geometryType;
+                            geometryType === 'preview' ? 'preview' : geometryType;
             
             iconEl.textContent = icons[baseType] || '📊';
             
-            // Color code offset nodes in red
-            if (baseType === 'offset') {
+            if (baseType === 'offset' || baseType === 'offsets_combined') {
                 nodeElement.style.setProperty('--accent-color', '#ff0000');
             }
-
-            iconEl.textContent = icons[nodeElement.dataset.geometryType] || '📊';
             
             labelEl.textContent = label;
             
-            // Set info based on type
             if (extraData.offset) {
                 infoEl.textContent = `${extraData.offset}mm`;
             } else {
                 infoEl.textContent = count > 0 ? `${count}` : '';
             }
             
-            // Click handler
             content.addEventListener('click', (e) => {
                 if (!e.target.closest('.btn-icon')) {
                     this.selectGeometry(geometryId, fileData.operation, geometryType);
                 }
             });
-            
-            // Hover handlers for tooltip
-            content.addEventListener('mouseenter', () => {
-                this.showTooltip(content, {
-                    type: 'geometry',
-                    geometryType: label,
-                    count: count,
-                    offset: extraData.offset
-                });
-            });
-            
-            content.addEventListener('mouseleave', () => {
-                this.hideTooltip();
-            });
 
-            // Delete Geometry
             if (deleteBtn) {
                 deleteBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -445,15 +332,28 @@
                 });
             }
             
-            // Visibility toggle
             if (visBtn) {
                 visBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.toggleGeometryVisibility(geometryId, geometryType);
                 });
             }
+
+            const nodeContent = nodeElement.querySelector('.geometry-node-content');
+            if (nodeContent && window.TooltipManager) {
+                let tooltipText = `${label}\nPrimitives: ${count}`;
+                
+                if (extraData.offset) {
+                    tooltipText += `\nOffset: ${extraData.offset}mm`;
+                }
+                
+                if (extraData.combined) {
+                    tooltipText += `\nPasses: ${extraData.passes}`;
+                }
+                
+                window.TooltipManager.attach(nodeContent, { text: tooltipText });
+            }
             
-            // Store geometry data
             fileData.geometries.set(geometryId, {
                 id: geometryId,
                 type: geometryType,
@@ -469,12 +369,10 @@
         }
         
         selectFile(fileId, operation) {
-            // Clear previous selection
             document.querySelectorAll('.file-node-content.selected, .geometry-node.selected').forEach(el => {
                 el.classList.remove('selected');
             });
             
-            // Select this file
             const fileData = this.nodes.get(fileId);
             if (fileData) {
                 const content = fileData.element.querySelector('.file-node-content');
@@ -485,19 +383,17 @@
             
             this.selectedNode = { type: 'file', id: fileId, operation };
             
-            // Update property inspector
+            // File IS source stage
             if (this.ui.propertyInspector) {
-                this.ui.propertyInspector.showOperationProperties(operation);
+                this.ui.propertyInspector.showOperationProperties(operation, 'source');
             }
         }
         
         selectGeometry(geometryId, operation, geometryType) {
-            // Clear previous selection
             document.querySelectorAll('.file-node-content.selected, .geometry-node.selected').forEach(el => {
                 el.classList.remove('selected');
             });
             
-            // Find and select geometry node
             const geometryNode = document.querySelector(`.geometry-node[data-geometry-id="${geometryId}"]`);
             if (geometryNode) {
                 geometryNode.classList.add('selected');
@@ -505,9 +401,16 @@
             
             this.selectedNode = { type: 'geometry', id: geometryId, operation, geometryType };
             
-            // Update property inspector for geometry
+            // Determine geometry stage
+            let stage = 'source';
+            if (geometryType === 'preview') {
+                stage = 'preview';
+            } else if (geometryType.startsWith('offset') || geometryType === 'offsets_combined') {
+                stage = 'offset';
+            }
+            
             if (this.ui.propertyInspector) {
-                this.ui.propertyInspector.showGeometryInfo(operation, geometryType);
+                this.ui.propertyInspector.showOperationProperties(operation, stage);
             }
         }
 
@@ -518,7 +421,6 @@
             const geoData = fileData.geometries.get(geometryId);
             if (!geoData) return;
             
-            // Remove from operation.offsets if it's an offset
             if (geoData.type.startsWith('offset_')) {
                 const passIndex = parseInt(geoData.type.split('_')[1]);
                 if (fileData.operation.offsets) {
@@ -526,13 +428,11 @@
                 }
             }
             
-            // Remove layer from renderer
             const layerName = `${geoData.type}_${fileData.operation.id}`;
             if (this.ui.renderer.layers.has(layerName)) {
                 this.ui.renderer.layers.delete(layerName);
             }
             
-            // Remove from UI
             geoData.element.remove();
             fileData.geometries.delete(geometryId);
             
@@ -540,12 +440,10 @@
         }
         
         toggleGeometryVisibility(geometryId, geometryType) {
-            // This should communicate with the renderer to toggle layer visibility
             const layerPrefix = geometryType.startsWith('toolpath') ? 'toolpath' : 
                               geometryType.startsWith('offset') ? 'offset' : geometryType;
             
             if (this.ui.renderer) {
-                // Toggle visibility for this specific geometry
                 const layers = this.ui.renderer.layers;
                 layers.forEach((layer, name) => {
                     if (name.startsWith(layerPrefix)) {
@@ -557,7 +455,6 @@
         }
         
         removeFileNode(operationId) {
-            // Find and remove the file node
             let nodeToRemove = null;
             this.nodes.forEach((node, id) => {
                 if (node.operation?.id === operationId) {
@@ -572,7 +469,6 @@
                 }
                 this.nodes.delete(nodeToRemove);
                 
-                // Clear selection if this was selected
                 if (this.selectedNode?.id === nodeToRemove) {
                     this.selectedNode = null;
                     if (this.ui.propertyInspector) {
@@ -583,14 +479,12 @@
         }
         
         refreshTree() {
-            // Clear all file nodes
             document.querySelectorAll('.category-files').forEach(container => {
                 container.innerHTML = '';
             });
             this.nodes.clear();
             this.nextNodeId = 1;
             
-            // Rebuild tree from operations
             if (this.core && this.core.operations) {
                 this.core.operations.forEach(operation => {
                     if (operation.file) {
@@ -605,7 +499,6 @@
         }
         
         updateNodeCounts() {
-            // Update counts for all geometry nodes
             this.nodes.forEach(fileData => {
                 if (fileData.type === 'file' && fileData.operation) {
                     this.updateFileGeometries(fileData.id, fileData.operation);
@@ -641,7 +534,6 @@
             const geometryId = geometryNode.dataset.geometryId;
             const geometryType = geometryNode.dataset.geometryType;
             
-            // Find parent operation
             const fileNode = geometryNode.closest('.file-node');
             if (fileNode) {
                 const operationId = fileNode.dataset.operationId;
@@ -653,7 +545,6 @@
         }
     }
     
-    // Export
     window.TreeManager = TreeManager;
     
 })();

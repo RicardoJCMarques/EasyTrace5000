@@ -131,33 +131,32 @@
                 this.debug(`Processing ${drillData.holes.length} drill holes`);
                 
                 drillData.holes.forEach((hole, index) => {
-                    if (!hole.position || !isFinite(hole.position.x) || !isFinite(hole.position.y)) {
-                        console.warn(`Invalid drill hole ${index}:`, hole);
-                        return;
-                    }
+                    console.log(`[Plotter] Hole ${index}: raw diameter=${hole.diameter}mm`);
                     
-                    const drillColor = config.operations?.drill?.color || '#4488ff';
+                    const radius = hole.diameter / 2;
+                    console.log(`[Plotter] Calculated radius=${radius}mm`);
                     
                     const primitive = new CirclePrimitive(
                         hole.position,
-                        hole.diameter / 2,
+                        radius,
                         {
                             isDrillHole: true,
+                            diameter: hole.diameter,  // Store original diameter in properties
                             fill: true,
                             stroke: false,
-                            strokeWidth: 0,
-                            type: 'drill',
                             tool: hole.tool,
                             plated: hole.plated,
-                            diameter: hole.diameter,
-                            polarity: 'dark',
-                            color: drillColor
+                            polarity: 'dark'
                         }
                     );
+
+                    console.log(`[Plotter] Drill ${index}: diameter=${hole.diameter}, radius=${radius}, primitive.radius=${primitive.radius}`);
                     
                     this.primitives.push(primitive);
                     this.creationStats.drillsCreated++;
                     this.creationStats.primitivesCreated++;
+                    
+                    console.log(`[Plotter] Primitive created with radius=${primitive.radius}mm`);
                 });
             }
             

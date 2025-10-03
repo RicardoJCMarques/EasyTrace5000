@@ -1,33 +1,28 @@
 // cam-ui.js
-// REFACTORED: Fixed offset layer handling with operation-specific naming
+// Tooltip integration, status manager usage
 
 (function() {
     'use strict';
     
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
-    const messagesConfig = (config.ui && config.ui.messages) || {};
     const opsConfig = config.operations || {};
     
     class PCBCamUI {
         constructor(core) {
             this.core = core;
             
-            // UI Components
             this.treeManager = null;
             this.propertyInspector = null;
             this.visibilityPanel = null;
             this.toolLibrary = null;
             this.statusManager = null;
-            this.operationsManager = null;
             this.controls = null;
             
-            // Renderer and exporters
             this.renderer = null;
             this.coordinateSystem = null;
             this.svgExporter = null;
             
-            // View state
             this.viewState = {
                 showPreprocessed: false,
                 enableArcReconstruction: false,
@@ -38,7 +33,6 @@
                 debugCurvePoints: false
             };
             
-            // Fusion statistics
             this.fusionStats = {
                 arcReconstructionEnabled: false,
                 curvesRegistered: 0,
@@ -46,7 +40,6 @@
                 curvesLost: 0
             };
             
-            // Statistics
             this.stats = {
                 files: 0,
                 operations: 0,
@@ -55,7 +48,6 @@
                 processingTime: 0
             };
             
-            // Debounce tracker
             this._updatePending = false;
             this._updateQueued = false;
         }
@@ -86,35 +78,24 @@
                     this.visibilityPanel = new VisibilityPanel(this);
                 }
                 
-                if (typeof OperationsManager !== 'undefined') {
-                    this.operationsManager = new OperationsManager(this);
-                }
-                
                 if (typeof StatusManager !== 'undefined') {
                     this.statusManager = new StatusManager(this);
                 }
                 
-                // Initialize renderer
                 this.initializeRenderer();
                 
-                // Initialize controls AFTER renderer
                 if (typeof UIControls !== 'undefined') {
                     this.controls = new UIControls(this);
                     this.controls.init(this.renderer, this.coordinateSystem);
                 }
                 
-                // Initialize visibility panel with renderer
                 if (this.visibilityPanel && this.renderer) {
                     this.visibilityPanel.init(this.renderer);
                 }
                 
-                // Setup event handlers
                 this.setupEventHandlers();
-                
-                // Setup theme
                 this.initializeTheme();
                 
-                // Update initial status
                 this.updateStatus('Ready - Add PCB files to begin');
                 
                 if (debugConfig.enabled) {
@@ -140,7 +121,6 @@
             if (typeof LayerRenderer !== 'undefined') {
                 this.renderer = new LayerRenderer('preview-canvas');
                 
-                // Initialize coordinate system
                 if (typeof CoordinateSystemManager !== 'undefined') {
                     this.coordinateSystem = new CoordinateSystemManager({ 
                         debug: debugConfig.enabled 
@@ -150,12 +130,10 @@
                     this.coordinateSystem.setRenderer(this.renderer);
                 }
                 
-                // Initialize SVG exporter
                 if (typeof SVGExporter !== 'undefined') {
                     this.svgExporter = new SVGExporter(this.renderer);
                 }
                 
-                // Apply default view settings
                 this.renderer.setOptions({
                     showWireframe: this.viewState.showWireframe,
                     showGrid: this.viewState.showGrid,
@@ -167,7 +145,6 @@
                     theme: document.documentElement.getAttribute('data-theme') || 'dark'
                 });
                 
-                // Setup canvas resize observer
                 if (window.ResizeObserver) {
                     const resizeObserver = new ResizeObserver(() => {
                         if (this.renderer) {
@@ -191,7 +168,6 @@
         }
         
         setupEventHandlers() {
-            // Canvas controls
             const zoomFitBtn = document.getElementById('zoom-fit-btn');
             if (zoomFitBtn) {
                 zoomFitBtn.addEventListener('click', () => {
@@ -223,7 +199,6 @@
                 wireframeBtn.addEventListener('click', () => this.toggleWireframe());
             }
             
-            // Quick actions
             const addFileBtn = document.getElementById('add-file-btn');
             if (addFileBtn) {
                 addFileBtn.addEventListener('click', () => this.showFileModal());
@@ -248,7 +223,6 @@
             this.setupCoordinateControls();
             this.setupMachineSettings();
             
-            // File input handler
             const fileInput = document.getElementById('file-input-hidden');
             if (fileInput) {
                 fileInput.addEventListener('change', async (e) => {
@@ -264,7 +238,6 @@
                 });
             }
             
-            // Collapsible sections
             const headers = document.querySelectorAll('.collapsible-header');
             headers.forEach(header => {
                 header.addEventListener('click', () => {
@@ -282,7 +255,6 @@
         }
         
         setupViewControls() {
-            // Wireframe
             const wireframeControl = document.getElementById('show-wireframe');
             if (wireframeControl) {
                 wireframeControl.checked = this.viewState.showWireframe;
@@ -295,7 +267,6 @@
                 });
             }
             
-            // Grid
             const gridControl = document.getElementById('show-grid');
             if (gridControl) {
                 gridControl.checked = this.viewState.showGrid;
@@ -308,7 +279,6 @@
                 });
             }
             
-            // Fusion
             const fuseControl = document.getElementById('fuse-geometry');
             if (fuseControl) {
                 fuseControl.checked = this.viewState.fuseGeometry;
@@ -321,7 +291,6 @@
                 });
             }
             
-            // Arc reconstruction
             const arcControl = document.getElementById('enable-arc-reconstruction');
             if (arcControl) {
                 arcControl.checked = this.viewState.enableArcReconstruction;
@@ -343,7 +312,6 @@
                 });
             }
             
-            // Other display options
             const displayOptions = [
                 { id: 'show-bounds', option: 'showBounds' },
                 { id: 'show-rulers', option: 'showRulers' },
@@ -481,7 +449,6 @@
             }
         }
         
-        // REFACTORED: Debounced renderer updates
         async updateRendererAsync() {
             if (!this.renderer) return;
             
@@ -501,7 +468,6 @@
                     this.addIndividualLayers();
                 }
                 
-                // FIXED: Always add offset layers
                 this.addOffsetLayers();
                 
                 if (this.visibilityPanel) {
@@ -559,7 +525,6 @@
             const allPreprocessed = this.core.getPreprocessedPrimitives();
             if (!allPreprocessed || allPreprocessed.length === 0) return;
             
-            // Group by operation
             const byOperation = new Map();
             allPreprocessed.forEach(p => {
                 const opId = p.properties?.operationId || p._originalOperationId;
@@ -585,7 +550,6 @@
         addFusedLayer(fused) {
             if (!fused || fused.length === 0) return;
             
-            // Group by source operation
             const byOperation = new Map();
             fused.forEach(p => {
                 const opId = p.properties?.sourceOperationId;
@@ -595,7 +559,6 @@
                 }
             });
             
-            // Add layer per operation
             byOperation.forEach((primitives, opId) => {
                 const operation = this.core.operations.find(op => op.id === opId);
                 if (operation) {
@@ -635,36 +598,66 @@
             });
         }
         
-        // Operation-specific offset layer naming
         addOffsetLayers() {
-            const passColors = ['#a00000ff']; // add more colors with , '#ff6600', '#ffcc00', '#00ff00', etc
-            
-            this.core.operations.forEach(operation => {
+            this.core.operations.forEach(operation => {  // operation defined HERE
+                // Color mapping based on THIS operation's type
+                const passColors = {
+                    'isolation': ['#a00000ff'],
+                    'clear': ['#00a000ff'],
+                    'cutout': ['#ff00ffcc']
+                };
+                
+                const colorArray = passColors[operation.type] || ['#888888ff'];
+                
+                // Offset layers for isolation, clear, and cutout operations
                 if (operation.offsets && operation.offsets.length > 0) {
                     operation.offsets.forEach((offset, passIndex) => {
                         if (offset.primitives && offset.primitives.length > 0) {
-                            const colorIndex = Math.min(passIndex, passColors.length - 1);
+                            const colorIndex = Math.min(passIndex, colorArray.length - 1);
+                            const layerName = offset.combined ? 
+                                `offset_${operation.id}_combined` :
+                                `offset_${operation.id}_pass_${passIndex + 1}`;
                             
-                            // Include operation ID to prevent cross-operation mixing
+                            const color = colorArray[colorIndex];
+                            
                             this.renderer.addLayer(
-                                `offset_${operation.id}_pass_${passIndex + 1}`,
+                                layerName,
                                 offset.primitives,
                                 {
                                     type: 'offset',
                                     visible: true,
-                                    color: passColors[colorIndex],
+                                    color: color,
                                     operationId: operation.id,
-                                    pass: passIndex + 1,
-                                    distance: offset.distance
+                                    operationType: operation.type,
+                                    pass: offset.pass,
+                                    distance: offset.distance,
+                                    combined: offset.combined || false,
+                                    metadata: offset.metadata
                                 }
                             );
                         }
                     });
                 }
+                
+                // Preview layer
+                if (operation.preview && operation.preview.primitives && operation.preview.primitives.length > 0) {
+                    this.renderer.addLayer(
+                        `preview_${operation.id}`,
+                        operation.preview.primitives,
+                        {
+                            type: 'preview',
+                            visible: true,
+                            color: '#0066ffff',
+                            operationId: operation.id,
+                            operationType: operation.type,
+                            isPreview: true,
+                            metadata: operation.preview.metadata
+                        }
+                    );
+                }
             });
         }
         
-        // UI updates
         updateOriginDisplay() {
             if (!this.coordinateSystem) return;
             
@@ -715,7 +708,6 @@
             }
         }
         
-        // View controls
         toggleWireframe() {
             this.viewState.showWireframe = !this.viewState.showWireframe;
             if (this.renderer) {
@@ -732,7 +724,6 @@
             }
         }
         
-        // File processing
         async processFile(file, type) {
             if (!file || !type) return;
             
@@ -781,7 +772,6 @@
             });
         }
         
-        // UI actions
         showFileModal() {
             if (window.pcbcam && window.pcbcam.showFileModal) {
                 window.pcbcam.showFileModal();
@@ -834,7 +824,6 @@
             this.updateStatus('G-code export not yet implemented', 'warning');
         }
         
-        // Operation management
         removeOperation(operationId) {
             if (this.core.removeOperation(operationId)) {
                 if (this.treeManager) {
@@ -848,23 +837,6 @@
             }
         }
         
-        // REFACTORED: Granular offset layer removal
-        removeOffsetLayer(operationId, passIndex) {
-            const layerName = `offset_${operationId}_pass_${passIndex}`;
-            
-            if (this.renderer.layers.has(layerName)) {
-                this.renderer.layers.delete(layerName);
-                this.renderer.render();
-                
-                if (debugConfig.enabled) {
-                    console.log(`[UI] Removed offset layer: ${layerName}`);
-                }
-                return true;
-            }
-            return false;
-        }
-        
-        // Status management
         updateStatus(message, type) {
             if (!type) type = 'normal';
             
@@ -879,7 +851,6 @@
             }
         }
         
-        // File input trigger
         triggerFileInput(opType) {
             const fileInput = document.getElementById('file-input-hidden') || 
                            document.getElementById('file-input-temp');

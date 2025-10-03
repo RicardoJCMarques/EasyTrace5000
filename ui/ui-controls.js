@@ -146,11 +146,6 @@
                 debugCurvePoints.checked = this.renderer.options.debugCurvePoints || false;
                 
                 debugCurvePoints.addEventListener('change', async (e) => {
-                    if (!this.renderer.options.fuseGeometry) {
-                        e.target.checked = false;
-                        this.ui.statusManager.showStatus('Enable fusion first to debug curve points', 'warning');
-                        return;
-                    }
                     
                     // This option is part of the core renderer options
                     this.renderer.setOptions({ debugCurvePoints: e.target.checked });
@@ -198,7 +193,18 @@
         setupOffsetControls() {
             const xInput = document.getElementById('x-offset');
             const yInput = document.getElementById('y-offset');
+
+            if (!xInput || !yInput) {
+                console.warn('[UIControls] Coordinate inputs not found in sidebar');
+                return;
+            }
             
+            xInput.removeAttribute('readonly');
+            yInput.removeAttribute('readonly');
+            
+            this.inputTracking.lastXValue = xInput.value || '0';
+            this.inputTracking.lastYValue = yInput.value || '0';
+
             if (xInput && yInput) {
                 xInput.removeAttribute('readonly');
                 yInput.removeAttribute('readonly');

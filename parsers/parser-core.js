@@ -218,25 +218,12 @@
             if (typeof GeometryUtils !== 'undefined') {
                 return GeometryUtils.calculateWinding(points);
             }
-            // Fallback implementation if GeometryUtils not loaded
-            if (!points || points.length < 3) return 0;
-            
-            let area = 0;
-            for (let i = 0; i < points.length; i++) {
-                const j = (i + 1) % points.length;
-                area += points[i].x * points[j].y;
-                area -= points[j].x * points[i].y;
-            }
-            
-            return area / 2;
         }
         
         isClockwise(points) {
             if (typeof GeometryUtils !== 'undefined') {
                 return GeometryUtils.isClockwise(points);
             }
-            // Fallback
-            return this.calculateWinding(points) < 0;
         }
         
         // Edge deduplication utilities
@@ -306,45 +293,7 @@
             if (typeof GeometryUtils !== 'undefined') {
                 return GeometryUtils.interpolateArc(start, end, center, clockwise, segments);
             }
-            
-            // Fallback implementation
-            const radius = Math.sqrt(
-                Math.pow(start.x - center.x, 2) +
-                Math.pow(start.y - center.y, 2)
-            );
-            
-            const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
-            const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
-            
-            let angleSpan = endAngle - startAngle;
-            if (clockwise) {
-                if (angleSpan > 0) angleSpan -= 2 * Math.PI;
-            } else {
-                if (angleSpan < 0) angleSpan += 2 * Math.PI;
-            }
-            
-            if (!segments) {
-                const arcLength = Math.abs(angleSpan) * radius;
-                const targetLength = geomConfig.segments?.targetLength || 0.1;
-                segments = Math.max(
-                    geomConfig.segments?.minArc || 8,
-                    Math.min(
-                        geomConfig.segments?.maxArc || 64,
-                        Math.ceil(arcLength / targetLength)
-                    )
-                );
-            }
-            
-            const points = [];
-            for (let i = 0; i <= segments; i++) {
-                const angle = startAngle + angleSpan * (i / segments);
-                points.push({
-                    x: center.x + radius * Math.cos(angle),
-                    y: center.y + radius * Math.sin(angle)
-                });
-            }
-            
-            return points;
+
         }
         
         // Logging utilities
