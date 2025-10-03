@@ -603,16 +603,13 @@
 
         async generateCutoutOffset(operation) {
             const settings = this.collectSettings();
-            const cutSide = settings.cutSide || 'outside';
+            const cutSide = settings.cutSide;
             
-            // Only works inside?
             let offsetDistance;
-            if (cutSide === 'outside') {
-                offsetDistance = settings.toolDiameter / 2;  // Positive = expand
-            } else if (cutSide === 'inside') {
-                offsetDistance = -(settings.toolDiameter / 2);  // Negative = shrink
-            } else {
+            if (cutSide === 'on') {
                 offsetDistance = 0;  // Cut on line
+            } else {
+                offsetDistance = -(settings.toolDiameter / 2); // why only negative values for both internal or external offsets? Positive values don't create offsets so sign isn't just being
             }
             
             console.log('[Inspector] Cutout offset:', offsetDistance, 'cutSide:', cutSide);
