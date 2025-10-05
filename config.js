@@ -615,19 +615,7 @@ window.PCBCAMConfig = {
             tool.operations.includes(operationType)
         );
     },
-    
-    calculateOffsetDistances: function(toolDiameter, passes, stepOverPercent) {
-        const stepOver = stepOverPercent / 100;
-        const stepDistance = toolDiameter * (1 - stepOver);
-        const offsets = [];
-        
-        for (let i = 0; i < passes; i++) {
-            offsets.push(-(toolDiameter / 2 + i * stepDistance));
-        }
-        
-        return offsets;
-    },
-    
+
     validateTool: function(tool) {
         const required = ['id', 'name', 'type', 'geometry', 'cutting', 'operations'];
         const geometryRequired = ['diameter'];

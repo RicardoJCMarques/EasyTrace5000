@@ -186,7 +186,7 @@
                 radius: radius
             };
             
-            // IMMEDIATELY REGISTER THIS CIRCLE AS A CURVE WITH DIRECTION
+            // Register curve with correct winding
             this.curveId = this.registerAsGlobalCurve();
             if (this.curveId) {
                 this.curveIds = [this.curveId];
@@ -201,18 +201,19 @@
                 return null;
             }
             
-            // FIXED: Circles are always generated CCW (0→2π)
+            // In screen coordinates (Y-down), 0→2π generates CW
+            // Register as such for accurate reconstruction
             const curveId = window.globalCurveRegistry.register({
                 type: 'circle',
                 center: { ...this.center },
                 radius: this.radius,
                 primitiveId: this.id,
-                clockwise: false,  // CRITICAL: Circles always CCW in our system
+                clockwise: true,  // 0→2π is CW in Y-down screen coords
                 source: 'primitive_circle'
             });
             
-            if (window.PCBCAMConfig?.debug?.logging?.curveRegistration) {
-                console.log(`[CirclePrimitive] Registered circle ${this.id} as curve ${curveId} (CCW)`);
+            if (this.debug) {
+                console.log(`[CirclePrimitive] Registered circle ${this.id} as curve ${curveId} (CW in screen coords)`);
             }
             
             return curveId;
@@ -244,13 +245,12 @@
             );
         }
         
-        // Generate curve metadata for circle
         generateCurveMetadata() {
             return {
                 type: 'circle',
                 center: { ...this.center },
                 radius: this.radius,
-                clockwise: false,  // Always CCW
+                clockwise: true,
                 properties: {
                     isComplete: true,
                     startAngle: 0,
@@ -260,7 +260,7 @@
         }
         
         toPolygon(minSegments = null, maxSegments = null, curveIds = null) {
-            // Use config values if not specified
+            const segmentConfig = window.PCBCAMConfig?.geometry?.segments || {};
             minSegments = minSegments || segmentConfig.minCircle || 16;
             maxSegments = maxSegments || segmentConfig.maxCircle || 128;
             
@@ -271,11 +271,10 @@
                 segmentConfig.targetLength || 0.1
             );
             
-            const points = [];
-            // Use the circle's own registered curve ID
+            const polygonPoints = [];
             const curveId = this.curveId || (curveIds && curveIds.length > 0 ? curveIds[0] : undefined);
             
-            // Generate points with full metadata - ALWAYS CCW (0→2π)
+            // Generate 0→2π (CW in screen coords Y-down)
             for (let i = 0; i <= segments; i++) {
                 const normalizedIndex = i % segments;
                 const angle = (normalizedIndex / segments) * 2 * Math.PI;
@@ -284,7 +283,6 @@
                     y: this.center.y + this.radius * Math.sin(angle)
                 };
                 
-                // Tag every point with metadata
                 if (curveId !== undefined) {
                     point.curveId = curveId;
                     point.segmentIndex = normalizedIndex;
@@ -293,10 +291,10 @@
                     point.angle = angle;
                 }
                 
-                points.push(point);
+                polygonPoints.push(point);
             }
             
-            const pathPrimitive = new PathPrimitive(points, {
+            const pathPrimitive = new PathPrimitive(polygonPoints, {
                 ...this.properties,
                 closed: true,
                 originalCircle: {

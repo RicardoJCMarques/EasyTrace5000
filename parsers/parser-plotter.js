@@ -131,10 +131,14 @@
                 this.debug(`Processing ${drillData.holes.length} drill holes`);
                 
                 drillData.holes.forEach((hole, index) => {
-                    console.log(`[Plotter] Hole ${index}: raw diameter=${hole.diameter}mm`);
-                    
+                    if (debugConfig.enabled) {
+                        console.log(`[Plotter] Hole ${index}: raw diameter=${hole.diameter}mm`);
+                    }
+                     
                     const radius = hole.diameter / 2;
-                    console.log(`[Plotter] Calculated radius=${radius}mm`);
+                    if (debugConfig.enabled) {
+                        console.log(`[Plotter] Calculated radius=${radius}mm`);
+                    }
                     
                     const primitive = new CirclePrimitive(
                         hole.position,
@@ -150,13 +154,17 @@
                         }
                     );
 
-                    console.log(`[Plotter] Drill ${index}: diameter=${hole.diameter}, radius=${radius}, primitive.radius=${primitive.radius}`);
+                    if (debugConfig.enabled) {
+                        console.log(`[Plotter] Drill ${index}: diameter=${hole.diameter}, radius=${radius}, primitive.radius=${primitive.radius}`);
+                    }
                     
                     this.primitives.push(primitive);
                     this.creationStats.drillsCreated++;
                     this.creationStats.primitivesCreated++;
                     
-                    console.log(`[Plotter] Primitive created with radius=${primitive.radius}mm`);
+                    if (debugConfig.enabled) {
+                        console.log(`[Plotter] Primitive created with radius=${primitive.radius}mm`);
+                    }
                 });
             }
             
@@ -253,7 +261,7 @@
                 this.debug(`  Interpolation: "${trace.interpolation}"${trace.arc ? ', has arc data' : ''}`);
             }
             
-            const width = trace.width || config.formats?.gerber?.defaultAperture || 0.1;
+            const width = trace.width || config.formats?.gerber?.defaultAperture;
             
             const properties = {
                 isTrace: true,

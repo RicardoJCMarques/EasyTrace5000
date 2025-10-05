@@ -599,26 +599,25 @@
         }
         
         addOffsetLayers() {
-            this.core.operations.forEach(operation => {  // operation defined HERE
-                // Color mapping based on THIS operation's type
+            this.core.operations.forEach(operation => {
+                // Color based on offset TYPE, not operation type
                 const passColors = {
-                    'isolation': ['#a00000ff'],
-                    'clear': ['#00a000ff'],
-                    'cutout': ['#ff00ffcc']
+                    'external': ['#a60000ff'],  // Red for external (isolation)
+                    'internal': ['#00a600ff']   // Green for internal (clear)
                 };
                 
-                const colorArray = passColors[operation.type] || ['#888888ff'];
-                
-                // Offset layers for isolation, clear, and cutout operations
                 if (operation.offsets && operation.offsets.length > 0) {
                     operation.offsets.forEach((offset, passIndex) => {
                         if (offset.primitives && offset.primitives.length > 0) {
+                            // Use offset.offsetType instead of operation.type
+                            const offsetType = offset.distance > 0 ? 'external' : 'internal';
+                            const colorArray = passColors[offsetType] || ['#888888ff'];
                             const colorIndex = Math.min(passIndex, colorArray.length - 1);
+                            const color = colorArray[colorIndex];
+                            
                             const layerName = offset.combined ? 
                                 `offset_${operation.id}_combined` :
                                 `offset_${operation.id}_pass_${passIndex + 1}`;
-                            
-                            const color = colorArray[colorIndex];
                             
                             this.renderer.addLayer(
                                 layerName,
@@ -629,6 +628,7 @@
                                     color: color,
                                     operationId: operation.id,
                                     operationType: operation.type,
+                                    offsetType: offsetType,
                                     pass: offset.pass,
                                     distance: offset.distance,
                                     combined: offset.combined || false,
@@ -647,7 +647,7 @@
                         {
                             type: 'preview',
                             visible: true,
-                            color: '#0066ffff',
+                            color: '#0060ddff',
                             operationId: operation.id,
                             operationType: operation.type,
                             isPreview: true,

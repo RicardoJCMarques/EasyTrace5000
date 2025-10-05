@@ -480,13 +480,16 @@
                         points.push(point);
                     }
                     
-                    // FIXED: Ensure CCW winding for toolpaths
+                    // Calculate area BEFORE any reversal to preserve natural winding
                     const area = this.calculateSignedAreaRaw(points.map(p => ({
                         x: Math.round(p.x * this.scale),
                         y: Math.round(p.y * this.scale)
                     })));
                     
-                    if (area < 0) {
+                    const naturallyClockwise = area < 0;  // Store original winding
+                    
+                    // ONLY reverse if we're NOT preserving winding for selection
+                    if (!isHole && area < 0) {
                         points.reverse();
                     }
                     
@@ -495,7 +498,8 @@
                             isFused: true,
                             fill: true,
                             polarity: 'dark',
-                            closed: true
+                            closed: true,
+                            naturalWinding: naturallyClockwise ? 'cw' : 'ccw'  // ADD THIS METADATA
                         });
                         
                         if (curveIds.size > 0) {

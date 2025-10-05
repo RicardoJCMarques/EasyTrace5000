@@ -1,11 +1,12 @@
 // ui/ui-property-inspector.js
-// REFACTORED: Stage-based parameter organization, drilling mill holes support
+// UNIFIED: Stage-based parameters with consistent offset distance calculation
 
 (function() {
     'use strict';
     
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
+    const opsConfig = config.operations || {};
     
     class PropertyInspector {
         constructor(ui) {
@@ -95,7 +96,7 @@
                 container.appendChild(this.createActionButton('Generate Offsets'));
                 
             } else if (stage === 'offset') {
-                // Offset stage: Z-axis and depth parameters
+                // Offset stage: Depth parameters
                 container.appendChild(this.createSection('Toolpath Depth', [
                     this.createField('cutDepth', 'number', {
                         value: operation.settings.cutDepth || -0.05,
@@ -187,7 +188,7 @@
                     })
                 ]));
                 
-                // NEW: Mill holes option
+                // Mill holes option
                 container.appendChild(this.createSection('Drilling Mode', [
                     this.createField('millHoles', 'checkbox', {
                         checked: operation.settings.millHoles || false,
@@ -329,10 +330,6 @@
                 ]));
                 
                 container.appendChild(this.createActionButton('Generate Offsets'));
-                
-            } else if (stage === 'offset') {
-                // Same Z-axis params as isolation
-                this.renderIsolationProperties(container, operation, 'offset');
                 
             } else if (stage === 'preview') {
                 // Same machine config
@@ -557,7 +554,7 @@
                     await this.generateGcode(op);
                 }
             } else if (op.type === 'cutout') {
-                if (stage === 'source') await this.generateCutoutOffset(op);  // Changed
+                if (stage === 'source') await this.generateCutoutOffset(op);
                 else if (stage === 'offset') await this.generatePreview(op);
                 else await this.generateGcode(op);
             } else {
@@ -570,15 +567,16 @@
         async generateOffsets(operation) {
             const settings = this.collectSettings();
             
-            // Determine if internal offset (clear operation)
+            // Determine if internal offset based on operation type
             const isInternal = operation.type === 'clear';
             
-            const offsets = config.calculateOffsetDistances?.(
+            // Calculate offset distances with proper sign
+            const offsets = this.calculateOffsetDistances(
                 settings.toolDiameter,
                 settings.passes,
                 settings.stepOver,
-                isInternal  // Add this parameter
-            ) || [];
+                isInternal
+            );
             
             this.ui.statusManager.showStatus('Generating offset geometry...', 'info');
             
@@ -600,6 +598,22 @@
                 this.ui.statusManager.showStatus('Failed: ' + error.message, 'error');
             }
         }
+        
+        // Unified offset distance calculation
+        calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal) {
+            const stepOver = stepOverPercent / 100;
+            const stepDistance = toolDiameter * (1 - stepOver);
+            const offsets = [];
+            
+            // Internal offsets are negative (deflate), External are positive (inflate)
+            const sign = isInternal ? -1 : 1;
+            
+            for (let i = 0; i < passes; i++) {
+                offsets.push(sign * (toolDiameter / 2 + i * stepDistance));
+            }
+            
+            return offsets;
+        }
 
         async generateCutoutOffset(operation) {
             const settings = this.collectSettings();
@@ -608,8 +622,12 @@
             let offsetDistance;
             if (cutSide === 'on') {
                 offsetDistance = 0;  // Cut on line
-            } else {
-                offsetDistance = -(settings.toolDiameter / 2); // why only negative values for both internal or external offsets? Positive values don't create offsets so sign isn't just being
+            } else if (cutSide === 'outside') {
+                // External offset (positive)
+                offsetDistance = settings.toolDiameter / 2;
+            } else { // inside
+                // Internal offset (negative)
+                offsetDistance = -(settings.toolDiameter / 2);
             }
             
             console.log('[Inspector] Cutout offset:', offsetDistance, 'cutSide:', cutSide);
@@ -647,10 +665,10 @@
                 allPrimitives.push(...offset.primitives);
             });
             
-            // FIXED: Properly clone primitives with getBounds() method
+            // Clone primitives with getBounds() method
             const previewPrimitives = allPrimitives.map(p => {
                 if (p.type === 'circle') {
-                    // Use CirclePrimitive if available, otherwise create with getBounds
+                    // Use CirclePrimitive if available
                     if (typeof CirclePrimitive !== 'undefined') {
                         return new CirclePrimitive(p.center, p.radius, {
                             ...p.properties,
@@ -708,7 +726,7 @@
                     };
                 }
                 
-                // Fallback for other types - copy with getBounds if it exists
+                // Fallback for other types
                 return p.getBounds ? p : {
                     ...p,
                     getBounds: () => ({ minX: 0, minY: 0, maxX: 0, maxY: 0 })
@@ -737,8 +755,35 @@
         }
         
         async generateDrillOffsets(operation) {
-            this.ui.statusManager.showStatus('Drill hole milling offsets not yet implemented', 'info');
-            // TODO: Generate circular offsets for each drill hole
+            const settings = this.collectSettings();
+            
+            // For drill hole milling, we need internal offsets (positive distances)
+            const offsets = this.calculateOffsetDistances(
+                settings.toolDiameter,
+                settings.passes,
+                settings.stepOver,
+                true  // Internal offsets for clearing material
+            );
+            
+            this.ui.statusManager.showStatus('Generating drill hole milling offsets...', 'info');
+            
+            try {
+                await this.core.generateOffsetGeometry(operation, offsets, settings);
+                
+                if (this.ui.treeManager) {
+                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                        .find(n => n.operation?.id === operation.id);
+                    if (fileNode) {
+                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                    }
+                }
+                
+                await this.ui.updateRendererAsync();
+                this.ui.statusManager.showStatus(`Generated ${operation.offsets.length} milling offset(s)`, 'success');
+            } catch (error) {
+                console.error('Drill offset generation failed:', error);
+                this.ui.statusManager.showStatus('Failed: ' + error.message, 'error');
+            }
         }
         
         async generateDrillPreview(operation) {

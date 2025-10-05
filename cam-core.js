@@ -1,5 +1,5 @@
 // cam-core.js
-// REFACTORED: Offset-first pipeline with Clipper2 unions and arc-reconstructions per pass
+// UNIFIED: Offset-first pipeline with winding-based selection
 
 (function() {
     'use strict';
@@ -37,7 +37,7 @@
                     this.fileTypes[type] = {
                         extensions: op.extensions || [],
                         description: op.name || `Files for ${type} operation`,
-                        icon: op.icon || '📄',
+                        icon: op.icon || 'ðŸ“„',
                         color: op.color || '#888888'
                     };
                 }
@@ -98,10 +98,10 @@
             let allAvailable = true;
             requiredClasses.forEach(className => {
                 if (typeof window[className] === 'undefined') {
-                    console.error(`❌ ${className} not available`);
+                    console.error(`âŒ ${className} not available`);
                     allAvailable = false;
                 } else if (debugConfig.enabled) {
-                    console.log(`✅ ${className} available`);
+                    console.log(`âœ… ${className} available`);
                 }
             });
             
@@ -139,11 +139,11 @@
                     this.processorInitialized = true;
                     this.isInitialized = true;
                     if (debugConfig.enabled) {
-                        console.log('✅ Clipper2 initialized');
+                        console.log('Clipper2 initialized');
                     }
                     return true;
                 } catch (error) {
-                    console.error('❌ Clipper2 initialization failed:', error);
+                    console.error('Clipper2 initialization failed:', error);
                     this.processorInitialized = false;
                     return false;
                 } finally {
@@ -151,7 +151,7 @@
                 }
             }
             
-            console.error('❌ GeometryProcessor not available');
+            console.error('GeometryProcessor not available');
             this.isInitializing = false;
             return false;
         }
@@ -365,7 +365,8 @@
                 this.updateStatistics();
                 operation.processed = true;
                 this.isToolpathCacheValid = false;
-                
+
+               
                 if (debugConfig.logging?.parseOperations) {
                     console.log(`Parsed ${operation.file.name}: ${operation.primitives.length} primitives`);
                 }
@@ -611,11 +612,171 @@
         }
         
         // =====================================================================
-        // OFFSET-FIRST PIPELINE: Offset individuals → Union per pass
+        // UNIFIED OFFSET PIPELINE: Bidirectional inflation with winding selection
         // =====================================================================
         
+        // Calculate signed area of a polygon
+        calculateSignedArea(points) {
+            if (!points || points.length < 3) return 0;
+            
+            let area = 0;
+            for (let i = 0; i < points.length; i++) {
+                const j = (i + 1) % points.length;
+                area += points[i].x * points[j].y;
+                area -= points[j].x * points[i].y;
+            }
+            return area / 2;
+        }
+        
+        // Select polygons based on winding direction
+        selectOffsetPolygonsByWinding(unionResult, offsetType) {
+            const cwPolygons = [];
+            const ccwPolygons = [];
+            
+            for (const primitive of unionResult) {
+                if (primitive.type === 'circle') {
+                    const offsetDist = primitive.properties?.offsetDistance;
+                    const naturalWinding = primitive.properties?.naturalWinding;
+                    
+                    // Use natural winding if available, otherwise infer from offset type
+                    if (naturalWinding === 'cw') {
+                        cwPolygons.push(primitive);
+                    } else if (naturalWinding === 'ccw') {
+                        ccwPolygons.push(primitive);
+                    } else {
+                        // Default: Clipper normalizes outer boundaries to CCW
+                        // Both internal and external offset circles are outer boundaries
+                        console.log(`[Core] Circle Primitive detected without naturalWinding value, defaulting to clipper2 CCW.`);
+                        ccwPolygons.push(primitive);
+                    }
+                    continue;
+                }
+                if (primitive.type !== 'path' || !primitive.points) continue;
+                
+                const naturalWinding = primitive.properties?.naturalWinding;
+                const isNaturallyCW = naturalWinding ? 
+                    naturalWinding === 'cw' : 
+                    this.calculateSignedArea(primitive.points) < 0;
+                
+                if (isNaturallyCW) {
+                    cwPolygons.push(primitive);
+                } else {
+                    ccwPolygons.push(primitive);
+                }
+            }
+            
+            let selected = [];
+            
+            if (offsetType === 'internal') {
+                // Internal offsets: Select CCW cleared areas + CW islands within them
+                selected = [...ccwPolygons];
+                
+                // Preserve islands (CW polygons contained within CCW cleared areas)
+                for (const cwPoly of cwPolygons) {
+                    for (const ccwPoly of ccwPolygons) {
+                        if (this.isPolygonInside(cwPoly, ccwPoly)) {
+                            cwPoly.properties = cwPoly.properties || {};
+                            cwPoly.properties.isIsland = true;
+                            selected.push(cwPoly);
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // External offsets: Select CCW outer boundaries + CW holes within them
+                selected = [...ccwPolygons];
+                
+                // Preserve holes (CW polygons contained within CCW outer boundaries)
+                for (const cwPoly of cwPolygons) {
+                    for (const ccwPoly of ccwPolygons) {
+                        if (this.isPolygonInside(cwPoly, ccwPoly)) {
+                            cwPoly.properties = cwPoly.properties || {};
+                            cwPoly.properties.isHole = true;
+                            selected.push(cwPoly);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (this.debug) {
+                const holes = selected.filter(p => p.properties?.isHole).length;
+                const islands = selected.filter(p => p.properties?.isIsland).length;
+                console.log(`[Core] Winding: ${unionResult.length} → ${selected.length} (${offsetType})`);
+                console.log(`[Core] Holes: ${holes}, Islands: ${islands}`);
+            }
+            
+            return selected;
+        }
+        
+        // Extract islands (CW polygons within CCW regions)
+        extractIslands(unionResult) {
+            const islands = [];
+            const ccwPolygons = [];
+            const cwPolygons = [];
+            
+           // Separate by winding
+
+           for (const primitive of unionResult) {
+                if (primitive.type !== 'path' || !primitive.points) continue;
+                
+                const area = this.calculateSignedArea(primitive.points);
+                if (area < 0) {
+                    cwPolygons.push(primitive);
+                } else {
+                    ccwPolygons.push(primitive);
+                }
+            }
+            
+            // Check which CW polygons are contained within CCW polygons
+            for (const cwPoly of cwPolygons) {
+                for (const ccwPoly of ccwPolygons) {
+                    if (this.isPolygonInside(cwPoly, ccwPoly)) {
+                        islands.push({
+                            ...cwPoly,
+                            properties: {
+                                ...cwPoly.properties,
+                                isIsland: true
+                            }
+                        });
+
+                       break;
+                    }
+                }
+            }
+            
+            return islands;
+        }
+        
+        // Check if one polygon is inside another (simplified)
+        isPolygonInside(inner, outer) {
+            if (!inner.points || !outer.points || inner.points.length === 0) return false;
+            
+            // Check if first point of inner is inside outer
+            const testPoint = inner.points[0];
+            return this.isPointInPolygon(testPoint, outer.points);
+        }
+        
+        // Point-in-polygon test using ray casting
+        isPointInPolygon(point, polygon) {
+            let inside = false;
+            
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].x, yi = polygon[i].y;
+                const xj = polygon[j].x, yj = polygon[j].y;
+                
+
+               const intersect = ((yi > point.y) !== (yj > point.y))
+                    && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+                
+                if (intersect) inside = !inside;
+            }
+            
+            return inside;
+        }
+        
         async generateOffsetGeometry(operation, offsetDistances, settings) {
-            console.log(`[Core] === OFFSET-FIRST PIPELINE START ===`);
+            console.log(`[Core] === UNIFIED OFFSET PIPELINE START ===`);
             console.log(`[Core] Operation: ${operation.id} (${operation.type})`);
             console.log(`[Core] Passes: ${offsetDistances.length}`);
             console.log(`[Core] Tool: ${settings.tool?.diameter}mm`);
@@ -639,42 +800,25 @@
             
             operation.offsets = [];
             const passResults = [];
-
-
             
             // Process each pass independently
             for (let passIndex = 0; passIndex < offsetDistances.length; passIndex++) {
                 const distance = offsetDistances[passIndex];
-                console.log(`[Core] === PASS ${passIndex + 1}/${offsetDistances.length} ===`);
-                console.log(`[Core] Distance: ${distance.toFixed(3)}mm`);
+                const offsetType = distance > 0 ? 'external' : 'internal';
                 
-                // Step 1: Offset individual primitives
+                console.log(`[Core] === PASS ${passIndex + 1}/${offsetDistances.length} ===`);
+                console.log(`[Core] Distance: ${distance.toFixed(3)}mm (${offsetType})`);
+                
+                // Step 1: Offset individual primitives with bidirectional inflation
                 const offsetPrimitives = [];
                 let successCount = 0;
                 let failCount = 0;
-                const failuresByType = {};
                 
                 for (const primitive of operation.primitives) {
                     try {
-                        if (!this.validatePrimitiveForOffset(primitive)) {
-                            failCount++;
-                            failuresByType[primitive.type] = (failuresByType[primitive.type] || 0) + 1;
-                            continue;
-                        }
-                        
-                        let primToOffset = primitive;
-                        if (primitive.type === 'path' && primitive.arcSegments && primitive.arcSegments.length > 0) {
-                            primToOffset = {
-                                type: 'path',
-                                points: primitive.points,
-                                closed: primitive.closed,
-                                properties: { ...primitive.properties, hadArcs: true }
-                            };
-                        }
-                        
                         const offsetResult = await this.geometryOffsetter.offsetPrimitive(
-                            primToOffset,
-                            distance,
+                            primitive,
+                            distance,  // Signed distance preserved
                             settings
                         );
                         
@@ -688,19 +832,14 @@
                             }
                         } else {
                             failCount++;
-                            failuresByType[primitive.type] = (failuresByType[primitive.type] || 0) + 1;
                         }
                     } catch (error) {
                         console.error(`[Core] Offset failed for ${primitive.type}:`, error.message);
                         failCount++;
-                        failuresByType[primitive.type] = (failuresByType[primitive.type] || 0) + 1;
                     }
                 }
                 
                 console.log(`[Core] Offset: ${successCount} success, ${failCount} failed`);
-                if (Object.keys(failuresByType).length > 0) {
-                    console.log(`[Core] Failures by type:`, failuresByType);
-                }
                 
                 if (offsetPrimitives.length === 0) {
                     console.warn(`[Core] Pass ${passIndex + 1} produced no geometry`);
@@ -733,49 +872,18 @@
                                 }));
                             }
                         } else if (primitive.type === 'path') {
-                            const isStroke = primitive.properties && 
-                                        (primitive.properties.stroke || primitive.properties.isTrace) &&
-                                        primitive.properties.strokeWidth !== undefined;
-                            
-                            if (isStroke && typeof GeometryUtils !== 'undefined') {
-                                let polygonPoints;
-                                
-                                if (primitive.points.length === 2) {
-                                    polygonPoints = GeometryUtils.lineToPolygon(
-                                        primitive.points[0],
-                                        primitive.points[1],
-                                        primitive.properties.strokeWidth
-                                    );
-                                } else {
-                                    polygonPoints = GeometryUtils.polylineToPolygon(
-                                        primitive.points,
-                                        primitive.properties.strokeWidth
-                                    );
-                                }
-                                
-                                if (polygonPoints && polygonPoints.length >= 3) {
-                                    polygonizedPrimitives.push(this._createPathPrimitive(polygonPoints, {
-                                        ...primitive.properties,
-                                        closed: true,
-                                        fill: true,
-                                        stroke: false,
-                                        polygonized: true
-                                    }));
-                                }
-                            } else if (!isStroke) {
-                                polygonizedPrimitives.push(primitive);
-                            }
+                            polygonizedPrimitives.push(primitive);
                         } else if (primitive.type === 'arc') {
                             if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
                                 polygonizedPrimitives.push(primitive.toPolygon());
                             }
                         }
                     } catch (error) {
-                        console.error(`[Core] Polygonization failed for ${primitive.type}:`, error.message);
+                        console.error(`[Core] Polygonization failed:`, error.message);
                     }
                 }
                 
-                console.log(`[Core] Polygonized: ${offsetPrimitives.length} → ${polygonizedPrimitives.length} path primitives`);
+                console.log(`[Core] Polygonized: ${offsetPrimitives.length} â†’ ${polygonizedPrimitives.length} primitives`);
                 
                 if (polygonizedPrimitives.length === 0) {
                     console.warn(`[Core] No valid primitives after polygonization`);
@@ -783,61 +891,79 @@
                 }
                 
                 // Step 3: Union overlapping offsets
-                console.log(`[Core] Unioning ${polygonizedPrimitives.length} path primitives...`);
-
-                let finalGeometry;
+                console.log(`[Core] Unioning ${polygonizedPrimitives.length} primitives...`);
+                
+                let unionResult;
                 try {
-                    const unionResult = await this.geometryProcessor.unionGeometry(
+                    unionResult = await this.geometryProcessor.unionGeometry(
                         polygonizedPrimitives,
                         { fillRule: 'nonzero' }
                     );
                     
-                    console.log(`[Core] Union: ${polygonizedPrimitives.length} → ${unionResult.length} primitives`);
+                    console.log(`[Core] Union: ${polygonizedPrimitives.length} â†’ ${unionResult.length} primitives`);
                     
-                    // ADDED: Special handling for cutout path filtering
-                    if (operation.type === 'cutout' && distance !== 0) {
-                        const cutSide = settings.cutSide || 'outside';
-                        const originalBounds = operation.bounds;
-                        
-                        finalGeometry = this.filterCutoutPaths(unionResult, cutSide, originalBounds);
-                        
-                        console.log(`[Core] Cutout filter (${cutSide}): ${unionResult.length} → ${finalGeometry.length} paths`);
-                    } else {
-                        finalGeometry = unionResult;
+                    // If union produces no results but we have input, use the input
+                    if (unionResult.length === 0 && polygonizedPrimitives.length > 0) {
+                        console.warn(`[Core] Union produced no results, using original polygons`);
+                        unionResult = polygonizedPrimitives;
                     }
-                    
-                    console.log(`[Core] Running arc reconstruction...`);
-                    finalGeometry = this.geometryProcessor.arcReconstructor.processForReconstruction(finalGeometry);
-                    console.log(`[Core] Reconstructed: ${finalGeometry.length} primitives`);
-                    
-                    finalGeometry = finalGeometry.map(p => {
-                        if (!p.properties) p.properties = {};
-                        p.properties.isOffset = true;
-                        p.properties.pass = passIndex + 1;
-                        p.properties.offsetDistance = distance;
-                        return p;
-                    });
-                    
                 } catch (error) {
-                    console.error(`[Core] Union failed for pass ${passIndex + 1}:`, error);
-                    finalGeometry = polygonizedPrimitives.map(p => {
-                        if (!p.properties) p.properties = {};
-                        p.properties.isOffset = true;
-                        p.properties.pass = passIndex + 1;
-                        p.properties.offsetDistance = distance;
-                        p.properties.unionFailed = true;
-                        return p;
-                    });
+                    console.error(`[Core] Union failed:`, error);
+                    unionResult = polygonizedPrimitives;
                 }
                 
-                // Store pass result for potential combining
+                // Step 4: Arc reconstruction
+                console.log(`[Core] Running arc reconstruction...`);
+                unionResult = this.geometryProcessor.arcReconstructor.processForReconstruction(unionResult);
+                
+                // Step 5: Select appropriate polygons by winding (or skip for cutouts)
+                let finalGeometry;
+                
+                // For cutouts, skip winding selection since they're simple offset paths
+                if (operation.type === 'cutout') {
+                    finalGeometry = unionResult;
+                    console.log(`[Core] Cutout: using all ${finalGeometry.length} polygons`);
+                    
+                    // Apply cutout-specific filtering if needed
+                    if (distance !== 0) {
+                        const cutSide = settings.cutSide || 'outside';
+                        const originalBounds = operation.bounds;
+                        finalGeometry = this.filterCutoutPaths(finalGeometry, cutSide, originalBounds);
+                        console.log(`[Core] Cutout filter (${cutSide}): ${finalGeometry.length} paths`);
+                    }
+                } else {
+                    // Normal winding selection for isolation/clear
+                    finalGeometry = this.selectOffsetPolygonsByWinding(unionResult, offsetType);
+                    console.log(`[Core] Selected ${finalGeometry.length} polygons by winding (${offsetType})`);
+                    
+                    // Handle special cases for clear operation
+                    if (offsetType === 'internal' && operation.type === 'clear') {
+                        const islands = this.extractIslands(unionResult);
+                        finalGeometry.push(...islands);
+                        console.log(`[Core] Preserved ${islands.length} islands`);
+                    }
+                }
+                
+                // Tag final geometry
+                finalGeometry = finalGeometry.map(p => {
+                    if (!p.properties) p.properties = {};
+                    p.properties.isOffset = true;
+                    p.properties.pass = passIndex + 1;
+                    p.properties.offsetDistance = distance;
+                    p.properties.offsetType = offsetType;
+                    return p;
+                });
+                
+                // Store pass result
                 passResults.push({
                     distance: distance,
                     pass: passIndex + 1,
+                    offsetType: offsetType,
                     primitives: finalGeometry,
                     metadata: {
                         sourceCount: operation.primitives.length,
                         offsetCount: offsetPrimitives.length,
+                        unionCount: unionResult.length,
                         finalCount: finalGeometry.length,
                         generatedAt: Date.now(),
                         toolDiameter: settings.tool?.diameter
@@ -849,38 +975,36 @@
             if (settings.combineOffsets && passResults.length > 1) {
                 console.log(`[Core] === COMBINING ${passResults.length} PASSES ===`);
                 
-                // Collect all primitives from all passes
                 const allPassPrimitives = [];
                 passResults.forEach(passResult => {
                     allPassPrimitives.push(...passResult.primitives);
                 });
                 
-                console.log(`[Core] Combining ${allPassPrimitives.length} total primitives...`);
+                console.log(`[Core] Combined ${allPassPrimitives.length} total primitives`);
                 
-                // Create single combined offset object
                 operation.offsets = [{
                     id: `offset_combined_${operation.id}`,
-                    distance: offsetDistances[0], // Use first pass distance as reference
+                    distance: offsetDistances[0],
                     pass: 1,
                     primitives: allPassPrimitives,
                     combined: true,
                     passes: passResults.length,
                     settings: { ...settings },
                     metadata: {
-                        sourceCount: operation.primitives.length,
+
+                       sourceCount: operation.primitives.length,
                         totalPrimitives: allPassPrimitives.length,
                         passCount: passResults.length,
                         generatedAt: Date.now(),
                         toolDiameter: settings.tool?.diameter
                     }
                 }];
-                
-                console.log(`[Core] Combined into single object with ${allPassPrimitives.length} primitives`);
             } else {
                 // Store passes individually
                 passResults.forEach((passResult, index) => {
                     operation.offsets.push({
                         id: `offset_${operation.id}_${index}`,
+
                         ...passResult,
                         settings: { ...settings }
                     });
@@ -888,90 +1012,64 @@
             }
             
             const totalPrimitives = operation.offsets.reduce((sum, o) => sum + o.primitives.length, 0);
-            console.log(`[Core] === OFFSET-FIRST PIPELINE COMPLETE ===`);
-            console.log(`[Core] Generated ${operation.offsets.length} offset object(s), ${totalPrimitives} primitives`);
+            console.log(`[Core] === UNIFIED OFFSET PIPELINE COMPLETE ===`);
+            console.log(`[Core] Generated ${operation.offsets.length} offset(s), ${totalPrimitives} primitives`);
             
             this.isToolpathCacheValid = false;
             return operation.offsets;
         }
-
-        validatePrimitiveForOffset(primitive) {
-            if (!primitive || !primitive.type) return false;
-            
-            if (primitive.type === 'path') {
-                return primitive.points && primitive.points.length >= 2;
-            }
-            
-            if (primitive.type === 'circle') {
-                return primitive.center && primitive.radius > 0;
-            }
-            
-            if (primitive.type === 'arc') {
-                return primitive.center && primitive.radius > 0 &&
-                       primitive.startAngle !== undefined && primitive.endAngle !== undefined;
-            }
-            
-            if (primitive.type === 'rectangle') {
-                return primitive.position && primitive.width !== undefined && primitive.height !== undefined;
-            }
-            
-            return true;
-        }
-
-        /**
-         * Filter cutout offset results based on cutSide setting
-         * For outside cuts: keep the larger (outer) path
-         * For inside cuts: keep the smaller (inner) path
-         */
+        
         filterCutoutPaths(primitives, cutSide, originalBounds) {
             console.log(`[Core] filterCutoutPaths: ${primitives.length} primitives, cutSide=${cutSide}`);
             if (cutSide === 'on' || !originalBounds) {
-                return primitives; // No filtering needed
+                return primitives;
             }
             
             if (primitives.length <= 1) {
-                return primitives; // Only one path, keep it
+                return primitives;
             }
             
-            // Calculate area for each path primitive
             const pathsWithAreas = primitives.map(prim => {
                 if (prim.type !== 'path' || !prim.points) {
-                    console.warn('[Core] No primitives to filter!');
                     return { primitive: prim, area: 0 };
                 }
                 
-                // Calculate signed area
-                let area = 0;
-                for (let i = 0; i < prim.points.length; i++) {
-                    const j = (i + 1) % prim.points.length;
-                    area += prim.points[i].x * prim.points[j].y;
-                    area -= prim.points[j].x * prim.points[i].y;
-                }
-                area = Math.abs(area / 2);
-                
+                const area = Math.abs(this.calculateSignedArea(prim.points));
                 return { primitive: prim, area: area };
             });
             
-            // Sort by area
             pathsWithAreas.sort((a, b) => b.area - a.area);
             
-            if (this.debug) {
+            if (debugConfig.enabled) {
                 console.log(`[Core] Cutout filter: ${primitives.length} paths, cutSide=${cutSide}`);
                 pathsWithAreas.forEach((p, i) => {
                     console.log(`  Path ${i}: area=${p.area.toFixed(3)}`);
                 });
             }
             
-            // Select based on cutSide
             if (cutSide === 'outside') {
-                // Keep the largest path (outer perimeter)
                 return [pathsWithAreas[0].primitive];
             } else if (cutSide === 'inside') {
-                // Keep the smallest path (inner perimeter)
                 return [pathsWithAreas[pathsWithAreas.length - 1].primitive];
             }
             
             return primitives;
+        }
+        
+        // Calculate offset distances with proper sign
+        calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal = false) {
+            const stepOver = stepOverPercent / 100;
+            const stepDistance = toolDiameter * (1 - stepOver);
+            const offsets = [];
+            
+            // External offsets are negative, internal offsets are positive
+            const sign = isInternal ? -1 : 1;
+            
+            for (let i = 0; i < passes; i++) {
+                offsets.push(sign * (toolDiameter / 2 + i * stepDistance));
+            }
+            
+            return offsets;
         }
         
         // Toolpath management
@@ -1020,10 +1118,12 @@
                 return null;
             }
             
+            const isInternal = operation.type === 'clear';
             const offsets = this.calculateOffsetDistances(
                 settings.tool.diameter,
                 settings.passes || 1,
-                settings.stepOver || 50
+                settings.stepOver || 50,
+                isInternal
             );
             
             const toolpathData = {
@@ -1043,22 +1143,6 @@
             return toolpathData;
         }
         
-        calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal = false) {
-            const stepOver = stepOverPercent / 100;
-            const stepDistance = toolDiameter * (1 - stepOver);
-            const offsets = [];
-            
-            // Internal offsets (clear, drill milling) are positive
-            // External offsets (isolation) are negative
-            const sign = isInternal ? 1 : -1;
-            
-            for (let i = 0; i < passes; i++) {
-                offsets.push(sign * (toolDiameter / 2 + i * stepDistance));
-            }
-            
-            return offsets;
-        }
-        
         async getTransformedToolpathsForExport() {
             if (!this.isToolpathCacheValid) {
                 await this.generateAllToolpaths();
@@ -1072,7 +1156,7 @@
             return finalToolpaths;
         }
         
-        // Fusion for visualization (separate from offsetting)
+        // Fusion for visualization
         async fuseAllPrimitives(options = {}) {
             await this.ensureProcessorReady();
             
@@ -1082,14 +1166,12 @@
             
             const fusedResults = [];
             
-            // Fuse each operation independently
             for (const operation of this.operations) {
                 if ((operation.type === 'isolation' || operation.type === 'clear') &&
                     operation.primitives && operation.primitives.length > 0) {
                     
                     const fused = await this.geometryProcessor.fuseGeometry(operation.primitives, options);
                     
-                    // Tag with operation ID
                     fused.forEach(p => {
                         if (!p.properties) p.properties = {};
                         p.properties.sourceOperationId = operation.id;
@@ -1153,6 +1235,7 @@
                 points: points,
                 properties: properties || {},
                 closed: properties?.closed !== false,
+                holes: properties?.holes || [],
                 getBounds: function() {
                     if (this.points.length === 0) {
                         return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
@@ -1165,6 +1248,17 @@
                         maxX = Math.max(maxX, p.x);
                         maxY = Math.max(maxY, p.y);
                     });
+                    // Include holes in bounds
+                    if (this.holes && this.holes.length > 0) {
+                        this.holes.forEach(hole => {
+                            hole.forEach(p => {
+                                minX = Math.min(minX, p.x);
+                                minY = Math.min(minY, p.y);
+                                maxX = Math.max(maxX, p.x);
+                                maxY = Math.max(maxY, p.y);
+                            });
+                        });
+                    }
                     return { minX, minY, maxX, maxY };
                 }
             };

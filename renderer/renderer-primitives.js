@@ -22,7 +22,7 @@
         renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false) {
             this.ctx.save();
 
-            // FIXED: Check preview FIRST before offset
+            // Check preview FIRST before offset
             const isPreview = primitive.properties?.isPreview === true;
             if (isPreview) {
                 this.renderPreviewPrimitive(primitive, strokeColor);
@@ -63,7 +63,7 @@
             this.ctx.restore();
         }
         
-        // NEW: Dedicated preview renderer using tool diameter
+        // Dedicated preview renderer using tool diameter
         renderPreviewPrimitive(primitive, strokeColor) {
             const toolDiameter = primitive.properties.toolDiameter || 0.2;
             
@@ -106,7 +106,7 @@
             this.ctx.lineWidth = 2 / this.core.viewScale;
              // Use different colors for internal vs external offsets
             const offsetDistance = primitive.properties?.offsetDistance || 0;
-            const isInternal = offsetDistance > 0;
+            const isInternal = offsetDistance < 0;
             this.ctx.strokeStyle = isInternal ? '#00aa00ff' : strokeColor; // Green for internal, red for external
             this.ctx.fillStyle = 'transparent';
             
