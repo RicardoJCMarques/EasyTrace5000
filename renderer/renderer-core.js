@@ -84,7 +84,8 @@
                 color: options.color || null,
                 isFused: options.isFused || false,
                 isPreprocessed: options.isPreprocessed || false,
-                totalHoles: holesCount
+                totalHoles: holesCount,
+                metadata: options.metadata || null
             });
             
             this.calculateOverallBounds();

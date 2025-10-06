@@ -1,5 +1,5 @@
 // geometry/geometry-offsetter.js
-// UNIFIED: Bidirectional offset pipeline for internal/external offsets
+// Unified bidirectional offset pipeline for internal/external offsets
 
 class GeometryOffsetter {
     constructor(options = {}) {
@@ -179,7 +179,6 @@ class GeometryOffsetter {
             
             // CRITICAL: For internal offsets, use inward normals (negative perpendicular)
             // For external offsets, use outward normals (positive perpendicular)
-            // This ensures the offset goes in the right direction
             const normalDirection = isInternal ? -1 : 1;
             
             const offsetPoints = [];

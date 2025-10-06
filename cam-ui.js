@@ -119,7 +119,7 @@
             }
             
             if (typeof LayerRenderer !== 'undefined') {
-                this.renderer = new LayerRenderer('preview-canvas');
+                this.renderer = new LayerRenderer('preview-canvas', this.core);
                 
                 if (typeof CoordinateSystemManager !== 'undefined') {
                     this.coordinateSystem = new CoordinateSystemManager({ 
@@ -309,6 +309,18 @@
                     }
                     
                     await this.updateRendererAsync();
+                });
+            }
+
+            const toolPreviewControl = document.getElementById('show-tool-preview');
+            if (toolPreviewControl) {
+                toolPreviewControl.checked = this.viewState.showToolPreview || false;
+                toolPreviewControl.addEventListener('change', (e) => {
+                    this.viewState.showToolPreview = e.target.checked;
+                    if (this.renderer) {
+                        this.renderer.setOptions({ showToolPreview: e.target.checked });
+                        this.renderer.render();
+                    }
                 });
             }
             

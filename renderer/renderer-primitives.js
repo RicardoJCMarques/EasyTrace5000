@@ -19,13 +19,22 @@
             };
         }
         
-        renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false) {
+        renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false, context = {}) {
             this.ctx.save();
 
-            // Check preview FIRST before offset
+            // FIX: Prioritize the context flag from the layer renderer. This ensures that
+            // even if a primitive is tagged `isOffset`, if it's being rendered as part
+            // of a preview layer, it correctly uses the preview renderer.
+            if (context.isPreviewRender) {
+                this.renderPreviewPrimitive(primitive, strokeColor, context); 
+                this.ctx.restore();
+                return;
+            }
+
+            // Check preview FIRST before offset (This is now a fallback)
             const isPreview = primitive.properties?.isPreview === true;
             if (isPreview) {
-                this.renderPreviewPrimitive(primitive, strokeColor);
+                this.renderPreviewPrimitive(primitive, strokeColor, context); 
                 this.ctx.restore();
                 return;
             }
@@ -64,35 +73,51 @@
         }
         
         // Dedicated preview renderer using tool diameter
-        renderPreviewPrimitive(primitive, strokeColor) {
-            const toolDiameter = primitive.properties.toolDiameter || 0.2;
+        renderPreviewPrimitive(primitive, strokeColor, context = {}) {
+            // This will now receive the correct toolDiameter from the layer metadata
+            const toolDiameter = context.toolDiameter;
             
-            this.ctx.fillStyle = 'transparent';
-            this.ctx.strokeStyle = strokeColor;
-            this.ctx.lineWidth = toolDiameter;  // Use tool diameter directly
+            // If toolDiameter is still undefined, exit to prevent errors. No fallbacks.
+            if (typeof toolDiameter === 'undefined' || toolDiameter <= 0) {
+                console.warn(`[Renderer] Preview rendering skipped: Invalid tool diameter (${toolDiameter})`);
+                return;
+            }
+
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
             
-            if (debugConfig.enabled) {
-                console.log(`[Renderer] Preview: tool=${toolDiameter}mm, type=${primitive.type}`);
-            }
-            
-            if (primitive.type === 'circle') {
-                // For drill preview - just stroke the circle at tool diameter
+            // Logic to handle different preview types
+            if (primitive.properties?.isDrillPreview) {
+                // For drill previews, render a FILLED circle representing the hole.
+                this.ctx.fillStyle = strokeColor;
+                this.ctx.strokeStyle = 'transparent';
                 this.ctx.beginPath();
+                // The primitive's radius IS the tool radius in this case.
                 this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
-                this.ctx.stroke();
-            } else if (primitive.type === 'path') {
-                // For isolation preview
-                if (primitive.arcSegments?.length > 0) {
-                    this.renderHybridPathStrokeOnly(primitive, strokeColor);
-                } else {
+                this.ctx.fill();
+            } else {
+                // For isolation, cutout, etc., render a STROKED path.
+                this.ctx.fillStyle = 'transparent';
+                this.ctx.strokeStyle = strokeColor;
+                this.ctx.lineWidth = toolDiameter; // Set stroke width to tool diameter
+
+                if (primitive.type === 'path') {
+                    if (primitive.arcSegments?.length > 0) {
+                        this.renderHybridPathStrokeOnly(primitive, strokeColor);
+                    } else {
+                        this.ctx.beginPath();
+                        primitive.points.forEach((p, i) => {
+                            if (i === 0) this.ctx.moveTo(p.x, p.y);
+                            else this.ctx.lineTo(p.x, p.y);
+                        });
+                        if (primitive.closed) this.ctx.closePath();
+                        this.ctx.stroke();
+                    }
+                } 
+                // FIX: Add this block to handle drawing stroked circle primitives
+                else if (primitive.type === 'circle') {
                     this.ctx.beginPath();
-                    primitive.points.forEach((p, i) => {
-                        if (i === 0) this.ctx.moveTo(p.x, p.y);
-                        else this.ctx.lineTo(p.x, p.y);
-                    });
-                    if (primitive.closed) this.ctx.closePath();
+                    this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
                     this.ctx.stroke();
                 }
             }

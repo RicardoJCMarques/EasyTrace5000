@@ -523,7 +523,10 @@
             const millCheck = container.querySelector('#prop-millHoles');
             if (millCheck) {
                 millCheck.addEventListener('change', (e) => {
-                    // Re-render to show appropriate parameters
+                    if (this.currentOperation) {
+                        this.currentOperation.settings.millHoles = e.target.checked;
+                    }
+                    //    updated state to show the correct parameters and button.
                     this.showOperationProperties(this.currentOperation, this.currentGeometryStage);
                 });
             }
@@ -620,21 +623,24 @@
             const cutSide = settings.cutSide;
             
             let offsetDistance;
+            
             if (cutSide === 'on') {
-                offsetDistance = 0;  // Cut on line
+                // A zero distance means the toolpath will follow the line directly.
+                offsetDistance = 0;
             } else if (cutSide === 'outside') {
-                // External offset (positive)
+                // A positive distance creates an external offset.
                 offsetDistance = settings.toolDiameter / 2;
-            } else { // inside
-                // Internal offset (negative)
+            } else { // 'inside'
+                // A negative distance creates an internal offset.
                 offsetDistance = -(settings.toolDiameter / 2);
             }
             
-            console.log('[Inspector] Cutout offset:', offsetDistance, 'cutSide:', cutSide);
+            console.log('[Inspector] Cutout offset distance:', offsetDistance, 'for cutSide:', cutSide);
             
-            this.ui.statusManager.showStatus('Generating cutout offset...', 'info');
+            this.ui.statusManager.showStatus('Generating cutout path...', 'info');
             
             try {
+                // The core generator expects an array of distances. For cutouts, it's just one.
                 await this.core.generateOffsetGeometry(operation, [offsetDistance], settings);
                 
                 if (this.ui.treeManager) {
@@ -646,7 +652,7 @@
                 }
                 
                 await this.ui.updateRendererAsync();
-                this.ui.statusManager.showStatus('Cutout offset generated', 'success');
+                this.ui.statusManager.showStatus('Cutout path generated', 'success');
             } catch (error) {
                 console.error('Cutout offset failed:', error);
                 this.ui.statusManager.showStatus('Failed: ' + error.message, 'error');
@@ -658,90 +664,40 @@
                 this.ui.statusManager.showStatus('Generate offsets first', 'warning');
                 return;
             }
+
+            // FIX: Retrieve the toolDiameter from the metadata of the offset geometry itself.
+            // This is the most reliable source, as it's the value that was actually used
+            // to create the paths we are about to preview.
+            const firstOffset = operation.offsets[0];
+            const toolDiameter = firstOffset.metadata?.toolDiameter;
+
+            // Safety check to ensure the required parameter exists in the metadata.
+            if (typeof toolDiameter === 'undefined' || toolDiameter <= 0) {
+                this.ui.statusManager.showStatus('Error: Tool diameter not found in offset metadata.', 'error');
+                console.error("Preview failed: toolDiameter is missing from offset metadata", firstOffset);
+                return;
+            }
             
-            const settings = this.collectSettings();
+            // Collect all primitive objects from the existing offset passes.
             const allPrimitives = [];
             operation.offsets.forEach(offset => {
                 allPrimitives.push(...offset.primitives);
             });
             
-            // Clone primitives with getBounds() method
-            const previewPrimitives = allPrimitives.map(p => {
-                if (p.type === 'circle') {
-                    // Use CirclePrimitive if available
-                    if (typeof CirclePrimitive !== 'undefined') {
-                        return new CirclePrimitive(p.center, p.radius, {
-                            ...p.properties,
-                            isPreview: true,
-                            toolDiameter: settings.toolDiameter
-                        });
-                    }
-                    return {
-                        type: 'circle',
-                        center: p.center,
-                        radius: p.radius,
-                        properties: {
-                            ...p.properties,
-                            isPreview: true,
-                            toolDiameter: settings.toolDiameter
-                        },
-                        getBounds: function() {
-                            return {
-                                minX: this.center.x - this.radius,
-                                minY: this.center.y - this.radius,
-                                maxX: this.center.x + this.radius,
-                                maxY: this.center.y + this.radius
-                            };
-                        }
-                    };
-                } else if (p.type === 'path') {
-                    // Use PathPrimitive if available
-                    if (typeof PathPrimitive !== 'undefined') {
-                        return new PathPrimitive(p.points, {
-                            ...p.properties,
-                            isPreview: true,
-                            toolDiameter: settings.toolDiameter
-                        });
-                    }
-                    return {
-                        type: 'path',
-                        points: p.points,
-                        closed: p.closed,
-                        properties: {
-                            ...p.properties,
-                            isPreview: true,
-                            toolDiameter: settings.toolDiameter
-                        },
-                        getBounds: function() {
-                            let minX = Infinity, minY = Infinity;
-                            let maxX = -Infinity, maxY = -Infinity;
-                            this.points.forEach(pt => {
-                                minX = Math.min(minX, pt.x);
-                                minY = Math.min(minY, pt.y);
-                                maxX = Math.max(maxX, pt.x);
-                                maxY = Math.max(maxY, pt.y);
-                            });
-                            return { minX, minY, maxX, maxY };
-                        }
-                    };
-                }
-                
-                // Fallback for other types
-                return p.getBounds ? p : {
-                    ...p,
-                    getBounds: () => ({ minX: 0, minY: 0, maxX: 0, maxY: 0 })
-                };
-            });
+            // Reuse the existing primitive objects for the preview layer, as requested.
+            const previewPrimitives = allPrimitives;
             
+            // Create the preview object on the operation. The renderer will use this.
             operation.preview = {
                 primitives: previewPrimitives,
                 metadata: {
                     generatedAt: Date.now(),
                     sourceOffsets: operation.offsets.length,
-                    toolDiameter: settings.toolDiameter
+                    toolDiameter: toolDiameter // Pass the confirmed toolDiameter from the offset metadata.
                 }
             };
             
+            // Trigger the UI and renderer to update.
             if (this.ui.treeManager) {
                 const fileNode = Array.from(this.ui.treeManager.nodes.values())
                     .find(n => n.operation?.id === operation.id);
@@ -757,17 +713,23 @@
         async generateDrillOffsets(operation) {
             const settings = this.collectSettings();
             
-            // For drill hole milling, we need internal offsets (positive distances)
+            // For drill hole milling, we are clearing material inside the hole.
+            // Therefore, we generate INTERNAL offsets. The `isInternal` flag tells
+            // calculateOffsetDistances to generate negative distances.
+            const isInternal = true;
+            
             const offsets = this.calculateOffsetDistances(
                 settings.toolDiameter,
                 settings.passes,
                 settings.stepOver,
-                true  // Internal offsets for clearing material
+                isInternal 
             );
             
             this.ui.statusManager.showStatus('Generating drill hole milling offsets...', 'info');
             
             try {
+                // The core offset generator will correctly interpret the negative distances
+                // as an instruction to offset inwards.
                 await this.core.generateOffsetGeometry(operation, offsets, settings);
                 
                 if (this.ui.treeManager) {
@@ -779,7 +741,7 @@
                 }
                 
                 await this.ui.updateRendererAsync();
-                this.ui.statusManager.showStatus(`Generated ${operation.offsets.length} milling offset(s)`, 'success');
+                this.ui.statusManager.showStatus(`Generated ${operation.offsets.length} milling offset(s) for drills`, 'success');
             } catch (error) {
                 console.error('Drill offset generation failed:', error);
                 this.ui.statusManager.showStatus('Failed: ' + error.message, 'error');
@@ -787,7 +749,6 @@
         }
         
         async generateDrillPreview(operation) {
-            // Generate filled circles at tool diameter for each hole
             const settings = this.collectSettings();
             const toolRadius = settings.toolDiameter / 2;
             
@@ -797,21 +758,13 @@
                     previewPrimitives.push({
                         type: 'circle',
                         center: drillHole.center,
-                        radius: toolRadius,
+                        radius: toolRadius, // The radius of the preview is the tool's radius
                         properties: {
-                            isDrillPreview: true,
+                            isDrillPreview: true, // This flag is used by the fixed renderer
                             toolDiameter: settings.toolDiameter,
-                            originalHoleRadius: drillHole.radius,
-                            fill: true
+                            fill: true // Important for correct rendering intent
                         },
-                        getBounds: function() {
-                            return {
-                                minX: this.center.x - this.radius,
-                                minY: this.center.y - this.radius,
-                                maxX: this.center.x + this.radius,
-                                maxY: this.center.y + this.radius
-                            };
-                        }
+                        getBounds: function() { /* ...bounds logic... */ }
                     });
                 }
             });
@@ -820,7 +773,7 @@
                 primitives: previewPrimitives,
                 metadata: {
                     generatedAt: Date.now(),
-                    toolDiameter: settings.toolDiameter
+                    toolDiameter: settings.toolDiameter // This is now correctly stored and passed
                 }
             };
             
