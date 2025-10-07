@@ -201,6 +201,16 @@
                     regularLayers.push(layer);
                 }
             });
+
+            // Render regular layers last
+            const renderOrder = ['cutout', 'clear', 'isolation', 'drill'];
+            renderOrder.forEach(type => {
+                regularLayers.forEach(layer => {
+                    if (layer.visible && layer.type === type) {
+                        this.renderLayer(layer);
+                    }
+                });
+            });
             
             // Render fused layers
             fusedLayers.forEach(layer => {
@@ -226,15 +236,6 @@
                 if (layer.visible) this.renderPreviewLayer(layer);
             });
             
-            // Render regular layers last
-            const renderOrder = ['cutout', 'clear', 'isolation', 'drill'];
-            renderOrder.forEach(type => {
-                regularLayers.forEach(layer => {
-                    if (layer.visible && layer.type === type) {
-                        this.renderLayer(layer);
-                    }
-                });
-            });
             if (debugConfig.enabled && debugConfig.logging?.renderOperations) {
                 console.log('[Renderer] Offset layers found:', offsetLayers);
             }

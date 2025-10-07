@@ -213,7 +213,7 @@
                     </div>
                     <div class="button-row">
                         <button class="btn btn-sm" id="apply-set-origin-btn">Apply Origin</button>
-                        <button class="btn btn-sm" id="reset-origin-btn">Reset</button>
+                        <button class="btn btn-sm" id="reset-origin-btn">Reset Unsaved Changes</button>
                     </div>
                     <div class="property-field">
                         <label>Board Rotation</label>
@@ -223,8 +223,8 @@
                         </div>
                     </div>
                     <div class="button-row">
-                        <button class="btn btn-sm" id="apply-rotation-btn">Apply</button>
-                        <button class="btn btn-sm" id="reset-rotation-btn">Reset</button>
+                        <button class="btn btn-sm" id="apply-rotation-btn">Apply Rotation</button>
+                        <button class="btn btn-sm" id="reset-rotation-btn">Reset Rotation</button>
                     </div>
                 </div>
             </div>
@@ -343,8 +343,13 @@
                 <span class="progress-bar" id="progress-bar"></span>
             </span>
         </div>
-        <div class="status-right">
-            <span class="status-info" id="status-info"></span>
+        <div class="status-right" id="status-right">
+            <div class="status-info license-info">
+                <span>AGPLv3 Licensed</span> | 
+                <a href="YOUR_LICENSE_URL_ON_GITHUB" target="_blank" title="View License">License</a> |
+                <a href="https://github.com/RicardoJCMarques/Eltryus_CAM" target="_blank" title="Documentation">GitHub</a> |
+                <a href="https://ko-fi.com/eltryus" target="_blank" title="Support the Project">Support Development</a>
+            </div>
         </div>
     </footer>
 
@@ -437,6 +442,7 @@
                         <input type="checkbox" id="dont-show-welcome">
                         <span>Don't show this again</span>
                     </label>
+                    <p class="">AGPLv3 Licensed</p>
                 </div>
             </div>
         </div>

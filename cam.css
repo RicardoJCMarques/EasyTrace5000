@@ -1,5 +1,5 @@
-/* PCB CAM Advanced Workspace CSS
- * v2.1 - Toolbar & Multi-zone Upload Layout
+/* cam.css
+ * PCB CAM Advanced Workspace CSS
  */
 
 /* ============================================================================
@@ -1188,6 +1188,25 @@ body {
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
     color: var(--text-secondary);
+}
+
+.license-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: var(--text-hint);
+    font-size: var(--font-size-xs);
+}
+
+.license-info a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+.license-info a:hover {
+    color: var(--accent-primary);
+    text-decoration: underline;
 }
 
 /* ============================================================================

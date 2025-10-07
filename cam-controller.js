@@ -13,32 +13,19 @@
     
     // PCB Example definitions
     const PCB_EXAMPLES = {
-        'xiao': {
-            name: 'Xiao ESP32 V1',
+        'example1': {
+            name: 'Example 1',
             files: {
-                isolation: 'examples/xiao/Xiao-F_Cu.gbr',
-                drill: 'examples/xiao/Xiao-PTH.drl',
-                clear: 'examples/xiao/Xiao-Keepout.gbr',
-                cutout: 'examples/xiao/Xiao-Edge_Cuts.gbr'
+                isolation: 'examples/example1/isolation.gbr',
+                drill: 'examples/example1/drill.drl',
+                clear: 'examples/example1/clear.gbr',
+                cutout: 'examples/example1/cutout.gbr'
             }
         },
         'line': {
             name: 'Line Test',
             files: {
                 isolation: 'examples/LineTest.svg'
-            }
-        },
-        'smd-adapter': {
-            name: 'SMD to DIP Adapter',
-            files: {
-                isolation: 'examples/adapter_copper.gbr',
-                drill: 'examples/adapter.drl'
-            }
-        },
-        'test-pattern': {
-            name: 'Test Pattern',
-            files: {
-                isolation: 'examples/test_pattern.gbr'
             }
         }
     };
