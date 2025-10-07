@@ -1,6 +1,28 @@
-// geometry/geometry-arc-reconstructor.js
-// Arc detection and reconstruction with consistent orientation
-// FIXED: Use registered clockwise property instead of index progression
+/**
+ * @file        geometry/geometry-arc-reconstructor.js
+ * @description Custom system to recover arcs after Clipper2 booleans
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 
 (function() {
     'use strict';
@@ -101,25 +123,18 @@
             if (!primitive.points || primitive.points.length < 3) {
                 return [primitive];
             }
-            
+
             this.stats.pathsWithCurves++;
-            
-            // Group points with gap tolerance
+
             const groups = this.groupPointsWithGaps(primitive.points, primitive.closed);
-            
-            if (this.debug && groups.length > 0) {
-                console.log(`[ArcReconstructor] Found ${groups.length} groups in primitive`);
-            }
-            
-            // Check if we can reconstruct as a single complete circle
+
             if (groups.length === 1 && groups[0].type === 'curve') {
-                const circleResult = this.attemptFullCircleReconstruction(groups[0], primitive.properties);
+                const circleResult = this.attemptFullCircleReconstruction(groups[0], primitive);
                 if (circleResult) {
                     return [circleResult];
                 }
             }
-            
-            // Otherwise, enhance with arc segments
+
             const enhancedPath = this.reconstructPathWithArcs(primitive, groups);
             return [enhancedPath];
         }
@@ -127,36 +142,30 @@
         // Group points with gap tolerance
         groupPointsWithGaps(points, isClosed = false) {
             if (!points || points.length === 0) return [];
-            
+
             const groups = [];
             let currentGroup = null;
             let gapCounter = 0;
-            
+
             for (let i = 0; i < points.length; i++) {
                 const point = points[i];
                 const curveId = point.curveId > 0 ? point.curveId : null;
-                
+
                 if (currentGroup && currentGroup.type === 'curve') {
                     if (curveId === currentGroup.curveId) {
-                        // Continue current curve group
                         currentGroup.points.push(point);
                         currentGroup.indices.push(i);
                         gapCounter = 0;
                     } else if (curveId === null && gapCounter < this.maxGapPoints) {
-                        // Tolerate gap
                         gapCounter++;
                         currentGroup.points.push(point);
                         currentGroup.indices.push(i);
                     } else {
-                        // End current group
                         if (gapCounter > 0) {
-                            // Remove gap points from end
                             currentGroup.points.splice(-gapCounter, gapCounter);
                             currentGroup.indices.splice(-gapCounter, gapCounter);
                         }
                         groups.push(currentGroup);
-                        
-                        // Start new group
                         currentGroup = {
                             type: curveId ? 'curve' : 'straight',
                             curveId: curveId,
@@ -166,11 +175,9 @@
                         gapCounter = 0;
                     }
                 } else {
-                    // Start new group
                     if (currentGroup) {
                         groups.push(currentGroup);
                     }
-                    
                     currentGroup = {
                         type: curveId ? 'curve' : 'straight',
                         curveId: curveId,
@@ -180,8 +187,7 @@
                     gapCounter = 0;
                 }
             }
-            
-            // Add final group
+
             if (currentGroup) {
                 if (gapCounter > 0 && currentGroup.type === 'curve') {
                     currentGroup.points.splice(-gapCounter, gapCounter);
@@ -189,87 +195,91 @@
                 }
                 groups.push(currentGroup);
             }
-            
-            // Handle wrap-around for closed paths
+
             if (isClosed && groups.length > 1) {
                 const firstGroup = groups[0];
                 const lastGroup = groups[groups.length - 1];
-                
-                if (firstGroup.type === 'curve' && 
-                    lastGroup.type === 'curve' && 
-                    firstGroup.curveId === lastGroup.curveId) {
-                    
-                    // Merge wrapped groups
+                if (firstGroup.type === 'curve' && lastGroup.type === 'curve' && firstGroup.curveId === lastGroup.curveId) {
                     lastGroup.points.push(...firstGroup.points);
                     lastGroup.indices.push(...firstGroup.indices);
                     groups.shift();
                     this.stats.wrappedGroups++;
                 }
             }
-            
+
             this.stats.groupsFound += groups.length;
             return groups;
         }
+
+        /**
+         * Calculates the total angular sweep of a set of points around a center.
+         * NOW INCLUDES THE CLOSING SEGMENT FOR CLOSED PATHS.
+         * @param {Array<object>} points The points of the curve segment.
+         * @param {object} center The center of the original curve.
+         * @param {boolean} isClosed - Whether to include the sweep from the last point to the first.
+         * @returns {number} The total sweep angle in radians.
+         */
+        calculateAngularSweep(points, center, isClosed) {
+            if (points.length < 2) return 0;
+
+            let totalSweep = 0;
+            // Calculate sweep for the main body of points
+            for (let i = 1; i < points.length; i++) {
+                const p1 = points[i - 1];
+                const p2 = points[i];
+                const angle1 = Math.atan2(p1.y - center.y, p1.x - center.x);
+                const angle2 = Math.atan2(p2.y - center.y, p2.x - center.x);
+                let delta = angle2 - angle1;
+
+                // Handle wrapping around PI/-PI to get the shortest angle
+                if (delta > Math.PI) delta -= 2 * Math.PI;
+                if (delta < -Math.PI) delta += 2 * Math.PI;
+                totalSweep += delta;
+            }
+
+            // CRITICAL FIX: If the path is closed, add the final segment's sweep
+            if (isClosed && points.length > 1) {
+                const p_last = points[points.length - 1];
+                const p_first = points[0];
+                const angle1 = Math.atan2(p_last.y - center.y, p_last.x - center.x);
+                const angle2 = Math.atan2(p_first.y - center.y, p_first.x - center.x);
+                let delta = angle2 - angle1;
+
+                if (delta > Math.PI) delta -= 2 * Math.PI;
+                if (delta < -Math.PI) delta += 2 * Math.PI;
+                totalSweep += delta;
+            }
+
+            return totalSweep;
+        }
         
         // Attempt to reconstruct a full circle
-        attemptFullCircleReconstruction(group, properties) {
-            const curveData = this.getCurve(group.curveId);
-            if (!curveData || curveData.type !== 'circle') {
-                return null;
+        attemptFullCircleReconstruction(group, primitive) {
+            const curveData = this.getCurve(group.curveId); //
+            if (!curveData || curveData.type !== 'circle') { //
+                return null; //
             }
-            
-            // Adaptive threshold based on radius (smaller circles need fewer points)
-            const isSmallCircle = curveData.radius < 1.0; // mm
-            const adaptiveMinPoints = isSmallCircle ? 4 : this.minCirclePoints;
-            
-            if (group.points.length < adaptiveMinPoints) {
-                if (this.debug) {
-                    console.log(`[ArcReconstructor] Circle rejected: ${group.points.length} points < ${adaptiveMinPoints} min (r=${curveData.radius.toFixed(3)}mm)`);
-                }
-                return null;
-            }
-            
-            // Calculate actual coverage
-            const coverage = this.calculateSimpleCoverage(group.points, curveData);
-            
-            if (this.debug) {
-                console.log(`[ArcReconstructor] Circle r=${curveData.radius.toFixed(3)}mm: ${group.points.length} points, ${(coverage * 100).toFixed(1)}% coverage`);
-            }
-            
-            // Adaptive coverage threshold: small circles (pin flashes) need less coverage
-            const minCoverage = isSmallCircle ? 0.60 : (group.points.length < 20 ? 0.75 : 0.85);
-            
-            if (coverage >= minCoverage) {
+
+            const totalSweep = this.calculateAngularSweep(group.points, curveData.center, primitive.closed);
+
+            if (Math.abs(totalSweep) >= (2 * Math.PI * 0.99)) {
                 this.stats.fullCircles++;
                 this.stats.reconstructed++;
-                
-                // Use CirclePrimitive if available
+
                 if (typeof CirclePrimitive !== 'undefined') {
                     return new CirclePrimitive(
                         curveData.center,
                         curveData.radius,
-                        {
-                            ...properties,
+                        { //
+                            ...primitive.properties,
                             reconstructed: true,
                             originalCurveId: group.curveId,
-                            coverage: coverage
+                            reconstructionMethod: 'sweep'
                         }
                     );
                 }
-                
-                return {
-                    type: 'circle',
-                    center: curveData.center,
-                    radius: curveData.radius,
-                    properties: {
-                        ...properties,
-                        reconstructed: true,
-                        originalCurveId: group.curveId,
-                        coverage: coverage
-                    }
-                };
             }
-            
+
             return null;
         }
         

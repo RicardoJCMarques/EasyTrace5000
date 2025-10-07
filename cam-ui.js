@@ -1,5 +1,28 @@
-// cam-ui.js
-// Tooltip integration, status manager usage
+/**
+ * @file        cam-ui.js
+ * @description Tooltip integration, status manager usage
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 
 (function() {
     'use strict';
@@ -50,6 +73,8 @@
             
             this._updatePending = false;
             this._updateQueued = false;
+
+            this._eventHandlersAttached = false;
         }
         
         async init() {
@@ -168,6 +193,11 @@
         }
         
         setupEventHandlers() {
+            if (this._eventHandlersAttached) {
+                return; // Prevent re-attaching listeners
+            }
+            console.log("Attaching UI event handlers...");
+
             const zoomFitBtn = document.getElementById('zoom-fit-btn');
             if (zoomFitBtn) {
                 zoomFitBtn.addEventListener('click', () => {
@@ -214,9 +244,9 @@
                 exportGcodeBtn.addEventListener('click', () => this.exportGCode());
             }
             
-            const exportSvgBtn = document.getElementById('export-svg-btn');
-            if (exportSvgBtn) {
-                exportSvgBtn.addEventListener('click', async () => await this.exportSVG());
+            const toolbarExportSvgBtn = document.getElementById('toolbar-export-svg');
+            if (toolbarExportSvgBtn) {
+                toolbarExportSvgBtn.addEventListener('click', () => this.exportSVG());
             }
             
             this.setupViewControls();
@@ -252,6 +282,8 @@
                     }
                 });
             });
+
+            this._eventHandlersAttached = true;
         }
         
         setupViewControls() {
@@ -805,27 +837,8 @@
             }
             
             try {
-                const svgString = this.svgExporter.exportSVG({
-                    precision: 2,
-                    padding: 5,
-                    optimizePaths: true,
-                    includeMetadata: true,
-                    includeArcReconstructionStats: this.fusionStats.arcReconstructionEnabled
-                });
-                
-                if (svgString) {
-                    const blob = new Blob([svgString], { type: 'image/svg+xml' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'pcb-export.svg';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    
-                    this.updateStatus('SVG exported successfully', 'success');
-                } else {
-                    this.updateStatus('No content to export', 'warning');
-                }
+            // The SVGExporter will handle the download internally.
+            this.svgExporter.exportSVG(); 
             } catch (error) {
                 console.error('SVG export error:', error);
                 this.updateStatus('SVG export failed: ' + error.message, 'error');

@@ -1,6 +1,28 @@
-// export/svg-exporter.js
-// SVG exporter that respects canvas state and exports what's actually visible
-// Supports dual export when fusion is active (pre/post fusion geometry)
+/**
+ * @file        export/svg-exporter.js
+ * @description Logic for exporting the current canvas contents as an SVG
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 
 (function() {
     'use strict';
@@ -28,56 +50,64 @@
                 respectCanvasState: true
             };
         }
+
+        /**
+         * Creates a comment node with metadata about the export state.
+         * @param {object} exportConfig - The configuration used for the export.
+         * @returns {Comment} An SVG comment node.
+         */
+        createExportComment(exportConfig) {
+            const viewOptions = this.renderer.options;
+            const fusionState = viewOptions.fuseGeometry ? 
+                `Fusion ON (Arc Reconstruction: ${viewOptions.enableArcReconstruction ? 'ON' : 'OFF'})` : 
+                'Fusion OFF';
+            
+            const content = `
+EasyTrace5000 SVG Export
+Timestamp: ${new Date().toISOString()}
+---
+View State:
+    - Mode: ${viewOptions.showWireframe ? 'Wireframe' : 'Solid Fill'}
+    - Geometry: ${fusionState}
+    - B&W: ${viewOptions.blackAndWhite}
+---
+Exported from the current canvas view.
+`;
+            return document.createComment(content);
+        }
         
         exportSVG(options = {}) {
             const exportConfig = { ...this.options, ...options };
-            
-            const isFusionActive = this.renderer.options.fuseGeometry;
-            
-            if (isFusionActive && !exportConfig.skipDualExport) {
-                return this.exportDualSVG(exportConfig);
-            } else {
-                return this.exportSingleSVG(exportConfig);
+            const filename = exportConfig.filename || 'pcb-export.svg';
+
+            if (debugConfig.logging?.fileOperations) {
+                console.log(`Exporting current canvas view to SVG: ${filename}`);
             }
-        }
-        
-        exportDualSVG(exportConfig) {
-            if (debugConfig.enabled) {
-                console.log('Exporting dual SVG (pre/post fusion)...');
+
+            const viewState = this.renderer.getViewState();
+            const bounds = this.calculateExportBounds(exportConfig);
+
+            if (!bounds) {
+                console.warn('No visible content to export.');
+                // Consider notifying the user via the status manager
+                if (window.pcbcam && window.pcbcam.ui) {
+                    window.pcbcam.ui.updateStatus('No content to export', 'warning');
+                }
+                return null;
             }
-            
-            const geometryProcessor = this.getGeometryProcessor();
-            if (!geometryProcessor) {
-                console.warn('Geometry processor not available for dual export');
-                return this.exportSingleSVG(exportConfig);
-            }
-            
-            // Export pre-fusion geometry
-            const preprocessedGeometry = geometryProcessor.getCachedState('preprocessedGeometry');
-            let preFusionString = null;
-            
-            if (preprocessedGeometry && preprocessedGeometry.length > 0) {
-                preFusionString = this.exportPreprocessedGeometry(preprocessedGeometry, {
-                    ...exportConfig,
-                    filename: 'pcb-preprocessed.svg'
-                });
-            }
-            
-            // Export post-fusion geometry
-            const fusedGeometry = geometryProcessor.getCachedState('fusedGeometry');
-            let postFusionString = null;
-            
-            if (fusedGeometry && fusedGeometry.length > 0) {
-                postFusionString = this.exportFusedGeometry(fusedGeometry, {
-                    ...exportConfig,
-                    filename: 'pcb-fused.svg'
-                });
-            }
-            
-            return {
-                preFusion: preFusionString,
-                postFusion: postFusionString
-            };
+
+            const svg = this.createSVGDocument(bounds, exportConfig);
+            const layerGroup = this.createVisibleLayers(svg, viewState, exportConfig);
+            svg.appendChild(layerGroup);
+
+            // Add metadata about the export state
+            const comment = this.createExportComment(exportConfig);
+            svg.insertBefore(comment, svg.firstChild);
+
+            const svgString = this.serializeSVG(svg, exportConfig);
+            this.downloadSVG(svgString, filename);
+
+            return svgString;
         }
         
         exportPreprocessedGeometry(primitives, exportConfig) {
@@ -405,25 +435,34 @@
             const mainGroup = document.createElementNS(svgNS, 'g');
             mainGroup.setAttribute('id', 'pcb-layers');
             mainGroup.setAttribute('transform', 'scale(1,-1)');
-            
+
             if (viewState.rotation !== 0) {
                 const center = this.renderer.rotationCenter || { x: 0, y: 0 };
-                const transform = mainGroup.getAttribute('transform');
-                mainGroup.setAttribute('transform', 
-                    `${transform} rotate(${viewState.rotation} ${center.x} ${center.y})`);
+                const currentTransform = mainGroup.getAttribute('transform');
+                mainGroup.setAttribute('transform',
+                    `${currentTransform} rotate(${-viewState.rotation} ${center.x} ${center.y})`);
             }
-            
-            const layers = this.renderer.getVisibleLayers();
-            
-            layers.forEach((layer, name) => {
-                if (this.shouldExportLayer(layer, exportConfig)) {
-                    const layerGroup = this.createFilteredLayer(svgNS, layer, name, exportConfig);
-                    if (layerGroup) {
-                        mainGroup.appendChild(layerGroup);
+
+            const visibleLayers = this.renderer.getVisibleLayers();
+
+            visibleLayers.forEach((layer, name) => {
+                const layerGroup = document.createElementNS(svgNS, 'g');
+                layerGroup.setAttribute('id', `layer-${name}`);
+                layerGroup.setAttribute('data-layer-type', layer.type);
+
+                layer.primitives.forEach(primitive => {
+                    // CRITICAL FIX: Pass the full 'layer' object, not just its type.
+                    const element = this.primitiveToSVG(svgNS, primitive, layer, exportConfig);
+                    if (element) {
+                        layerGroup.appendChild(element);
                     }
+                });
+
+                if (layerGroup.hasChildNodes()) {
+                    mainGroup.appendChild(layerGroup);
                 }
             });
-            
+
             return mainGroup;
         }
         
@@ -484,24 +523,33 @@
             });
         }
         
-        primitiveToSVG(svgNS, primitive, layerType, exportConfig, isWireframe) {
-            const precision = exportConfig.precision;
-            isWireframe = isWireframe || this.renderer.options.showWireframe;
+        primitiveToSVG(svgNS, primitive, layer, exportConfig) {
+            const isWireframe = this.renderer.options.showWireframe;
+            let element = null;
             
             switch (primitive.type) {
                 case 'path':
-                    return this.pathToSVG(svgNS, primitive, layerType, exportConfig, isWireframe);
+                    element = this.pathToSVG(svgNS, primitive, layer, exportConfig);
+                    break;
                 case 'circle':
-                    return this.circleToSVG(svgNS, primitive, layerType, precision, isWireframe);
+                    element = this.circleToSVG(svgNS, primitive, layer, exportConfig);
+                    break;
                 case 'rectangle':
-                    return this.rectangleToSVG(svgNS, primitive, layerType, precision, isWireframe);
+                    element = this.rectangleToSVG(svgNS, primitive, layer, exportConfig);
+                    break;
                 case 'obround':
-                    return this.obroundToSVG(svgNS, primitive, layerType, exportConfig, isWireframe);
+                    element = this.obroundToSVG(svgNS, primitive, layer, exportConfig);
+                    break;
                 case 'arc':
-                    return this.arcToSVG(svgNS, primitive, layerType, exportConfig, isWireframe);
-                default:
-                    return null;
+                    element = this.arcToSVG(svgNS, primitive, layer, exportConfig);
+                    break;
             }
+            
+            if (element) {
+                this.applyStyles(element, primitive, layer, isWireframe);
+            }
+
+            return element;
         }
         
         fusedPrimitiveToSVG(svgNS, primitive, exportConfig) {
@@ -608,11 +656,11 @@
             return path;
         }
         
-        pathToSVG(svgNS, primitive, layerType, exportConfig, isWireframe) {
+        pathToSVG(svgNS, primitive, layer, exportConfig) {
             const path = document.createElementNS(svgNS, 'path');
             const precision = exportConfig.precision;
-            
             let d = '';
+
             if (exportConfig.preserveArcs && primitive.arcSegments?.length > 0) {
                 d = this.buildPathWithArcs(primitive, precision, exportConfig);
             } else {
@@ -620,31 +668,100 @@
             }
             
             if (primitive.holes && primitive.holes.length > 0) {
-                primitive.holes.forEach(hole => {
-                    d += ' ' + this.buildSimplePath(hole, true, precision);
-                });
+                d += ' ' + this.buildSimplePath(primitive.holes[0], true, precision);
                 path.setAttribute('fill-rule', 'evenodd');
             }
-            
+
             path.setAttribute('d', d);
-            this.applyStyles(path, primitive, layerType, isWireframe);
-            
             return path;
         }
-        
-        circleToSVG(svgNS, primitive, layerType, precision, isWireframe) {
-            const circle = document.createElementNS(svgNS, 'circle');
+
+        /**
+         * Builds a complex SVG path string from a PathPrimitive containing both lines and arcs.
+         * @param {PathPrimitive} primitive - The path primitive with arcSegments.
+         * @param {number} precision - The number of decimal places for coordinates.
+         * @returns {string} The SVG path data string.
+         */
+        buildPathWithArcs(primitive, precision, exportConfig) {
+            const points = primitive.points;
+            if (!points || points.length === 0) return '';
+
+            const pathParts = [];
+            const sortedArcs = [...primitive.arcSegments].sort((a, b) => a.startIndex - b.startIndex);
+
+            // Start the path at the first point
+            pathParts.push(`M${this.formatNumber(points[0].x, precision)},${this.formatNumber(points[0].y, precision)}`);
+
+            let currentIndex = 0;
+
+            // Iterate through the high-level arc segments
+            for (const arc of sortedArcs) {
+                // Draw all straight line segments from the last position up to the start point of this arc.
+                // This is the key fix for the concatenation issue.
+                for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
+                    pathParts.push(`L${this.formatNumber(points[i].x, precision)},${this.formatNumber(points[i].y, precision)}`);
+                }
+
+                // Now, draw the arc command.
+                const endPointOfArc = points[arc.endIndex];
+                
+                let angleSpan = arc.endAngle - arc.startAngle;
+                if (arc.clockwise && angleSpan > 0) angleSpan -= 2 * Math.PI;
+                if (!arc.clockwise && angleSpan < 0) angleSpan += 2 * Math.PI;
+
+                const largeArc = Math.abs(angleSpan) > Math.PI ? 1 : 0;
+                // Invert sweep-flag due to Y-axis flip in SVG transform
+                const sweep = !arc.clockwise ? 1 : 0; 
+
+                pathParts.push(`A${this.formatNumber(arc.radius, precision)},${this.formatNumber(arc.radius, precision)} 0 ${largeArc} ${sweep} ${this.formatNumber(endPointOfArc.x, precision)},${this.formatNumber(endPointOfArc.y, precision)}`);
+
+                // Jump the current index past all points that the arc just replaced.
+                currentIndex = arc.endIndex;
+            }
+
+            // After the last arc, draw any remaining line segments to the end of the path.
+            for (let i = currentIndex + 1; i < points.length; i++) {
+                pathParts.push(`L${this.formatNumber(points[i].x, precision)},${this.formatNumber(points[i].y, precision)}`);
+            }
+
+            if (primitive.closed) {
+                pathParts.push('Z');
+            }
             
+            return pathParts.join(' ');
+        }
+
+        /**
+         * Builds a simple SVG path string from an array of points (lines only).
+         * @param {Array<object>} points - Array of {x, y} points.
+         * @param {boolean} closed - Whether to close the path.
+         * @param {number} precision - The number of decimal places for coordinates.
+         * @returns {string} The SVG path data string.
+         */
+        buildSimplePath(points, closed, precision) {
+            if (!points || points.length === 0) return '';
+            let d = `M${this.formatNumber(points[0].x, precision)},${this.formatNumber(points[0].y, precision)}`;
+            for (let i = 1; i < points.length; i++) {
+                d += ` L${this.formatNumber(points[i].x, precision)},${this.formatNumber(points[i].y, precision)}`;
+            }
+            if (closed) {
+                d += ' Z';
+            }
+            return d;
+        }
+        
+       circleToSVG(svgNS, primitive, layer, exportConfig) {
+            const precision = exportConfig.precision;
+            const circle = document.createElementNS(svgNS, 'circle');
+
             circle.setAttribute('cx', this.formatNumber(primitive.center.x, precision));
             circle.setAttribute('cy', this.formatNumber(primitive.center.y, precision));
             circle.setAttribute('r', this.formatNumber(primitive.radius, precision));
-            
-            this.applyStyles(circle, primitive, layerType, isWireframe);
-            
+
             return circle;
         }
         
-        rectangleToSVG(svgNS, primitive, layerType, precision, isWireframe) {
+        rectangleToSVG(svgNS, primitive, layer, exportConfig) {
             const rect = document.createElementNS(svgNS, 'rect');
             
             rect.setAttribute('x', this.formatNumber(primitive.position.x, precision));
@@ -652,12 +769,10 @@
             rect.setAttribute('width', this.formatNumber(primitive.width, precision));
             rect.setAttribute('height', this.formatNumber(primitive.height, precision));
             
-            this.applyStyles(rect, primitive, layerType, isWireframe);
-            
             return rect;
         }
         
-        obroundToSVG(svgNS, primitive, layerType, exportConfig, isWireframe) {
+        obroundToSVG(svgNS, primitive, layer, exportConfig) {
             const precision = exportConfig.precision;
             const r = Math.min(primitive.width, primitive.height) / 2;
             const path = document.createElementNS(svgNS, 'path');
@@ -686,106 +801,112 @@
             }
             
             path.setAttribute('d', d);
-            this.applyStyles(path, primitive, layerType, isWireframe);
             
             return path;
         }
         
-        arcToSVG(svgNS, primitive, layerType, exportConfig, isWireframe) {
+        // This function handles a standalone ArcPrimitive.
+        arcToSVG(svgNS, primitive, layer, exportConfig) {
             const precision = exportConfig.precision;
             const path = document.createElementNS(svgNS, 'path');
             
             let d = '';
+            // The preserveArcs option from the config file determines if arcs are preserved
             if (exportConfig.preserveArcs) {
                 const startX = primitive.center.x + primitive.radius * Math.cos(primitive.startAngle);
                 const startY = primitive.center.y + primitive.radius * Math.sin(primitive.startAngle);
                 const endX = primitive.center.x + primitive.radius * Math.cos(primitive.endAngle);
                 const endY = primitive.center.y + primitive.radius * Math.sin(primitive.endAngle);
+
+                // Determine large-arc-flag based on the angle span
+                let angleSpan = primitive.endAngle - primitive.startAngle;
+                if (primitive.clockwise && angleSpan > 0) angleSpan -= 2 * Math.PI;
+                if (!primitive.clockwise && angleSpan < 0) angleSpan += 2 * Math.PI;
                 
-                const largeArc = Math.abs(primitive.endAngle - primitive.startAngle) > Math.PI ? 1 : 0;
-                const sweep = primitive.clockwise ? 1 : 0;
+                const largeArc = Math.abs(angleSpan) > Math.PI ? 1 : 0;
+                
+                // The sweep-flag is 1 for clockwise, 0 for counter-clockwise.
+                const sweep = !primitive.clockwise ? 1 : 0;
                 
                 d = `M${this.formatNumber(startX, precision)},${this.formatNumber(startY, precision)}`;
                 d += ` A${this.formatNumber(primitive.radius, precision)},${this.formatNumber(primitive.radius, precision)} 0 ${largeArc} ${sweep} ${this.formatNumber(endX, precision)},${this.formatNumber(endY, precision)}`;
+            } else {
+                // Fallback: If not preserving arcs, convert to a polygon and create a simple path.
+                // This assumes the primitive has a toPolygon method, which it does.
+                const polygonPath = primitive.toPolygon();
+                d = this.buildSimplePath(polygonPath.points, false, precision);
             }
             
             path.setAttribute('d', d);
-            this.applyStyles(path, primitive, layerType, isWireframe);
+            // Note: applyStyles is now called from the parent primitiveToSVG function.
             
             return path;
         }
+
+        /**
+         * Retrieves the correct color for a layer or primitive, with multiple fallbacks.
+         * @param {object} layer - The layer object from the renderer.
+         * @param {object} primitive - The primitive being rendered.
+         * @returns {string} A valid CSS color string.
+         */
+        getExportColor(layer, primitive) {
+            // 1. Primary: Use the color explicitly set on the layer object.
+            if (layer.color) {
+                return layer.color;
+            }
+
+            // 2. Fallback for Fused Geo: Use the primitive's stored operation type.
+            const opType = primitive.properties?.operationType || layer.type;
+            if (opType && config.operations[opType]) {
+                return config.operations[opType].color;
+            }
+
+            console.log(`[SVG Exporter] getExportColor - Failed to recover layer color`);
+
+        }
         
-        applyStyles(element, primitive, layerType, isWireframe) {
+        applyStyles(element, primitive, layer, isWireframe) {
             const props = primitive.properties || {};
-            
-            let className = `pcb-${layerType}`;
-            if (props.isFused) className = 'pcb-fused';
-            else if (props.isPreprocessed) className = `pcb-${layerType === 'preprocessed-clear' ? 'preprocessed-clear' : 'preprocessed'}`;
-            else if (props.isTrace) className = 'pcb-trace';
-            else if (props.isPad || props.isFlash) className = 'pcb-pad';
-            else if (props.isDrillHole) className = 'pcb-drill';
-            
-            element.setAttribute('class', className);
-            
+            const color = this.getExportColor(layer, primitive);
+
+            // --- Wireframe Mode: Overrides everything, but respects trace width ---
             if (isWireframe) {
                 element.setAttribute('fill', 'none');
-                if (props.strokeWidth) {
+                element.setAttribute('stroke', color);
+                // If the primitive is a trace, use its actual width. Otherwise, use a thin line.
+                if (props.isTrace && props.strokeWidth) {
                     element.setAttribute('stroke-width', props.strokeWidth.toString());
-                }
-            } else {
-                if (props.fill === false) element.setAttribute('fill', 'none');
-                if (props.strokeWidth) element.setAttribute('stroke-width', props.strokeWidth.toString());
-            }
-        }
-        
-        buildPathWithArcs(primitive, precision, exportConfig) {
-            let d = '';
-            const points = primitive.points;
-            const arcMap = new Map();
-            
-            primitive.arcSegments.forEach(arc => {
-                arcMap.set(arc.startIndex, arc);
-            });
-            
-            for (let i = 0; i < points.length; i++) {
-                const point = points[i];
-                
-                if (i === 0) {
-                    d += `M${this.formatNumber(point.x, precision)},${this.formatNumber(point.y, precision)}`;
                 } else {
-                    const arc = arcMap.get(i - 1);
-                    if (arc && exportConfig.preserveArcs) {
-                        const endPoint = points[arc.endIndex];
-                        const largeArc = Math.abs(arc.endAngle - arc.startAngle) > Math.PI ? 1 : 0;
-                        const sweep = arc.clockwise ? 1 : 0;
-                        
-                        d += ` A${this.formatNumber(arc.radius, precision)},${this.formatNumber(arc.radius, precision)} 0 ${largeArc} ${sweep} ${this.formatNumber(endPoint.x, precision)},${this.formatNumber(endPoint.y, precision)}`;
-                        i = arc.endIndex;
-                    } else {
-                        d += ` L${this.formatNumber(point.x, precision)},${this.formatNumber(point.y, precision)}`;
-                    }
+                    element.setAttribute('stroke-width', (this.renderer.core.getWireframeStrokeWidth() * 0.5).toFixed(4));
+                }
+                element.setAttribute('stroke-linecap', 'round');
+                return;
+            }
+
+            // --- Normal (Solid) Mode Styling ---
+
+            // Case 1: Traces, Cutouts, and other explicitly stroked paths
+            if (props.isTrace || layer.type === 'cutout' || (props.stroke && !props.fill)) {
+                element.setAttribute('fill', 'none');
+                element.setAttribute('stroke', color);
+                element.setAttribute('stroke-width', (props.strokeWidth || 0.1).toString());
+                element.setAttribute('stroke-linecap', 'round');
+            }
+            // Case 2: Drill holes (render as a hole with a colored outline)
+            else if (props.isDrillHole) {
+                element.setAttribute('fill', this.renderer.getBackgroundColor());
+                element.setAttribute('stroke', color);
+                element.setAttribute('stroke-width', (primitive.radius * 0.1).toFixed(4));
+            }
+            // Case 3: All other filled shapes (Pads, Regions, Fused Geo)
+            else {
+                element.setAttribute('fill', color);
+                element.setAttribute('stroke', 'none');
+                // For fused geometry with holes
+                if (primitive.holes && primitive.holes.length > 0) {
+                    element.setAttribute('fill-rule', 'evenodd');
                 }
             }
-            
-            if (primitive.closed !== false) d += ' Z';
-            
-            return d;
-        }
-        
-        buildSimplePath(points, closed, precision) {
-            let d = '';
-            
-            points.forEach((point, i) => {
-                if (i === 0) {
-                    d += `M${this.formatNumber(point.x, precision)},${this.formatNumber(point.y, precision)}`;
-                } else {
-                    d += ` L${this.formatNumber(point.x, precision)},${this.formatNumber(point.y, precision)}`;
-                }
-            });
-            
-            if (closed) d += ' Z';
-            
-            return d;
         }
         
         calculateExportBounds(exportConfig) {

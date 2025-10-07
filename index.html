@@ -1,16 +1,44 @@
+<!--
+/**
+ * @file        index.html
+ * @description EasyTrace5000 entry point
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PCB CAM - Advanced Workspace</title>
+    <title>EasyTrace5000 - Advanced Workspace</title>
     <link rel="stylesheet" href="cam.css">
 </head>
 <body>
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-spinner"></div>
-        <div id="loading-text">Loading PCB CAM...</div>
+        <div id="loading-text">Loading EasyTrace5000...</div>
         <div id="loading-progress" class="loading-progress">0%</div>
     </div>
 
@@ -45,7 +73,7 @@
         </div>
 
         <div class="toolbar-section toolbar-center">
-            <span class="workspace-title">PCB CAM Workspace</span>
+            <span class="workspace-title">EasyTrace5000 Workspace</span>
         </div>
 
         <div class="toolbar-section toolbar-right">
@@ -346,7 +374,7 @@
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
                 <span>AGPLv3 Licensed</span> | 
-                <a href="YOUR_LICENSE_URL_ON_GITHUB" target="_blank" title="View License">License</a> |
+                <a href="https://github.com/RicardoJCMarques/Eltryus_CAM/LICENSE" target="_blank" title="View License">License</a> |
                 <a href="https://github.com/RicardoJCMarques/Eltryus_CAM" target="_blank" title="Documentation">GitHub</a> |
                 <a href="https://ko-fi.com/eltryus" target="_blank" title="Support the Project">Support Development</a>
             </div>
@@ -405,7 +433,7 @@
     <div id="welcome-modal" class="modal">
         <div class="modal-content modal-welcome">
             <div class="modal-header">
-                <h2>Welcome to PCB CAM</h2>
+                <h2>Welcome to EasyTrace5000</h2>
                 <button class="modal-close" id="welcome-close">×</button>
             </div>
             <div class="modal-body">
@@ -702,7 +730,7 @@
         }
 
         async function initializeApp() {
-            console.log('🚀 PCB CAM Advanced Workspace v2.0');
+            console.log('🚀 EasyTrace5000 Advanced Workspace v2.0');
             for (const scriptPath of scripts) {
                 await loadScript(scriptPath);
             }

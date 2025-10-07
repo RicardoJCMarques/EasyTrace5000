@@ -4,15 +4,15 @@
 
 An open-source, browser based CAM tool for generating G-code from PCB manufacturing files. Featuring an interactive WebGL renderer and a high-performance Clipper2 based geometry engine.
 
-![Screenshot Placeholder](https://via.placeholder.com/800x450.png?text=PCBCAM+Workspace+Screenshot)
+![I'll add screenshots when GUI is ready](https://placehold.co/800x420?text=EasyTrace5000\nScreenshot\nPlaceholder)
 
 ## Key Features
 
 * **Multi-Operation Support:** Process files for Isolation, Drilling, Copper Clearing, and Board Cutouts.
 * **Stage-Based Workflow:** A clear, step-by-step process for each operation:
-    1.  **Source:** Load and view the original geometry.
-    2.  **Offset:** Generate offset paths based on tool parameters.
-    3.  **Preview:** Visualize a tool reach simulation before generating G-code.
+    1. **Source:** Load and view the original geometry.
+    2. **Offset:** Generate offset paths based on tool parameters.
+    3. **Preview:** Visualize a tool reach simulation before generating G-code.
 * **Advanced Geometry Processing:**
     * **Efficient boolean pipeline:** Boolean operations handled by the Clipper2 library (WASM).
     * **Unified Offset Pipeline:** Simplified offset pipeline that generates external and internal multi-pass isolation and clearing paths.
@@ -60,35 +60,35 @@ The project follows a modular structure. The loading order in `index.html` refle
 ├── ui/
 │   ├── ui-tree-manager.js              # Manages the operations tree view (left sidebar)
 │   ├── ui-property-inspector.js        # Manages the properties panel (right sidebar)
-│   ├── ui-controls.js                  # Manages the interactive settings
-│   ├── ui-status-manager.js            # Manages the bottom status bar
+│   ├── ui-controls.js                  # Manages the user interactivity
+│   ├── ui-status-manager.js            # Manages the status bar
 │   ├── ui-tooltip.js                   # Manages all UI tooltips
 │   ├── ui-parameter-manager.js         # Manages parameter strings and validation
-│   ├── ui-tool-library.js              # Manages cutting tools
-│   └── ui-visibility-panel.js          # Manages advanced visibility options
+│   ├── ui-tool-library.js              # Manages tool definitions and tool selection functionality
+│   └── ui-visibility-panel.js          # Manages advanced visibility toggles
 │
 ├── geometry/
 │   ├── clipper2z.js                    # Clipper2 WASM factory
 │   ├── clipper2z.wasm                  # Clipper2 WASM library
 │   ├── geometry-clipper-wrapper.js     # Clipper2 intermediary wrapper
-│   ├── geometry-processor.js           # Processes boolean operations
+│   ├── geometry-processor.js           # Processes geometric boolean operations
 │   ├── geometry-arc-reconstructor.js   # Custom system to recover arcs after Clipper2 booleans
 │   ├── geometry-curve-registry.js      # Manages the Curve Registry for arc-reconstruction
-│   ├── geometry-offsetter.js           # Processes geometry offsetting
+│   ├── geometry-offsetter.js           # Handles geometry offsetting
 │   └── geometry-utils.js               # Contains general auxiliary functions
 │
 ├── parsers/
 │   ├── parser-core.js                  # Manages the parsing system
-│   ├── parser-gerber.js                # Gerber module (RS-274X)
-│   ├── parser-excellon.js              # Excellon module (drill)
-│   ├── parser-svg.js                   # SVG module (Soon™)(needs more testing and no Beziers)
+│   ├── parser-gerber.js                # Gerber parsing module (RS-274X)
+│   ├── parser-excellon.js              # Excellon parsing module (drill)
+│   ├── parser-svg.js                   # SVG parsing module (Soon™)(needs more testing and no Beziers)
 │   ├── parser-plotter.js               # Converts parsed data into geometric primitives
-│   └── primitives.js                   # Defines geometric primitives (Path, Circle, Arc, Rectangle, Obround)
+│   └── primitives.js                   # Defines geometric primitives (Path, Circle, etc)
 │
 ├── renderer/
-│   ├── renderer-core.js                # Manages canvas, view state, and layers
+│   ├── renderer-core.js                # Coordinates canvas, view and layer states
 │   ├── renderer-interaction.js         # Manages canvas user interactions
-│   ├── renderer-layer.js               # Handles canvas layer states
+│   ├── renderer-layer.js               # Manages layers
 │   ├── renderer-overlay.js             # Handles grid, rulers, origin, scale indicator, etc
 │   └── renderer-primitives.js          # Dedicated geometry object renderer
 │
@@ -125,6 +125,7 @@ window.getReconstructionRegistry()      // Inspect arc metadata
 
 ## Next Steps
 
+- Make the page usable in <small>smaller and <small>smaller screens</small></small>.
 - Simplified pipelines for laser engraving circuit isolation.
 - Tool changing support.
 - Bezier primitives and arc fitting based reconstruction support.
@@ -151,8 +152,8 @@ For the full license text, see the [LICENSE](./LICENSE) file.
 
 ## 🙏 Acknowledgments
 
-- Clipper2 WASM by Angus Johnson
-- Open-source PCB community
+- Angus Johnson for Clipper2 and Erik Sombroek for the WASM compilation 
+- Open-source and Fab Lab / Makerspace community
 - Krisjanis and Marcela for oustanding contributions to naming this thing.
 
 ---
