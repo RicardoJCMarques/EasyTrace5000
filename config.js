@@ -1,6 +1,6 @@
 /**
  * @file        config.js
- * @description PCB CAM default values and configurations
+ * @description Default values, configurations, small aux methods
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -33,7 +33,7 @@ window.PCBCAMConfig = {
             name: 'Isolation Routing',
             icon: '🎯',
             color: '#ff8844',
-            extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs'],
+            extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs', '.svg'],
             defaultTool: 'em_0.2mm_flat',
             tool: {
                 diameter: 0.1,
@@ -103,7 +103,7 @@ window.PCBCAMConfig = {
             name: 'Copper Clearing',
             icon: '🔄',
             color: '#44ff88',
-            extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd'],
+            extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd', '.svg'],
             defaultTool: 'em_0.8mm_flat',
             tool: {
                 diameter: 0.8,
@@ -139,7 +139,7 @@ window.PCBCAMConfig = {
             name: 'Board Cutout',
             icon: '✂️',
             color: '#ff00ff',
-            extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill'],
+            extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill', '.svg'],
             defaultTool: 'em_1.0mm_flat',
             tool: {
                 diameter: 1.0,

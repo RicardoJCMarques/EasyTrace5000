@@ -220,7 +220,7 @@
                     return null;
             }
         }
-        
+
         plotRegion(region) {
             if (!region.points || !Array.isArray(region.points) || region.points.length < 3) {
                 console.warn('Invalid region:', region);
@@ -228,8 +228,7 @@
             }
             
             this.debug(`Plotting region with ${region.points.length} points, polarity: ${region.polarity || 'dark'}`);
-            
-            // Check if region is closed
+
             const first = region.points[0];
             const last = region.points[region.points.length - 1];
             const precision = geomConfig.coordinatePrecision || 0.001;
@@ -249,7 +248,8 @@
                 strokeWidth: 0,
                 polarity: region.polarity || 'dark',
                 closed: true,
-                originalPointCount: region.points.length
+                originalPointCount: region.points.length,
+                holes: region.holes || [] // Pass holes from the region object to the primitive
             };
             
             const primitive = new PathPrimitive(region.points, properties);
@@ -265,6 +265,7 @@
             
             return primitive;
         }
+        
         
         plotTrace(trace) {
             if (!trace.start || !trace.end) {

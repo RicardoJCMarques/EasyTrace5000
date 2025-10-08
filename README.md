@@ -48,7 +48,7 @@ The project follows a modular structure. The loading order in `index.html` refle
 /
 ├── index.html                          # Main application entry point
 ├── cam.css                             # All application styles
-├── config.js                           # Central configuration for operations, UI, and defaults
+├── config.js                           # Default values, configurations, small aux methods
 │
 ├── cam-core.js                         # Core application logic
 ├── cam-ui.js                           # Main UI controller, orchestrates UI components
@@ -125,9 +125,10 @@ window.getReconstructionRegistry()      // Inspect arc metadata
 
 ## Next Steps
 
-- Make the page usable in <small>smaller and <small>smaller screens</small></small>.
-- Simplified pipelines for laser engraving circuit isolation.
+- Make the page usable in smaller and <sub>smaller</sub> screens.
+- Simplified pipelines for laser engraving isolation.
 - Tool changing support.
+- Tool library and config (themes, etc) import
 - Bezier primitives and arc fitting based reconstruction support.
 
 ## ❤️ Support the Project
@@ -154,7 +155,7 @@ For the full license text, see the [LICENSE](./LICENSE) file.
 
 - Angus Johnson for Clipper2 and Erik Sombroek for the WASM compilation 
 - Open-source and Fab Lab / Makerspace community
-- Krisjanis and Marcela for oustanding contributions to naming this thing.
+- Krisjanis and Marcela for oustanding contributions to naming this thing
 
 ---
 

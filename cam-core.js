@@ -327,8 +327,19 @@
                 }
                 
                 let parseResult;
+                const fileName = operation.file.name.toLowerCase();
                 
-                if (operation.type === 'drill') {
+                // === START MODIFICATION (Refined Logic) ===
+                if (fileName.endsWith('.svg')) {
+                    if (typeof SVGParser === 'undefined') {
+                        throw new Error('SVG parser not available');
+                    }
+                    const parser = new SVGParser({ debug: debugConfig.enabled });
+                    // The new SVGParser returns the same structure as GerberParser,
+                    // so we can use its result directly.
+                    parseResult = parser.parse(operation.file.content);
+                } else if (operation.type === 'drill') {
+                // === END MODIFICATION ===
                     if (typeof ExcellonParser === 'undefined') {
                         throw new Error('Excellon parser not available');
                     }
@@ -347,6 +358,7 @@
                     return false;
                 }
                 
+                // The plotter now receives a consistent input format regardless of the source.
                 operation.parsed = parseResult;
                 
                 if (typeof ParserPlotter === 'undefined') {
@@ -357,6 +369,7 @@
                     markStrokes: true
                 });
                 
+                // The plotter expects the full parseResult object, which contains `layers` or `drillData`
                 const plotResult = plotter.plot(parseResult);
                 
                 if (!plotResult.success) {

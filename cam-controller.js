@@ -36,6 +36,12 @@
     
     // PCB Example definitions
     const PCB_EXAMPLES = {
+        'line': {
+            name: 'CNC Precision Line Test',
+            files: {
+                isolation: 'examples/LineTest.svg'
+            }
+        },
         'example1': {
             name: 'Example 1',
             files: {
@@ -44,13 +50,8 @@
                 clear: 'examples/example1/clear.gbr',
                 cutout: 'examples/example1/cutout.gbr'
             }
-        },
-        'line': {
-            name: 'Line Test',
-            files: {
-                isolation: 'examples/LineTest.svg'
-            }
         }
+        
     };
     
     class PCBCAMController {
