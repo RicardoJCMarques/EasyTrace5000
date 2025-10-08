@@ -812,6 +812,8 @@
         }
         
         async generateOffsetGeometry(operation, offsetDistances, settings) {
+            console.log(`[Core] generateOffsetGeometry() - Entered generateOffsetGeometry for op "${operation.id}".`);
+
             console.log(`[Core] === UNIFIED OFFSET PIPELINE START ===`);
             console.log(`[Core] Operation: ${operation.id} (${operation.type})`);
             console.log(`[Core] Passes: ${offsetDistances.length}`);
@@ -950,7 +952,9 @@
                 
                 // Step 4: Arc reconstruction
                 console.log(`[Core] Running arc reconstruction...`);
+                console.log('[Core] >>> About to invoke DIRECT arc reconstruction on unionResult.', { count: unionResult.length, data: unionResult });
                 unionResult = this.geometryProcessor.arcReconstructor.processForReconstruction(unionResult);
+                console.log('[Core] <<< Direct arc reconstruction complete. New primitive count:', unionResult.length);
                 
                 // Step 5: Select appropriate polygons by winding (or skip for cutouts)
                 let finalGeometry;
@@ -1195,6 +1199,9 @@
         // Fusion for visualization
         async fuseAllPrimitives(options = {}) {
             await this.ensureProcessorReady();
+
+            console.log('[Core] fuseAllPrimitives() - Entered fuseAllPrimitives. Received options:', options);
+
             
             if (!this.geometryProcessor) {
                 throw new Error('Geometry processor not available');

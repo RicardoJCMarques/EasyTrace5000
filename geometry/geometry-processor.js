@@ -90,6 +90,8 @@
         
         // Main fusion pipeline with arc reconstruction
         async fuseGeometry(primitives, options = {}) {
+            console.log('[Geometry-Processor] fuseGeometry() - Entered fuseGeometry. Received options:', options);
+
             await this.ensureInitialized();
             
             if (!primitives || primitives.length === 0) return [];
@@ -140,44 +142,54 @@
             
             // Verify metadata survival
             if (fusionOptions.enableArcReconstruction && this.options.debug) {
-                this.verifyMetadataPropagation(fused, 'After fusion');
-            }
-            
-            // Step 5: Reconstruct arcs if enabled
-            let finalGeometry = fused;
-            if (fusionOptions.enableArcReconstruction && window.globalCurveRegistry?.registry?.size > 0) {
-                this.debug(`=== RECONSTRUCTION PHASE ===`);
-                
-                const preReconstructionCount = fused.length;
-                
-                finalGeometry = this.arcReconstructor.processForReconstruction(fused);
-                
-                const stats = this.arcReconstructor.getStats();
-                this.stats.curvesReconstructed = stats.reconstructed;
-                
-                this.debug(`Reconstruction complete:`);
-                this.debug(`  Primitives: ${preReconstructionCount} → ${finalGeometry.length}`);
-                this.debug(`  Full circles reconstructed: ${stats.fullCircles}`);
-                this.debug(`  Partial arcs found: ${stats.partialArcs}`);
-                this.debug(`  Groups with gaps merged: ${stats.wrappedGroups}`);
-                
-                if (this.options.debug) {
-                    this.verifyReconstructionResults(finalGeometry);
-                }
-            }
-            
-            this.cachedStates.fusedGeometry = finalGeometry;
-            
-            // Update statistics
-            this.stats.fusionOperations++;
-            this.stats.primitivesProcessed += primitives.length;
-            this.stats.primitivesReduced = primitives.length - finalGeometry.length;
-            
-            this.debug(`=== FUSION PIPELINE COMPLETE ===`);
-            this.debug(`Result: ${primitives.length} → ${finalGeometry.length} primitives`);
-            
-            return finalGeometry;
+            this.verifyMetadataPropagation(fused, 'After fusion');
         }
+        
+        // Step 5: Reconstruct arcs if enabled, otherwise use the fused geometry directly.
+        let finalGeometry; // Initialize as undefined.
+
+        console.log('[Geometry-Processor] FuseGeometry() - About to check if (fusionOptions.enableArcReconstruction).');
+        if (fusionOptions.enableArcReconstruction) {
+            console.log('[Geometry-Processor] Entered Step 5 - Reconstruction? Received options:', options);
+            this.debug(`=== RECONSTRUCTION PHASE ===`);
+            
+            const preReconstructionCount = fused.length;
+            
+            // The reconstructor is now the single source of truth for the final geometry.
+            finalGeometry = this.arcReconstructor.processForReconstruction(fused);
+            
+            const stats = this.arcReconstructor.getStats();
+            this.stats.curvesReconstructed = stats.reconstructed;
+            
+            this.debug(`Reconstruction complete:`);
+            this.debug(`  Primitives: ${preReconstructionCount} → ${finalGeometry.length}`);
+            this.debug(`  Full circles reconstructed: ${stats.fullCircles}`);
+            this.debug(`  Partial arcs found: ${stats.partialArcs}`);
+            this.debug(`  Groups with gaps merged: ${stats.wrappedGroups}`);
+            
+            // if (this.options.debug) {
+                this.verifyReconstructionResults(finalGeometry);
+            // }
+            console.log('[Geometry-Processor] <<< Exiting arc reconstruction block. Result count:', finalGeometry.length);
+            
+        } else {
+            // If reconstruction is disabled, the fused geometry is the final geometry.
+            console.log('[Geometry-Processor] Arc reconstruction is DISABLED, skipping block.');
+            finalGeometry = fused;
+        }
+        
+        this.cachedStates.fusedGeometry = finalGeometry;
+        
+        // Update statistics
+        this.stats.fusionOperations++;
+        this.stats.primitivesProcessed += primitives.length;
+        this.stats.primitivesReduced = primitives.length - finalGeometry.length;
+        
+        this.debug(`=== FUSION PIPELINE COMPLETE ===`);
+        this.debug(`Result: ${primitives.length} → ${finalGeometry.length} primitives`);
+        
+        return finalGeometry;
+    }
         
         // NEW: Union geometry for offset pass merging
         async unionGeometry(primitives, options = {}) {

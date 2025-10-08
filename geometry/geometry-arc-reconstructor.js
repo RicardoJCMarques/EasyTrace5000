@@ -90,6 +90,8 @@
         
         // Main reconstruction method - process fused primitives
         processForReconstruction(primitives) {
+            console.log(`[Geometry-Arc-Reconstructor] processForReconstruction() called with ${primitives ? primitives.length : 0} primitives.`);
+
             if (!primitives || primitives.length === 0) return primitives;
             
             if (this.debug) {
@@ -142,60 +144,47 @@
         // Group points with gap tolerance
         groupPointsWithGaps(points, isClosed = false) {
             if (!points || points.length === 0) return [];
-
+        
             const groups = [];
-            let currentGroup = null;
-            let gapCounter = 0;
-
-            for (let i = 0; i < points.length; i++) {
+            if (points.length === 0) return groups;
+        
+            // Start the first group with the first point
+            let currentCurveId = points[0].curveId > 0 ? points[0].curveId : null;
+            let currentGroup = {
+                type: currentCurveId ? 'curve' : 'straight',
+                curveId: currentCurveId,
+                points: [points[0]],
+                indices: [0]
+            };
+        
+            for (let i = 1; i < points.length; i++) {
                 const point = points[i];
                 const curveId = point.curveId > 0 ? point.curveId : null;
-
-                if (currentGroup && currentGroup.type === 'curve') {
-                    if (curveId === currentGroup.curveId) {
-                        currentGroup.points.push(point);
-                        currentGroup.indices.push(i);
-                        gapCounter = 0;
-                    } else if (curveId === null && gapCounter < this.maxGapPoints) {
-                        gapCounter++;
-                        currentGroup.points.push(point);
-                        currentGroup.indices.push(i);
-                    } else {
-                        if (gapCounter > 0) {
-                            currentGroup.points.splice(-gapCounter, gapCounter);
-                            currentGroup.indices.splice(-gapCounter, gapCounter);
-                        }
-                        groups.push(currentGroup);
-                        currentGroup = {
-                            type: curveId ? 'curve' : 'straight',
-                            curveId: curveId,
-                            points: [point],
-                            indices: [i]
-                        };
-                        gapCounter = 0;
-                    }
-                } else {
-                    if (currentGroup) {
-                        groups.push(currentGroup);
-                    }
+        
+                // If the curveId is different from the current group's,
+                // finalize the current group and start a new one.
+                if (curveId !== currentGroup.curveId) {
+                    groups.push(currentGroup);
                     currentGroup = {
                         type: curveId ? 'curve' : 'straight',
                         curveId: curveId,
                         points: [point],
                         indices: [i]
                     };
-                    gapCounter = 0;
+                } else {
+                    // Otherwise, just add the point to the current group.
+                    currentGroup.points.push(point);
+                    currentGroup.indices.push(i);
                 }
             }
-
+        
+            // Add the last group
             if (currentGroup) {
-                if (gapCounter > 0 && currentGroup.type === 'curve') {
-                    currentGroup.points.splice(-gapCounter, gapCounter);
-                    currentGroup.indices.splice(-gapCounter, gapCounter);
-                }
                 groups.push(currentGroup);
             }
-
+        
+            // This logic to merge the first and last groups if they are part of the same
+            // curve on a closed path is still valid and important.
             if (isClosed && groups.length > 1) {
                 const firstGroup = groups[0];
                 const lastGroup = groups[groups.length - 1];
@@ -206,7 +195,7 @@
                     this.stats.wrappedGroups++;
                 }
             }
-
+        
             this.stats.groupsFound += groups.length;
             return groups;
         }
@@ -327,10 +316,14 @@
         
         // Reconstruct path with arc segments
         reconstructPathWithArcs(primitive, groups) {
-            const detectedArcSegments = [];
+            // 1. Store original point count for validation
+            const originalPointCount = primitive.points.length;
             
+            // 2. Build the new, simplified points array while detecting arc segments
+            const detectedArcSegments = [];
+            const newPoints = [];
+        
             for (const group of groups) {
-                // Allow 2-point arcs
                 if (group.type === 'curve' && group.points.length >= this.minArcPoints) {
                     const curveData = this.getCurve(group.curveId);
                     
@@ -338,35 +331,84 @@
                         const arcFromPoints = this.calculateArcFromPoints(group.points, curveData);
                         
                         if (arcFromPoints) {
+                            // An arc was successfully identified.
+                            this.stats.partialArcs++;
+                            
+                            // FIX: Add BOTH the start and end points of the arc group to the new path.
+                            // The renderer needs both vertices to define the segment.
+                            const startPoint = group.points[0];
+                            const endPoint = group.points[group.points.length - 1];
+
+                            newPoints.push(startPoint);
+                            newPoints.push(endPoint); // <-- CRITICAL FIX: Add the end point.
+                            
                             detectedArcSegments.push({
-                                startIndex: group.indices[0],
-                                endIndex: group.indices[group.indices.length - 1],
+                                // FIX: The startIndex is now the second-to-last point added.
+                                startIndex: newPoints.length - 2, 
+                                // FIX: The endIndex is now the last point added.
+                                endIndex: newPoints.length - 1,     
                                 center: arcFromPoints.center,
                                 radius: arcFromPoints.radius,
                                 startAngle: arcFromPoints.startAngle,
                                 endAngle: arcFromPoints.endAngle,
                                 sweepAngle: arcFromPoints.sweepAngle,
                                 clockwise: arcFromPoints.clockwise,
-                                curveId: group.curveId,
-                                pointCount: group.points.length,
-                                originalCenter: curveData.center,
-                                originalRadius: curveData.radius
+                                curveId: group.curveId
                             });
-                            
-                            this.stats.partialArcs++;
-                            
-                            if (this.debug) {
-                                const angleDeg = Math.abs(arcFromPoints.sweepAngle) * 180 / Math.PI;
-                                console.log(`[ArcReconstructor] Arc: ${group.points.length} pts, ${angleDeg.toFixed(1)}°, ${arcFromPoints.clockwise ? 'CW' : 'CCW'}`);
-                            }
+                        } else {
+                            // Arc reconstruction failed for this group, so keep the original points.
+                            newPoints.push(...group.points);
                         }
+                    } else {
+                         // No curve data found, keep the original points.
+                        newPoints.push(...group.points);
+                    }
+                } else {
+                    // This is a group of straight line segments, so add all its points.
+                    newPoints.push(...group.points);
+                }
+            }
+        
+            // 3. Post-process to handle duplicate points at segment joins.
+            // This happens because we added both start and end points. The end of one segment
+            // is often the start of the next.
+            const finalPoints = [];
+            if (newPoints.length > 0) {
+                finalPoints.push(newPoints[0]);
+                for (let i = 1; i < newPoints.length; i++) {
+                    const p1 = newPoints[i-1];
+                    const p2 = newPoints[i];
+                    // A simple distance check to merge identical points
+                    const dx = p1.x - p2.x;
+                    const dy = p1.y - p2.y;
+                    if ((dx * dx + dy * dy) > 1e-9) { // Using squared distance for efficiency
+                        finalPoints.push(p2);
+                    } else {
+                        // If we merge points, we need to update the arc segment indices
+                        detectedArcSegments.forEach(seg => {
+                            if (seg.startIndex >= i) seg.startIndex--;
+                            if (seg.endIndex >= i) seg.endIndex--;
+                        });
                     }
                 }
             }
-            
-            // Create enhanced primitive
+
+            // 4. Perform validation check
+            const newPointCount = finalPoints.length;
+            if (this.debug && detectedArcSegments.length > 0) {
+                if (newPointCount >= originalPointCount) { // It can be equal if only 2 points were replaced by 2 points
+                    console.warn(`[ArcReconstructor VALIDATION] Point count not reduced or increased: ${originalPointCount} -> ${newPointCount}. This is acceptable if arcs had few segments.`, {
+                        primitive: primitive
+                    });
+                } else {
+                    console.log(`[ArcReconstructor VALIDATION PASS] Point count reduced: ${originalPointCount} -> ${newPointCount}`);
+                }
+            }
+        
+            // 5. Create the final primitive
             const enhancedPrimitive = {
                 ...primitive,
+                points: finalPoints, // <-- OVERWRITE with the new, de-duplicated points array
                 arcSegments: detectedArcSegments,
                 properties: {
                     ...primitive.properties,

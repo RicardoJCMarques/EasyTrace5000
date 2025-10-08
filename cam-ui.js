@@ -535,6 +535,8 @@
             const fusionOptions = {
                 enableArcReconstruction: this.viewState.enableArcReconstruction
             };
+
+            console.log('[UI] performFusion() - Starting performFusion. Options:', fusionOptions);
             
             try {
                 const fused = await this.core.fuseAllPrimitives(fusionOptions);
