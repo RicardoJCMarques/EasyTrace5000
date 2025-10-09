@@ -43,6 +43,7 @@
                 position: { x: 0, y: 0 },
                 aperture: null,
                 apertures: new Map(),
+                macros: new Map(),
                 interpolation: 'linear',
                 polarity: 'dark',
                 inRegion: false,
@@ -104,6 +105,7 @@
                 position: { x: 0, y: 0 },
                 aperture: null,
                 apertures: new Map(),
+                macros: new Map(),
                 interpolation: 'linear',
                 polarity: 'dark',
                 inRegion: false,
@@ -166,56 +168,63 @@
         }
         
         parseExtendedCommand(block, lineNumber) {
-            // Format specification
-            if (block.startsWith('FS')) {
-                const match = block.match(/FS[LT][AI]X(\d)(\d)Y(\d)(\d)/);
+            // Aperture Macro Definition (e.g., %AMMACRO1*...%)
+            if (block.startsWith('AM')) {
+                const match = block.match(/AM([^*]+)\*(.*)/);
                 if (match) {
-                    return {
-                        type: 'SET_FORMAT',
-                        params: {
-                            xInteger: parseInt(match[1]),
-                            xDecimal: parseInt(match[2]),
-                            yInteger: parseInt(match[3]),
-                            yDecimal: parseInt(match[4])
-                        },
-                        line: lineNumber
-                    };
+                    const macroName = match[1];
+                    const macroContent = match[2];
+                    this.state.macros.set(macroName, { name: macroName, content: macroContent });
+                    this.debug(`Defined Macro: ${macroName}`);
+                    // We don't need a command, just storing the definition is enough for now.
+                    return { type: 'MACRO_DEF', params: { name: macroName }, line: lineNumber };
                 }
             }
-            
-            // Mode (units)
-            if (block.startsWith('MO')) {
-                return {
-                    type: 'SET_UNITS',
-                    params: { units: block.includes('MM') ? 'mm' : 'inch' },
-                    line: lineNumber
-                };
-            }
-            
-            // Aperture definition
+
+            // Aperture Definition (e.g., %ADD13R,...% or %ADD11MACRO1,...%)
             if (block.startsWith('AD')) {
-                const match = block.match(/ADD(\d+)([CROP]),(.+)/);
-                if (match) {
-                    const params = match[3].split('X').map(p => parseFloat(p));
+                // Regex for standard shapes (Circle, Rectangle, Obround, Polygon)
+                const stdMatch = block.match(/^ADD(\d+)([CROP]),(.*)/);
+                if (stdMatch) {
                     return {
                         type: 'DEFINE_APERTURE',
                         params: {
-                            code: `D${match[1]}`,
-                            shape: this.getApertureShape(match[2]),
-                            parameters: params
+                            code: `D${stdMatch[1]}`,
+                            shape: this.getApertureShape(stdMatch[2]),
+                            parameters: stdMatch[3].split('X').map(p => parseFloat(p))
+                        },
+                        line: lineNumber
+                    };
+                }
+
+                // Regex for macro shapes (e.g., ADD11MACRO1,2X2X90.0000)
+                const macroMatch = block.match(/^ADD(\d+)(\w+),(.*)/);
+                if (macroMatch && this.state.macros.has(macroMatch[2])) {
+                    return {
+                        type: 'DEFINE_APERTURE',
+                        params: {
+                            code: `D${macroMatch[1]}`,
+                            shape: 'macro',
+                            macroName: macroMatch[2],
+                            variables: macroMatch[3].split('X').map(p => parseFloat(p))
                         },
                         line: lineNumber
                     };
                 }
             }
-            
-            // Polarity
+
+            // --- Keep your existing handlers for other commands ---
+            if (block.startsWith('FS')) {
+                const match = block.match(/FS[LT][AI]X(\d)(\d)Y(\d)(\d)/);
+                if (match) {
+                    return { type: 'SET_FORMAT', params: { xInteger: parseInt(match[1]), xDecimal: parseInt(match[2]), yInteger: parseInt(match[3]), yDecimal: parseInt(match[4]) }, line: lineNumber };
+                }
+            }
+            if (block.startsWith('MO')) {
+                return { type: 'SET_UNITS', params: { units: block.includes('MM') ? 'mm' : 'inch' }, line: lineNumber };
+            }
             if (block.startsWith('LP')) {
-                return {
-                    type: 'SET_POLARITY',
-                    params: { polarity: block.includes('D') ? 'dark' : 'clear' },
-                    line: lineNumber
-                };
+                return { type: 'SET_POLARITY', params: { polarity: block.includes('D') ? 'dark' : 'clear' }, line: lineNumber };
             }
             
             return { type: 'UNKNOWN', params: { content: block }, line: lineNumber };
@@ -366,11 +375,7 @@
                     break;
                     
                 case 'DEFINE_APERTURE':
-                    this.state.apertures.set(command.params.code, {
-                        code: command.params.code,
-                        type: command.params.shape,
-                        parameters: command.params.parameters
-                    });
+                    this.state.apertures.set(command.params.code, command.params);
                     break;
                     
                 case 'SELECT_APERTURE':
@@ -403,6 +408,20 @@
                 case 'DRAW':
                     const drawPos = this.parsePosition(command.params);
                     
+                    // Check for a zero-length draw, which indicates a "painted" pad.
+                    // If start and end positions are the same, treat it as a flash.
+                    const precision = 0.0001; // A small tolerance for floating point comparison
+                    const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
+                                             Math.abs(this.state.position.y - drawPos.y) < precision;
+
+                    if (isZeroLengthDraw) {
+                        // This is effectively a flash, not a trace.
+                        this.debug(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
+                        this.createFlash(drawPos);
+                        this.state.position = drawPos;
+                        break; // Exit the case here
+                    }
+
                     // Parse arc offsets if present
                     let arcData = null;
                     if (command.params.i !== undefined || command.params.j !== undefined) {
@@ -532,25 +551,64 @@
                 this.warnings.push(`Undefined aperture ${this.state.aperture}`);
                 return;
             }
-            
+
             const flash = {
                 type: 'flash',
                 position: { ...position },
-                shape: aperture.type,
-                parameters: [...aperture.parameters],
                 aperture: this.state.aperture,
-                polarity: this.state.polarity
+                polarity: this.state.polarity,
+                shape: aperture.shape // Use the 'shape' property from the aperture definition
             };
             
-            // Add convenience properties
-            if (aperture.type === 'circle') {
-                flash.radius = aperture.parameters[0] / 2;
-            } else if (aperture.type === 'rectangle') {
-                flash.width = aperture.parameters[0];
-                flash.height = aperture.parameters[1] || aperture.parameters[0];
-            } else if (aperture.type === 'obround') {
-                flash.width = aperture.parameters[0];
-                flash.height = aperture.parameters[1] || aperture.parameters[0];
+            switch (aperture.shape) {
+                case 'circle':
+                    flash.radius = (aperture.parameters[0] || 0) / 2;
+                    flash.parameters = aperture.parameters;
+                    break;
+
+                case 'rectangle':
+                    flash.width = aperture.parameters[0];
+                    flash.height = aperture.parameters[1] || aperture.parameters[0];
+                    flash.parameters = aperture.parameters;
+                    break;
+                
+                case 'obround':
+                    flash.width = aperture.parameters[0];
+                    flash.height = aperture.parameters[1] || aperture.parameters[0];
+                    flash.parameters = aperture.parameters;
+                    break;
+
+                case 'macro':
+                    if (aperture.macroName === 'MACRO1') {
+                        flash.shape = 'polygon'; // The plotter receives a polygon
+                        const [width, height, rotation] = aperture.variables;
+                        
+                        const half_w = width / 2;
+                        const half_h = height / 2;
+                        const angleRad = rotation * Math.PI / 180;
+                        const cosA = Math.cos(angleRad);
+                        const sinA = Math.sin(angleRad);
+
+                        const corners = [
+                            { x: -half_w, y: -half_h }, // Top-left
+                            { x: -half_w, y:  half_h }, // Bottom-left
+                            { x:  half_w, y:  half_h }, // Bottom-right
+                            { x:  half_w, y: -half_h }  // Top-right
+                        ];
+
+                        flash.points = corners.map(p => ({
+                            x: position.x + (p.x * cosA - p.y * sinA),
+                            y: position.y + (p.x * sinA + p.y * cosA)
+                        }));
+                    } else {
+                        this.warnings.push(`Unsupported macro flash: ${aperture.macroName}`);
+                        return; 
+                    }
+                    break;
+
+                default:
+                     this.warnings.push(`Unsupported flash shape: ${aperture.shape}`);
+                     return;
             }
             
             this.layers.objects.push(flash);

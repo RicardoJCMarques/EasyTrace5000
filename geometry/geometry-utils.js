@@ -32,25 +32,56 @@
         // Coordinate precision threshold
         PRECISION: 0.001,
         
-        // Optimal segment calculation
-        getOptimalSegments(radius, minSegments = 8, maxSegments = 128, targetLength = 0.1) {
-            if (radius <= 0) return minSegments;
+        _calculateSegments(radius, targetLength, minSegments, maxSegments) {
+            // For zero/negative radius, return the minimum valid count.
+            if (radius <= 0) {
+                // Ensure the minimum is at least 8 and a multiple of 8.
+                return Math.max(8, Math.ceil(minSegments / 8) * 8);
+            }
+
+            // Adjust boundaries to be multiples of 8, ensuring a valid range.
+            const min = Math.max(8, Math.ceil(minSegments / 8) * 8);
+            const max = Math.floor(maxSegments / 8) * 8;
+
+            // If adjusted boundaries are invalid (e.g., min > max), return the minimum.
+            if (min > max) {
+                return min;
+            }
+
             const circumference = 2 * Math.PI * radius;
-            const desiredSegments = Math.ceil(circumference / targetLength);
-            return Math.max(minSegments, Math.min(maxSegments, desiredSegments));
+            const desiredSegments = circumference / targetLength;
+
+            // Round the ideal segment count to the NEAREST multiple of 8.
+            let calculatedSegments = Math.round(desiredSegments / 8) * 8;
+
+            // Clamp the result within the adjusted boundaries. The final value
+            // will always be a multiple of 8 within the valid range.
+            const finalSegments = Math.max(min, Math.min(max, calculatedSegments));
+
+            return finalSegments;
+        },
+        
+        // Optimal segment calculation
+        getOptimalSegments(radius, minSegments = 24, maxSegments = 256, targetLength = 0.05) {
+            // This function now uses the centralized logic with higher-resolution defaults.
+            const config = window.PCBCAMConfig?.geometry?.segments || {};
+            return this._calculateSegments(
+                radius, 
+                config.targetLength || targetLength, 
+                minSegments, 
+                maxSegments
+            );
         },
         
         // Calculate segment count for radius
         getSegmentCount(radius, type = 'circle', config = {}) {
-            const circumference = 2 * Math.PI * radius;
+            // This function now also produces multiples of 8 by using the centralized logic.
             const targetLength = config.targetLength || 0.1;
-            const calculated = Math.ceil(circumference / targetLength);
-            
             const typeKey = type.charAt(0).toUpperCase() + type.slice(1);
             const min = config[`min${typeKey}`] || (type === 'circle' ? 16 : 8);
             const max = config[`max${typeKey}`] || (type === 'circle' ? 128 : 64);
-            
-            return Math.max(min, Math.min(max, calculated));
+
+            return this._calculateSegments(radius, targetLength, min, max);
         },
         
         // Validate Clipper scale factor
@@ -95,8 +126,8 @@
             }
             
             if (!segments) {
-                const arcLength = Math.abs(angleSpan) * radius;
-                segments = this.getSegmentCount(radius, 'arc');
+                const config = window.PCBCAMConfig?.geometry?.segments || {};
+                segments = this.getSegmentCount(radius, 'arc', config);
             }
             
             const points = [];
@@ -121,6 +152,7 @@
             
             if (r <= 0) return [];
             
+            // CLEANUP: Directly call getOptimalSegments. Redundant clamping is removed.
             const segments = this.getOptimalSegments(r, 8, 32);
             const halfSegments = Math.ceil(segments / 2);
             
@@ -281,7 +313,7 @@
             const points = [];
             
             // Use consistent segment count based on radius - match circle segmentation
-            const capSegments = Math.max(16, Math.min(64, this.getOptimalSegments(halfWidth, 16, 64)));
+            const capSegments = this.getOptimalSegments(halfWidth, 16, 64);
             const halfSegments = Math.floor(capSegments / 2);
             
             // FIXED: Register end-caps with explicit clockwise=false
@@ -392,12 +424,11 @@
             // Fallback to filled circle if inner radius is negative
             if (innerR < 0) {
                 const circleSegments = 48;
-                // FIXED: Register circle with clockwise=false
                 const curveId = window.globalCurveRegistry?.register({
                     type: 'circle',
                     center: { x: center.x, y: center.y },
                     radius: outerR,
-                    clockwise: false,  // CRITICAL: Circles always CCW
+                    clockwise: false,
                     source: 'arc_fallback'
                 });
                 
@@ -427,30 +458,38 @@
                 x: center.x + radius * Math.cos(endRad),
                 y: center.y + radius * Math.sin(endRad)
             };
+
+            // --- FIX START ---
+            // Calculate and register START cap with perpendicular sweep angles.
+            const startCapAngleStart = startRad + Math.PI / 2;
+            const startCapAngleEnd = startRad + 3 * Math.PI / 2;
             
-            // FIXED: Register end-caps with explicit clockwise=false
             const startCapId = window.globalCurveRegistry?.register({
                 type: 'arc',
                 center: startCapCenter,
                 radius: halfWidth,
-                startAngle: 0,
-                endAngle: Math.PI * 2,
-                clockwise: false,  // CRITICAL: End-caps always CCW
+                startAngle: startCapAngleStart,
+                endAngle: startCapAngleEnd,
+                clockwise: false,
                 source: 'arc_end_cap'
             });
             
+            // Calculate and register END cap with perpendicular sweep angles.
+            const endCapAngleStart = endRad - Math.PI / 2;
+            const endCapAngleEnd = endRad + Math.PI / 2;
+
             const endCapId = window.globalCurveRegistry?.register({
                 type: 'arc',
                 center: endCapCenter,
                 radius: halfWidth,
-                startAngle: 0,
-                endAngle: Math.PI * 2,
-                clockwise: false,  // CRITICAL: End-caps always CCW
+                startAngle: endCapAngleStart,
+                endAngle: endCapAngleEnd,
+                clockwise: false,
                 source: 'arc_end_cap'
             });
             
             const segments = 48;
-            const capSegments = Math.max(8, Math.min(16, this.getOptimalSegments(halfWidth, 8, 16)));
+            const capSegments = this.getOptimalSegments(halfWidth, 8, 16);
             
             // Outer arc
             for (let i = 0; i <= segments; i++) {
@@ -462,10 +501,10 @@
                 });
             }
             
-            // End cap with complete metadata
-            for (let i = 0; i <= capSegments; i++) {  // FIXED: Start at 0
+            // End cap with complete metadata, using corrected perpendicular angles
+            for (let i = 0; i <= capSegments; i++) {
                 const t = i / capSegments;
-                const angle = endRad + (Math.PI * t);
+                const angle = endCapAngleStart + (Math.PI * t); // Sweep 180deg from correct start
                 const point = {
                     x: endCapCenter.x + halfWidth * Math.cos(angle),
                     y: endCapCenter.y + halfWidth * Math.sin(angle),
@@ -488,10 +527,10 @@
                 });
             }
             
-            // Start cap with complete metadata
-            for (let i = 0; i <= capSegments; i++) {  // FIXED: Start at 0
+            // Start cap with complete metadata, using corrected perpendicular angles
+            for (let i = 0; i <= capSegments; i++) {
                 const t = i / capSegments;
-                const angle = (startRad + Math.PI) + (Math.PI * t);
+                const angle = startCapAngleStart + (Math.PI * t); // Sweep 180deg from correct start
                 const point = {
                     x: startCapCenter.x + halfWidth * Math.cos(angle),
                     y: startCapCenter.y + halfWidth * Math.sin(angle),
@@ -503,6 +542,7 @@
                 };
                 points.push(point);
             }
+            // --- FIX END ---
             
             return points;
         },
@@ -511,7 +551,7 @@
         generateCompleteRoundedCap(center, dirX, dirY, radius, isStart, curveId) {
             const points = [];
             // Use same segmentation rules as circles for consistency
-            const segments = Math.max(16, Math.min(64, this.getOptimalSegments(radius, 16, 64)));
+            const segments = this.getOptimalSegments(radius, 16, 64);
             const halfSegments = Math.floor(segments / 2);
             
             const baseAngle = Math.atan2(dirY, dirX);

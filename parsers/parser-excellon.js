@@ -1,27 +1,6 @@
 /**
  * @file        parser/parser-excellon.js
- * @description Excellon parsing module
- * @author      Eltryus - Ricardo Marques
- * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * @description Excellon parsing module - FIXED for EasyEDA format
  */
 
 (function() {
@@ -63,7 +42,14 @@
                     .replace(/\r/g, '\n')
                     .split('\n')
                     .map(line => line.trim())
-                    .filter(line => line.length > 0 && !line.match(/^;(?!\s*#@!)/));
+                    .filter(line => {
+                        if (line.length === 0) return false;
+                        // Keep FILE_FORMAT comments (EasyEDA)
+                        if (line.match(/^;FILE_FORMAT=/i)) return true;
+                        // Skip other comments
+                        if (line.match(/^;/)) return false;
+                        return true;
+                    });
                 
                 this.debug(`Processing ${lines.length} lines`);
                 
@@ -99,7 +85,6 @@
         }
         
         reset() {
-            // Reset instance properties (not super properties)
             this.tools.clear();
             this.currentTool = null;
             this.inHeader = false;
@@ -134,6 +119,18 @@
         
         processLine(line, lineNumber) {
             this.stats.commandsProcessed++;
+            
+            if (line.match(/^;FILE_FORMAT=/i)) {
+                const match = line.match(/FILE_FORMAT[=\s]+(\d+):(\d+)/i);
+                if (match) {
+                    const intDigits = parseInt(match[1]);
+                    const decDigits = parseInt(match[2]);
+                    this.options.format = { integer: intDigits, decimal: decDigits };
+                    this.drillData.format = this.options.format;
+                    this.debug(`Format: ${intDigits}.${decDigits} (from FILE_FORMAT comment)`);
+                }
+                return;
+            }
             
             if (line === 'M48') {
                 this.inHeader = true;
@@ -190,7 +187,6 @@
             }
             
             if (line.match(/^G\d+/)) {
-                // Ignore G-codes for now
                 return;
             }
         }

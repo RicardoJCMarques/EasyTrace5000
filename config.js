@@ -347,7 +347,7 @@ window.PCBCAMConfig = {
             arcTolerance: 0.01,
             selfIntersectionCheck: true,
             preserveCollinear: false,
-            unionPasses: true  // Enable multi-pass union by default
+            unionPasses: true
         },
         
         fusion: {
@@ -358,12 +358,12 @@ window.PCBCAMConfig = {
         },
         
         segments: {
-            targetLength: 0.1,
-            minCircle: 16,
-            maxCircle: 128,
-            minArc: 8,
-            maxArc: 64,
-            obround: 16,
+            targetLength: 0.01,
+            minCircle: 256,
+            maxCircle: 2048,
+            minArc: 128,
+            maxArc: 2048,
+            obround: 128,
             adaptiveSegmentation: true
         },
         

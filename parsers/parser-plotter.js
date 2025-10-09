@@ -446,18 +446,24 @@
                     const oWidth = flash.width || flash.parameters?.[0] || 1.0;
                     const oHeight = flash.height || flash.parameters?.[1] || oWidth;
                     
-                    // CRITICAL FIX: Check if this is actually a circle
-                    const tolerance = geomConfig.coordinatePrecision || 0.001;
-                    if (Math.abs(oWidth - oHeight) < tolerance) {
-                        // It's geometrically a circle, treat it as such
-                        const radius = oWidth / 2;
-                        this.debug(`  Obround with equal dimensions (${oWidth.toFixed(3)}x${oHeight.toFixed(3)}) is actually a circle, radius: ${radius.toFixed(3)}mm`);
-                        primitive = new CirclePrimitive(flash.position, radius, properties);
+                    this.debug(`  Obround flash, size: ${oWidth.toFixed(3)} x ${oHeight.toFixed(3)}mm`);
+
+                    // A flash's position is its center, but ObroundPrimitive's
+                    // position is its top-left corner. We must adjust for this.
+                    const obroundPosition = {
+                        x: flash.position.x - oWidth / 2,
+                        y: flash.position.y - oHeight / 2
+                    };
+
+                    // Create the proper analytic ObroundPrimitive.
+                    // Its constructor correctly handles the circular case and registers the initial curves.
+                    primitive = new ObroundPrimitive(obroundPosition, oWidth, oHeight, properties);
+                    
+                    // Update statistics based on what the constructor determined.
+                    if (primitive.isCircular) {
                         this.creationStats.circularObrounds++;
                     } else {
-                        // True obround - treat as stroked path for proper end-cap registration
-                        this.debug(`  Obround flash, size: ${oWidth.toFixed(3)} x ${oHeight.toFixed(3)}mm - converting to stroked path`);
-                        primitive = this.createStrokedObround(flash, oWidth, oHeight, properties);
+                        // The stat name is a bit misleading now, but we'll keep it for consistency.
                         this.creationStats.strokedObrounds++;
                     }
                     break;
@@ -466,9 +472,19 @@
                     const diameter = flash.diameter || flash.parameters?.[0] || 1.0;
                     const vertices = flash.vertices || flash.parameters?.[1] || 3;
                     const rotation = flash.rotation || flash.parameters?.[2] || 0;
-                    this.debug(`  Polygon flash, diameter: ${diameter.toFixed(3)}mm, vertices: ${vertices}`);
-                    primitive = this.createPolygonFlash(flash.position, diameter, vertices, rotation, properties);
+                    
+                    // Check if the parser already provided points (for a macro flash)
+                    if (flash.points && flash.points.length > 0) {
+                        this.debug(`  Polygon flash from pre-calculated points (${flash.points.length} vertices)`);
+                        // Use the points directly from the parser's macro expansion
+                        primitive = new PathPrimitive(flash.points, { ...properties, closed: true, isPolygon: true });
+                    } else {
+                        // Original logic for standard polygon apertures
+                        this.debug(`  Polygon flash, diameter: ${diameter.toFixed(3)}mm, vertices: ${vertices}`);
+                        primitive = this.createPolygonFlash(flash.position, diameter, vertices, rotation, properties);
+                    }
                     break;
+
                 
                 default:
                     console.warn(`Unknown flash shape: ${flash.shape}, using circle`);

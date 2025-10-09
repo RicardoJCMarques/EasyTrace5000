@@ -142,16 +142,12 @@ class GeometryOffsetter {
         const offsetDist = Math.abs(distance);
         const props = path.properties || {};
         
-        // Miter limit: Don't let miter joints extend more than X times the offset distance.
-        // A value of 2 is a common default.
         const miterLimit = options.miterLimit || 2.0;
 
         const isStroke = (props.stroke && !props.fill) || props.isTrace;
         const isClosed = props.fill || (!props.stroke && path.closed);
         
         if (isStroke) {
-            // Stroke inflation logic remains unchanged.
-            // ... (your existing stroke logic) ...
             const originalWidth = props.strokeWidth || 0;
             const totalWidth = originalWidth + Math.abs(distance * 2);
             if (totalWidth < this.precision) {
@@ -214,8 +210,6 @@ class GeometryOffsetter {
                 const dot = v1.x * v2.x + v1.y * v2.y;
                 const turnAngle = Math.atan2(cross, dot);
                 
-                // This is the flawed condition from your preferred version. It handles
-                // close corners but creates artifacts on sharp internal angles.
                 const needsRoundJoint = Math.abs(turnAngle) > 0.1 && 
                                     ((isInternal && turnAngle > 0) || (!isInternal && turnAngle < 0));
                 
@@ -226,38 +220,29 @@ class GeometryOffsetter {
                     while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
                     while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-                    const jointCurveId = window.globalCurveRegistry?.register({
-                        type: 'arc',
-                        center: { x: curr.x, y: curr.y },
-                        radius: offsetDist,
-                        startAngle: angle1,
-                        endAngle: angle2,
-                        clockwise: angleDiff < 0,
-                        source: 'offset_joint',
-                        isOffsetDerived: true, // Mark this as a generated curve
-                        offsetDistance: distance
+                    const jointCurveId = window.globalCurveRegistry.register({
+                        type: 'arc', center: { x: curr.x, y: curr.y }, radius: offsetDist,
+                        startAngle: angle1, endAngle: angle2, clockwise: false,
+                        source: 'offset_joint', isOffsetDerived: true, offsetDistance: distance
                     });
                     
-                    const arcSegments = Math.max(2, Math.ceil(Math.abs(angleDiff) / (Math.PI / 8)));
+                    const fullCircleSegments = GeometryUtils.getOptimalSegments(offsetDist);
+                    const proportionalSegments = fullCircleSegments * (Math.abs(angleDiff) / (2 * Math.PI));
+                    const arcSegments = Math.max(2, Math.ceil(proportionalSegments));
+                    
                     for (let j = 0; j <= arcSegments; j++) {
                         const t = j / arcSegments;
                         const angle = angle1 + angleDiff * t;
                         offsetPoints.push({
-                            x: curr.x + offsetDist * Math.cos(angle),
-                            y: curr.y + offsetDist * Math.sin(angle),
-                            curveId: jointCurveId,
-                            segmentIndex: j,
-                            totalSegments: arcSegments + 1,
-                            t: t
+                            x: curr.x + offsetDist * Math.cos(angle), y: curr.y + offsetDist * Math.sin(angle),
+                            curveId: jointCurveId, segmentIndex: j, totalSegments: arcSegments + 1, t: t
                         });
                     }
                 } else {
-                    // This is our robust miter joint logic from the previous step. It remains unchanged.
                     const l1p1 = { x: prev.x + n1.x * offsetDist, y: prev.y + n1.y * offsetDist };
                     const l1p2 = { x: curr.x + n1.x * offsetDist, y: curr.y + n1.y * offsetDist };
                     const l2p1 = { x: curr.x + n2.x * offsetDist, y: curr.y + n2.y * offsetDist };
                     const l2p2 = { x: next.x + n2.x * offsetDist, y: next.y + n2.y * offsetDist };
-
                     const intersection = this.lineLineIntersection(l1p1, l1p2, l2p1, l2p2);
 
                     if (intersection) {
@@ -282,15 +267,15 @@ class GeometryOffsetter {
                 return null;
             }
             
+            // --- FIX START: Explicitly close the polygon path ---
+            // By appending the first point to the end, we ensure the final segment
+            // is explicitly defined, fixing potential connection issues at the seam.
+            offsetPoints.push(offsetPoints[0]);
+            // --- FIX END ---
+            
             return new PathPrimitive(offsetPoints, {
-                ...path.properties,
-                originalType: 'filled_path',
-                closed: true,
-                fill: true,
-                stroke: false,
-                isOffset: true,
-                offsetDistance: distance,
-                offsetType: isInternal ? 'internal' : 'external',
+                ...path.properties, originalType: 'filled_path', closed: true, fill: true, stroke: false,
+                isOffset: true, offsetDistance: distance, offsetType: isInternal ? 'internal' : 'external',
                 polygonized: true
             });
         }
@@ -298,39 +283,32 @@ class GeometryOffsetter {
         return null;
     }
     
-    offsetRectangle(rectangle, distance) {
+    offsetRectangle(rectangle, distance, options = {}) {
         const { x, y } = rectangle.position;
         const w = rectangle.width || 0;
         const h = rectangle.height || 0;
-        
-        const segments = [
-            [{ x, y }, { x: x + w, y }],
-            [{ x: x + w, y }, { x: x + w, y: y + h }],
-            [{ x: x + w, y: y + h }, { x, y: y + h }],
-            [{ x, y: y + h }, { x, y }]
-        ];
-        
-        const strokeWidth = Math.abs(distance * 2);
-        const allPoints = [];
-        
-        segments.forEach(segment => {
-            const segmentPolygon = GeometryUtils.lineToPolygon(
-                segment[0], segment[1], strokeWidth
-            );
-            allPoints.push(...segmentPolygon);
-        });
-        
-            return new PathPrimitive(allPoints, {
-                ...rectangle.properties,
-                originalType: 'rectangle',
-                closed: true,
-                fill: true,
-                stroke: false,
-                isOffset: true,
-                offsetDistance: distance,
-                polygonized: true
-            });
 
+        // Convert the rectangle into a standard closed Counter-Clockwise (CCW) path structure.
+        const rectAsPath = {
+            type: 'path',
+            // This is the convention expected by the offsetPath algorithm to correctly
+            // calculate inward vs. outward normals.
+            points: [
+                { x: x,     y: y },         // top-left
+                { x: x,     y: y + h },     // bottom-left
+                { x: x + w, y: y + h },     // bottom-right
+                { x: x + w, y: y }          // top-right
+            ],
+            properties: {
+                ...rectangle.properties,
+                fill: true,
+                closed: true
+            },
+            closed: true
+        };
+
+        // Delegate the actual offsetting work to the robust `offsetPath` function.
+        return this.offsetPath(rectAsPath, distance, options);
     }
     
     offsetArc(arc, distance) {
@@ -371,89 +349,80 @@ class GeometryOffsetter {
     }
     
     offsetObround(obround, distance) {
-        const { x, y } = obround.position;
-        const w = obround.width || 0;
-        const h = obround.height || 0;
-        const r = Math.min(w, h) / 2;
-        
-        const points = [];
-        const segments = 8;
-        
-        if (w > h) {
-            const c1x = x + r;
-            const c2x = x + w - r;
-            const cy = y + r;
-            
-            for (let i = 0; i <= segments; i++) {
-                const angle = Math.PI / 2 + (i / segments) * Math.PI;
-                points.push({ 
-                    x: c1x + r * Math.cos(angle), 
-                    y: cy + r * Math.sin(angle) 
-                });
-            }
-            
-            for (let i = 0; i <= segments; i++) {
-                const angle = -Math.PI / 2 + (i / segments) * Math.PI;
-                points.push({ 
-                    x: c2x + r * Math.cos(angle), 
-                    y: cy + r * Math.sin(angle) 
-                });
-            }
-        } else {
-            const cx = x + r;
-            const c1y = y + r;
-            const c2y = y + h - r;
-            
-            for (let i = 0; i <= segments; i++) {
-                const angle = Math.PI + (i / segments) * Math.PI;
-                points.push({ 
-                    x: cx + r * Math.cos(angle), 
-                    y: c1y + r * Math.sin(angle) 
-                });
-            }
-            
-            for (let i = 0; i <= segments; i++) {
-                const angle = (i / segments) * Math.PI;
-                points.push({ 
-                    x: cx + r * Math.cos(angle), 
-                    y: c2y + r * Math.sin(angle) 
-                });
-            }
+        if (this.debug) {
+            console.log(`[Offsetter] Offsetting obround by ${distance.toFixed(3)}mm.`);
         }
-        
-        const strokeWidth = Math.abs(distance * 2);
-        const isInternal = distance > 0;
-        
-        const obroundPath = {
-            type: 'path',
-            points: points,
-            closed: true,
-            properties: {
-                ...obround.properties,
-                originalType: 'obround',
-                stroke: true,
-                strokeWidth: strokeWidth,
-                isTrace: true,
-                isOffset: true,
-                offsetDistance: distance,
-                offsetType: isInternal ? 'internal' : 'external',
-                expectedWinding: isInternal ? 'ccw' : 'cw'
-            },
-            getBounds: function() {
-                let minX = Infinity, minY = Infinity;
-                let maxX = -Infinity, maxY = -Infinity;
-                this.points.forEach(pt => {
-                    minX = Math.min(minX, pt.x);
-                    minY = Math.min(minY, pt.y);
-                    maxX = Math.max(maxX, pt.x);
-                    maxY = Math.max(maxY, pt.y);
-                });
-                return { minX, minY, maxX, maxY };
-            }
+
+        // 1. Determine if the offset is internal (shrinking) or external (growing).
+        // A negative distance means the shape shrinks.
+        const isInternal = distance < 0;
+
+        // 2. Calculate the dimensions and position of the new, offset obround.
+        // The offset is applied to all sides, so width/height change by 2*distance.
+        // The position is shifted by -distance on both axes to keep the shape centered.
+        const newWidth = obround.width + (distance * 2);
+        const newHeight = obround.height + (distance * 2);
+        const newPosition = {
+            x: obround.position.x - distance,
+            y: obround.position.y - distance
         };
 
-            return new PathPrimitive(points, obroundPath.properties);
+        // 3. Handle degenerate cases where an internal offset collapses the shape.
+        if (newWidth < this.precision || newHeight < this.precision) {
+            if (this.debug) {
+                const w = newWidth.toFixed(3);
+                const h = newHeight.toFixed(3);
+                console.log(`[Offsetter] Obround offset resulted in a degenerate shape (w=${w}, h=${h}). Returning null.`);
+            }
+            return null;
+        }
 
+        // 4. Create a new ObroundPrimitive using the calculated offset geometry.
+        // This leverages the existing robust logic for creating obround polygons and,
+        // critically, for registering their end-cap curves in the global registry.
+        const offsetObroundPrimitive = new ObroundPrimitive(newPosition, newWidth, newHeight, {
+            ...obround.properties
+        });
+
+        // 5. Convert this new analytic primitive into a polygon for the next processing stage.
+        const offsetPath = offsetObroundPrimitive.toPolygon();
+        
+        // If polygon creation failed, return null.
+        if (!offsetPath || !offsetPath.points || offsetPath.points.length < 3) {
+            return null;
+        }
+
+        // 6. Add the required offset metadata to the final PathPrimitive.
+        // This ensures the rest of the pipeline knows this is an offset-generated shape.
+        offsetPath.properties = {
+            ...offsetPath.properties,
+            isOffset: true,
+            offsetDistance: distance,
+            offsetType: isInternal ? 'internal' : 'external',
+            sourcePrimitiveId: obround.id,
+        };
+        
+        // 7. Post-process the newly registered curve IDs to mark them as offset-derived.
+        // This provides metadata for the arc reconstruction step.
+        if (window.globalCurveRegistry && offsetPath.curveIds) {
+            offsetPath.curveIds.forEach(id => {
+                const curve = window.globalCurveRegistry.getCurve(id);
+                if (curve) {
+                    curve.isOffsetDerived = true;
+                    curve.offsetDistance = distance;
+                    // Associate it with the original obround's curves if possible
+                    curve.sourceCurveId = obround.curveIds ? obround.curveIds[0] : null; 
+                }
+            });
+        }
+
+        if (this.debug) {
+            const pointCount = offsetPath.points.length;
+            const curveCount = offsetPath.curveIds?.length || 0;
+            console.log(`[Offsetter] Successfully created offset obround path with ${pointCount} points and ${curveCount} registered curves.`);
+        }
+
+        return offsetPath;
     }
 }
 
