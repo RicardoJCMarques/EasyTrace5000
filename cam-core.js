@@ -664,328 +664,98 @@
             return area / 2;
         }
         
-        // Select polygons based on winding direction
-        selectOffsetPolygonsByWinding(unionResult, offsetType) {
-            const cwPolygons = [];
-            const ccwPolygons = [];
-            
-            for (const primitive of unionResult) {
-                if (primitive.type === 'circle') {
-                    const offsetDist = primitive.properties?.offsetDistance;
-                    const naturalWinding = primitive.properties?.naturalWinding;
-                    
-                    // Use natural winding if available, otherwise infer from offset type
-                    if (naturalWinding === 'cw') {
-                        cwPolygons.push(primitive);
-                    } else if (naturalWinding === 'ccw') {
-                        ccwPolygons.push(primitive);
-                    } else {
-                        // Default: Clipper normalizes outer boundaries to CCW
-                        // Both internal and external offset circles are outer boundaries
-                        console.log(`[Core] Circle Primitive detected without naturalWinding value, defaulting to clipper2 CCW.`);
-                        ccwPolygons.push(primitive);
-                    }
-                    continue;
-                }
-                if (primitive.type !== 'path' || !primitive.points) continue;
-                
-                const naturalWinding = primitive.properties?.naturalWinding;
-                const isNaturallyCW = naturalWinding ? 
-                    naturalWinding === 'cw' : 
-                    this.calculateSignedArea(primitive.points) < 0;
-                
-                if (isNaturallyCW) {
-                    cwPolygons.push(primitive);
-                } else {
-                    ccwPolygons.push(primitive);
-                }
-            }
-            
-            let selected = [];
-            
-            if (offsetType === 'internal') {
-                // Internal offsets: Select CCW cleared areas + CW islands within them
-                selected = [...ccwPolygons];
-                
-                // Preserve islands (CW polygons contained within CCW cleared areas)
-                for (const cwPoly of cwPolygons) {
-                    for (const ccwPoly of ccwPolygons) {
-                        if (this.isPolygonInside(cwPoly, ccwPoly)) {
-                            cwPoly.properties = cwPoly.properties || {};
-                            cwPoly.properties.isIsland = true;
-                            selected.push(cwPoly);
-                            break;
-                        }
-                    }
-                }
-            } else {
-                // External offsets: Select CCW outer boundaries + CW holes within them
-                selected = [...ccwPolygons];
-                
-                // Preserve holes (CW polygons contained within CCW outer boundaries)
-                for (const cwPoly of cwPolygons) {
-                    for (const ccwPoly of ccwPolygons) {
-                        if (this.isPolygonInside(cwPoly, ccwPoly)) {
-                            cwPoly.properties = cwPoly.properties || {};
-                            cwPoly.properties.isHole = true;
-                            selected.push(cwPoly);
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            if (this.debug) {
-                const holes = selected.filter(p => p.properties?.isHole).length;
-                const islands = selected.filter(p => p.properties?.isIsland).length;
-                console.log(`[Core] Winding: ${unionResult.length} → ${selected.length} (${offsetType})`);
-                console.log(`[Core] Holes: ${holes}, Islands: ${islands}`);
-            }
-            
-            return selected;
-        }
-        
-        // Extract islands (CW polygons within CCW regions)
-        extractIslands(unionResult) {
-            const islands = [];
-            const ccwPolygons = [];
-            const cwPolygons = [];
-            
-           // Separate by winding
-
-           for (const primitive of unionResult) {
-                if (primitive.type !== 'path' || !primitive.points) continue;
-                
-                const area = this.calculateSignedArea(primitive.points);
-                if (area < 0) {
-                    cwPolygons.push(primitive);
-                } else {
-                    ccwPolygons.push(primitive);
-                }
-            }
-            
-            // Check which CW polygons are contained within CCW polygons
-            for (const cwPoly of cwPolygons) {
-                for (const ccwPoly of ccwPolygons) {
-                    if (this.isPolygonInside(cwPoly, ccwPoly)) {
-                        islands.push({
-                            ...cwPoly,
-                            properties: {
-                                ...cwPoly.properties,
-                                isIsland: true
-                            }
-                        });
-
-                       break;
-                    }
-                }
-            }
-            
-            return islands;
-        }
-        
-        // Check if one polygon is inside another (simplified)
-        isPolygonInside(inner, outer) {
-            if (!inner.points || !outer.points || inner.points.length === 0) return false;
-            
-            // Check if first point of inner is inside outer
-            const testPoint = inner.points[0];
-            return this.isPointInPolygon(testPoint, outer.points);
-        }
-        
-        // Point-in-polygon test using ray casting
-        isPointInPolygon(point, polygon) {
-            let inside = false;
-            
-            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-                const xi = polygon[i].x, yi = polygon[i].y;
-                const xj = polygon[j].x, yj = polygon[j].y;
-                
-
-               const intersect = ((yi > point.y) !== (yj > point.y))
-                    && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
-                
-                if (intersect) inside = !inside;
-            }
-            
-            return inside;
-        }
-        
         async generateOffsetGeometry(operation, offsetDistances, settings) {
-            console.log(`[Core] generateOffsetGeometry() - Entered generateOffsetGeometry for op "${operation.id}".`);
-
-            console.log(`[Core] === UNIFIED OFFSET PIPELINE START ===`);
+            console.log(`[Core] === REVISED OFFSET PIPELINE START ===`);
             console.log(`[Core] Operation: ${operation.id} (${operation.type})`);
-            console.log(`[Core] Passes: ${offsetDistances.length}`);
-            console.log(`[Core] Tool: ${settings.tool?.diameter}mm`);
-            console.log(`[Core] Combine: ${settings.combineOffsets ? 'YES' : 'NO'}`);
             
             await this.ensureProcessorReady();
-            
-            if (!this.geometryOffsetter) {
-                throw new Error('Geometry offsetter not initialized');
+            if (!this.geometryOffsetter || !this.geometryProcessor) {
+                throw new Error('Geometry processors not initialized');
             }
-            
-            if (!this.geometryProcessor) {
-                throw new Error('Geometry processor not initialized');
-            }
-            
             if (!operation.primitives || operation.primitives.length === 0) {
-                throw new Error('No source primitives to offset');
+                return [];
             }
             
-            console.log(`[Core] Source: ${operation.primitives.length} primitives`);
+            const outerContours = [];
+            const holeContours = [];
+            
+            operation.primitives.forEach(primitive => {
+                if (primitive.contours && primitive.contours.length > 0) {
+                    primitive.contours.forEach(contour => {
+                        const contourPrimitive = this._createPathPrimitive(contour.points, {
+                            ...primitive.properties,
+                            polarity: contour.isHole ? 'clear' : 'dark'
+                        });
+                        if (contour.isHole) {
+                            holeContours.push(contourPrimitive);
+                        } else {
+                            outerContours.push(contourPrimitive);
+                        }
+                    });
+                } else {
+                    outerContours.push(primitive);
+                }
+            });
+            
+            console.log(`[Core] Separated into ${outerContours.length} outer contours and ${holeContours.length} hole contours.`);
             
             operation.offsets = [];
             const passResults = [];
             
-            // Process each pass independently
             for (let passIndex = 0; passIndex < offsetDistances.length; passIndex++) {
                 const distance = offsetDistances[passIndex];
-                const offsetType = distance > 0 ? 'external' : 'internal';
+                const offsetType = distance >= 0 ? 'external' : 'internal';
                 
-                console.log(`[Core] === PASS ${passIndex + 1}/${offsetDistances.length} ===`);
-                console.log(`[Core] Distance: ${distance.toFixed(3)}mm (${offsetType})`);
+                console.log(`[Core] --- PASS ${passIndex + 1}/${offsetDistances.length}: ${distance.toFixed(3)}mm (${offsetType}) ---`);
                 
-                // Step 1: Offset individual primitives with bidirectional inflation
-                const offsetPrimitives = [];
-                let successCount = 0;
-                let failCount = 0;
-                
-                for (const primitive of operation.primitives) {
-                    try {
-                        const offsetResult = await this.geometryOffsetter.offsetPrimitive(
-                            primitive,
-                            distance,  // Signed distance preserved
-                            settings
-                        );
-                        
-                        if (offsetResult) {
-                            if (Array.isArray(offsetResult)) {
-                                offsetPrimitives.push(...offsetResult);
-                                successCount += offsetResult.length;
-                            } else {
-                                offsetPrimitives.push(offsetResult);
-                                successCount++;
-                            }
-                        } else {
-                            failCount++;
-                        }
-                    } catch (error) {
-                        console.error(`[Core] Offset failed for ${primitive.type}:`, error.message);
-                        failCount++;
+                const offsetOuters = [];
+                for (const primitive of outerContours) {
+                    const result = await this.geometryOffsetter.offsetPrimitive(primitive, distance, settings);
+                    if (result) {
+                        Array.isArray(result) ? offsetOuters.push(...result) : offsetOuters.push(result);
                     }
                 }
                 
-                console.log(`[Core] Offset: ${successCount} success, ${failCount} failed`);
+                const offsetHoles = [];
+                for (const primitive of holeContours) {
+                    const result = await this.geometryOffsetter.offsetPrimitive(primitive, -distance, settings);
+                    if (result) {
+                        Array.isArray(result) ? offsetHoles.push(...result) : offsetHoles.push(result);
+                    }
+                }
                 
-                if (offsetPrimitives.length === 0) {
-                    console.warn(`[Core] Pass ${passIndex + 1} produced no geometry`);
+                console.log(`[Core] Offset generated: ${offsetOuters.length} outer shapes, ${offsetHoles.length} hole shapes.`);
+                
+                const polygonizedOuters = offsetOuters.map(p => this.geometryProcessor.standardizePrimitive(p)).filter(Boolean);
+                const polygonizedHoles = offsetHoles.map(p => this.geometryProcessor.standardizePrimitive(p)).filter(Boolean);
+
+                console.log(`[Core] Polygonized to: ${polygonizedOuters.length} outer paths, ${polygonizedHoles.length} hole paths.`);
+
+                if (polygonizedOuters.length === 0) {
+                    console.warn(`[Core] Pass ${passIndex + 1} produced no valid outer geometry. Skipping.`);
                     continue;
                 }
-                
-                // Step 2: Polygonize all offset primitives
-                console.log(`[Core] Polygonizing ${offsetPrimitives.length} offset primitives...`);
-                const polygonizedPrimitives = [];
-                
-                for (const primitive of offsetPrimitives) {
-                    try {
-                        if (primitive.type === 'circle') {
-                            if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
-                                polygonizedPrimitives.push(primitive.toPolygon());
-                            } else if (typeof GeometryUtils !== 'undefined') {
-                                const segments = GeometryUtils.getOptimalSegments(primitive.radius);
-                                const points = [];
-                                for (let i = 0; i < segments; i++) {
-                                    const angle = (i / segments) * 2 * Math.PI;
-                                    points.push({
-                                        x: primitive.center.x + primitive.radius * Math.cos(angle),
-                                        y: primitive.center.y + primitive.radius * Math.sin(angle)
-                                    });
-                                }
-                                polygonizedPrimitives.push(this._createPathPrimitive(points, {
-                                    ...primitive.properties,
-                                    closed: true,
-                                    polygonized: true
-                                }));
-                            }
-                        } else if (primitive.type === 'path') {
-                            polygonizedPrimitives.push(primitive);
-                        } else if (primitive.type === 'arc') {
-                            if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
-                                polygonizedPrimitives.push(primitive.toPolygon());
-                            }
-                        }
-                    } catch (error) {
-                        console.error(`[Core] Polygonization failed:`, error.message);
-                    }
-                }
-                
-                console.log(`[Core] Polygonized: ${offsetPrimitives.length} â†’ ${polygonizedPrimitives.length} primitives`);
-                
-                if (polygonizedPrimitives.length === 0) {
-                    console.warn(`[Core] No valid primitives after polygonization`);
-                    continue;
-                }
-                
-                // Step 3: Union overlapping offsets
-                console.log(`[Core] Unioning ${polygonizedPrimitives.length} primitives...`);
-                
-                let unionResult;
-                try {
-                    unionResult = await this.geometryProcessor.unionGeometry(
-                        polygonizedPrimitives,
-                        { fillRule: 'nonzero' }
-                    );
-                    
-                    console.log(`[Core] Union: ${polygonizedPrimitives.length} â†’ ${unionResult.length} primitives`);
-                    
-                    // If union produces no results but we have input, use the input
-                    if (unionResult.length === 0 && polygonizedPrimitives.length > 0) {
-                        console.warn(`[Core] Union produced no results, using original polygons`);
-                        unionResult = polygonizedPrimitives;
-                    }
-                } catch (error) {
-                    console.error(`[Core] Union failed:`, error);
-                    unionResult = polygonizedPrimitives;
-                }
-                
-                // Step 4: Arc reconstruction
-                console.log(`[Core] Running arc reconstruction...`);
-                console.log('[Core] >>> About to invoke DIRECT arc reconstruction on unionResult.', { count: unionResult.length, data: unionResult });
-                unionResult = this.geometryProcessor.arcReconstructor.processForReconstruction(unionResult);
-                console.log('[Core] <<< Direct arc reconstruction complete. New primitive count:', unionResult.length);
-                
-                // Step 5: Select appropriate polygons by winding (or skip for cutouts)
-                let finalGeometry;
-                
-                // For cutouts, skip winding selection since they're simple offset paths
-                if (operation.type === 'cutout') {
-                    finalGeometry = unionResult;
-                    console.log(`[Core] Cutout: using all ${finalGeometry.length} polygons`);
-                    
-                    // Apply cutout-specific filtering if needed
-                    if (distance !== 0) {
-                        const cutSide = settings.cutSide || 'outside';
-                        const originalBounds = operation.bounds;
-                        finalGeometry = this.filterCutoutPaths(finalGeometry, cutSide, originalBounds);
-                        console.log(`[Core] Cutout filter (${cutSide}): ${finalGeometry.length} paths`);
-                    }
+
+                const subjectGeometry = await this.geometryProcessor.unionGeometry(polygonizedOuters);
+                console.log(`[Core] Union of outers resulted in ${subjectGeometry.length} subject shape(s).`);
+
+                let finalPassGeometry;
+                if (polygonizedHoles.length > 0) {
+                    const clipGeometry = await this.geometryProcessor.unionGeometry(polygonizedHoles);
+                    console.log(`[Core] Union of holes resulted in ${clipGeometry.length} clip shape(s).`);
+                    console.log(`[Core] Performing DIFFERENCE operation...`);
+                    finalPassGeometry = await this.geometryProcessor.difference(subjectGeometry, clipGeometry);
                 } else {
-                    // Normal winding selection for isolation/clear
-                    finalGeometry = this.selectOffsetPolygonsByWinding(unionResult, offsetType);
-                    console.log(`[Core] Selected ${finalGeometry.length} polygons by winding (${offsetType})`);
-                    
-                    // Handle special cases for clear operation
-                    if (offsetType === 'internal' && operation.type === 'clear') {
-                        const islands = this.extractIslands(unionResult);
-                        finalGeometry.push(...islands);
-                        console.log(`[Core] Preserved ${islands.length} islands`);
-                    }
+                    finalPassGeometry = subjectGeometry;
                 }
                 
-                // Tag final geometry
-                finalGeometry = finalGeometry.map(p => {
+                console.log(`[Core] Boolean operations complete. Final geometry has ${finalPassGeometry.length} primitive(s).`);
+
+                console.log(`[Core] Running arc reconstruction...`);
+                let reconstructedGeometry = this.geometryProcessor.arcReconstructor.processForReconstruction(finalPassGeometry);
+                console.log(`[Core] Arc reconstruction complete. Primitive count: ${reconstructedGeometry.length}`);
+                
+                reconstructedGeometry = reconstructedGeometry.map(p => {
                     if (!p.properties) p.properties = {};
                     p.properties.isOffset = true;
                     p.properties.pass = passIndex + 1;
@@ -993,32 +763,27 @@
                     p.properties.offsetType = offsetType;
                     return p;
                 });
-                
-                // Store pass result
+
                 passResults.push({
                     distance: distance,
                     pass: passIndex + 1,
                     offsetType: offsetType,
-                    primitives: finalGeometry,
+                    primitives: reconstructedGeometry,
                     metadata: {
                         sourceCount: operation.primitives.length,
-                        offsetCount: offsetPrimitives.length,
-                        unionCount: unionResult.length,
-                        finalCount: finalGeometry.length,
+                        offsetCount: offsetOuters.length + offsetHoles.length,
+                        unionCount: subjectGeometry.length,
+                        finalCount: reconstructedGeometry.length,
                         generatedAt: Date.now(),
                         toolDiameter: settings.tool?.diameter
                     }
                 });
             }
             
-            // Check if we should combine passes
             if (settings.combineOffsets && passResults.length > 1) {
                 console.log(`[Core] === COMBINING ${passResults.length} PASSES ===`);
                 
-                const allPassPrimitives = [];
-                passResults.forEach(passResult => {
-                    allPassPrimitives.push(...passResult.primitives);
-                });
+                const allPassPrimitives = passResults.flatMap(p => p.primitives);
                 
                 console.log(`[Core] Combined ${allPassPrimitives.length} total primitives`);
                 
@@ -1031,7 +796,6 @@
                     passes: passResults.length,
                     settings: { ...settings },
                     metadata: {
-
                        sourceCount: operation.primitives.length,
                         totalPrimitives: allPassPrimitives.length,
                         passCount: passResults.length,
@@ -1040,20 +804,16 @@
                     }
                 }];
             } else {
-                // Store passes individually
-                passResults.forEach((passResult, index) => {
-                    operation.offsets.push({
-                        id: `offset_${operation.id}_${index}`,
-
-                        ...passResult,
-                        settings: { ...settings }
-                    });
-                });
+                operation.offsets = passResults.map((passResult, index) => ({
+                    id: `offset_${operation.id}_${index}`,
+                    ...passResult,
+                    settings: { ...settings }
+                }));
             }
             
             const totalPrimitives = operation.offsets.reduce((sum, o) => sum + o.primitives.length, 0);
-            console.log(`[Core] === UNIFIED OFFSET PIPELINE COMPLETE ===`);
-            console.log(`[Core] Generated ${operation.offsets.length} offset(s), ${totalPrimitives} primitives`);
+            console.log(`[Core] === REVISED OFFSET PIPELINE COMPLETE ===`);
+            console.log(`[Core] Generated ${operation.offsets.length} offset group(s), ${totalPrimitives} total primitives.`);
             
             this.isToolpathCacheValid = false;
             return operation.offsets;
@@ -1278,30 +1038,22 @@
                 points: points,
                 properties: properties || {},
                 closed: properties?.closed !== false,
-                holes: properties?.holes || [],
+                contours: properties?.contours || [{
+                    points: points,
+                    nestingLevel: 0,
+                    isHole: false,
+                    parentId: null
+                }],
                 getBounds: function() {
-                    if (this.points.length === 0) {
-                        return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-                    }
-                    let minX = Infinity, minY = Infinity;
-                    let maxX = -Infinity, maxY = -Infinity;
-                    this.points.forEach(p => {
-                        minX = Math.min(minX, p.x);
-                        minY = Math.min(minY, p.y);
-                        maxX = Math.max(maxX, p.x);
-                        maxY = Math.max(maxY, p.y);
-                    });
-                    // Include holes in bounds
-                    if (this.holes && this.holes.length > 0) {
-                        this.holes.forEach(hole => {
-                            hole.forEach(p => {
-                                minX = Math.min(minX, p.x);
-                                minY = Math.min(minY, p.y);
-                                maxX = Math.max(maxX, p.x);
-                                maxY = Math.max(maxY, p.y);
-                            });
+                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    this.contours.forEach(c => {
+                        c.points.forEach(p => {
+                            minX = Math.min(minX, p.x);
+                            minY = Math.min(minY, p.y);
+                            maxX = Math.max(maxX, p.x);
+                            maxY = Math.max(maxY, p.y);
                         });
-                    }
+                    });
                     return { minX, minY, maxX, maxY };
                 }
             };

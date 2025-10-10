@@ -454,117 +454,125 @@
             }
         }
         
-        // Convert Clipper PolyTree to JS primitives with metadata unpacking - FIXED
+        // Convert Clipper PolyTree to JS primitives with metadata unpacking
         _polyTreeToJS(polyNode) {
             const primitives = [];
             
-            const traverse = (node, isHole) => {
-                const polygon = node.polygon();
+            // Iterative approach - process only root nodes
+            for (let i = 0; i < polyNode.count(); i++) {
+                const rootNode = polyNode.child(i);
+                const rootPoly = rootNode.polygon();
                 
-                if (polygon && polygon.size() > 2) {
-                    const points = [];
-                    const curveIds = new Set();
-                    const metadataMap = new Map();
+                if (!rootPoly || rootPoly.size() < 3) continue;
+                
+                // Extract root points
+                const rootPoints = [];
+                const curveIds = new Set();
+                
+                for (let j = 0; j < rootPoly.size(); j++) {
+                    const pt = rootPoly.get(j);
+                    const point = {
+                        x: Number(pt.x) / this.scale,
+                        y: Number(pt.y) / this.scale
+                    };
                     
-                    for (let i = 0; i < polygon.size(); i++) {
-                        const pt = polygon.get(i);
-                        const point = {
+                    if (this.supportsZ && pt.z !== undefined) {
+                        const z = BigInt(pt.z);
+                        if (z > 0n) {
+                            const metadata = this.unpackMetadata(z);
+                            if (metadata.curveId > 0) {
+                                point.curveId = metadata.curveId;
+                                point.segmentIndex = metadata.segmentIndex;
+                                point.clockwise = metadata.clockwise;
+                                curveIds.add(metadata.curveId);
+                            }
+                        }
+                    }
+                    
+                    rootPoints.push(point);
+                }
+                
+                // Build contours array - start with root
+                const contours = [{
+                    points: rootPoints,
+                    nestingLevel: 0,
+                    isHole: false,
+                    parentId: null
+                }];
+                
+                // Add level-1 children (holes) only - flatten deeper levels
+                for (let j = 0; j < rootNode.count(); j++) {
+                    const childNode = rootNode.child(j);
+                    const childPoly = childNode.polygon();
+                    
+                    if (!childPoly || childPoly.size() < 3) continue;
+                    
+                    const childPoints = [];
+                    for (let k = 0; k < childPoly.size(); k++) {
+                        const pt = childPoly.get(k);
+                        childPoints.push({
                             x: Number(pt.x) / this.scale,
                             y: Number(pt.y) / this.scale
-                        };
-                        
-                        if (this.supportsZ && pt.z !== undefined) {
-                            const z = BigInt(pt.z);
-                            if (z > 0n) {
-                                const metadata = this.unpackMetadata(z);
-                                if (metadata.curveId > 0) {
-                                    point.curveId = metadata.curveId;
-                                    point.segmentIndex = metadata.segmentIndex;
-                                    point.clockwise = metadata.clockwise;
-                                    curveIds.add(metadata.curveId);
-                                    
-                                    if (!metadataMap.has(metadata.curveId)) {
-                                        metadataMap.set(metadata.curveId, {
-                                            count: 0,
-                                            minIndex: metadata.segmentIndex,
-                                            maxIndex: metadata.segmentIndex,
-                                            clockwise: metadata.clockwise
-                                        });
-                                    }
-                                    const stats = metadataMap.get(metadata.curveId);
-                                    stats.count++;
-                                    stats.minIndex = Math.min(stats.minIndex, metadata.segmentIndex);
-                                    stats.maxIndex = Math.max(stats.maxIndex, metadata.segmentIndex);
-                                }
-                            }
-                        }
-                        
-                        points.push(point);
-                    }
-                    
-                    // Calculate area BEFORE any reversal to preserve natural winding
-                    const area = this.calculateSignedAreaRaw(points.map(p => ({
-                        x: Math.round(p.x * this.scale),
-                        y: Math.round(p.y * this.scale)
-                    })));
-                    
-                    const naturallyClockwise = area < 0;  // Store original winding
-                    
-                    // ONLY reverse if we're NOT preserving winding for selection
-                    if (!isHole && area < 0) {
-                        points.reverse();
-                    }
-                    
-                    if (!isHole) {
-                        const primitive = this._createPathPrimitive(points, {
-                            isFused: true,
-                            fill: true,
-                            polarity: 'dark',
-                            closed: true,
-                            naturalWinding: naturallyClockwise ? 'cw' : 'ccw'  // ADD THIS METADATA
                         });
+                    }
+                    
+                    contours.push({
+                        points: childPoints,
+                        nestingLevel: 1,
+                        isHole: true,
+                        parentId: 0
+                    });
+                    
+                    // Flatten grandchildren as additional level-1 elements
+                    for (let k = 0; k < childNode.count(); k++) {
+                        const grandchildNode = childNode.child(k);
+                        const grandchildPoly = grandchildNode.polygon();
                         
-                        if (curveIds.size > 0) {
-                            primitive.curveIds = Array.from(curveIds);
-                            primitive.hasReconstructableCurves = true;
+                        if (!grandchildPoly || grandchildPoly.size() < 3) continue;
+                        
+                        const grandchildPoints = [];
+                        for (let m = 0; m < grandchildPoly.size(); m++) {
+                            const pt = grandchildPoly.get(m);
+                            grandchildPoints.push({
+                                x: Number(pt.x) / this.scale,
+                                y: Number(pt.y) / this.scale
+                            });
                         }
                         
-                        // Process children recursively
-                        for (let i = 0; i < node.count(); i++) {
-                            const grandchildren = traverse(node.child(i), false);
-                            if (grandchildren) {
-                                primitives.push(...grandchildren);
-                            }
-                        }
-                        
-                        return [primitive];
+                        // Islands become level-1 non-holes
+                        contours.push({
+                            points: grandchildPoints,
+                            nestingLevel: 1,
+                            isHole: false,
+                            parentId: 0
+                        });
                     }
                 }
                 
-                // Process children
-                const childPrimitives = [];
-                for (let i = 0; i < node.count(); i++) {
-                    const children = traverse(node.child(i), !isHole);
-                    if (children) {
-                        childPrimitives.push(...children);
-                    }
+                // Create primitive
+                const primitive = this._createPathPrimitive(rootPoints, {
+                    isFused: true,
+                    fill: true,
+                    polarity: 'dark',
+                    closed: true,
+                    contours: contours
+                });
+                
+                if (curveIds.size > 0) {
+                    primitive.curveIds = Array.from(curveIds);
+                    primitive.hasReconstructableCurves = true;
                 }
                 
-                return childPrimitives.length > 0 ? childPrimitives : null;
-            };
-            
-            // Start from root's children
-            for (let i = 0; i < polyNode.count(); i++) {
-                const result = traverse(polyNode.child(i), false);
-                if (result) {
-                    primitives.push(...result);
-                }
+                primitives.push(primitive);
             }
             
             if (this.debug && primitives.length > 0) {
                 const totalWithCurves = primitives.filter(p => p.curveIds && p.curveIds.length > 0).length;
                 this.log(`Extracted ${primitives.length} primitives, ${totalWithCurves} with curve metadata`);
             }
+            // if (this.debug) {
+                console.log(`[Clipper Wrapper] PolyTree conversion: ${primitives.length} primitives, total contours: ${primitives.reduce((sum, p) => sum + (p.contours?.length || 0), 0)}`);
+            // }
             
             return primitives;
         }

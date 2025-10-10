@@ -187,7 +187,22 @@ class GeometryOffsetter {
             const n = polygonPoints.length;
             if (n < 3) return null;
             
-            const normalDirection = isInternal ? -1 : 1;
+            // 1. Determine the winding direction of the input polygon.
+            const isPathClockwise = GeometryUtils.isClockwise(polygonPoints); //
+            
+            // 2. Determine the base normal direction from the signed distance.
+            //    isInternal (distance < 0) means normals point inward (-1).
+            //    isExternal (distance > 0) means normals point outward (+1).
+            let normalDirection = isInternal ? 1 : -1;
+            
+            // 3. Invert the normal direction for clockwise paths.
+            //    For a CCW path (outer), an external offset expands it (correct).
+            //    For a CW path (hole), an external offset should SHRINK it. This requires
+            //    inverting the normal direction to point "inward" relative to the hole's path.
+            if (isPathClockwise) {
+                normalDirection *= -1;
+            }
+
             const offsetPoints = [];
             
             for (let i = 0; i < n; i++) {
@@ -288,26 +303,23 @@ class GeometryOffsetter {
         const w = rectangle.width || 0;
         const h = rectangle.height || 0;
 
-        // Convert the rectangle into a standard closed Counter-Clockwise (CCW) path structure.
-        const rectAsPath = {
-            type: 'path',
-            // This is the convention expected by the offsetPath algorithm to correctly
-            // calculate inward vs. outward normals.
-            points: [
+        // Convert the rectangle into a standard closed Counter-Clockwise (CCW) path.
+        const rectAsPath = new PathPrimitive(
+            [
                 { x: x,     y: y },         // top-left
                 { x: x,     y: y + h },     // bottom-left
                 { x: x + w, y: y + h },     // bottom-right
-                { x: x + w, y: y }          // top-right
+                { x: x + w, y: y },         // top-right
+                { x: x,     y: y }          // Explicitly close path
             ],
-            properties: {
+            {
                 ...rectangle.properties,
                 fill: true,
                 closed: true
-            },
-            closed: true
-        };
+            }
+        );
 
-        // Delegate the actual offsetting work to the robust `offsetPath` function.
+        // Delegate the actual offsetting work to the more robust offsetPath function.
         return this.offsetPath(rectAsPath, distance, options);
     }
     

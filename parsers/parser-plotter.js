@@ -227,42 +227,51 @@
                 return null;
             }
             
-            this.debug(`Plotting region with ${region.points.length} points, polarity: ${region.polarity || 'dark'}`);
+            this.debug(`Plotting region with ${region.points.length} points`);
 
+            // Close region if needed
             const first = region.points[0];
             const last = region.points[region.points.length - 1];
             const precision = geomConfig.coordinatePrecision || 0.001;
-            const isClosed = Math.abs(first.x - last.x) < precision && 
-                            Math.abs(first.y - last.y) < precision;
             
-            if (!isClosed) {
-                this.debug('  Region is not closed, will be closed automatically');
+            if (Math.abs(first.x - last.x) > precision || Math.abs(first.y - last.y) > precision) {
+                region.points.push({ ...first });
             }
             
-            const properties = {
+            // Build contours - SINGLE SOURCE OF TRUTH
+            let contours;
+            
+            if (region.contours && Array.isArray(region.contours)) {
+                // SVG format - use directly
+                contours = region.contours;
+                this.debug(`  ${contours.length} contours from SVG`);
+            } else {
+                // Simple region (Gerber) - create basic contour
+                contours = [{
+                    points: region.points,
+                    nestingLevel: 0,
+                    isHole: false,
+                    parentId: null
+                }];
+            }
+            
+            // Create primitive with contours at TOP LEVEL
+            const primitive = new PathPrimitive(region.points, {
                 isRegion: true,
-                regionType: 'filled_area',
                 fill: true,
                 fillRule: 'nonzero',
-                stroke: false,
-                strokeWidth: 0,
                 polarity: region.polarity || 'dark',
                 closed: true,
-                originalPointCount: region.points.length,
-                holes: region.holes || [] // Pass holes from the region object to the primitive
-            };
-            
-            const primitive = new PathPrimitive(region.points, properties);
+                contours: contours  // ← Stored here, not in properties
+            });
             
             this.creationStats.regionsCreated++;
-            this.creationStats.regionPointCounts.push(region.points.length);
-            
-            if (this.options.debug) {
-                const area = this.calculateArea(region.points);
-                this.debug(`  Region area: ${Math.abs(area).toFixed(3)} mm²`);
-                this.debug(`  Region winding: ${area > 0 ? 'CCW' : 'CW'}`);
-            }
-            
+            // if (this.debug) {
+                if (primitive.contours && primitive.contours.length > 1) {
+                    console.log(`[Plotter] Primitive has ${primitive.contours.length} contours (${primitive.contours.filter(c => c.isHole).length} holes)`);
+                }
+            // }
+                
             return primitive;
         }
         

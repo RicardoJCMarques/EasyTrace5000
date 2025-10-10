@@ -30,7 +30,7 @@ An open-source, browser based CAM tool for generating G-code from PCB manufactur
 * **Rendering:** Custom WebGL-based 2D layer renderer. (Possible 3d g-code viewer, one day)
 * **File Parsing:** Custom parsers for Gerber (RS-274X) and Excellon formats. SVG comming Soon™ (No Béziers in the near future).
 
-## Compatibility
+## File Compatibility
 
 * **KiCAD**
 * **EasyEDA**

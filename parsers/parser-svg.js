@@ -11,7 +11,6 @@
 
     // This parser adopts the "Polarity Primitive" strategy to be compatible with the GeometryProcessor pipeline.
     // It creates separate 'dark' (solid) and 'clear' (hole) primitives, mimicking the Gerber parser's output.
-    // It does NOT create primitives with a .holes array; that is the job of the GeometryProcessor.
 
     class SVGParser extends ParserCore {
         constructor(options = {}) {
@@ -150,7 +149,6 @@
             this.stats.objectsCreated++;
         }
 
-        // This is the core logic. It identifies solids and holes and creates a SEPARATE primitive for each.
         // Identifies solids and holes, nests holes within parent regions
         _createPolarityRegions(subpaths) {
             const tolerance = 1e-9;
@@ -162,7 +160,14 @@
                         points.push({ ...first });
                     }
                 }
-                return { id: index, points, area: this._calculateSignedArea(points), parent: null, nestingLevel: 0, children: [] };
+                return { 
+                    id: index, 
+                    points, 
+                    area: this._calculateSignedArea(points), 
+                    parent: null, 
+                    nestingLevel: 0, 
+                    children: [] 
+                };
             }).filter(p => p.points.length > 2 && Math.abs(p.area) > tolerance);
 
             if (paths.length === 0) return;
@@ -202,42 +207,41 @@
                 }
             });
 
-            // Create root primitives with nested holes array
+            // Create ONE region per root with all child contours attached
             const rootPaths = paths.filter(p => p.parent === null);
             
             rootPaths.forEach(rootPath => {
-                const holes = [];
+                // Collect ALL descendant contours (holes, islands, etc.)
+                const allContours = [];
                 
-                // Collect immediate children (nesting level 1 = holes)
-                rootPath.children.forEach(childId => {
-                    const child = pathMap.get(childId);
-                    if (child && child.nestingLevel === 1) {
-                        holes.push(child.points);
-                    }
-                });
+                const collectContours = (pathId) => {
+                    const path = pathMap.get(pathId);
+                    if (!path) return;
+                    
+                    allContours.push({
+                        points: path.points,
+                        nestingLevel: path.nestingLevel,
+                        isHole: path.nestingLevel % 2 === 1,
+                        parentId: path.parent
+                    });
+                    
+                    // Recursively collect children
+                    path.children.forEach(childId => collectContours(childId));
+                };
+                
+                // Start with root (level 0)
+                collectContours(rootPath.id);
                 
                 this.layers.objects.push({
                     type: 'region',
                     points: rootPath.points,
-                    holes: holes,
+                    contours: allContours,  // Array of all contours with metadata
                     polarity: 'dark'
                 });
+                // if (this.debug) {
+                    console.log(`[SVG Parser] Created region with ${allContours.length} contours (${allContours.filter(c => c.isHole).length} holes)`);
+                // }
                 this.stats.objectsCreated++;
-            });
-            
-            // ALSO create separate primitives for holes (for debug viz)
-            paths.forEach(path => {
-                if (path.nestingLevel === 1) {
-                    this.layers.objects.push({
-                        type: 'region',
-                        points: path.points,
-                        holes: [],
-                        polarity: 'clear',
-                        isHole: true,
-                        parentId: path.parent
-                    });
-                    this.stats.objectsCreated++;
-                }
             });
         }
 

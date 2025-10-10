@@ -99,13 +99,21 @@
             
             this.points = points;
             this.closed = properties.closed !== false;
-            
-            // Track arc segments within the path
             this.arcSegments = properties.arcSegments || [];
-            this.holes = properties.holes || [];
-            
-            // Store curve IDs if provided
             this.curveIds = properties.curveIds || [];
+            
+            // UNIFIED CONTOURS SYSTEM
+            this.contours = properties.contours || [];
+            
+            // Auto-generate simple contour if not provided
+            if (this.contours.length === 0 && this.points.length >= 3) {
+                this.contours = [{
+                    points: this.points,
+                    nestingLevel: 0,
+                    isHole: false,
+                    parentId: null
+                }];
+            }
             
             // Update geometric context if this path contains arcs
             if (this.arcSegments.length > 0) {
@@ -133,7 +141,7 @@
                 }
             });
             
-            // Include holes in bounds
+            // Include holes in bounds SHOULDN'T THIS FUNCTION BE LOOKING AT .CONTOURS INSTEAD OF .HOLES??? These may be the last remnants of that system.
             if (this.holes && this.holes.length > 0) {
                 this.holes.forEach(hole => {
                     if (Array.isArray(hole)) {

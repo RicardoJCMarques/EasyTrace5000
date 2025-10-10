@@ -191,7 +191,7 @@
         return finalGeometry;
     }
         
-        // NEW: Union geometry for offset pass merging
+        // Union geometry for offset pass merging
         async unionGeometry(primitives, options = {}) {
             await this.ensureInitialized();
             
@@ -245,6 +245,47 @@
                 
             } catch (error) {
                 console.error('Union operation failed:', error);
+                throw error;
+            }
+        }
+
+        // Difference geometry for hole cutting
+        async difference(subjectPrimitives, clipPrimitives, options = {}) {
+            await this.ensureInitialized();
+            
+            if (!subjectPrimitives || subjectPrimitives.length === 0) {
+                return []; // Nothing to subtract from
+            }
+            if (!clipPrimitives || clipPrimitives.length === 0) {
+                return subjectPrimitives; // Nothing to subtract
+            }
+            
+            this.debug(`=== DIFFERENCE OPERATION START ===`);
+            this.debug(`Input: ${subjectPrimitives.length} subjects, ${clipPrimitives.length} clips`);
+            
+            try {
+                // Use Clipper difference operation
+                const result = await this.clipper.difference(subjectPrimitives, clipPrimitives);
+                
+                this.debug(`=== DIFFERENCE OPERATION COMPLETE ===`);
+                this.debug(`Result: ${result.length} primitives`);
+                
+                // Ensure proper primitive structure
+                return result.map(p => {
+                    if (typeof PathPrimitive !== 'undefined' && !(p instanceof PathPrimitive)) {
+                        return this._createPathPrimitive(p.points, {
+                            ...p.properties,
+                            holes: p.holes || [],
+                            contours: p.contours || [],
+                            curveIds: p.curveIds,
+                            hasReconstructableCurves: p.hasReconstructableCurves
+                        });
+                    }
+                    return p;
+                });
+                
+            } catch (error) {
+                console.error('Difference operation failed:', error);
                 throw error;
             }
         }
@@ -312,7 +353,7 @@
         }
         
         // Preprocess primitives with curve ID preservation
-        _preprocessPrimitives(primitives, options) {
+       _preprocessPrimitives(primitives, options) {
             const preprocessed = [];
             this.stats.strokesConverted = 0;
             
@@ -336,7 +377,7 @@
                     this.stats.strokesConverted++;
                     processedPrimitive = this._convertStrokeToPolygon(primitive);
                 } else {
-                    processedPrimitive = this._standardizePrimitive(primitive, curveIds, options);
+                    processedPrimitive = this.standardizePrimitive(primitive, curveIds, options);
                 }
                 
                 if (processedPrimitive) {
@@ -353,12 +394,17 @@
         }
         
         // Standardize primitive to polygon with curve metadata
-        _standardizePrimitive(primitive, curveIds, options) {
+        standardizePrimitive(primitive, curveIds, options) {
+            // --- FIX: Provide default values for optional parameters ---
+            const localCurveIds = curveIds || [];
+            const localOptions = options || {};
+            // --- END FIX ---
+
             let points = [];
             let arcSegments = [];
             
-            if (this.options.debug && curveIds.length > 0) {
-                this.debug(`Standardizing ${primitive.type} with curve IDs: [${curveIds.join(', ')}]`);
+            if (this.options.debug && localCurveIds.length > 0) {
+                this.debug(`Standardizing ${primitive.type} with curve IDs: [${localCurveIds.join(', ')}]`);
             }
             
             if (primitive.type === 'path') {
@@ -386,8 +432,8 @@
                             x: primitive.center.x + primitive.radius * Math.cos(angle),
                             y: primitive.center.y + primitive.radius * Math.sin(angle)
                         };
-                        if (curveIds.length > 0) {
-                            point.curveId = curveIds[0];
+                        if (localCurveIds.length > 0) {
+                            point.curveId = localCurveIds[0];
                             point.segmentIndex = i;
                         }
                         points.push(point);
@@ -437,10 +483,10 @@
                         primitive.center,
                         primitive.clockwise
                     );
-                    if (curveIds.length > 0) {
+                    if (localCurveIds.length > 0) {
                         points = points.map((p, i) => ({ 
                             ...p, 
-                            curveId: curveIds[0],
+                            curveId: localCurveIds[0],
                             segmentIndex: i
                         }));
                     }
@@ -457,8 +503,8 @@
                     pathPrimitive.arcSegments = arcSegments;
                 }
                 
-                if (curveIds.length > 0) {
-                    pathPrimitive.curveIds = curveIds;
+                if (localCurveIds.length > 0) {
+                    pathPrimitive.curveIds = localCurveIds;
                 }
                 
                 return pathPrimitive;

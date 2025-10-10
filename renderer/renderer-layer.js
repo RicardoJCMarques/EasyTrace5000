@@ -185,9 +185,7 @@
             
             // Render all debug information for collected primitives
             this.debugPrimitives.forEach(primitive => {
-                if (primitive.type === 'path' && primitive.points) {
-                    this.primitiveRenderer.renderCurveMetadataDebug(primitive);
-                }
+                this.primitiveRenderer.renderCurveMetadataDebug(primitive);
             });
             
             // Always show stats when debugging curve points
@@ -281,7 +279,7 @@
                 }
                 
                 // Collect primitives for debug overlay but don't render debug here
-                if (this.options.debugCurvePoints && primitive.type === 'path') {
+                if (this.options.debugCurvePoints) {
                     this.debugPrimitives.push(primitive);
                 }
 
@@ -345,7 +343,7 @@
                 }
                 
                 // Collect primitives for debug overlay but don't render debug here
-                if (this.options.debugCurvePoints && primitive.type === 'path') {
+                if (this.options.debugCurvePoints) {
                     this.debugPrimitives.push(primitive);
                 }
                 
