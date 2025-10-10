@@ -458,14 +458,14 @@
         _polyTreeToJS(polyNode) {
             const primitives = [];
             
-            // Iterative approach - process only root nodes
+            // Process each root node (top-level polygon)
             for (let i = 0; i < polyNode.count(); i++) {
                 const rootNode = polyNode.child(i);
                 const rootPoly = rootNode.polygon();
                 
                 if (!rootPoly || rootPoly.size() < 3) continue;
                 
-                // Extract root points
+                // Extract root points with metadata
                 const rootPoints = [];
                 const curveIds = new Set();
                 
@@ -492,64 +492,55 @@
                     rootPoints.push(point);
                 }
                 
-                // Build contours array - start with root
-                const contours = [{
-                    points: rootPoints,
-                    nestingLevel: 0,
-                    isHole: false,
-                    parentId: null
-                }];
+                // Build complete contour hierarchy recursively
+                const contours = [];
                 
-                // Add level-1 children (holes) only - flatten deeper levels
-                for (let j = 0; j < rootNode.count(); j++) {
-                    const childNode = rootNode.child(j);
-                    const childPoly = childNode.polygon();
+                const extractContours = (node, level, parentIdx) => {
+                    const poly = node.polygon();
+                    if (!poly || poly.size() < 3) return;
                     
-                    if (!childPoly || childPoly.size() < 3) continue;
-                    
-                    const childPoints = [];
-                    for (let k = 0; k < childPoly.size(); k++) {
-                        const pt = childPoly.get(k);
-                        childPoints.push({
+                    // Extract points for this contour
+                    const points = [];
+                    for (let k = 0; k < poly.size(); k++) {
+                        const pt = poly.get(k);
+                        points.push({
                             x: Number(pt.x) / this.scale,
                             y: Number(pt.y) / this.scale
                         });
                     }
                     
+                    // Determine if this is a hole (odd nesting levels are holes)
+                    const isHole = level % 2 === 1;
+                    
+                    // Add to contours array
+                    const contourIdx = contours.length;
                     contours.push({
-                        points: childPoints,
-                        nestingLevel: 1,
-                        isHole: true,
-                        parentId: 0
+                        points: points,
+                        nestingLevel: level,
+                        isHole: isHole,
+                        parentId: parentIdx
                     });
                     
-                    // Flatten grandchildren as additional level-1 elements
-                    for (let k = 0; k < childNode.count(); k++) {
-                        const grandchildNode = childNode.child(k);
-                        const grandchildPoly = grandchildNode.polygon();
-                        
-                        if (!grandchildPoly || grandchildPoly.size() < 3) continue;
-                        
-                        const grandchildPoints = [];
-                        for (let m = 0; m < grandchildPoly.size(); m++) {
-                            const pt = grandchildPoly.get(m);
-                            grandchildPoints.push({
-                                x: Number(pt.x) / this.scale,
-                                y: Number(pt.y) / this.scale
-                            });
-                        }
-                        
-                        // Islands become level-1 non-holes
-                        contours.push({
-                            points: grandchildPoints,
-                            nestingLevel: 1,
-                            isHole: false,
-                            parentId: 0
-                        });
+                    // Recursively process children
+                    for (let c = 0; c < node.count(); c++) {
+                        extractContours(node.child(c), level + 1, contourIdx);
                     }
+                };
+                
+                // Root is level 0
+                contours.push({
+                    points: rootPoints,
+                    nestingLevel: 0,
+                    isHole: false,
+                    parentId: null
+                });
+                
+                // Extract all nested contours
+                for (let j = 0; j < rootNode.count(); j++) {
+                    extractContours(rootNode.child(j), 1, 0);
                 }
                 
-                // Create primitive
+                // Create primitive with full hierarchy
                 const primitive = this._createPathPrimitive(rootPoints, {
                     isFused: true,
                     fill: true,
@@ -567,12 +558,12 @@
             }
             
             if (this.debug && primitives.length > 0) {
-                const totalWithCurves = primitives.filter(p => p.curveIds && p.curveIds.length > 0).length;
-                this.log(`Extracted ${primitives.length} primitives, ${totalWithCurves} with curve metadata`);
+                const totalContours = primitives.reduce((sum, p) => sum + (p.contours?.length || 0), 0);
+                const maxDepth = Math.max(...primitives.flatMap(p => 
+                    (p.contours || []).map(c => c.nestingLevel)
+                ));
+                console.log(`[Clipper] Extracted ${primitives.length} primitives, ${totalContours} contours, max depth: ${maxDepth}`);
             }
-            // if (this.debug) {
-                console.log(`[Clipper Wrapper] PolyTree conversion: ${primitives.length} primitives, total contours: ${primitives.reduce((sum, p) => sum + (p.contours?.length || 0), 0)}`);
-            // }
             
             return primitives;
         }

@@ -62,8 +62,11 @@ class GeometryOffsetter {
     
     offsetCircle(circle, distance) {
         const newRadius = circle.radius + distance;  // Positive distance = external (grow)
-        console.log(`[Offsetter] Offsetting circle with ${circle.radius} radius`);
-        console.log(`[Offsetter] Offsetting circle with ${newRadius} new radius`);
+        if (this.debug) {
+            console.log(`[Offsetter] Offsetting circle with ${circle.radius} radius`);
+            console.log(`[Offsetter] Offsetting circle with ${newRadius} new radius`);
+        }
+        
         const isInternal = distance < 0;  // Negative = internal (shrink)
 
         // Register with proper metadata

@@ -321,7 +321,7 @@
             let points;
             let arcSegments = [];
             
-            // FIXED: Broader arc detection - check multiple conditions
+            // Broader arc detection - check multiple conditions
             const isArc = trace.arc || 
                          trace.interpolation === 'cw_arc' || 
                          trace.interpolation === 'ccw_arc' ||
@@ -331,7 +331,7 @@
                          trace.interpolation === 'G3';
             
             if (isArc && trace.arc) {
-                // FIXED: Determine clockwise from multiple sources
+                // Determine clockwise from multiple sources
                 const clockwise = trace.interpolation === 'cw_arc' || 
                                 trace.interpolation === 'G02' ||
                                 trace.interpolation === 'G2' ||

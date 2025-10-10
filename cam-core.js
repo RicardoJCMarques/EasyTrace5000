@@ -819,43 +819,6 @@
             return operation.offsets;
         }
         
-        filterCutoutPaths(primitives, cutSide, originalBounds) {
-            console.log(`[Core] filterCutoutPaths: ${primitives.length} primitives, cutSide=${cutSide}`);
-            if (cutSide === 'on' || !originalBounds) {
-                return primitives;
-            }
-            
-            if (primitives.length <= 1) {
-                return primitives;
-            }
-            
-            const pathsWithAreas = primitives.map(prim => {
-                if (prim.type !== 'path' || !prim.points) {
-                    return { primitive: prim, area: 0 };
-                }
-                
-                const area = Math.abs(this.calculateSignedArea(prim.points));
-                return { primitive: prim, area: area };
-            });
-            
-            pathsWithAreas.sort((a, b) => b.area - a.area);
-            
-            if (debugConfig.enabled) {
-                console.log(`[Core] Cutout filter: ${primitives.length} paths, cutSide=${cutSide}`);
-                pathsWithAreas.forEach((p, i) => {
-                    console.log(`  Path ${i}: area=${p.area.toFixed(3)}`);
-                });
-            }
-            
-            if (cutSide === 'outside') {
-                return [pathsWithAreas[0].primitive];
-            } else if (cutSide === 'inside') {
-                return [pathsWithAreas[pathsWithAreas.length - 1].primitive];
-            }
-            
-            return primitives;
-        }
-        
         // Calculate offset distances with proper sign
         calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal = false) {
             const stepOver = stepOverPercent / 100;
