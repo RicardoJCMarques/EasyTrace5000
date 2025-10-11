@@ -109,10 +109,10 @@
             this.clearCachedStates();
             
             // Step 1: Cache originals with indices
-            this.cachedStates.originalPrimitives = primitives.map((p, idx) => ({
-                ...p,
-                _originalIndex: idx
-            }));
+            primitives.forEach((p, idx) => {
+                p._originalIndex = idx;
+            });
+            this.cachedStates.originalPrimitives = primitives;
             
             // Step 2: Count registered curves from global registry
             if (fusionOptions.enableArcReconstruction && window.globalCurveRegistry) {

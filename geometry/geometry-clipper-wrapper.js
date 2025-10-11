@@ -499,26 +499,42 @@
                     const poly = node.polygon();
                     if (!poly || poly.size() < 3) return;
                     
-                    // Extract points for this contour
                     const points = [];
+                    const contourCurveIds = new Set();
+                    
                     for (let k = 0; k < poly.size(); k++) {
                         const pt = poly.get(k);
-                        points.push({
+                        const point = {
                             x: Number(pt.x) / this.scale,
                             y: Number(pt.y) / this.scale
-                        });
+                        };
+                        
+                        // ADD THIS: Extract metadata for ALL contours
+                        if (this.supportsZ && pt.z !== undefined) {
+                            const z = BigInt(pt.z);
+                            if (z > 0n) {
+                                const metadata = this.unpackMetadata(z);
+                                if (metadata.curveId > 0) {
+                                    point.curveId = metadata.curveId;
+                                    point.segmentIndex = metadata.segmentIndex;
+                                    point.clockwise = metadata.clockwise;
+                                    contourCurveIds.add(metadata.curveId);
+                                }
+                            }
+                        }
+                        
+                        points.push(point);
                     }
                     
-                    // Determine if this is a hole (odd nesting levels are holes)
                     const isHole = level % 2 === 1;
-                    
-                    // Add to contours array
                     const contourIdx = contours.length;
+                    
                     contours.push({
                         points: points,
                         nestingLevel: level,
                         isHole: isHole,
-                        parentId: parentIdx
+                        parentId: parentIdx,
+                        curveIds: Array.from(contourCurveIds) // Store curve IDs per contour
                     });
                     
                     // Recursively process children
