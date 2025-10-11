@@ -163,26 +163,48 @@
                 this.debugControls.push(arcReconstructToggle);
             }
 
-            // Debug Curve Points toggle
-            const debugCurvePoints = document.getElementById('debug-curve-points');
-            if (debugCurvePoints && this.renderer) {
-                debugCurvePoints.checked = this.renderer.options.debugCurvePoints || false;
+            // Debug Points toggle
+            const debugPoints = document.getElementById('debug-points');
+            if (debugPoints && this.renderer) {
+                debugPoints.checked = this.renderer.options.debugPoints || false;
                 
-                debugCurvePoints.addEventListener('change', async (e) => {
+                debugPoints.addEventListener('change', async (e) => {
                     
                     // This option is part of the core renderer options
-                    this.renderer.setOptions({ debugCurvePoints: e.target.checked });
+                    this.renderer.setOptions({ debugPoints: e.target.checked });
                     
                     // No need to re-fuse, just re-render
                     this.renderer.render();
                     
                     this.ui.statusManager.showStatus(
-                        e.target.checked ? 'Curve point debug enabled' : 'Curve point debug disabled', 
+                        e.target.checked ? 'Points debug enabled' : 'Points debug disabled', 
                         'info'
                     );
                 });
                 
-                this.debugControls.push(debugCurvePoints);
+                this.debugControls.push(debugPoints);
+            }
+
+            // Debug Paths toggle
+            const debugPaths = document.getElementById('debug-paths');
+            if (debugPaths && this.renderer) {
+                debugPaths.checked = this.renderer.options.debugPaths || false;
+                
+                debugPaths.addEventListener('change', async (e) => {
+                    
+                    // This option is part of the core renderer options
+                    this.renderer.setOptions({ debugPaths: e.target.checked });
+                    
+                    // No need to re-fuse, just re-render
+                    this.renderer.render();
+                    
+                    this.ui.statusManager.showStatus(
+                        e.target.checked ? 'Paths debug enabled' : 'Paths point debug disabled', 
+                        'info'
+                    );
+                });
+                
+                this.debugControls.push(debugPaths);
             }
         }
         

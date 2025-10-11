@@ -53,7 +53,8 @@
                 showWireframe: false,
                 showGrid: true,
                 blackAndWhite: false,
-                debugCurvePoints: false
+                debugPoints: false,
+                debugPaths: false
             };
             
             this.fusionStats = {
@@ -365,7 +366,8 @@
                 { id: 'show-drills', option: 'showDrills' },
                 { id: 'show-cutouts', option: 'showCutouts' },
                 { id: 'show-preprocessed', option: 'showPreprocessed' },
-                { id: 'debug-curve-points', option: 'debugCurvePoints' },
+                { id: 'debug-points', option: 'debugCurvePoints' },
+                { id: 'debug-paths', option: 'debugCurvePoints' },
                 { id: 'black-and-white', option: 'blackAndWhite' }
             ];
             

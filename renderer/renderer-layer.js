@@ -185,7 +185,11 @@
             
             // Render all debug information for collected primitives
             this.debugPrimitives.forEach(primitive => {
-                this.primitiveRenderer.renderCurveMetadataDebug(primitive);
+                // --- FIX: Pass the specific options from the renderer's core options ---
+                this.primitiveRenderer.renderCurveMetadataDebug(primitive, {
+                    debugPaths: this.core.options.debugPaths,
+                    debugPoints: this.core.options.debugPoints
+                });
             });
             
             // Always show stats when debugging curve points

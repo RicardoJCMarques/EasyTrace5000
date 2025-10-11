@@ -301,12 +301,31 @@
             this.ctx.stroke(path2d);
         }
         
-        renderCurveMetadataDebug(primitive) {
+        renderCurveMetadataDebug(primitive, options = {}) {
             if (!primitive) return;
 
-            // --- DATA NORMALIZATION (FIX for Traces and simple paths) ---
-            // Ensure that ANY path primitive has a contours array to iterate over.
-            // This handles simple 2-point traces that don't auto-generate contours.
+            // Normalize data to ensure contours always exist for path-like objects.
+            this._normalizeDebugPrimitive(primitive);
+
+            this.ctx.save();
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Work in screen space for clarity
+
+            // --- Dispatcher Logic ---
+            if (options.debugPaths) {
+                this._renderDebugPathsAndWinding(primitive);
+                this._renderDebugKeyPoints(primitive);
+                this.renderDetectedArcSegments(primitive); // This function is already well-defined
+            }
+
+            if (options.debugPoints) {
+                this._renderDebugAllPoints(primitive);
+            }
+
+            this.ctx.restore();
+        }
+
+        // Helper to ensure primitive has a .contours array for consistent processing.
+        _normalizeDebugPrimitive(primitive) {
             if (primitive.type === 'path' && (!primitive.contours || primitive.contours.length === 0) && primitive.points?.length > 0) {
                 primitive.contours = [{
                     points: primitive.points,
@@ -314,88 +333,26 @@
                     nestingLevel: 0
                 }];
             }
+        }
 
-            // --- UTILITY FUNCTIONS (Self-contained for portability) ---
-
-            const calculateSignedArea = (points) => {
-                if (!points || points.length < 3) return 0;
-                let area = 0;
-                for (let i = 0; i < points.length; i++) {
-                    const j = (i + 1) % points.length;
-                    area += points[i].x * points[j].y;
-                    area -= points[j].x * points[i].y;
-                }
-                return area / 2;
-            };
-
-            const drawPointAndLabel = (cx, cy, label, styles) => {
-                // Point
-                this.ctx.fillStyle = styles.color;
-                this.ctx.beginPath();
-                this.ctx.arc(cx, cy, styles.radius, 0, 2 * Math.PI);
-                this.ctx.fill();
-                if (styles.stroke) {
-                    this.ctx.strokeStyle = styles.stroke;
-                    this.ctx.lineWidth = 1;
-                    this.ctx.stroke();
-                }
-
-                // Label
-                if (label) {
-                    this.ctx.fillStyle = '#FFFFFF';
-                    this.ctx.strokeStyle = '#000000';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.font = styles.font;
-                    this.ctx.strokeText(label, cx + styles.offset, cy - styles.offset);
-                    this.ctx.fillText(label, cx + styles.offset, cy - styles.offset);
-                }
-            };
-
-            // --- RENDERER SETUP ---
+        // Renders the path outlines, colored by winding order (CW/CCW).
+        _renderDebugPathsAndWinding(primitive) {
             this.ctx.save();
-            this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Work in screen space
-
-            const stats = {
-                primitiveId: primitive.id,
-                type: primitive.type,
-                contours: 0,
-                totalPoints: 0,
-                area: 0,
-                winding: 'N/A'
-            };
-
-            const pointStyles = {
-                default: { radius: 3, font: '10px monospace', offset: 6, color: 'rgba(200, 200, 200, 0.8)', stroke: '#000000' },
-                start:   { radius: 5, font: 'bold 12px monospace', offset: 8, color: '#00FF00', stroke: '#FFFFFF' },
-                center:  { radius: 4, font: 'bold 12px monospace', offset: 8, color: '#FF00FF', stroke: '#FFFFFF' },
-                curve:   { radius: 4, font: '11px monospace', offset: 8, stroke: '#000000' } // color is dynamic
-            };
+            this.ctx.lineWidth = 2;
 
             const windingColors = {
-                ccw: 'rgba(0, 255, 0, 0.7)',  // Green for Counter-Clockwise (typically solid)
-                cw:  'rgba(255, 0, 0, 0.7)',  // Red for Clockwise (typically hole)
+                ccw: 'rgba(0, 255, 0, 0.7)',  // Green for Counter-Clockwise
+                cw:  'rgba(255, 0, 0, 0.7)',  // Red for Clockwise
                 open: 'rgba(255, 255, 0, 0.7)' // Yellow for open paths
             };
 
-
-            // --- RENDERING PIPELINE ---
-
-            // 1. Render Path Winding and Analytic Shape Guides
-            this.ctx.lineWidth = 2;
             if (primitive.type === 'path' && primitive.contours) {
-                stats.contours = primitive.contours.length;
-                primitive.contours.forEach((contour, contourIdx) => {
+                primitive.contours.forEach((contour) => {
                     if (!contour.points || contour.points.length < 2) return;
 
-                    const area = calculateSignedArea(contour.points);
-                    // A path is closed unless explicitly false. Traces are open.
+                    const area = this._calculateSignedArea(contour.points);
                     const isClosed = primitive.closed !== false && !primitive.properties?.isTrace;
                     
-                    if (contourIdx === 0) { // Store stats for the main contour
-                        stats.area = Math.abs(area);
-                        stats.winding = isClosed ? (area > 0 ? 'CW' : 'CCW') : 'Open';
-                    }
-
                     this.ctx.strokeStyle = isClosed ? (area > 0 ? windingColors.cw : windingColors.ccw) : windingColors.open;
                     this.ctx.setLineDash(contour.isHole ? [5, 5] : []);
 
@@ -410,118 +367,114 @@
                     if (isClosed) this.ctx.closePath();
                     this.ctx.stroke();
                 });
-            } else { // Guides for non-path primitives
-                this.ctx.strokeStyle = 'rgba(100, 100, 255, 0.5)';
-                this.ctx.setLineDash([3, 3]);
+            }
+            this.ctx.restore();
+        }
+
+        // Renders ONLY the key points: start of contours and centers of analytic shapes.
+        _renderDebugKeyPoints(primitive) {
+            this.ctx.save();
+            const pointStyles = {
+                start:   { radius: 5, font: 'bold 12px monospace', offset: 8, color: '#00FF00', stroke: '#FFFFFF' },
+                center:  { radius: 4, font: 'bold 12px monospace', offset: 8, color: '#FF00FF', stroke: '#FFFFFF' },
+            };
+
+            const drawPoint = (p, label, style) => {
+                const canvasX = this.core.worldToCanvasX(p.x);
+                const canvasY = this.core.worldToCanvasY(p.y);
+                this.ctx.fillStyle = style.color;
                 this.ctx.beginPath();
-                switch(primitive.type) {
-                    case 'circle': {
-                        const cx = this.core.worldToCanvasX(primitive.center.x);
-                        const cy = this.core.worldToCanvasY(primitive.center.y);
-                        const r = primitive.radius * this.core.viewScale;
-                        this.ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-                        break;
-                    }
-                    case 'arc': {
-                        const cx = this.core.worldToCanvasX(primitive.center.x);
-                        const cy = this.core.worldToCanvasY(primitive.center.y);
-                        const r = primitive.radius * this.core.viewScale;
-                        this.ctx.arc(cx, cy, r, -primitive.startAngle, -primitive.endAngle, !primitive.clockwise);
-                        break;
-                    }
-                    case 'rectangle': {
-                        const cx = this.core.worldToCanvasX(primitive.position.x);
-                        const cy = this.core.worldToCanvasY(primitive.position.y);
-                        const cw = primitive.width * this.core.viewScale;
-                        const ch = -primitive.height * this.core.viewScale; // Y is inverted
-                        this.ctx.rect(cx, cy, cw, ch);
-                        break;
-                    }
+                this.ctx.arc(canvasX, canvasY, style.radius, 0, 2 * Math.PI);
+                this.ctx.fill();
+                if (style.stroke) {
+                    this.ctx.strokeStyle = style.stroke;
+                    this.ctx.lineWidth = 1;
+                    this.ctx.stroke();
                 }
-                this.ctx.stroke();
-            }
-            this.ctx.setLineDash([]);
+                if(label) {
+                    this.ctx.fillStyle = '#FFFFFF';
+                    this.ctx.strokeStyle = '#000000';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.font = style.font;
+                    this.ctx.strokeText(label, canvasX + style.offset, canvasY - style.offset);
+                    this.ctx.fillText(label, canvasX + style.offset, canvasY - style.offset);
+                }
+            };
 
-
-            // 2. Render Detected Arc Segments (if any)
-            if (primitive.arcSegments && primitive.arcSegments.length > 0) {
-                this.renderDetectedArcSegments(primitive);
-            }
-
-
-            // 3. Collect and Render ALL Defining Points
-            const allPoints = [];
             if (primitive.type === 'path' && primitive.contours) {
                 primitive.contours.forEach(contour => {
-                    stats.totalPoints += contour.points.length;
+                    if (contour.points && contour.points.length > 0) {
+                        drawPoint(contour.points[0], `S (L${contour.nestingLevel})`, pointStyles.start);
+                    }
+                });
+            } else if (primitive.type === 'circle' || primitive.type === 'arc') {
+                drawPoint(primitive.center, 'C', pointStyles.center);
+            }
+            // Add other analytic types like obround if needed
+            this.ctx.restore();
+        }
+        
+        // Renders EVERY point with its detailed label (index, curveId, etc.).
+        _renderDebugAllPoints(primitive) {
+            this.ctx.save();
+            const pointStyles = {
+                default: { radius: 3, font: '10px monospace', offset: 6, color: 'rgba(200, 200, 200, 0.8)', stroke: '#000000' },
+                curve:   { radius: 4, font: '11px monospace', offset: 8, stroke: '#000000' }
+            };
+
+            const drawPointAndLabel = (p, label, style) => {
+                const cx = this.core.worldToCanvasX(p.x);
+                const cy = this.core.worldToCanvasY(p.y);
+                this.ctx.fillStyle = style.color;
+                this.ctx.beginPath();
+                this.ctx.arc(cx, cy, style.radius, 0, 2 * Math.PI);
+                this.ctx.fill();
+                if (style.stroke) {
+                    this.ctx.strokeStyle = style.stroke;
+                    this.ctx.lineWidth = 1;
+                    this.ctx.stroke();
+                }
+                if (label) {
+                    this.ctx.fillStyle = '#FFFFFF';
+                    this.ctx.strokeStyle = '#000000';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.font = style.font;
+                    this.ctx.strokeText(label, cx + style.offset, cy - style.offset);
+                    this.ctx.fillText(label, cx + style.offset, cy - style.offset);
+                }
+            };
+            
+            if (primitive.type === 'path' && primitive.contours) {
+                primitive.contours.forEach(contour => {
                     contour.points.forEach((p, i) => {
-                        allPoints.push({ point: p, index: i, contour: contour });
+                        let label = `${i}`;
+                        let style = { ...pointStyles.default };
+
+                        if (p.curveId > 0) {
+                            const hue = (p.curveId * 137) % 360;
+                            style = { ...pointStyles.curve, color: `hsl(${hue}, 100%, 50%)` };
+                            label = `C${p.curveId}:${p.segmentIndex}`;
+                        }
+                        // Avoid re-drawing the start point label if path debug is also on
+                        if (i > 0) {
+                            drawPointAndLabel(p, label, style);
+                        }
                     });
                 });
-            } else if (primitive.type === 'circle') {
-                stats.totalPoints = 1;
-                allPoints.push({ point: primitive.center, type: 'center' });
-            } else if (primitive.type === 'arc') {
-                stats.totalPoints = 3;
-                allPoints.push({ point: primitive.center, type: 'center' });
-                allPoints.push({ point: primitive.startPoint, type: 'start' });
-                allPoints.push({ point: primitive.endPoint, type: 'end' });
-            } else if (primitive.type === 'rectangle') {
-                stats.totalPoints = 4;
-                const p = primitive.position;
-                const w = primitive.width;
-                const h = primitive.height;
-                allPoints.push({ point: { x: p.x, y: p.y }, index: 0 });
-                allPoints.push({ point: { x: p.x + w, y: p.y }, index: 1 });
-                allPoints.push({ point: { x: p.x + w, y: p.y + h }, index: 2 });
-                allPoints.push({ point: { x: p.x, y: p.y + h }, index: 3 });
-            } else if (primitive.type === 'obround') {
-                const p = primitive.position;
-                const w = primitive.width;
-                const h = primitive.height;
-                const r = Math.min(w, h) / 2;
-                if (primitive.isCircular) {
-                    stats.totalPoints = 1;
-                    const center = { x: p.x + w/2, y: p.y + h/2 };
-                    allPoints.push({ point: center, type: 'center' });
-                } else {
-                    stats.totalPoints = 2; // Obrounds are defined by two centers
-                    if (w > h) { // Horizontal
-                        allPoints.push({ point: { x: p.x + r, y: p.y + r }, type: 'center' });
-                        allPoints.push({ point: { x: p.x + w - r, y: p.y + r }, type: 'center' });
-                    } else { // Vertical
-                        allPoints.push({ point: { x: p.x + r, y: p.y + r }, type: 'center' });
-                        allPoints.push({ point: { x: p.x + r, y: p.y + h - r }, type: 'center' });
-                    }
-                }
             }
-
-            allPoints.forEach(item => {
-                const { point, index, contour, type } = item;
-                const canvasX = this.core.worldToCanvasX(point.x);
-                const canvasY = this.core.worldToCanvasY(point.y);
-                let label = '';
-                let style = { ...pointStyles.default };
-
-                if (point.curveId !== undefined && point.curveId > 0) {
-                    const hue = (point.curveId * 137) % 360;
-                    style = { ...pointStyles.curve, color: `hsl(${hue}, 100%, 50%)` };
-                    label = `C${point.curveId}:${point.segmentIndex}`;
-                } else if (type === 'center') {
-                    style = { ...pointStyles.center };
-                    label = 'C';
-                } else if (index === 0 && contour) {
-                    style = { ...pointStyles.start };
-                    label = `S (L${contour.nestingLevel})`;
-                } else {
-                    label = `${index}`;
-                }
-                
-                drawPointAndLabel(canvasX, canvasY, label, style);
-            });
-
-
             this.ctx.restore();
+        }
+
+        // Helper function, can be part of the class or moved from the old monolithic function
+        _calculateSignedArea(points) {
+            if (!points || points.length < 3) return 0;
+            let area = 0;
+            for (let i = 0; i < points.length; i++) {
+                const j = (i + 1) % points.length;
+                area += points[i].x * points[j].y;
+                area -= points[j].x * points[i].y;
+            }
+            return area / 2;
         }
         
         renderDetectedArcSegments(primitive) {
