@@ -680,22 +680,27 @@
             const holeContours = [];
             
             operation.primitives.forEach(primitive => {
-                if (primitive.contours && primitive.contours.length > 0) {
-                    primitive.contours.forEach(contour => {
-                        const contourPrimitive = this._createPathPrimitive(contour.points, {
-                            ...primitive.properties,
-                            polarity: contour.isHole ? 'clear' : 'dark'
-                        });
-                        if (contour.isHole) {
-                            holeContours.push(contourPrimitive);
-                        } else {
-                            outerContours.push(contourPrimitive);
-                        }
+            if (primitive.contours && primitive.contours.length > 0) {
+                primitive.contours.forEach(contour => {
+                    const contourPrimitive = this._createPathPrimitive(contour.points, {
+                        ...primitive.properties,
+                        polarity: contour.isHole ? 'clear' : 'dark',
+                        // ADD: Preserve curve metadata from contours
+                        curveIds: contour.curveIds || []
                     });
-                } else {
-                    outerContours.push(primitive);
-                }
-            });
+                    // ADD: Transfer point-level curve metadata
+                    contourPrimitive.points = contour.points; // Preserves curveId tags on points
+                    
+                    if (contour.isHole) {
+                        holeContours.push(contourPrimitive);
+                    } else {
+                        outerContours.push(contourPrimitive);
+                    }
+                });
+            } else {
+                outerContours.push(primitive);
+            }
+        });
             
             console.log(`[Core] Separated into ${outerContours.length} outer contours and ${holeContours.length} hole contours.`);
             

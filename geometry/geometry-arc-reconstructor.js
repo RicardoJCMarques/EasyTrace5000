@@ -90,56 +90,114 @@
         
         // Main reconstruction method - process fused primitives
         processForReconstruction(primitives) {
-            console.log(`[Geometry-Arc-Reconstructor] processForReconstruction() called with ${primitives ? primitives.length : 0} primitives.`);
-
-            if (!primitives || primitives.length === 0) return primitives;
-            
+    console.log(`[ArcReconstructor] processForReconstruction() called with ${primitives ? primitives.length : 0} primitives.`);
+    
+    if (!primitives || primitives.length === 0) return primitives;
+    
+    if (this.debug) {
+        console.log(`[ArcReconstructor] Processing ${primitives.length} fused primitives`);
+    }
+    
+    const reconstructed = [];
+    
+    for (const primitive of primitives) {
+        // Check if this is a composite primitive with contours
+        if (primitive.type === 'path' && primitive.contours && primitive.contours.length > 0) {
             if (this.debug) {
-                console.log(`[ArcReconstructor] Processing ${primitives.length} fused primitives`);
+                console.log(`[ArcReconstructor] Unpacking composite primitive with ${primitive.contours.length} contours`);
             }
             
-            const reconstructed = [];
-            
-            for (const primitive of primitives) {
-                const hasCurveIds = (primitive.curveIds && primitive.curveIds.length > 0) ||
-                                   (primitive.points && primitive.points.some(p => p.curveId > 0));
+            // Process each contour as a separate primitive
+            for (const contour of primitive.contours) {
+                // Skip degenerate contours
+                if (!contour.points || contour.points.length < 3) continue;
                 
-                if (hasCurveIds && primitive.type === 'path') {
-                    const result = this.reconstructPrimitive(primitive);
+                // Create a temporary simple primitive for this contour
+                const simplePrimitive = {
+                    type: 'path',
+                    points: contour.points,
+                    closed: true,
+                    properties: {
+                        ...primitive.properties,
+                        isHole: contour.isHole,
+                        nestingLevel: contour.nestingLevel,
+                        parentId: contour.parentId,
+                        // Preserve original composite reference
+                        originalCompositeId: primitive.id
+                    },
+                    // These will be populated if arc detection succeeds
+                    arcSegments: [],
+                    curveIds: contour.curveIds || [],
+                    // Critical: no nested contours to prevent recursion
+                    contours: []
+                };
+                
+                // Check if this contour has curve metadata
+                const hasCurveData = contour.curveIds?.length > 0 || 
+                                     contour.points.some(p => p.curveId > 0);
+                
+                if (hasCurveData) {
+                    // Process for arc reconstruction
+                    const result = this.reconstructPrimitive(simplePrimitive);
                     reconstructed.push(...result);
                 } else {
-                    reconstructed.push(primitive);
+                    // No curve data, pass through as-is
+                    if (typeof PathPrimitive !== 'undefined') {
+                        const pathPrim = new PathPrimitive(simplePrimitive.points, simplePrimitive.properties);
+                        reconstructed.push(pathPrim);
+                    } else {
+                        reconstructed.push(simplePrimitive);
+                    }
                 }
             }
             
-            if (this.debug) {
-                console.log(`[ArcReconstructor] Results: ${primitives.length} → ${reconstructed.length} primitives`);
-                console.log(`[ArcReconstructor] Arcs found: ${this.stats.partialArcs}`);
-            }
+        } else if (primitive.type === 'path') {
+            // Simple primitive without contours - process normally
+            const hasCurveIds = (primitive.curveIds && primitive.curveIds.length > 0) ||
+                               (primitive.points && primitive.points.some(p => p.curveId > 0));
             
-            return reconstructed;
+            if (hasCurveIds) {
+                const result = this.reconstructPrimitive(primitive);
+                reconstructed.push(...result);
+            } else {
+                reconstructed.push(primitive);
+            }
+        } else {
+            // Non-path primitive, pass through
+            reconstructed.push(primitive);
         }
+    }
+    
+    if (this.debug) {
+        const holes = reconstructed.filter(p => p.properties?.isHole).length;
+        console.log(`[ArcReconstructor] Results: ${primitives.length} → ${reconstructed.length} primitives (${holes} holes)`);
+        console.log(`[ArcReconstructor] Full circles: ${this.stats.fullCircles}, Partial arcs: ${this.stats.partialArcs}`);
+    }
+    
+    return reconstructed;
+}
         
         // Reconstruct primitive with curve data
         reconstructPrimitive(primitive) {
-            if (!primitive.points || primitive.points.length < 3) {
-                return [primitive];
-            }
-
-            this.stats.pathsWithCurves++;
-
-            const groups = this.groupPointsWithGaps(primitive.points, primitive.closed);
-
-            if (groups.length === 1 && groups[0].type === 'curve') {
-                const circleResult = this.attemptFullCircleReconstruction(groups[0], primitive);
-                if (circleResult) {
-                    return [circleResult];
-                }
-            }
-
-            const enhancedPath = this.reconstructPathWithArcs(primitive, groups);
-            return [enhancedPath];
+        // This function now only handles simple paths (no nested contours)
+        if (!primitive.points || primitive.points.length < 3) {
+            return [primitive];
         }
+
+        this.stats.pathsWithCurves++;
+
+        const groups = this.groupPointsWithGaps(primitive.points, primitive.closed);
+
+        if (groups.length === 1 && groups[0].type === 'curve') {
+            const circleResult = this.attemptFullCircleReconstruction(groups[0], primitive);
+            if (circleResult) {
+                return [circleResult];
+            }
+        }
+
+        const enhancedPath = this.reconstructPathWithArcs(primitive, groups);
+        return [enhancedPath];
+    }
         
         // Group points with gap tolerance
         groupPointsWithGaps(points, isClosed = false) {

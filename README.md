@@ -87,7 +87,7 @@ The project follows a modular structure. The loading order in `index.html` refle
 │   ├── parser-core.js                  # Manages the parsing system
 │   ├── parser-gerber.js                # Gerber parsing module (RS-274X)
 │   ├── parser-excellon.js              # Excellon parsing module (drill)
-│   ├── parser-svg.js                   # SVG parsing module (Soon™)(needs more testing and no Beziers)
+│   ├── parser-svg.js                   # SVG parsing module (Needs more testing. No Bézier offsets)
 │   ├── parser-plotter.js               # Converts parsed data into geometric primitives
 │   └── primitives.js                   # Defines geometric primitives (Path, Circle, etc)
 │
