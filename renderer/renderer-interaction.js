@@ -29,294 +29,247 @@
     
     const config = window.PCBCAMConfig || {};
     const canvasConfig = config.rendering?.canvas || {};
-    const debugConfig = config.debug || {};
     
     class InteractionHandler {
-        constructor(renderer) {
+        constructor(core, renderer) {
+            this.core = core;
             this.renderer = renderer;
-            this.canvas = renderer.canvas;
-            this.core = renderer.core;
+            this.canvas = core.canvas;
             
-            // Interaction state
-            this.isPanning = false;
-            this.lastPointer = { x: 0, y: 0 };
-            this.pointerCount = 0;
-            this.initialDistance = 0;
-            this.initialScale = 1;
+            this.isDragging = false;
+            this.lastMousePos = null;
+            this.isRightDragging = false;
             
-            // Zoom configuration
-            this.minZoom = canvasConfig.minZoom || 0.01;
-            this.maxZoom = canvasConfig.maxZoom || 1000;
-            this.zoomStep = canvasConfig.zoomStep || 1.2;
+            this.touchState = {
+                active: false,
+                startDistance: 0,
+                lastDistance: 0,
+                startScale: 1,
+                lastTouchPos: null
+            };
             
-            this.setupEventListeners();
+            this.handleMouseDown = this._handleMouseDown.bind(this);
+            this.handleMouseMove = this._handleMouseMove.bind(this);
+            this.handleMouseUp = this._handleMouseUp.bind(this);
+            this.handleWheel = this._handleWheel.bind(this);
+            this.handleContextMenu = this._handleContextMenu.bind(this);
+            this.handleTouchStart = this._handleTouchStart.bind(this);
+            this.handleTouchMove = this._handleTouchMove.bind(this);
+            this.handleTouchEnd = this._handleTouchEnd.bind(this);
         }
         
-        setupEventListeners() {
-            // Set canvas styles
-            this.canvas.style.cursor = 'grab';
-            this.canvas.style.userSelect = 'none';
-            this.canvas.style.webkitUserSelect = 'none';
-            this.canvas.style.mozUserSelect = 'none';
-            this.canvas.style.msUserSelect = 'none';
-            this.canvas.style.touchAction = 'none';
+        init() {
+            this.canvas.addEventListener('mousedown', this.handleMouseDown);
+            this.canvas.addEventListener('mousemove', this.handleMouseMove);
+            this.canvas.addEventListener('mouseup', this.handleMouseUp);
+            this.canvas.addEventListener('mouseleave', this.handleMouseUp);
+            this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
+            this.canvas.addEventListener('contextmenu', this.handleContextMenu);
             
-            // Prevent context menu
-            this.canvas.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-            });
-            
-            this.canvas.addEventListener('dragstart', (e) => {
-                e.preventDefault();
-            });
-            
-            // Mouse events
-            this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-            this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-            document.addEventListener('mouseup', (e) => this.handleMouseUp(e));
-            
-            // Touch events
-            this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
-            this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
-            this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
-            
-            // Wheel event
-            this.canvas.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
-            
-            // Double click for zoom fit
-            this.canvas.addEventListener('dblclick', (e) => {
-                e.preventDefault();
-                this.zoomFit();
-            });
-            
-            // Resize observer
-            this.resizeObserver = new ResizeObserver(() => {
-                this.renderer.resizeCanvas();
-            });
-            this.resizeObserver.observe(this.canvas);
+            this.canvas.addEventListener('touchstart', this.handleTouchStart, { passive: false });
+            this.canvas.addEventListener('touchmove', this.handleTouchMove, { passive: false });
+            this.canvas.addEventListener('touchend', this.handleTouchEnd, { passive: false });
+            this.canvas.addEventListener('touchcancel', this.handleTouchEnd, { passive: false });
         }
         
-        handleMouseDown(e) {
+        destroy() {
+            this.canvas.removeEventListener('mousedown', this.handleMouseDown);
+            this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+            this.canvas.removeEventListener('mouseup', this.handleMouseUp);
+            this.canvas.removeEventListener('mouseleave', this.handleMouseUp);
+            this.canvas.removeEventListener('wheel', this.handleWheel);
+            this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
+            
+            this.canvas.removeEventListener('touchstart', this.handleTouchStart);
+            this.canvas.removeEventListener('touchmove', this.handleTouchMove);
+            this.canvas.removeEventListener('touchend', this.handleTouchEnd);
+            this.canvas.removeEventListener('touchcancel', this.handleTouchEnd);
+        }
+        
+        // ==================== MOUSE EVENTS ====================
+        
+        _handleMouseDown(e) {
             if (e.button === 0) {
-                e.preventDefault();
-                this.startPanning(e.clientX, e.clientY);
+                this.isDragging = true;
+                this.lastMousePos = { x: e.clientX, y: e.clientY };
+                this.canvas.style.cursor = 'grabbing';
+            } else if (e.button === 2) {
+                this.isRightDragging = true;
+                this.lastMousePos = { x: e.clientX, y: e.clientY };
+            }
+            
+            e.preventDefault();
+        }
+        
+        _handleMouseMove(e) {
+            const rect = this.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const worldPos = this.core.screenToWorld(x, y);
+            
+            this.updateCoordinateDisplay(worldPos.x, worldPos.y);
+            
+            if (this.isDragging || this.isRightDragging) {
+                if (this.lastMousePos) {
+                    const dx = e.clientX - this.lastMousePos.x;
+                    const dy = e.clientY - this.lastMousePos.y;
+                    
+                    this.core.pan(dx, dy);
+                    this.renderer.render();
+                    
+                    this.lastMousePos = { x: e.clientX, y: e.clientY };
+                }
             }
         }
         
-        handleMouseMove(e) {
-            if (this.isPanning && this.pointerCount === 1) {
-                e.preventDefault();
-                this.updatePanning(e.clientX, e.clientY);
-            }
+        _handleMouseUp(e) {
+            this.isDragging = false;
+            this.isRightDragging = false;
+            this.lastMousePos = null;
+            this.canvas.style.cursor = 'grab';
         }
         
-        handleMouseUp(e) {
-            if (this.isPanning) {
-                this.endPanning();
-            }
+        _handleWheel(e) {
+            e.preventDefault();
+            
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            const worldPos = this.core.screenToWorld(mouseX, mouseY);
+            
+            const wheelSpeed = canvasConfig.wheelZoomSpeed || 0.002;
+            const zoomDelta = e.deltaY * wheelSpeed;
+            const zoomFactor = Math.exp(-zoomDelta);
+            
+            this.core.zoomToPoint(worldPos.x, worldPos.y, zoomFactor);
+            this.renderer.render();
+            
+            this.updateZoomDisplay();
         }
         
-        handleTouchStart(e) {
+        _handleContextMenu(e) {
+            e.preventDefault();
+            return false;
+        }
+        
+        // ==================== TOUCH EVENTS ====================
+        
+        _handleTouchStart(e) {
             e.preventDefault();
             
             if (e.touches.length === 1) {
                 const touch = e.touches[0];
-                this.startPanning(touch.clientX, touch.clientY);
+                this.lastMousePos = {
+                    x: touch.clientX,
+                    y: touch.clientY
+                };
+                this.touchState.active = true;
             } else if (e.touches.length === 2) {
                 const touch1 = e.touches[0];
                 const touch2 = e.touches[1];
                 
-                const distance = Math.sqrt(
-                    Math.pow(touch2.clientX - touch1.clientX, 2) +
-                    Math.pow(touch2.clientY - touch1.clientY, 2)
-                );
+                const dx = touch2.clientX - touch1.clientX;
+                const dy = touch2.clientY - touch1.clientY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
                 
-                this.pointerCount = 2;
-                this.initialDistance = distance;
-                this.initialScale = this.core.viewScale;
+                this.touchState.startDistance = distance;
+                this.touchState.lastDistance = distance;
+                this.touchState.startScale = this.core.viewScale;
+                this.touchState.active = true;
                 
-                const centerX = (touch1.clientX + touch2.clientX) / 2;
-                const centerY = (touch1.clientY + touch2.clientY) / 2;
-                this.lastPointer = { x: centerX, y: centerY };
+                this.touchState.lastTouchPos = {
+                    x: (touch1.clientX + touch2.clientX) / 2,
+                    y: (touch1.clientY + touch2.clientY) / 2
+                };
             }
         }
         
-        handleTouchMove(e) {
+        _handleTouchMove(e) {
             e.preventDefault();
             
-            if (e.touches.length === 1 && this.isPanning) {
+            if (!this.touchState.active) return;
+            
+            if (e.touches.length === 1) {
                 const touch = e.touches[0];
-                this.updatePanning(touch.clientX, touch.clientY);
-            } else if (e.touches.length === 2 && this.pointerCount === 2) {
+                
+                if (this.lastMousePos) {
+                    const dx = touch.clientX - this.lastMousePos.x;
+                    const dy = touch.clientY - this.lastMousePos.y;
+                    
+                    this.core.pan(dx, dy);
+                    this.renderer.render();
+                }
+                
+                this.lastMousePos = {
+                    x: touch.clientX,
+                    y: touch.clientY
+                };
+            } else if (e.touches.length === 2) {
                 const touch1 = e.touches[0];
                 const touch2 = e.touches[1];
                 
-                const distance = Math.sqrt(
-                    Math.pow(touch2.clientX - touch1.clientX, 2) +
-                    Math.pow(touch2.clientY - touch1.clientY, 2)
-                );
-                
-                const scaleChange = distance / this.initialDistance;
-                const newScale = this.initialScale * scaleChange;
+                const dx = touch2.clientX - touch1.clientX;
+                const dy = touch2.clientY - touch1.clientY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
                 
                 const centerX = (touch1.clientX + touch2.clientX) / 2;
                 const centerY = (touch1.clientY + touch2.clientY) / 2;
                 
-                const rect = this.canvas.getBoundingClientRect();
-                const canvasCenterX = centerX - rect.left;
-                const canvasCenterY = centerY - rect.top;
+                if (this.touchState.lastTouchPos) {
+                    const panDx = centerX - this.touchState.lastTouchPos.x;
+                    const panDy = centerY - this.touchState.lastTouchPos.y;
+                    this.core.pan(panDx, panDy);
+                }
                 
-                this.setZoom(newScale, canvasCenterX, canvasCenterY);
+                const rect = this.canvas.getBoundingClientRect();
+                const worldPos = this.core.screenToWorld(centerX - rect.left, centerY - rect.top);
+                
+                const zoomFactor = distance / this.touchState.lastDistance;
+                this.core.zoomToPoint(worldPos.x, worldPos.y, zoomFactor);
+                
+                this.touchState.lastDistance = distance;
+                this.touchState.lastTouchPos = { x: centerX, y: centerY };
+                
+                this.renderer.render();
+                this.updateZoomDisplay();
             }
         }
         
-        handleTouchEnd(e) {
+        _handleTouchEnd(e) {
             e.preventDefault();
             
             if (e.touches.length === 0) {
-                this.endPanning();
-            } else if (e.touches.length === 1 && this.pointerCount === 2) {
+                this.touchState.active = false;
+                this.lastMousePos = null;
+            } else if (e.touches.length === 1) {
                 const touch = e.touches[0];
-                this.startPanning(touch.clientX, touch.clientY);
-            }
-        }
-        
-        handleWheel(e) {
-            e.preventDefault();
-            
-            const rect = this.canvas.getBoundingClientRect();
-            const cursorX = e.clientX - rect.left;
-            const cursorY = e.clientY - rect.top;
-            
-            const currentScale = this.core.viewScale;
-            
-            if (e.deltaY < 0) {
-                this.setZoom(currentScale * this.zoomStep, cursorX, cursorY);
-            } else {
-                this.setZoom(currentScale / this.zoomStep, cursorX, cursorY);
-            }
-        }
-        
-        startPanning(x, y) {
-            this.isPanning = true;
-            this.pointerCount = 1;
-            this.lastPointer = { x, y };
-            this.canvas.style.cursor = 'grabbing';
-        }
-        
-        updatePanning(x, y) {
-            if (this.isPanning && this.pointerCount === 1) {
-                const dx = x - this.lastPointer.x;
-                const dy = y - this.lastPointer.y;
-                this.pan(dx, dy);
-                this.lastPointer = { x, y };
-            }
-        }
-        
-        endPanning() {
-            this.isPanning = false;
-            this.pointerCount = 0;
-            this.canvas.style.cursor = 'grab';
-        }
-        
-        pan(dx, dy) {
-            const offset = this.core.viewOffset;
-            offset.x += dx;
-            offset.y += dy;
-            this.renderer.render();
-        }
-        
-        setZoom(newScale, centerX, centerY) {
-            const oldScale = this.core.viewScale;
-            newScale = Math.max(this.minZoom, Math.min(this.maxZoom, newScale));
-            
-            if (centerX === null || centerX === undefined) centerX = this.canvas.width / 2;
-            if (centerY === null || centerY === undefined) centerY = this.canvas.height / 2;
-            
-            const offset = this.core.viewOffset;
-            
-            const worldCenterX = (centerX - offset.x) / oldScale;
-            const worldCenterY = -(centerY - offset.y) / oldScale;
-            
-            this.core.viewScale = newScale;
-            
-            const newCanvasX = offset.x + worldCenterX * newScale;
-            const newCanvasY = offset.y - worldCenterY * newScale;
-            
-            offset.x += centerX - newCanvasX;
-            offset.y += centerY - newCanvasY;
-            
-            this.renderer.render();
-        }
-        
-        zoom(scale, centerX, centerY) {
-            this.setZoom(scale, centerX, centerY);
-        }
-        
-        zoomIn(centerX, centerY) {
-            const currentScale = this.core.viewScale;
-            this.setZoom(currentScale * this.zoomStep, centerX, centerY);
-        }
-        
-        zoomOut(centerX, centerY) {
-            const currentScale = this.core.viewScale;
-            this.setZoom(currentScale / this.zoomStep, centerX, centerY);
-        }
-        
-        zoomFit() {
-            this.core.calculateOverallBounds();
-            
-            const bounds = this.core.bounds;
-            
-            if (!bounds || !isFinite(bounds.width) || !isFinite(bounds.height) || 
-                bounds.width === 0 || bounds.height === 0) {
-                if (debugConfig.enabled) {
-                    console.log('No valid bounds for zoom fit, using defaults');
-                }
-                this.core.viewScale = canvasConfig.defaultZoom || 10;
-                this.core.viewOffset = { 
-                    x: this.canvas.width / 2, 
-                    y: this.canvas.height / 2 
+                this.lastMousePos = {
+                    x: touch.clientX,
+                    y: touch.clientY
                 };
-                this.renderer.render();
-                return;
             }
-            
-            const padding = 0.1;
-            const desiredWidth = bounds.width * (1 + padding * 2);
-            const desiredHeight = bounds.height * (1 + padding * 2);
-            
-            const scaleX = this.canvas.width / desiredWidth;
-            const scaleY = this.canvas.height / desiredHeight;
-            const newScale = Math.min(scaleX, scaleY);
-            
-            const finalScale = Math.max(0.1, newScale);
-            
-            this.core.viewScale = finalScale;
-            
-            const centerX = bounds.minX + bounds.width / 2;
-            const centerY = bounds.minY + bounds.height / 2;
-            
-            this.core.viewOffset = {
-                x: this.canvas.width / 2 - centerX * finalScale,
-                y: this.canvas.height / 2 + centerY * finalScale
-            };
-            
-            if (debugConfig.enabled) {
-                console.log(`Zoom fit applied: scale=${finalScale.toFixed(2)}, center=(${centerX.toFixed(2)}, ${centerY.toFixed(2)})`);
-            }
-            
-            this.renderer.render();
         }
         
-        destroy() {
-            if (this.resizeObserver) {
-                this.resizeObserver.disconnect();
+        // ==================== UI UPDATES ====================
+        
+        updateCoordinateDisplay(worldX, worldY) {
+            const coordX = document.getElementById('coord-x');
+            const coordY = document.getElementById('coord-y');
+            
+            if (coordX) coordX.textContent = worldX.toFixed(2);
+            if (coordY) coordY.textContent = worldY.toFixed(2);
+        }
+        
+        updateZoomDisplay() {
+            const zoomLevel = document.getElementById('zoom-level');
+            if (zoomLevel) {
+                const zoomPercent = (this.core.viewScale * 10).toFixed(0);
+                zoomLevel.textContent = zoomPercent + '%';
             }
         }
     }
     
-    // Export
     window.InteractionHandler = InteractionHandler;
-    
 })();

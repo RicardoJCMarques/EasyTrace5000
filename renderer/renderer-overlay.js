@@ -39,7 +39,11 @@
             this.canvas = core.canvas;
         }
         
+        // ==================== GRID ====================
+        
         renderGrid() {
+            if (!this.core.options.showGrid) return;
+            
             const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
             const colors = theme.canvas;
             const gridSpacing = this.calculateGridSpacing();
@@ -51,8 +55,8 @@
             
             this.ctx.beginPath();
             
-            const originX = this.core.originPosition.x;
-            const originY = this.core.originPosition.y;
+            const originX = this.core.originPosition?.x || 0;
+            const originY = this.core.originPosition?.y || 0;
             
             const startX = Math.floor((viewBounds.minX - originX) / gridSpacing) * gridSpacing + originX;
             const endX = Math.ceil((viewBounds.maxX - originX) / gridSpacing) * gridSpacing + originX;
@@ -73,7 +77,11 @@
             this.ctx.stroke();
         }
         
+        // ==================== ORIGIN ====================
+        
         renderOrigin() {
+            if (!this.core.options.showOrigin) return;
+            
             const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
             const colors = theme.canvas;
             
@@ -81,8 +89,8 @@
             const circleSize = canvasConfig.originCircleSize / this.core.viewScale || 3 / this.core.viewScale;
             const strokeWidth = 3 / this.core.viewScale;
             
-            const originX = this.core.originPosition.x;
-            const originY = this.core.originPosition.y;
+            const originX = this.core.originPosition?.x || 0;
+            const originY = this.core.originPosition?.y || 0;
             
             // Draw outline
             this.ctx.strokeStyle = colors.originOutline;
@@ -118,16 +126,19 @@
             this.ctx.fill();
         }
         
+        // ==================== BOUNDS ====================
+        
         renderBounds() {
+            if (!this.core.options.showBounds || !this.core.overallBounds) return;
+            
             const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
             const colors = theme.canvas;
-            const bounds = this.core.bounds;
-            
-            if (!bounds) return;
+            const bounds = this.core.overallBounds;
             
             this.ctx.strokeStyle = colors.bounds;
             this.ctx.lineWidth = 1 / this.core.viewScale;
             this.ctx.setLineDash([2 / this.core.viewScale, 2 / this.core.viewScale]);
+            
             this.ctx.strokeRect(
                 bounds.minX,
                 bounds.minY,
@@ -135,11 +146,11 @@
                 bounds.height
             );
             
+            // Corner markers
             const markerSize = 5 / this.core.viewScale;
             this.ctx.setLineDash([]);
             this.ctx.lineWidth = 2 / this.core.viewScale;
             
-            // Corner markers
             this.ctx.beginPath();
             this.ctx.moveTo(bounds.minX, bounds.minY + markerSize);
             this.ctx.lineTo(bounds.minX, bounds.minY);
@@ -153,62 +164,74 @@
             this.ctx.stroke();
         }
         
+        // ==================== RULERS ====================
+        
         renderRulers() {
+            if (!this.core.options.showRulers) return;
+            
             this.ctx.save();
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             
             const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
             const colors = theme.canvas;
-            this.ctx.strokeStyle = colors.ruler;
-            this.ctx.fillStyle = colors.rulerText;
+            
+            this.ctx.strokeStyle = colors.ruler || '#888888';
+            this.ctx.fillStyle = colors.rulerText || '#cccccc';
             this.ctx.lineWidth = 1;
-            this.ctx.font = '12px Arial';
+            this.ctx.font = '11px Arial';
             this.ctx.textBaseline = 'top';
-            this.ctx.textAlign = 'left';
+            this.ctx.textAlign = 'center';
             
             const rulerSize = canvasConfig.rulerSize || 20;
             const tickLength = canvasConfig.rulerTickLength || 5;
             const majorStep = this.calculateRulerStep();
             const viewBounds = this.core.getViewBounds();
             
+            // Draw ruler backgrounds
+            this.ctx.fillStyle = colors.background;
+            this.ctx.fillRect(0, 0, this.canvas.width, rulerSize);
+            this.ctx.fillRect(0, 0, rulerSize, this.canvas.height);
+            
+            this.ctx.strokeStyle = colors.ruler || '#888888';
+            this.ctx.fillStyle = colors.rulerText || '#cccccc';
+            
             // Horizontal ruler
             this.ctx.beginPath();
             this.ctx.moveTo(rulerSize, rulerSize);
             this.ctx.lineTo(this.canvas.width, rulerSize);
-            this.ctx.stroke();
             
-            this.ctx.textAlign = 'center';
-            
-            const originX = this.core.originPosition.x;
-            const originY = this.core.originPosition.y;
+            const originX = this.core.originPosition?.x || 0;
+            const originY = this.core.originPosition?.y || 0;
             
             const startXWorld = Math.floor((viewBounds.minX - originX) / majorStep) * majorStep + originX;
             const endXWorld = Math.ceil((viewBounds.maxX - originX) / majorStep) * majorStep + originX;
             
             for (let xWorld = startXWorld; xWorld <= endXWorld; xWorld += majorStep) {
-                const xCanvas = this.core.worldToCanvasX(xWorld);
+                const xCanvas = this.core.worldToCanvasX ? this.core.worldToCanvasX(xWorld) : 
+                               (xWorld * this.core.viewScale + this.canvas.width / 2);
+                
                 if (xCanvas >= rulerSize && xCanvas <= this.canvas.width) {
                     this.ctx.moveTo(xCanvas, rulerSize);
                     this.ctx.lineTo(xCanvas, rulerSize - tickLength);
                     
                     const relativeX = xWorld - originX;
                     let label;
-                    if (majorStep < 0.1) {
+                    if (majorStep < 0.01) {
                         label = `${(relativeX * 1000).toFixed(0)}μm`;
+                    } else if (majorStep < 1) {
+                        label = relativeX.toFixed(2);
                     } else {
-                        const precision = majorStep < 0.1 ? 3 : majorStep < 1 ? 2 : 1;
-                        label = relativeX.toFixed(precision);
+                        label = relativeX.toFixed(1);
                     }
-                    this.ctx.fillText(label, xCanvas, 0);
+                    this.ctx.fillText(label, xCanvas, 2);
                 }
             }
             this.ctx.stroke();
             
             // Vertical ruler
             this.ctx.beginPath();
-            this.ctx.moveTo(rulerSize, 0);
+            this.ctx.moveTo(rulerSize, rulerSize);
             this.ctx.lineTo(rulerSize, this.canvas.height);
-            this.ctx.stroke();
             
             this.ctx.textAlign = 'left';
             this.ctx.textBaseline = 'middle';
@@ -217,20 +240,31 @@
             const endYWorld = Math.ceil((viewBounds.maxY - originY) / majorStep) * majorStep + originY;
             
             for (let yWorld = startYWorld; yWorld <= endYWorld; yWorld += majorStep) {
-                const yCanvas = this.core.worldToCanvasY(yWorld);
-                if (yCanvas >= 0 && yCanvas <= this.canvas.height) {
+                const yCanvas = this.core.worldToCanvasY ? this.core.worldToCanvasY(yWorld) :
+                               (this.canvas.height / 2 - yWorld * this.core.viewScale);
+                
+                if (yCanvas >= rulerSize && yCanvas <= this.canvas.height) {
                     this.ctx.moveTo(rulerSize, yCanvas);
                     this.ctx.lineTo(rulerSize - tickLength, yCanvas);
                     
                     const relativeY = yWorld - originY;
                     let label;
-                    if (majorStep < 0.1) {
+                    if (majorStep < 0.01) {
                         label = `${(relativeY * 1000).toFixed(0)}μm`;
+                    } else if (majorStep < 1) {
+                        label = relativeY.toFixed(2);
                     } else {
-                        const precision = majorStep < 0.1 ? 3 : majorStep < 1 ? 2 : 1;
-                        label = relativeY.toFixed(precision);
+                        label = relativeY.toFixed(1);
                     }
-                    this.ctx.fillText(label, tickLength + 2, yCanvas);
+                    
+                    // Rotate text for vertical ruler
+                    this.ctx.save();
+                    this.ctx.translate(rulerSize / 2, yCanvas);
+                    this.ctx.rotate(-Math.PI / 2);
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText(label, 0, 0);
+                    this.ctx.restore();
                 }
             }
             this.ctx.stroke();
@@ -240,10 +274,21 @@
             this.ctx.fillRect(0, 0, rulerSize, rulerSize);
             this.ctx.strokeRect(0, 0, rulerSize, rulerSize);
             
+            // Units indicator in corner
+            this.ctx.fillStyle = colors.rulerText;
+            this.ctx.font = '9px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText('mm', rulerSize / 2, rulerSize / 2);
+            
             this.ctx.restore();
         }
         
+        // ==================== SCALE INDICATOR ====================
+        
         renderScaleIndicator() {
+            if (!this.core.options.showRulers) return;
+            
             this.ctx.save();
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             
@@ -253,6 +298,7 @@
             const barHeight = 4;
             const y = this.canvas.height - padding - 20;
             
+            // Calculate nice scale bar length
             const targetPixels = 100;
             const worldLength = targetPixels / this.core.viewScale;
             
@@ -264,22 +310,21 @@
             
             // Background
             this.ctx.fillStyle = colors.background;
-            this.ctx.globalAlpha = 0.8;
-            this.ctx.fillRect(x - 5, y - 20, barWidth + 10, 30);
-            this.ctx.globalAlpha = 1;
+            this.ctx.fillRect(x - 5, y - 15, barWidth + 10, 35)
             
             // Scale bar
             this.ctx.fillStyle = colors.rulerText;
             this.ctx.fillRect(x, y, barWidth, barHeight);
             
             // End caps
-            this.ctx.fillRect(x, y - 2, 1, barHeight + 4);
-            this.ctx.fillRect(x + barWidth - 1, y - 2, 1, barHeight + 4);
+            this.ctx.fillRect(x, y - 2, 2, barHeight + 4);
+            this.ctx.fillRect(x + barWidth - 2, y - 2, 2, barHeight + 4);
             
             // Label
             this.ctx.font = '11px Arial';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'bottom';
+            
             let label;
             if (niceLength < 0.01) {
                 label = `${(niceLength * 1000).toFixed(0)}μm`;
@@ -288,13 +333,16 @@
             } else {
                 label = `${niceLength}mm`;
             }
+            
             this.ctx.fillText(label, x + barWidth / 2, y - 2);
             
             this.ctx.restore();
         }
         
+        // ==================== STATISTICS ====================
+        
         renderStats() {
-            if (!this.core.options.showStats) return;
+            if (!this.core.options.showStats || !this.core.renderStats) return;
             
             this.ctx.save();
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -307,11 +355,23 @@
             let y = 50;
             const lineHeight = 16;
             
+            // Calculate background size
+            const lines = [];
+            lines.push(`Primitives: ${stats.renderedPrimitives}/${stats.primitives}`);
+            if (stats.skippedPrimitives > 0) {
+                lines.push(`Culled: ${stats.skippedPrimitives}`);
+            }
+            if (stats.drawCalls !== undefined && stats.drawCalls > 0) {
+                lines.push(`Draw calls: ${stats.drawCalls}`);
+            }
+            lines.push(`Render: ${stats.renderTime.toFixed(1)}ms`);
+            lines.push(`Zoom: ${this.core.viewScale.toFixed(2)}x`);
+            
+            const bgHeight = lines.length * lineHeight + 10;
+            
             // Background
             this.ctx.fillStyle = colors.background;
-            this.ctx.globalAlpha = 0.8;
-            this.ctx.fillRect(x - 5, y - 15, 200, 100);
-            this.ctx.globalAlpha = 1;
+            this.ctx.fillRect(x - 5, y - 15, 200, bgHeight);
             
             // Text
             this.ctx.fillStyle = colors.rulerText;
@@ -319,36 +379,41 @@
             this.ctx.textAlign = 'left';
             this.ctx.textBaseline = 'top';
             
-            this.ctx.fillText(`Primitives: ${stats.renderedPrimitives}/${stats.primitives}`, x, y);
-            y += lineHeight;
-            
-            if (stats.holesRendered > 0) {
-                this.ctx.fillText(`Holes: ${stats.holesRendered}`, x, y);
+            lines.forEach(line => {
+                this.ctx.fillText(line, x, y);
                 y += lineHeight;
-            }
-            
-            this.ctx.fillText(`Render: ${stats.renderTime.toFixed(1)}ms`, x, y);
-            y += lineHeight;
-            
-            this.ctx.fillText(`Zoom: ${this.core.viewScale.toFixed(2)}x`, x, y);
+            });
             
             this.ctx.restore();
         }
         
+        // ==================== HELPER METHODS ====================
+        
         calculateGridSpacing() {
             const minPixelSize = gridConfig.minPixelSpacing || 40;
             const possibleSteps = gridConfig.steps || [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
-            return possibleSteps.find(step => step * this.core.viewScale >= minPixelSize) || 100;
+            
+            for (const step of possibleSteps) {
+                if (step * this.core.viewScale >= minPixelSize) {
+                    return step;
+                }
+            }
+            return possibleSteps[possibleSteps.length - 1];
         }
         
         calculateRulerStep() {
             const minPixelDistance = 50;
             const possibleSteps = gridConfig.steps || [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
-            return possibleSteps.find(step => step * this.core.viewScale >= minPixelDistance) || 100;
+            
+            for (const step of possibleSteps) {
+                if (step * this.core.viewScale >= minPixelDistance) {
+                    return step;
+                }
+            }
+            return possibleSteps[possibleSteps.length - 1];
         }
     }
     
     // Export
     window.OverlayRenderer = OverlayRenderer;
-    
 })();

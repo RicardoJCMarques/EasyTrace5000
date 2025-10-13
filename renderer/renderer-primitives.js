@@ -35,577 +35,318 @@
         constructor(core) {
             this.core = core;
             this.ctx = core.ctx;
-            
+
+            // Debug statistics
             this.debugStats = {
                 totalPoints: 0,
                 taggedPoints: 0,
                 curvePoints: new Map()
             };
         }
+
+        
+        // ==================== MAIN DISPATCHER ====================
         
         renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false, context = {}) {
-            this.ctx.save();
-
-            // FIX: Prioritize the context flag from the layer renderer. This ensures that
-            // even if a primitive is tagged `isOffset`, if it's being rendered as part
-            // of a preview layer, it correctly uses the preview renderer.
-            if (context.isPreviewRender) {
-                this.renderPreviewPrimitive(primitive, strokeColor, context); 
-                this.ctx.restore();
-                return;
-            }
-
-            // Check preview FIRST before offset (This is now a fallback)
-            const isPreview = primitive.properties?.isPreview === true;
-            if (isPreview) {
-                this.renderPreviewPrimitive(primitive, strokeColor, context); 
-                this.ctx.restore();
+            
+            // PRIORITY 1: Check for special preview rendering
+            if (context.isPreview || context.isPreviewRender || primitive.properties?.isPreview) {
+                this.renderToolPreview(primitive, fillColor || strokeColor, context);
                 return;
             }
             
-            // Then check offset
-            const isOffset = primitive.properties?.isOffset === true;
-            if (isOffset) {
-                if (debugConfig.enabled && debugConfig.logging?.renderOperations) {
-                    console.log('[Renderer] Rendering offset primitive:', primitive.type, primitive.properties);
-                }
-                this.renderOffsetPrimitive(primitive, fillColor, strokeColor);
-                this.ctx.restore();
+            // PRIORITY 2: Check for offset rendering
+            if (context.isOffset || primitive.properties?.isOffset) {
+                this.renderOffsetPrimitive(primitive, strokeColor || fillColor, context);
                 return;
             }
             
-            // Check reconstructed
-            const isReconstructed = primitive.properties?.reconstructed === true;
-            if (isReconstructed) {
+            // PRIORITY 3: Check for drill holes
+            if (primitive.properties?.isDrillHole || context.layer?.type === 'drill') {
+                this.renderDrillHole(primitive, fillColor, strokeColor);
+                return;
+            }
+            
+            // PRIORITY 4: Check for reconstructed arcs/circles
+            if (primitive.properties?.reconstructed) {
                 this.renderReconstructedPrimitive(primitive, fillColor, strokeColor);
-                this.ctx.restore();
                 return;
             }
             
-            // Normal rendering
-            this.ctx.fillStyle = fillColor;
-            this.ctx.strokeStyle = strokeColor;
-            
+            // PRIORITY 5: Check wireframe mode
             if (this.core.options.showWireframe) {
-                this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
-                this.renderPrimitiveWireframe(primitive);
-            } else {
-                this.renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed);
+                this.renderWireframe(primitive);
+                return;
             }
             
+            // The default rendering path is now direct, not batched.
+            this.renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed);
+        }
+        
+        // ==================== BATCHED RENDERING ====================
+        
+        addPrimitiveToPath2D(primitive, path2d) {
+            switch (primitive.type) {
+                case 'path':
+                    // This now handles simple paths AND complex paths with analytic arcs.
+                    this.addPathToPath2D(primitive, path2d);
+                    break;
+                    
+                case 'circle':
+                    // Path2D.arc needs a starting point.
+                    path2d.moveTo(primitive.center.x + primitive.radius, primitive.center.y);
+                    path2d.arc(
+                        primitive.center.x, 
+                        primitive.center.y, 
+                        primitive.radius, 
+                        0, 
+                        Math.PI * 2
+                    );
+                    break;
+                    
+                case 'rectangle':
+                    path2d.rect(
+                        primitive.position.x,
+                        primitive.position.y,
+                        primitive.width,
+                        primitive.height
+                    );
+                    break;
+                    
+                case 'obround':
+                    this.addObroundToBatch(primitive, path2d);
+                    break;
+                    
+                case 'arc':
+                    // Note: A standalone ArcPrimitive is rare in offset layers, but we handle it.
+                    path2d.arc(
+                        primitive.center.x,
+                        primitive.center.y,
+                        primitive.radius,
+                        primitive.startAngle,
+                        primitive.endAngle,
+                        !primitive.clockwise // API expects 'anticlockwise'
+                    );
+                    break;
+            }
+        }
+
+        addPathToPath2D(primitive, path2d) {
+            // If the primitive has no points, there's nothing to do.
+            const points = primitive.points;
+            if (!points || points.length === 0) return;
+
+            // This is the key: If there are no arc segments, we do a simple, fast line loop.
+            if (!primitive.arcSegments || primitive.arcSegments.length === 0) {
+                path2d.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) {
+                    path2d.lineTo(points[i].x, points[i].y);
+                }
+                if (primitive.closed !== false) {
+                    path2d.closePath();
+                }
+                return;
+            }
+
+            // --- HYBRID PATH LOGIC ---
+            // If we are here, it's a path with analytic arc data.
+            const segments = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
+            let currentIndex = 0;
+
+            path2d.moveTo(points[0].x, points[0].y);
+            
+            // Process segments in order
+            for (const arc of segments) {
+                // Draw straight lines up to the start of this arc segment.
+                for (let i = currentIndex; i < arc.startIndex; i++) {
+                    if (points[i+1]) { // Ensure the next point exists
+                        path2d.lineTo(points[i+1].x, points[i+1].y);
+                    }
+                }
+                
+                // Add the analytic arc to the Path2D object.
+                path2d.arc(
+                    arc.center.x, arc.center.y, arc.radius,
+                    arc.startAngle, arc.endAngle, arc.clockwise
+                );
+                
+                // Jump our current position past all the interpolated points that the arc replaced.
+                currentIndex = arc.endIndex;
+            }
+            
+            // Draw any remaining straight line segments after the last arc.
+            for (let i = currentIndex; i < points.length - 1; i++) {
+                path2d.lineTo(points[i+1].x, points[i+1].y);
+            }
+
+            if (primitive.closed !== false) {
+                path2d.closePath();
+            }
+        }
+
+        
+        addObroundToBatch(primitive, path2d) {
+            const x = primitive.position.x;
+            const y = primitive.position.y;
+            const w = primitive.width;
+            const h = primitive.height;
+            const r = Math.min(w, h) / 2;
+            
+            if (w > h) {
+                path2d.moveTo(x + r, y);
+                path2d.lineTo(x + w - r, y);
+                path2d.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+                path2d.lineTo(x + r, y + h);
+                path2d.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2);
+            } else {
+                path2d.moveTo(x + w, y + r);
+                path2d.lineTo(x + w, y + h - r);
+                path2d.arc(x + r, y + h - r, r, 0, Math.PI);
+                path2d.lineTo(x, y + r);
+                path2d.arc(x + r, y + r, r, Math.PI, 0);
+            }
+            path2d.closePath();
+        }
+        
+        // ==================== SPECIALIZED RENDERERS ====================
+
+        _setStrokeState(color, width) {
+            this.ctx.strokeStyle = color;
+            this.ctx.lineWidth = width;
+            this.ctx.lineCap = 'round';
+            this.ctx.lineJoin = 'round';
+            this.ctx.setLineDash([]);
+        }
+
+        
+        renderToolPreview(primitive, color, context) {
+            this.ctx.save();
+            const toolDiameter = context.toolDiameter || 
+                                context.layer?.metadata?.toolDiameter || 
+                                primitive.properties?.toolDiameter || 0.2;
+            _setStrokeState(color, toolDiameter)
+            
+            if (primitive.properties?.isDrillPreview) {
+                // Drill preview - show as filled circle
+                this.ctx.fillStyle = color;
+                this.ctx.beginPath();
+                this.ctx.arc(primitive.center.x, primitive.center.y, toolDiameter / 2, 0, Math.PI * 2);
+                this.ctx.fill();
+            } else {
+                // Path preview - show toolpath with tool width
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = toolDiameter;
+                
+                if (primitive.type === 'path') {
+                    this.ctx.beginPath();
+                    if (primitive.contours && primitive.contours.length > 0) {
+                        primitive.contours.forEach(contour => {
+                            if (contour.points && contour.points.length > 0) {
+                                contour.points.forEach((p, i) => {
+                                    if (i === 0) this.ctx.moveTo(p.x, p.y);
+                                    else this.ctx.lineTo(p.x, p.y);
+                                });
+                                this.ctx.closePath();
+                            }
+                        });
+                    } else if (primitive.points) {
+                        primitive.points.forEach((p, i) => {
+                            if (i === 0) this.ctx.moveTo(p.x, p.y);
+                            else this.ctx.lineTo(p.x, p.y);
+                        });
+                        if (primitive.closed !== false) this.ctx.closePath();
+                    }
+                    this.ctx.stroke();
+                }else if (primitive.type === 'circle') {
+                    this.ctx.beginPath();
+                    this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, Math.PI * 2);
+                    this.ctx.stroke();
+                }
+            }
             this.ctx.restore();
         }
         
-        // Dedicated preview renderer using tool diameter
-        renderPreviewPrimitive(primitive, strokeColor, context = {}) {
-            const toolDiameter = context.toolDiameter;
-            
-            if (typeof toolDiameter === 'undefined' || toolDiameter <= 0) {
-                console.warn(`[Renderer] Preview rendering skipped: Invalid tool diameter (${toolDiameter})`);
-                return;
-            }
-
-            this.ctx.lineCap = 'round';
-            this.ctx.lineJoin = 'round';
-            
-            if (primitive.properties?.isDrillPreview) {
-                this.ctx.fillStyle = strokeColor;
-                this.ctx.strokeStyle = 'transparent';
-                this.ctx.beginPath();
-                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
-                this.ctx.fill();
-            } else {
-                this.ctx.fillStyle = 'transparent';
-                this.ctx.strokeStyle = strokeColor;
-                this.ctx.lineWidth = toolDiameter;
-
-                if (primitive.type === 'path') {
-                    if (primitive.contours && primitive.contours.length > 0) {
-                        primitive.contours.forEach(contour => {
-                            if (!contour.points || contour.points.length < 2) return;
-                            
-                            this.ctx.beginPath();
-                            contour.points.forEach((p, i) => {
-                                if (i === 0) this.ctx.moveTo(p.x, p.y);
-                                else this.ctx.lineTo(p.x, p.y);
-                            });
-                            // All paths from boolean operations are closed polygons.
-                            this.ctx.closePath();
-                            this.ctx.stroke();
-                        });
-                    }
-                    
-                } else if (primitive.type === 'circle') {
-                    this.ctx.beginPath();
-                    this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
-                    this.ctx.stroke();
-                } else if (primitive.type === 'arc') {
-                    this.ctx.beginPath();
-                    this.ctx.arc(
-                        primitive.center.x, primitive.center.y, primitive.radius,
-                        primitive.startAngle, primitive.endAngle, primitive.clockwise
-                    );
-                    this.ctx.stroke();
-                }
-            }
-        }
-
-        
-        // Offset rendering with correct stroke width
-        renderOffsetPrimitive(primitive, fillColor, strokeColor) {
-            this.ctx.save();
-            
-            this.ctx.lineWidth = 2 / this.core.viewScale;
-            const offsetDistance = primitive.properties?.offsetDistance || 0;
+        renderOffsetPrimitive(primitive, color, context) {
+            const offsetDistance = context.distance || primitive.properties?.offsetDistance || 0;
             const isInternal = offsetDistance < 0;
-            this.ctx.strokeStyle = isInternal ? '#00aa00ff' : strokeColor;
-            this.ctx.fillStyle = 'transparent';
+            this._setStrokeState(isInternal ? '#00aa00' : color || '#ff0000', 2 / this.core.viewScale);
+
+            this.ctx.setLineDash([]);
             
-            if (primitive.type === 'path' && primitive.contours && primitive.contours.length > 0) {
-                // --- FIX: Iterate through all contours (outers and holes) and stroke them ---
-                primitive.contours.forEach(contour => {
-                    if (!contour.points || contour.points.length < 2) return;
-                    
-                    // Note: We don't need to check for arcSegments here because offsets are polygonized.
-                    this.ctx.beginPath();
-                    contour.points.forEach((p, i) => {
+            if (primitive.type === 'path') {
+                this.ctx.beginPath();
+                if (primitive.contours && primitive.contours.length > 0) {
+                    primitive.contours.forEach(contour => {
+                        if (!contour.points || contour.points.length < 2) return;
+                        contour.points.forEach((p, i) => {
+                            if (i === 0) this.ctx.moveTo(p.x, p.y);
+                            else this.ctx.lineTo(p.x, p.y);
+                        });
+                        this.ctx.closePath();
+                    });
+                } else if (primitive.points) {
+                    primitive.points.forEach((p, i) => {
                         if (i === 0) this.ctx.moveTo(p.x, p.y);
                         else this.ctx.lineTo(p.x, p.y);
                     });
-                    this.ctx.closePath();
-                    this.ctx.stroke();
-                });
+                    if (primitive.closed !== false) this.ctx.closePath();
+                }
+                this.ctx.stroke();
             } else if (primitive.type === 'circle') {
                 this.ctx.beginPath();
-                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
+                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, Math.PI * 2);
                 this.ctx.stroke();
             } else if (primitive.type === 'arc') {
                 this.ctx.beginPath();
                 this.ctx.arc(
                     primitive.center.x, primitive.center.y, primitive.radius,
-                    primitive.startAngle, primitive.endAngle, primitive.clockwise
+                    primitive.startAngle, primitive.endAngle, 
+                    primitive.counterclockwise || primitive.clockwise
                 );
                 this.ctx.stroke();
             }
             
             this.ctx.restore();
         }
-
         
-        // Hybrid path rendering - ensure complete arc coverage
-        renderHybridPath(primitive, fillColor, strokeColor) {
-            const path2d = new Path2D();
-            const points = primitive.points;
+        renderDrillHole(primitive, fillColor, strokeColor) {
+            const center = primitive.center;
+            const radius = primitive.radius;
             
-            if (!points || points.length === 0) return;
+            // Draw the hole outline
+            this.ctx.beginPath();
+            this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+            this.ctx.strokeStyle = strokeColor || fillColor;
+            this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
+            this.ctx.stroke();
             
-            const segments = (primitive.arcSegments || []).slice().sort((a, b) => a.startIndex - b.startIndex);
-            
-            let currentIndex = 0;
-            path2d.moveTo(points[0].x, points[0].y);
-            currentIndex = 1;
-            
-            for (const arc of segments) {
-                // FIXED: Only render lines up to arc start (not including it)
-                for (let i = currentIndex; i < arc.startIndex; i++) {
-                    if (points[i]) path2d.lineTo(points[i].x, points[i].y);
-                }
-                
-                // Move to arc start if not already there
-                if (currentIndex <= arc.startIndex && points[arc.startIndex]) {
-                    path2d.lineTo(points[arc.startIndex].x, points[arc.startIndex].y);
-                }
-                
-                // Render arc
-                path2d.arc(
-                    arc.center.x, arc.center.y, arc.radius,
-                    arc.startAngle, arc.endAngle, arc.clockwise
-                );
-                
-                // Skip all interpolated points covered by arc
-                currentIndex = arc.endIndex + 1;
-            }
-            
-            // Render remaining lines after last arc
-            for (let i = currentIndex; i < points.length; i++) {
-                if (points[i]) path2d.lineTo(points[i].x, points[i].y);
-            }
-            
-            if (primitive.contours && primitive.contours.length > 0) {
-                primitive.contours.forEach(hole => {
-                    if (hole.length > 0) {
-                        path2d.moveTo(hole[0].x, hole[0].y);
-                        for (let i = 1; i < hole.length; i++) {
-                            path2d.lineTo(hole[i].x, hole[i].y);
-                        }
-                        path2d.closePath();
-                    }
-                });
-            }
-            
-            if (primitive.closed !== false) {
-                path2d.closePath();
-            }
-            
-            if (primitive.properties?.fill !== false) {
-                this.ctx.fillStyle = fillColor;
-                this.ctx.fill(path2d, 'nonzero');
-            }
-            
-            if (primitive.properties?.stroke) {
-                this.ctx.strokeStyle = strokeColor;
-                this.ctx.lineWidth = primitive.properties.strokeWidth || 0.1;
-                this.ctx.stroke(path2d);
-            }
-        }
-        
-        renderHybridPathStrokeOnly(primitive, strokeColor) {
-            const path2d = new Path2D();
-            const points = primitive.points;
-            
-            if (!points || points.length === 0) return;
-            
-            const segments = (primitive.arcSegments || []).slice().sort((a, b) => a.startIndex - b.startIndex);
-            
-            let currentIndex = 0;
-            path2d.moveTo(points[0].x, points[0].y);
-            currentIndex = 1;
-            
-            for (const arc of segments) {
-                // Only render lines up to arc start
-                for (let i = currentIndex; i < arc.startIndex; i++) {
-                    if (points[i]) path2d.lineTo(points[i].x, points[i].y);
-                }
-                
-                if (currentIndex <= arc.startIndex && points[arc.startIndex]) {
-                    path2d.lineTo(points[arc.startIndex].x, points[arc.startIndex].y);
-                }
-                
-                path2d.arc(
-                    arc.center.x, arc.center.y, arc.radius,
-                    arc.startAngle, arc.endAngle, arc.clockwise
-                );
-                
-                currentIndex = arc.endIndex + 1;
-            }
-            
-            for (let i = currentIndex; i < points.length; i++) {
-                if (points[i]) path2d.lineTo(points[i].x, points[i].y);
-            }
-            
-            if (primitive.closed !== false) {
-                path2d.closePath();
-            }
-            
-            this.ctx.strokeStyle = strokeColor;
-            this.ctx.stroke(path2d);
-        }
-        
-        renderCurveMetadataDebug(primitive, options = {}) {
-            if (!primitive) return;
-
-            // Normalize data to ensure contours always exist for path-like objects.
-            this._normalizeDebugPrimitive(primitive);
-
-            this.ctx.save();
-            this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Work in screen space for clarity
-
-            // --- Dispatcher Logic ---
-            if (options.debugPaths) {
-                this._renderDebugPathsAndWinding(primitive);
-                this._renderDebugKeyPoints(primitive);
-                this.renderDetectedArcSegments(primitive); // This function is already well-defined
-            }
-
-            if (options.debugPoints) {
-                this._renderDebugAllPoints(primitive);
-            }
-
-            this.ctx.restore();
-        }
-
-        // Helper to ensure primitive has a .contours array for consistent processing.
-        _normalizeDebugPrimitive(primitive) {
-            if (primitive.type === 'path' && (!primitive.contours || primitive.contours.length === 0) && primitive.points?.length > 0) {
-                primitive.contours = [{
-                    points: primitive.points,
-                    isHole: false,
-                    nestingLevel: 0
-                }];
-            }
-        }
-
-        // Renders the path outlines, colored by winding order (CW/CCW).
-        _renderDebugPathsAndWinding(primitive) {
-            this.ctx.save();
-            this.ctx.lineWidth = 2;
-
-            const windingColors = {
-                ccw: 'rgba(0, 255, 0, 0.7)',  // Green for Counter-Clockwise
-                cw:  'rgba(255, 0, 0, 0.7)',  // Red for Clockwise
-                open: 'rgba(255, 255, 0, 0.7)' // Yellow for open paths
-            };
-
-            if (primitive.type === 'path' && primitive.contours) {
-                primitive.contours.forEach((contour) => {
-                    if (!contour.points || contour.points.length < 2) return;
-
-                    const area = this._calculateSignedArea(contour.points);
-                    const isClosed = primitive.closed !== false && !primitive.properties?.isTrace;
-                    
-                    this.ctx.strokeStyle = isClosed ? (area > 0 ? windingColors.cw : windingColors.ccw) : windingColors.open;
-                    this.ctx.setLineDash(contour.isHole ? [5, 5] : []);
-
-                    this.ctx.beginPath();
-                    contour.points.forEach((p, i) => {
-                        const cx = this.core.worldToCanvasX(p.x);
-                        const cy = this.core.worldToCanvasY(p.y);
-                        if (i === 0) this.ctx.moveTo(cx, cy);
-                        else this.ctx.lineTo(cx, cy);
-                    });
-
-                    if (isClosed) this.ctx.closePath();
-                    this.ctx.stroke();
-                });
-            }
-            this.ctx.restore();
-        }
-
-        // Renders ONLY the key points: start of contours and centers of analytic shapes.
-        _renderDebugKeyPoints(primitive) {
-            this.ctx.save();
-            const pointStyles = {
-                start:   { radius: 5, font: 'bold 12px monospace', offset: 8, color: '#00FF00', stroke: '#FFFFFF' },
-                center:  { radius: 4, font: 'bold 12px monospace', offset: 8, color: '#FF00FF', stroke: '#FFFFFF' },
-            };
-
-            const drawPoint = (p, label, style) => {
-                const canvasX = this.core.worldToCanvasX(p.x);
-                const canvasY = this.core.worldToCanvasY(p.y);
-                this.ctx.fillStyle = style.color;
-                this.ctx.beginPath();
-                this.ctx.arc(canvasX, canvasY, style.radius, 0, 2 * Math.PI);
-                this.ctx.fill();
-                if (style.stroke) {
-                    this.ctx.strokeStyle = style.stroke;
-                    this.ctx.lineWidth = 1;
-                    this.ctx.stroke();
-                }
-                if(label) {
-                    this.ctx.fillStyle = '#FFFFFF';
-                    this.ctx.strokeStyle = '#000000';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.font = style.font;
-                    this.ctx.strokeText(label, canvasX + style.offset, canvasY - style.offset);
-                    this.ctx.fillText(label, canvasX + style.offset, canvasY - style.offset);
-                }
-            };
-
-            if (primitive.type === 'path' && primitive.contours) {
-                primitive.contours.forEach(contour => {
-                    if (contour.points && contour.points.length > 0) {
-                        drawPoint(contour.points[0], `S (L${contour.nestingLevel})`, pointStyles.start);
-                    }
-                });
-            } else if (primitive.type === 'circle' || primitive.type === 'arc') {
-                drawPoint(primitive.center, 'C', pointStyles.center);
-            }
-            // Add other analytic types like obround if needed
-            this.ctx.restore();
-        }
-        
-        // Renders EVERY point with its detailed label (index, curveId, etc.).
-        _renderDebugAllPoints(primitive) {
-            this.ctx.save();
-            const pointStyles = {
-                default: { radius: 3, font: '10px monospace', offset: 6, color: 'rgba(200, 200, 200, 0.8)', stroke: '#000000' },
-                curve:   { radius: 4, font: '11px monospace', offset: 8, stroke: '#000000' }
-            };
-
-            const drawPointAndLabel = (p, label, style) => {
-                const cx = this.core.worldToCanvasX(p.x);
-                const cy = this.core.worldToCanvasY(p.y);
-                this.ctx.fillStyle = style.color;
-                this.ctx.beginPath();
-                this.ctx.arc(cx, cy, style.radius, 0, 2 * Math.PI);
-                this.ctx.fill();
-                if (style.stroke) {
-                    this.ctx.strokeStyle = style.stroke;
-                    this.ctx.lineWidth = 1;
-                    this.ctx.stroke();
-                }
-                if (label) {
-                    this.ctx.fillStyle = '#FFFFFF';
-                    this.ctx.strokeStyle = '#000000';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.font = style.font;
-                    this.ctx.strokeText(label, cx + style.offset, cy - style.offset);
-                    this.ctx.fillText(label, cx + style.offset, cy - style.offset);
-                }
-            };
-            
-            if (primitive.type === 'path' && primitive.contours) {
-                primitive.contours.forEach(contour => {
-                    contour.points.forEach((p, i) => {
-                        let label = `${i}`;
-                        let style = { ...pointStyles.default };
-
-                        if (p.curveId > 0) {
-                            const hue = (p.curveId * 137) % 360;
-                            style = { ...pointStyles.curve, color: `hsl(${hue}, 100%, 50%)` };
-                            label = `C${p.curveId}:${p.segmentIndex}`;
-                        }
-                        // Avoid re-drawing the start point label if path debug is also on
-                        if (i > 0) {
-                            drawPointAndLabel(p, label, style);
-                        }
-                    });
-                });
-            }
-            this.ctx.restore();
-        }
-
-        // Helper function, can be part of the class or moved from the old monolithic function
-        _calculateSignedArea(points) {
-            if (!points || points.length < 3) return 0;
-            let area = 0;
-            for (let i = 0; i < points.length; i++) {
-                const j = (i + 1) % points.length;
-                area += points[i].x * points[j].y;
-                area -= points[j].x * points[i].y;
-            }
-            return area / 2;
-        }
-        
-        renderDetectedArcSegments(primitive) {
-            if (!primitive.arcSegments || primitive.arcSegments.length === 0) return;
-            
-            this.ctx.save();
-            
-            primitive.arcSegments.forEach((segment, idx) => {
-                const centerX = this.core.worldToCanvasX(segment.center.x);
-                const centerY = this.core.worldToCanvasY(segment.center.y);
-                const radiusCanvas = segment.radius * this.core.viewScale;
-                
-                const hue = ((idx * 137) + 60) % 360;
-                const color = `hsl(${hue}, 100%, 50%)`;
-                
-                this.ctx.strokeStyle = color;
-                this.ctx.lineWidth = 5;
-                this.ctx.setLineDash([]);
-                this.ctx.globalAlpha = 0.8;
-                
-                this.ctx.beginPath();
-                const startAngle = -segment.startAngle;
-                const endAngle = -segment.endAngle;
-                this.ctx.arc(centerX, centerY, radiusCanvas, endAngle, startAngle, segment.clockwise);
-                this.ctx.stroke();
-                
-                this.ctx.fillStyle = color;
-                this.ctx.globalAlpha = 1.0;
-                this.ctx.beginPath();
-                this.ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
-                this.ctx.fill();
-                
-                this.ctx.strokeStyle = color;
-                this.ctx.lineWidth = 2;
-                this.ctx.setLineDash([4, 4]);
-                this.ctx.globalAlpha = 0.6;
-                
-                const startX = centerX + radiusCanvas * Math.cos(-segment.startAngle);
-                const startY = centerY + radiusCanvas * Math.sin(-segment.startAngle);
-                this.ctx.beginPath();
-                this.ctx.moveTo(centerX, centerY);
-                this.ctx.lineTo(startX, startY);
-                this.ctx.stroke();
-                
-                this.ctx.fillStyle = '#00FF00';
-                this.ctx.globalAlpha = 1.0;
-                this.ctx.beginPath();
-                this.ctx.arc(startX, startY, 5, 0, 2 * Math.PI);
-                this.ctx.fill();
-                
-                const endX = centerX + radiusCanvas * Math.cos(-segment.endAngle);
-                const endY = centerY + radiusCanvas * Math.sin(-segment.endAngle);
-                this.ctx.strokeStyle = color;
-                this.ctx.lineWidth = 2;
-                this.ctx.setLineDash([4, 4]);
-                this.ctx.globalAlpha = 0.6;
-                this.ctx.beginPath();
-                this.ctx.moveTo(centerX, centerY);
-                this.ctx.lineTo(endX, endY);
-                this.ctx.stroke();
-                
-                this.ctx.fillStyle = '#FF0000';
-                this.ctx.globalAlpha = 1.0;
-                this.ctx.beginPath();
-                this.ctx.arc(endX, endY, 5, 0, 2 * Math.PI);
-                this.ctx.fill();
-                
-                this.ctx.fillStyle = '#FFFFFF';
-                this.ctx.strokeStyle = '#000000';
-                this.ctx.lineWidth = 3;
-                this.ctx.font = 'bold 12px monospace';
-                this.ctx.globalAlpha = 1.0;
-                this.ctx.setLineDash([]);
-                
-                const sweepAngle = segment.sweepAngle || (segment.endAngle - segment.startAngle);
-                const angleDeg = Math.abs(sweepAngle) * 180 / Math.PI;
-                const dirLabel = segment.clockwise ? 'CW' : 'CCW';
-                const label = `Arc ${idx + 1}: r=${segment.radius.toFixed(2)}, ${angleDeg.toFixed(1)}° ${dirLabel}, ${segment.pointCount} pts`;
-                
-                const labelX = centerX + 10;
-                const labelY = centerY - 10 - (idx * 15);
-                this.ctx.strokeText(label, labelX, labelY);
-                this.ctx.fillText(label, labelX, labelY);
-                
-                if (primitive.points[segment.startIndex]) {
-                    const p = primitive.points[segment.startIndex];
-                    const px = this.core.worldToCanvasX(p.x);
-                    const py = this.core.worldToCanvasY(p.y);
-                    
-                    this.ctx.fillStyle = '#00FF00';
-                    this.ctx.font = 'bold 10px monospace';
-                    this.ctx.strokeText(`S[${segment.startIndex}]`, px + 8, py - 8);
-                    this.ctx.fillText(`S[${segment.startIndex}]`, px + 8, py - 8);
-                }
-                
-                if (primitive.points[segment.endIndex]) {
-                    const p = primitive.points[segment.endIndex];
-                    const px = this.core.worldToCanvasX(p.x);
-                    const py = this.core.worldToCanvasY(p.y);
-                    
-                    this.ctx.fillStyle = '#FF0000';
-                    this.ctx.font = 'bold 10px monospace';
-                    this.ctx.strokeText(`E[${segment.endIndex}]`, px + 8, py - 8);
-                    this.ctx.fillText(`E[${segment.endIndex}]`, px + 8, py - 8);
-                }
-            });
-            
-            this.ctx.restore();
+            // Draw center crosshair marks
+            const markSize = Math.min(0.2, radius * 0.4);
+            this.ctx.beginPath();
+            this.ctx.moveTo(center.x - markSize, center.y);
+            this.ctx.lineTo(center.x + markSize, center.y);
+            this.ctx.moveTo(center.x, center.y - markSize);
+            this.ctx.lineTo(center.x, center.y + markSize);
+            this.ctx.stroke();
         }
         
         renderReconstructedPrimitive(primitive, fillColor, strokeColor) {
-            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
-            
+            // Reconstructed primitives get a special highlight color
             const accentColor = '#00ffff';
-            const glowColor = '#00ff00';
             
             this.ctx.save();
-            
-            this.ctx.shadowColor = glowColor;
-            this.ctx.shadowBlur = 10 / this.core.viewScale;
             
             if (primitive.type === 'circle') {
                 this.ctx.strokeStyle = accentColor;
                 this.ctx.lineWidth = 2 / this.core.viewScale;
-                this.ctx.fillStyle = fillColor + '40';
+                this.ctx.fillStyle = fillColor + '40'; // Semi-transparent fill
                 
                 this.ctx.beginPath();
                 this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
                 this.ctx.fill();
                 this.ctx.stroke();
                 
+                // Center dot
                 this.ctx.fillStyle = accentColor;
                 this.ctx.beginPath();
                 this.ctx.arc(primitive.center.x, primitive.center.y, 2 / this.core.viewScale, 0, 2 * Math.PI);
@@ -616,628 +357,367 @@
                 
                 this.ctx.beginPath();
                 this.ctx.arc(
-                    primitive.center.x,
-                    primitive.center.y,
-                    primitive.radius,
-                    primitive.startAngle,
-                    primitive.endAngle,
-                    primitive.clockwise
+                    primitive.center.x, primitive.center.y, primitive.radius,
+                    primitive.startAngle, primitive.endAngle,
+                    primitive.counterclockwise || primitive.clockwise
                 );
                 this.ctx.stroke();
-                
-                this.ctx.fillStyle = accentColor;
-                
-                const startX = primitive.center.x + primitive.radius * Math.cos(primitive.startAngle);
-                const startY = primitive.center.y + primitive.radius * Math.sin(primitive.startAngle);
-                this.ctx.beginPath();
-                this.ctx.arc(startX, startY, 3 / this.core.viewScale, 0, 2 * Math.PI);
-                this.ctx.fill();
-                
-                const endX = primitive.center.x + primitive.radius * Math.cos(primitive.endAngle);
-                const endY = primitive.center.y + primitive.radius * Math.sin(primitive.endAngle);
-                this.ctx.beginPath();
-                this.ctx.arc(endX, endY, 3 / this.core.viewScale, 0, 2 * Math.PI);
-                this.ctx.fill();
-            } else if (primitive.type === 'path' && primitive.properties?.wasPartial) {
+            } else if (primitive.type === 'path') {
+                // Partially reconstructed path
                 this.ctx.strokeStyle = '#ffff00';
                 this.ctx.lineWidth = 2 / this.core.viewScale;
                 this.ctx.setLineDash([5 / this.core.viewScale, 5 / this.core.viewScale]);
                 
-                this.renderPathNormal(primitive, primitive.properties, fillColor + '40', '#ffff00', false);
+                this.renderPrimitiveNormal(primitive, fillColor + '40', '#ffff00', false);
             }
             
             this.ctx.restore();
-            
-            if (debugConfig.enabled && primitive.properties?.originalCurveId) {
-                this.ctx.save();
-                this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-                this.ctx.fillStyle = accentColor;
-                this.ctx.font = '10px monospace';
-                
-                let labelPos;
-                if (primitive.type === 'circle') {
-                    labelPos = this.core.worldToCanvasX(primitive.center.x);
-                    const y = this.core.worldToCanvasY(primitive.center.y);
-                    this.ctx.fillText(`C${primitive.properties.originalCurveId}`, labelPos, y);
-                } else if (primitive.type === 'arc') {
-                    const midAngle = (primitive.startAngle + primitive.endAngle) / 2;
-                    const midX = primitive.center.x + primitive.radius * Math.cos(midAngle);
-                    const midY = primitive.center.y + primitive.radius * Math.sin(midAngle);
-                    labelPos = this.core.worldToCanvasX(midX);
-                    const y = this.core.worldToCanvasY(midY);
-                    this.ctx.fillText(`A${primitive.properties.originalCurveId}`, labelPos, y);
-                }
-                
-                this.ctx.restore();
-            }
         }
         
-        renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed = false) {
+        // ==================== NORMAL RENDERING ====================
+        
+        renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed) {
             const props = primitive.properties || {};
             
             switch (primitive.type) {
                 case 'path':
-                    this.renderPathNormal(primitive, props, fillColor, strokeColor, isPreprocessed);
+                    this.renderPath(primitive, fillColor, strokeColor, isPreprocessed);
                     break;
+                    
                 case 'circle':
-                    this.renderCircleNormal(primitive, props, fillColor, strokeColor);
+                    this.renderCircle(primitive, fillColor, strokeColor);
                     break;
+                    
                 case 'rectangle':
-                    this.renderRectangleNormal(primitive, props, fillColor, strokeColor);
+                    this.renderRectangle(primitive, fillColor, strokeColor);
                     break;
-                case 'obround':
-                    this.renderObroundNormal(primitive, props, fillColor, strokeColor);
-                    break;
+                    
                 case 'arc':
-                    this.renderArcNormal(primitive, props, strokeColor);
+                    this.renderArc(primitive, fillColor, strokeColor);
+                    break;
+                    
+                case 'obround':
+                    this.renderObround(primitive, fillColor, strokeColor);
+                    break;
+                    
+                default:
+                    console.warn(`Unknown primitive type: ${primitive.type}`);
                     break;
             }
         }
         
-        renderPathNormal(primitive, props, fillColor, strokeColor, isPreprocessed = false) {
-            if (props.hasReconstructedArcs && primitive.arcSegments?.length > 0) {
-                this.renderHybridPath(primitive, fillColor, strokeColor);
-                return;
-            }
+        renderPath(primitive, fillColor, strokeColor, isPreprocessed) {
+            const shouldFill = primitive.properties?.fill !== false && !primitive.properties?.stroke;
+            const shouldStroke = primitive.properties?.stroke === true || primitive.properties?.isTrace;
             
-            if (isPreprocessed) {
-                this.renderSimplePath(primitive, props, fillColor);
-                return;
-            }
-
-            // UNIFIED CONTOURS CHECK
-            const hasNested = primitive.contours && primitive.contours.length > 1;
+            this.ctx.beginPath();
             
-            if (hasNested) {
-                this.renderCompoundPath(primitive, props, fillColor, strokeColor);
-            } else if (props.isRegion) {
-                this.renderRegion(primitive, props, fillColor);
-            } else if (props.isTrace || props.isBranchSegment || props.isConnectedPath || 
-                    (props.stroke && props.strokeWidth && !props.fill)) {
-                this.renderTrace(primitive, props, strokeColor);
-            } else if (props.fill !== false) {
-                this.renderSimplePath(primitive, props, fillColor);
-            }
-
-            // Debug: Render individual contours if enabled
-            if (this.core.options.debugCurvePoints && props.contours && Array.isArray(props.contours)) {
-                this.ctx.save();
-                this.ctx.lineWidth = 2 / this.core.viewScale;
-                
-                props.contours.forEach((contour, idx) => {
-                    // Color based on nesting level
-                    const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
-                    this.ctx.strokeStyle = colors[contour.nestingLevel % colors.length];
+            if (primitive.contours && primitive.contours.length > 0) {
+                primitive.contours.forEach(contour => {
+                    if (!contour.points || contour.points.length === 0) return;
                     
-                    this.ctx.beginPath();
                     contour.points.forEach((p, i) => {
                         if (i === 0) this.ctx.moveTo(p.x, p.y);
                         else this.ctx.lineTo(p.x, p.y);
                     });
-                    this.ctx.closePath();
-                    this.ctx.stroke();
                     
-                    // Label the contour
-                    if (contour.points.length > 0) {
-                        const labelPos = contour.points[0];
-                        this.ctx.fillStyle = '#ffffff';
-                        this.ctx.font = '12px monospace';
-                        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-                        const canvasX = this.core.worldToCanvasX(labelPos.x);
-                        const canvasY = this.core.worldToCanvasY(labelPos.y);
-                        const label = `L${contour.nestingLevel}${contour.isHole ? 'H' : ''}`;
-                        this.ctx.fillText(label, canvasX + 5, canvasY - 5);
-                    }
+                    this.ctx.closePath();
                 });
                 
-                this.ctx.restore();
+                if (shouldFill) {
+                    this.ctx.fillStyle = fillColor;
+                    this.ctx.fill('nonzero');
+                }
+            } else if (primitive.points && primitive.points.length > 0) {
+                primitive.points.forEach((p, i) => {
+                    if (i === 0) this.ctx.moveTo(p.x, p.y);
+                    else this.ctx.lineTo(p.x, p.y);
+                });
+                
+                if (primitive.closed !== false) {
+                    this.ctx.closePath();
+                }
+                
+                if (shouldFill) {
+                    this.ctx.fillStyle = fillColor;
+                    this.ctx.fill();
+                }
+            }
+            
+            if (shouldStroke) {
+                this.ctx.strokeStyle = strokeColor || fillColor;
+                this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.stroke();
             }
         }
         
-        renderCompoundPath(primitive, props, fillColor, strokeColor) {
-            const path2d = new Path2D();
+        renderCircle(primitive, fillColor, strokeColor) {
+            this.ctx.beginPath();
+            this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, Math.PI * 2);
             
-            // Render all contours
-            primitive.contours.forEach(contour => {
-                const pts = contour.points;
-                if (!pts || pts.length < 3) return;
-                
-                pts.forEach((p, i) => {
-                    if (i === 0) path2d.moveTo(p.x, p.y);
-                    else path2d.lineTo(p.x, p.y);
-                });
-                path2d.closePath();
-            });
-            
-            this.ctx.fillStyle = fillColor;
-            this.ctx.fill(path2d, 'nonzero');
-            
-            // Debug visualization if enabled
-            if (this.core.options.debugCurvePoints && primitive.contours.length > 1) {
-                this.renderContourDebug(primitive);
+            if (primitive.properties?.fill !== false) {
+                this.ctx.fillStyle = fillColor;
+                this.ctx.fill();
             }
             
-            this.core.renderStats.holesRendered += (primitive.contours.length - 1);
+            if (primitive.properties?.stroke || strokeColor) {
+                this.ctx.strokeStyle = strokeColor || fillColor;
+                this.ctx.lineWidth = primitive.properties?.strokeWidth || this.core.getWireframeStrokeWidth();
+                this.ctx.stroke();
+            }
         }
-
+        
+        renderRectangle(primitive, fillColor, strokeColor) {
+            if (primitive.properties?.fill !== false) {
+                this.ctx.fillStyle = fillColor;
+                this.ctx.fillRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
+            }
+            
+            if (primitive.properties?.stroke || strokeColor) {
+                this.ctx.strokeStyle = strokeColor || fillColor;
+                this.ctx.lineWidth = primitive.properties?.strokeWidth || this.core.getWireframeStrokeWidth();
+                this.ctx.strokeRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
+            }
+        }
+        
+        renderArc(primitive, fillColor, strokeColor) {
+            this.ctx.beginPath();
+            this.ctx.arc(
+                primitive.center.x,
+                primitive.center.y,
+                primitive.radius,
+                primitive.startAngle,
+                primitive.endAngle,
+                primitive.counterclockwise || primitive.clockwise
+            );
+            
+            if (primitive.properties?.fill) {
+                this.ctx.closePath();
+                this.ctx.fillStyle = fillColor;
+                this.ctx.fill();
+            }
+            
+            this.ctx.strokeStyle = strokeColor || fillColor;
+            this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
+            this.ctx.stroke();
+        }
+        
+        renderObround(primitive, fillColor, strokeColor) {
+            const x = primitive.position.x;
+            const y = primitive.position.y;
+            const w = primitive.width;
+            const h = primitive.height;
+            const r = Math.min(w, h) / 2;
+            
+            this.ctx.beginPath();
+            
+            if (w > h) {
+                this.ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2, false);
+                this.ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2, false);
+            } else {
+                this.ctx.arc(x + r, y + r, r, Math.PI, 0, false);
+                this.ctx.arc(x + r, y + h - r, r, 0, Math.PI, false);
+            }
+            
+            this.ctx.closePath();
+            
+            if (primitive.properties?.fill !== false) {
+                this.ctx.fillStyle = fillColor;
+                this.ctx.fill();
+            }
+            
+            if (primitive.properties?.stroke || strokeColor) {
+                this.ctx.strokeStyle = strokeColor || fillColor;
+                this.ctx.lineWidth = primitive.properties?.strokeWidth || this.core.getWireframeStrokeWidth();
+                this.ctx.stroke();
+            }
+        }
+        
+        // ==================== WIREFRAME RENDERING ====================
+        
+        renderWireframe(primitive) {
+            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
+            const strokeWidth = this.core.getWireframeStrokeWidth();
+            
+            this.ctx.strokeStyle = theme.debug?.wireframe || '#00ff00';
+            this.ctx.lineWidth = strokeWidth;
+            this.ctx.fillStyle = 'none';
+            
+            this.ctx.beginPath();
+            
+            switch (primitive.type) {
+                case 'path':
+                    if (primitive.contours && primitive.contours.length > 0) {
+                        primitive.contours.forEach(contour => {
+                            if (!contour.points || contour.points.length === 0) return;
+                            contour.points.forEach((p, i) => {
+                                if (i === 0) this.ctx.moveTo(p.x, p.y);
+                                else this.ctx.lineTo(p.x, p.y);
+                            });
+                            this.ctx.closePath();
+                        });
+                    } else if (primitive.points) {
+                        primitive.points.forEach((p, i) => {
+                            if (i === 0) this.ctx.moveTo(p.x, p.y);
+                            else this.ctx.lineTo(p.x, p.y);
+                        });
+                        if (primitive.closed !== false) this.ctx.closePath();
+                    }
+                    break;
+                    
+                case 'circle':
+                    this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, Math.PI * 2);
+                    break;
+                    
+                case 'rectangle':
+                    this.ctx.rect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
+                    break;
+                    
+                case 'arc':
+                    this.ctx.arc(
+                        primitive.center.x, primitive.center.y, primitive.radius,
+                        primitive.startAngle, primitive.endAngle,
+                        primitive.counterclockwise || primitive.clockwise
+                    );
+                    break;
+            }
+            
+            this.ctx.stroke();
+        }
+        
+        // ==================== DEBUG RENDERING ====================
+        
+        renderDebugInfo(primitive, options) {
+            if (!primitive) return;
+            
+            // This is called after resetTransform, so we're in screen space
+            
+            if (options.debugPaths && primitive.arcSegments) {
+                this.renderArcSegmentDebug(primitive);
+            }
+            
+            if (options.debugPoints && primitive.points) {
+                this.renderCurveDebugPoints(primitive);
+            }
+            
+            if (options.debugPaths && primitive.contours) {
+                this.renderContourDebug(primitive);
+            }
+        }
+        
+        renderCurveDebugPoints(primitive) {
+            if (!primitive.screenPoints) return; // Changed from primitive.points
+            
+            const pointSize = 4;
+            this.ctx.font = '10px monospace';
+            
+            primitive.screenPoints.forEach((p, index) => {
+                if (p.curveId === undefined) return;
+                
+                const color = this.getCurveDebugColor(p.curveId);
+                
+                // p.x and p.y are ALREADY in screen space
+                this.ctx.fillStyle = color;
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Labels
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.strokeStyle = '#000000';
+                this.ctx.lineWidth = 2;
+                const label = `C${p.curveId}:${p.segmentIndex || index}`;
+                this.ctx.strokeText(label, p.x + 6, p.y - 6);
+                this.ctx.fillText(label, p.x + 6, p.y - 6);
+                
+                this.debugStats.taggedPoints++;
+            });
+            
+            this.debugStats.totalPoints += primitive.screenPoints.length;
+        }
+        
+        renderArcSegmentDebug(primitive) {
+            if (!primitive.arcSegments || primitive.arcSegments.length === 0) return;
+            
+            primitive.arcSegments.forEach((segment, idx) => {
+                // Use pre-transformed values
+                const centerScreen = segment.centerScreen;
+                const radiusScreen = segment.radiusScreen;
+                
+                const hue = ((idx * 137) + 60) % 360;
+                const color = `hsl(${hue}, 100%, 50%)`;
+                
+                // Draw arc - centerScreen and radiusScreen already in screen coords
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = 3;
+                this.ctx.beginPath();
+                const startAngle = -segment.startAngle;
+                const endAngle = -segment.endAngle;
+                this.ctx.arc(centerScreen.x, centerScreen.y, radiusScreen, 
+                            endAngle, startAngle, segment.clockwise);
+                this.ctx.stroke();
+                
+                // Draw center point
+                this.ctx.fillStyle = color;
+                this.ctx.beginPath();
+                this.ctx.arc(centerScreen.x, centerScreen.y, 4, 0, 2 * Math.PI);
+                this.ctx.fill();
+                
+                // Draw label
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.strokeStyle = '#000000';
+                this.ctx.lineWidth = 2;
+                this.ctx.font = 'bold 12px monospace';
+                
+                const angleDeg = Math.abs(segment.sweepAngle || (segment.endAngle - segment.startAngle)) * 180 / Math.PI;
+                const label = `Arc ${idx + 1}: r=${segment.radius.toFixed(2)}, ${angleDeg.toFixed(1)}°`;
+                this.ctx.strokeText(label, centerScreen.x + 10, centerScreen.y - 10);
+                this.ctx.fillText(label, centerScreen.x + 10, centerScreen.y - 10);
+            });
+        }
+        
         renderContourDebug(primitive) {
-            this.ctx.save();
-            this.ctx.lineWidth = 2 / this.core.viewScale;
+            if (!primitive.contours || primitive.contours.length <= 1) return;
             
-            const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff'];
+            const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
             
-            primitive.contours.forEach(contour => {
+            primitive.contours.forEach((contour, idx) => {
+                if (!contour.points || contour.points.length === 0) return;
+                
                 const color = colors[contour.nestingLevel % colors.length];
                 this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash(contour.isHole ? [5, 5] : []);
                 
                 this.ctx.beginPath();
                 contour.points.forEach((p, i) => {
-                    if (i === 0) this.ctx.moveTo(p.x, p.y);
-                    else this.ctx.lineTo(p.x, p.y);
+                    const screenPos = this.core.worldToScreen(p.x, p.y);
+                    if (i === 0) this.ctx.moveTo(screenPos.x, screenPos.y);
+                    else this.ctx.lineTo(screenPos.x, screenPos.y);
                 });
                 this.ctx.closePath();
                 this.ctx.stroke();
                 
                 // Label
                 if (contour.points.length > 0) {
-                    const labelPos = contour.points[0];
-                    this.ctx.fillStyle = '#ffffff';
+                    const firstPoint = this.core.worldToScreen(contour.points[0].x, contour.points[0].y);
+                    this.ctx.fillStyle = '#FFFFFF';
                     this.ctx.font = '12px monospace';
-                    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-                    const canvasX = this.core.worldToCanvasX(labelPos.x);
-                    const canvasY = this.core.worldToCanvasY(labelPos.y);
                     const label = `L${contour.nestingLevel}${contour.isHole ? 'H' : ''}`;
-                    this.ctx.fillText(label, canvasX + 5, canvasY - 5);
+                    this.ctx.fillText(label, firstPoint.x + 5, firstPoint.y - 5);
                 }
             });
             
-            this.ctx.restore();
+            this.ctx.setLineDash([]);
         }
         
-        renderRegion(primitive, props, fillColor) {
-            this.ctx.fillStyle = fillColor;
-            this.ctx.beginPath();
-            
-            primitive.points.forEach((point, index) => {
-                if (index === 0) {
-                    this.ctx.moveTo(point.x, point.y);
-                } else {
-                    this.ctx.lineTo(point.x, point.y);
-                }
-            });
-            
-            if (primitive.closed) {
-                this.ctx.closePath();
-            }
-            
-            const fillRule = props.fillRule || 'nonzero';
-            this.ctx.fill(fillRule);
-        }
-        
-        renderTrace(primitive, props, strokeColor) {
-            this.ctx.strokeStyle = strokeColor;
-            this.ctx.lineWidth = props.strokeWidth || 0.1;
-            this.ctx.lineCap = 'round';
-            this.ctx.lineJoin = 'round';
-            
-            this.ctx.beginPath();
-            primitive.points.forEach((point, index) => {
-                if (index === 0) {
-                    this.ctx.moveTo(point.x, point.y);
-                } else {
-                    this.ctx.lineTo(point.x, point.y);
-                }
-            });
-            
-            if (primitive.closed) {
-                this.ctx.closePath();
-            }
-            
-            this.ctx.stroke();
-        }
-        
-        renderSimplePath(primitive, props, fillColor) {
-            this.ctx.fillStyle = fillColor;
-            this.ctx.beginPath();
-            
-            primitive.points.forEach((point, index) => {
-                if (index === 0) {
-                    this.ctx.moveTo(point.x, point.y);
-                } else {
-                    this.ctx.lineTo(point.x, point.y);
-                }
-            });
-            
-            if (primitive.closed !== false) {
-                this.ctx.closePath();
-            }
-            
-            this.ctx.fill();
-        }
-        
-        // Drill rendering using diameter property
-        renderCircleNormal(primitive, props, fillColor, strokeColor) {
-            this.ctx.beginPath();
-            
-            // Special rendering for drill holes
-            if (props.isDrillHole) {
-                // Use the primitive's actual radius - it was already calculated correctly
-                const displayRadius = primitive.radius;
-                
-                // Draw outline
-                this.ctx.arc(primitive.center.x, primitive.center.y, displayRadius, 0, 2 * Math.PI);
-                this.ctx.strokeStyle = strokeColor;
-                this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
-                this.ctx.stroke();
-                
-                // Draw center mark
-                const markSize = Math.min(0.2, displayRadius * 0.4);
-                this.ctx.beginPath();
-                this.ctx.moveTo(primitive.center.x - markSize, primitive.center.y);
-                this.ctx.lineTo(primitive.center.x + markSize, primitive.center.y);
-                this.ctx.moveTo(primitive.center.x, primitive.center.y - markSize);
-                this.ctx.lineTo(primitive.center.x, primitive.center.y + markSize);
-                this.ctx.stroke();
-                return;
-            }
-            
-            // Normal circle rendering continues...
-            this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
-            
-            if (props.isBranchJunction || props.isFlash || props.fill !== false) {
-                this.ctx.fillStyle = fillColor;
-                this.ctx.fill();
-            }
-            
-            if (props.stroke) {
-                this.ctx.lineWidth = props.strokeWidth || 0.1;
-                this.ctx.strokeStyle = strokeColor;
-                this.ctx.stroke();
-            }
-        }
-        
-        renderRectangleNormal(primitive, props, fillColor, strokeColor) {
-            if (props.fill !== false) {
-                this.ctx.fillStyle = fillColor;
-                this.ctx.fillRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
-            }
-            
-            if (props.stroke) {
-                this.ctx.lineWidth = props.strokeWidth || 0.1;
-                this.ctx.strokeStyle = strokeColor;
-                this.ctx.strokeRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
-            }
-        }
-        
-        renderObroundNormal(primitive, props, fillColor, strokeColor) {
-            const x = primitive.position.x;
-            const y = primitive.position.y;
-            const w = primitive.width;
-            const h = primitive.height;
-            const r = Math.min(w, h) / 2;
-            
-            this.ctx.beginPath();
-            
-            if (w > h) {
-                this.ctx.moveTo(x + r, y);
-                this.ctx.lineTo(x + w - r, y);
-                this.ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
-                this.ctx.lineTo(x + r, y + h);
-                this.ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2);
-            } else {
-                this.ctx.moveTo(x + w, y + r);
-                this.ctx.lineTo(x + w, y + h - r);
-                this.ctx.arc(x + r, y + h - r, r, 0, Math.PI);
-                this.ctx.lineTo(x, y + r);
-                this.ctx.arc(x + r, y + r, r, Math.PI, 0);
-            }
-            
-            this.ctx.closePath();
-            
-            if (props.fill !== false) {
-                this.ctx.fillStyle = fillColor;
-                this.ctx.fill();
-            }
-            
-            if (props.stroke) {
-                this.ctx.lineWidth = props.strokeWidth || 0.1;
-                this.ctx.strokeStyle = strokeColor;
-                this.ctx.stroke();
-            }
-        }
-        
-        renderArcNormal(primitive, props, strokeColor) {
-            let radius, startAngle, endAngle;
-            
-            if (primitive.radius !== undefined) {
-                radius = primitive.radius;
-                startAngle = primitive.startAngle;
-                endAngle = primitive.endAngle;
-            } else if (primitive.startPoint && primitive.endPoint && primitive.center) {
-                radius = Math.sqrt(
-                    Math.pow(primitive.startPoint.x - primitive.center.x, 2) +
-                    Math.pow(primitive.startPoint.y - primitive.center.y, 2)
-                );
-                
-                startAngle = Math.atan2(
-                    primitive.startPoint.y - primitive.center.y,
-                    primitive.startPoint.x - primitive.center.x
-                );
-                endAngle = Math.atan2(
-                    primitive.endPoint.y - primitive.center.y,
-                    primitive.endPoint.x - primitive.center.x
-                );
-            } else {
-                console.warn('Arc primitive missing required properties');
-                return;
-            }
-            
-            this.ctx.beginPath();
-            this.ctx.arc(
-                primitive.center.x,
-                primitive.center.y,
-                radius,
-                startAngle,
-                endAngle,
-                primitive.clockwise
-            );
-            
-            this.ctx.lineWidth = props.strokeWidth || 0.1;
-            this.ctx.strokeStyle = strokeColor;
-            this.ctx.stroke();
-        }
-        
-        renderPrimitiveWireframe(primitive) {
-            switch (primitive.type) {
-                case 'path':
-                    this.renderPathWireframe(primitive);
-                    break;
-                case 'circle':
-                    this.ctx.beginPath();
-                    this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
-                    this.ctx.stroke();
-                    break;
-                case 'rectangle':
-                    this.ctx.strokeRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
-                    break;
-                case 'obround':
-                    this.renderObroundWireframe(primitive);
-                    break;
-                case 'arc':
-                    this.renderArcWireframe(primitive);
-                    break;
-            }
-        }
-        
-        renderPathWireframe(primitive) {
-            if (primitive.points.length < 2) return;
-            
-            this.ctx.beginPath();
-            primitive.points.forEach((point, index) => {
-                if (point !== null) {
-                    if (index === 0) {
-                        this.ctx.moveTo(point.x, point.y);
-                    } else {
-                        this.ctx.lineTo(point.x, point.y);
-                    }
-                }
-            });
-            
-            if (primitive.closed) {
-                this.ctx.closePath();
-            }
-            
-            this.ctx.stroke();
-            
-            if (primitive.contours && primitive.contours.length > 0) {
-                const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
-                const colors = theme.debug || theme.canvas;
-                
-                this.ctx.save();
-                this.ctx.strokeStyle = colors.holeDebug || colors.bounds;
-                this.ctx.setLineDash([2 / this.core.viewScale, 2 / this.core.viewScale]);
-                
-                primitive.contours.forEach(hole => {
-                    this.ctx.beginPath();
-                    hole.forEach((point, index) => {
-                        if (index === 0) {
-                            this.ctx.moveTo(point.x, point.y);
-                        } else {
-                            this.ctx.lineTo(point.x, point.y);
-                        }
-                    });
-                    this.ctx.closePath();
-                    this.ctx.stroke();
-                });
-                
-                this.ctx.restore();
-            }
-        }
-        
-        renderObroundWireframe(primitive) {
-            const x = primitive.position.x;
-            const y = primitive.position.y;
-            const w = primitive.width;
-            const h = primitive.height;
-            const r = Math.min(w, h) / 2;
-            
-            this.ctx.beginPath();
-            
-            if (w > h) {
-                this.ctx.moveTo(x + r, y);
-                this.ctx.lineTo(x + w - r, y);
-                this.ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
-                this.ctx.lineTo(x + r, y + h);
-                this.ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2);
-            } else {
-                this.ctx.moveTo(x + w, y + r);
-                this.ctx.lineTo(x + w, y + h - r);
-                this.ctx.arc(x + r, y + h - r, r, 0, Math.PI);
-                this.ctx.lineTo(x, y + r);
-                this.ctx.arc(x + r, y + r, r, Math.PI, 0);
-            }
-            
-            this.ctx.closePath();
-            this.ctx.stroke();
-        }
-        
-        renderArcWireframe(primitive) {
-            let radius = primitive.radius;
-            let startAngle = primitive.startAngle;
-            let endAngle = primitive.endAngle;
-            
-            if (radius === undefined && primitive.start && primitive.center) {
-                radius = Math.sqrt(
-                    Math.pow(primitive.start.x - primitive.center.x, 2) +
-                    Math.pow(primitive.start.y - primitive.center.y, 2)
-                );
-                
-                startAngle = Math.atan2(
-                    primitive.start.y - primitive.center.y,
-                    primitive.start.x - primitive.center.x
-                );
-                endAngle = Math.atan2(
-                    primitive.end.y - primitive.center.y,
-                    primitive.end.x - primitive.center.x
-                );
-            }
-            
-            this.ctx.beginPath();
-            this.ctx.arc(
-                primitive.center.x,
-                primitive.center.y,
-                radius,
-                startAngle,
-                endAngle,
-                primitive.clockwise
-            );
-            this.ctx.stroke();
-        }
-        
-        renderHoleDebug(primitive) {
-            if (!primitive.contours || primitive.contours.length === 0) return;
-            
-            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
-            const colors = theme.debug || theme.canvas;
-            
-            this.ctx.save();
-            this.ctx.strokeStyle = colors.holeDebug;
-            this.ctx.lineWidth = 2 / this.core.viewScale;
-            this.ctx.setLineDash([4 / this.core.viewScale, 4 / this.core.viewScale]);
-            
-            primitive.contours.forEach(hole => {
-                this.ctx.beginPath();
-                
-                for (let i = 0; i < hole.length; i++) {
-                    const point = hole[i];
-                    const nextPoint = hole[(i + 1) % hole.length];
-                    
-                    if (i === 0) {
-                        this.ctx.moveTo(point.x, point.y);
-                    }
-                    this.ctx.lineTo(nextPoint.x, nextPoint.y);
-                    
-                    if (i % Math.ceil(hole.length / 4) === 0) {
-                        const midX = (point.x + nextPoint.x) / 2;
-                        const midY = (point.y + nextPoint.y) / 2;
-                        const angle = Math.atan2(nextPoint.y - point.y, nextPoint.x - point.x);
-                        
-                        const arrowSize = 5 / this.core.viewScale;
-                        
-                        this.ctx.save();
-                        this.ctx.translate(midX, midY);
-                        this.ctx.rotate(angle);
-                        
-                        this.ctx.moveTo(0, 0);
-                        this.ctx.lineTo(-arrowSize, -arrowSize/2);
-                        this.ctx.moveTo(0, 0);
-                        this.ctx.lineTo(-arrowSize, arrowSize/2);
-                        
-                        this.ctx.restore();
-                    }
-                }
-                
-                this.ctx.closePath();
-                this.ctx.stroke();
-            });
-            
-            this.ctx.restore();
-        }
-        
-        highlightPotentialIssues(primitive) {
-            if (!primitive.points || primitive.points.length < 3) return;
-            
-            this.ctx.save();
-            
-            let lastCurveId = null;
-            let gapStart = null;
-            const gaps = [];
-            
-            primitive.points.forEach((p, index) => {
-                const curveId = p.curveId > 0 ? p.curveId : null;
-                
-                if (lastCurveId !== null && curveId !== lastCurveId) {
-                    if (gapStart !== null && curveId === gapStart.curveId) {
-                        gaps.push({
-                            startIndex: gapStart.index,
-                            endIndex: index,
-                            curveId: curveId
-                        });
-                    }
-                    gapStart = { index, curveId: lastCurveId };
-                }
-                lastCurveId = curveId;
-            });
-            
-            this.ctx.strokeStyle = '#FF0000';
-            this.ctx.lineWidth = 2;
-            this.ctx.setLineDash([5, 5]);
-            
-            gaps.forEach(gap => {
-                const startPoint = primitive.points[gap.startIndex];
-                const endPoint = primitive.points[gap.endIndex];
-                
-                const startX = this.core.worldToCanvasX(startPoint.x);
-                const startY = this.core.worldToCanvasY(startPoint.y);
-                const endX = this.core.worldToCanvasX(endPoint.x);
-                const endY = this.core.worldToCanvasY(endPoint.y);
-                
-                this.ctx.beginPath();
-                this.ctx.moveTo(startX, startY);
-                this.ctx.lineTo(endX, endY);
-                this.ctx.stroke();
-                
-                this.ctx.fillStyle = '#FF0000';
-                this.ctx.font = '16px sans-serif';
-                const midX = (startX + endX) / 2;
-                const midY = (startY + endY) / 2;
-                this.ctx.fillText('⚠', midX - 8, midY + 5);
-            });
-            
-            this.ctx.restore();
+        getCurveDebugColor(curveId) {
+            const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
+            return colors[curveId % colors.length];
         }
     }
     
     window.PrimitiveRenderer = PrimitiveRenderer;
-    
 })();
