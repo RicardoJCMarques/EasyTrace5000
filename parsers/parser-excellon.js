@@ -269,24 +269,70 @@
                 this.errors.push(`Line ${lineNumber}: No tool selected`);
                 return;
             }
-            
-            const coordinates = this.parseCoordinates(line, lineNumber);
-            if (!coordinates) {
-                return;
-            }
-            
+        
             const tool = this.tools.get(this.currentTool);
+        
+            // Use a more robust check for slots that is not dependent on coordinate order.
+            if (line.includes('G85')) {
+                // This is a G85 slot command.
+                const slotMatch = line.match(/X([+-]?\d+\.?\d*)\s*Y([+-]?\d+\.?\d*)\s*G85\s*X([+-]?\d+\.?\d*)\s*Y([+-]?\d+\.?\d*)/);
+        
+                if (slotMatch) {
+                    try {
+                        const startCoords = {
+                            x: this.parseCoordinateValue(slotMatch[1], this.options.format, this.options.units),
+                            y: this.parseCoordinateValue(slotMatch[2], this.options.format, this.options.units)
+                        };
+                        const endCoords = {
+                            x: this.parseCoordinateValue(slotMatch[3], this.options.format, this.options.units),
+                            y: this.parseCoordinateValue(slotMatch[4], this.options.format, this.options.units)
+                        };
             
-            this.drillData.holes.push({
-                type: 'hole',
-                position: coordinates,
-                tool: this.currentTool,
-                diameter: tool.diameter,
-                plated: true
-            });
+                        if (!this.validateCoordinates(startCoords, lineNumber) || !this.validateCoordinates(endCoords, lineNumber)) {
+                            return;
+                        }
             
-            this.stats.objectsCreated++;
+                        this.updateCoordinateRange(startCoords);
+                        this.updateCoordinateRange(endCoords);
+            
+                        this.drillData.holes.push({
+                            type: 'slot',
+                            start: startCoords,
+                            end: endCoords,
+                            tool: this.currentTool,
+                            diameter: tool.diameter,
+                            plated: true
+                        });
+            
+                        this.stats.objectsCreated++;
+                        this.stats.coordinatesParsed += 4;
+            
+                    } catch (error) {
+                        this.errors.push(`Line ${lineNumber}: Error parsing slot coordinates - ${error.message}`);
+                    }
+                } else {
+                    this.errors.push(`Line ${lineNumber}: Malformed G85 slot command: "${line}"`);
+                }
+            } else {
+                // This is a standard drill hit (KiCad format).
+                const coordinates = this.parseCoordinates(line, lineNumber);
+                if (!coordinates) {
+                    // parseCoordinates will have already pushed an error if necessary.
+                    return;
+                }
+        
+                this.drillData.holes.push({
+                    type: 'hole',
+                    position: coordinates,
+                    tool: this.currentTool,
+                    diameter: tool.diameter,
+                    plated: true
+                });
+        
+                this.stats.objectsCreated++;
+            }
         }
+
         
         parseCoordinates(line, lineNumber) {
             const xMatch = line.match(/X([+-]?\d+\.?\d*)/);
@@ -340,20 +386,45 @@
         }
         
         calculateDrillBounds() {
-            if (this.drillData.holes.length === 0) return;
-            
+            if (this.drillData.holes.length === 0) {
+                this.drillData.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+                return;
+            }
+        
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
-            
-            this.drillData.holes.forEach(hole => {
-                const r = hole.diameter / 2;
-                minX = Math.min(minX, hole.position.x - r);
-                minY = Math.min(minY, hole.position.y - r);
-                maxX = Math.max(maxX, hole.position.x + r);
-                maxY = Math.max(maxY, hole.position.y + r);
+        
+            this.drillData.holes.forEach(item => {
+                const radius = item.diameter / 2;
+        
+                switch (item.type) {
+                    case 'hole':
+                        // Handle standard circular holes which have a 'position' property
+                        if (item.position) {
+                            minX = Math.min(minX, item.position.x - radius);
+                            minY = Math.min(minY, item.position.y - radius);
+                            maxX = Math.max(maxX, item.position.x + radius);
+                            maxY = Math.max(maxY, item.position.y + radius);
+                        }
+                        break;
+        
+                    case 'slot':
+                        // Handle slots which have 'start' and 'end' properties
+                        if (item.start && item.end) {
+                            minX = Math.min(minX, item.start.x - radius, item.end.x - radius);
+                            minY = Math.min(minY, item.start.y - radius, item.end.y - radius);
+                            maxX = Math.max(maxX, item.start.x + radius, item.end.x + radius);
+                            maxY = Math.max(maxY, item.start.y + radius, item.end.y + radius);
+                        }
+                        break;
+                }
             });
             
-            this.drillData.bounds = { minX, minY, maxX, maxY };
+            if (!isFinite(minX)) {
+                this.drillData.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+            } else {
+                this.drillData.bounds = { minX, minY, maxX, maxY };
+            }
         }
         
         validateCoordinateConsistency() {

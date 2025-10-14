@@ -62,18 +62,24 @@
             }
             
             // PRIORITY 3: Check for drill holes
-            if (primitive.properties?.isDrillHole || context.layer?.type === 'drill') {
+            if (primitive.properties?.isDrillHole && context.layer?.type === 'drill') {
                 this.renderDrillHole(primitive, fillColor, strokeColor);
                 return;
             }
+
+            // PRIORITY 4: Check for drill slots
+            if (primitive.properties?.isDrillSlot && context.layer?.type === 'drill') {
+                this.renderDrillSlot(primitive, fillColor, strokeColor);
+                return;
+            }
             
-            // PRIORITY 4: Check for reconstructed arcs/circles
+            // PRIORITY 5: Check for reconstructed arcs/circles
             if (primitive.properties?.reconstructed) {
                 this.renderReconstructedPrimitive(primitive, fillColor, strokeColor);
                 return;
             }
             
-            // PRIORITY 5: Check wireframe mode
+            // PRIORITY 6: Check wireframe mode
             if (this.core.options.showWireframe) {
                 this.renderWireframe(primitive);
                 return;
@@ -329,6 +335,58 @@
             this.ctx.lineTo(center.x, center.y + markSize);
             this.ctx.stroke();
         }
+
+        renderDrillSlot(primitive, fillColor, strokeColor) {
+            // This function now handles its own drawing instead of calling renderObround,
+            // ensuring the center marks are not obscured by a fill.
+            const props = primitive.properties || {};
+            const stroke = strokeColor || fillColor;
+
+            // 1. Stroke the main obround body outline
+            this.ctx.strokeStyle = stroke;
+            this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
+            
+            const x = primitive.position.x;
+            const y = primitive.position.y;
+            const w = primitive.width;
+            const h = primitive.height;
+            const r = Math.min(w, h) / 2;
+            
+            this.ctx.beginPath();
+            if (w > h) { // Horizontal
+                this.ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2, false);
+                this.ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2, false);
+            } else { // Vertical
+                this.ctx.arc(x + r, y + r, r, Math.PI, 0, false);
+                this.ctx.arc(x + r, y + h - r, r, 0, Math.PI, false);
+            }
+            this.ctx.closePath();
+            this.ctx.stroke();
+
+            // 2. Draw drill-specific crosshair markings on the end-caps.
+            const originalSlot = props.originalSlot;
+            if (originalSlot) {
+                // Use the same stroke style and width for the marks
+                const markSize = Math.min(0.2, (props.diameter || 0.4) * 0.4);
+
+                // Crosshair at the start point
+                this.ctx.beginPath();
+                this.ctx.moveTo(originalSlot.start.x - markSize, originalSlot.start.y);
+                this.ctx.lineTo(originalSlot.start.x + markSize, originalSlot.start.y);
+                this.ctx.moveTo(originalSlot.start.x, originalSlot.start.y - markSize);
+                this.ctx.lineTo(originalSlot.start.x, originalSlot.start.y + markSize);
+                this.ctx.stroke();
+
+                // Crosshair at the end point
+                this.ctx.beginPath();
+                this.ctx.moveTo(originalSlot.end.x - markSize, originalSlot.end.y);
+                this.ctx.lineTo(originalSlot.end.x + markSize, originalSlot.end.y);
+                this.ctx.moveTo(originalSlot.end.x, originalSlot.end.y - markSize);
+                this.ctx.lineTo(originalSlot.end.x, originalSlot.end.y + markSize);
+                this.ctx.stroke();
+            }
+        }
+
         
         renderReconstructedPrimitive(primitive, fillColor, strokeColor) {
             // Reconstructed primitives get a special highlight color

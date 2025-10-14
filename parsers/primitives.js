@@ -426,8 +426,9 @@
                     }
                 };
                 
-                // Register as a single circle with direction
-                if (window.globalCurveRegistry) {
+                // Register as a single circle with direction, UNLESS it's a drill feature.
+                // Drill features do not need curve registration for offsets.
+                if (!properties.isDrillSlot && window.globalCurveRegistry) {
                     this.curveId = window.globalCurveRegistry.register({
                         type: 'circle',
                         center: this.geometricContext.metadata.center,
@@ -448,8 +449,10 @@
                     cornerRadius: Math.min(width, height) / 2
                 };
                 
-                // Register the semicircles as curves
-                this.registerSemicircles();
+                // Register the semicircles as curves, UNLESS it's a drill feature.
+                if (!properties.isDrillSlot) {
+                    this.registerSemicircles();
+                }
             }
         }
         

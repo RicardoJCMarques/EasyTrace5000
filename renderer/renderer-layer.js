@@ -277,6 +277,16 @@
                     this.core.renderStats.drawCalls++;
                     return;
                 }
+
+                // Drill Slots also need special rendering
+                if (primitive.properties?.isDrillSlot) {
+                    flushFlashBatch();
+                    this.ctx.save();
+                    this.primitiveRenderer.renderDrillSlot(primitive, fillColor, strokeColor);
+                    this.ctx.restore();
+                    this.core.renderStats.drawCalls++;
+                    return;
+                }
                 
                 // Paths can't be batched (winding complexity)
                 if (primitive.type === 'path') {
