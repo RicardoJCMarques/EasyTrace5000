@@ -500,11 +500,11 @@
         
         processCutoutPrimitives(primitives) {
             if (!primitives || primitives.length === 0) return primitives;
-            
+
             // Separate traces from other primitives
             const traces = [];
             const others = [];
-            
+
             primitives.forEach(p => {
                 if (p.type === 'path' && p.points && p.points.length === 2) {
                     traces.push(p);
@@ -512,7 +512,7 @@
                     others.push(p);
                 }
             });
-            
+
             // If we have multiple traces, try to merge them into a closed path
             if (traces.length > 1) {
                 const merged = this.mergeTracesIntoClosedPath(traces);
@@ -524,7 +524,10 @@
                     return [merged, ...others];
                 }
             }
-            
+
+            // FIX: If no merging happened, return the original primitives.
+            // This handles cases where the parser already provided a single, complete shape.
+            return primitives;
         }
 
         mergeTracesIntoClosedPath(traces) {

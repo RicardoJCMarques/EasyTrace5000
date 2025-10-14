@@ -215,13 +215,13 @@
                 // Mill holes option
                 container.appendChild(this.createSection('Drilling Mode', [
                     this.createField('millHoles', 'checkbox', {
-                        checked: operation.settings.millHoles || false,
+                        checked: operation.settings.millHoles || true,
                         label: 'Mill Holes (for undersized tools)'
                     })
                 ]));
                 
                 // Show either direct drilling or milling params
-                const millHoles = operation.settings.millHoles || false;
+                const millHoles = operation.settings.millHoles || true;
                 
                 if (!millHoles) {
                     // Direct drilling parameters

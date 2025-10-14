@@ -91,6 +91,7 @@ window.PCBCAMConfig = {
                 chipBreaking: false
             },
             defaultSettings: {
+                millHoles: true,
                 cannedCycle: 'none',
                 peckDepth: 0,
                 dwellTime: 0,
@@ -365,6 +366,14 @@ window.PCBCAMConfig = {
             maxArc: 2048,
             obround: 128,
             adaptiveSegmentation: true
+        },
+
+        implicitRegionClosure: {
+            enabled: false,  // Default off
+            cutoutOnly: true, // Only apply to cutouts
+            requireUserConfirmation: true,
+            minSegments: 3,
+            maxGapTolerance: 0.001
         },
         
         simplifyTolerance: 0.01,

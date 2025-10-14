@@ -385,12 +385,6 @@
                          trace.interpolation === 'G3';
             
             if (isArc && trace.arc) {
-                // Determine clockwise from multiple sources
-                const clockwise = trace.interpolation === 'cw_arc' || 
-                                trace.interpolation === 'G02' ||
-                                trace.interpolation === 'G2' ||
-                                trace.clockwise === true;
-                
                 const center = {
                     x: trace.start.x + trace.arc.i,
                     y: trace.start.y + trace.arc.j
@@ -401,54 +395,25 @@
                     Math.pow(trace.start.y - center.y, 2)
                 );
                 
-                // Calculate angles
                 const startAngle = Math.atan2(trace.start.y - center.y, trace.start.x - center.x);
                 const endAngle = Math.atan2(trace.end.y - center.y, trace.end.x - center.x);
                 
-                // Register arc with explicit clockwise property
-                let arcId = null;
-                if (window.globalCurveRegistry) {
-                    arcId = window.globalCurveRegistry.register({
-                        type: 'arc',
-                        center: center,
-                        radius: radius,
-                        startAngle: startAngle,
-                        endAngle: endAngle,
-                        clockwise: clockwise,  // Use determined clockwise value
-                        source: 'trace_arc'
-                    });
-                }
+                const clockwise = trace.interpolation === 'cw_arc' || 
+                                trace.interpolation === 'G02' ||
+                                trace.clockwise === true;
                 
-                // Generate interpolated points
-                points = this.createArcPoints(trace.start, trace.end, center, clockwise);
+                // Create ArcPrimitive directly
+                const arcPrimitive = new ArcPrimitive(
+                    center, radius, startAngle, endAngle, clockwise, properties
+                );
                 
-                // Tag every point with curve metadata
-                if (arcId) {
-                    points.forEach((point, idx) => {
-                        point.curveId = arcId;
-                        point.segmentIndex = idx;
-                        point.totalSegments = points.length;
-                        point.t = idx / (points.length - 1);
-                    });
-                }
-                
-                // Record the arc segment for the primitive
-                arcSegments.push({
-                    startIndex: 0,
-                    endIndex: points.length - 1,
-                    center: center,
-                    radius: radius,
-                    startAngle: startAngle,
-                    endAngle: endAngle,
-                    clockwise: clockwise,
-                    curveId: arcId
-                });
-                
-                properties.arcSegments = arcSegments;
-                properties.hasArcs = true;
+                // Store as a segment for implicit region handling
+                arcPrimitive.isImplicitSegment = true;
+                arcPrimitive.segmentStart = trace.start;
+                arcPrimitive.segmentEnd = trace.end;
                 
                 this.creationStats.arcTraces++;
-                console.log(`ARC TRACE DETECTED: ${clockwise ? 'CW' : 'CCW'}, interpolation="${trace.interpolation}", curve ID: ${arcId}`);
+                return arcPrimitive;
             } else {
                 // Simple line
                 points = [trace.start, trace.end];
@@ -652,44 +617,6 @@
                 closed: true,
                 isPolygon: true
             });
-        }
-        
-        createArcPoints(start, end, center, clockwise) {
-            const radius = Math.sqrt(
-                Math.pow(start.x - center.x, 2) +
-                Math.pow(start.y - center.y, 2)
-            );
-            
-            const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
-            const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
-            
-            let angleSpan = endAngle - startAngle;
-            if (clockwise) {
-                if (angleSpan > 0) angleSpan -= 2 * Math.PI;
-            } else {
-                if (angleSpan < 0) angleSpan += 2 * Math.PI;
-            }
-            
-            // Generate arc points using config-based segmentation
-            const targetLength = segmentConfig.targetLength || 0.1;
-            const arcLength = Math.abs(angleSpan) * radius;
-            const desiredSegments = Math.ceil(arcLength / targetLength);
-            const minSegments = segmentConfig.minArc || 8;
-            const maxSegments = segmentConfig.maxArc || 64;
-            const segments = Math.max(minSegments, Math.min(maxSegments, desiredSegments));
-            
-            const angleStep = angleSpan / segments;
-            const points = [];
-            
-            for (let i = 0; i <= segments; i++) {
-                const angle = startAngle + angleStep * i;
-                points.push({
-                    x: center.x + radius * Math.cos(angle),
-                    y: center.y + radius * Math.sin(angle)
-                });
-            }
-            
-            return points;
         }
         
         calculateArea(points) {
