@@ -501,21 +501,98 @@
         processCutoutPrimitives(primitives) {
             if (!primitives || primitives.length === 0) return primitives;
             
-            return primitives.map(p => {
-                if (!p.properties) p.properties = {};
-                p.properties.isCutout = true;
+            // Separate traces from other primitives
+            const traces = [];
+            const others = [];
+            
+            primitives.forEach(p => {
+                if (p.type === 'path' && p.points && p.points.length === 2) {
+                    traces.push(p);
+                } else {
+                    others.push(p);
+                }
+            });
+            
+            // If we have multiple traces, try to merge them into a closed path
+            if (traces.length > 1) {
+                const merged = this.mergeTracesIntoClosedPath(traces);
+                if (merged) {
+                    merged.properties.isCutout = true;
+                    merged.properties.fill = true;
+                    merged.properties.stroke = false;
+                    merged.properties.closed = true;
+                    return [merged, ...others];
+                }
+            }
+            
+        }
+
+        mergeTracesIntoClosedPath(traces) {
+            if (!traces || traces.length < 2) return null;
+            
+            const precision = 0.001;
+            const points = [];
+            const used = new Set();
+            
+            // Start with first trace
+            let current = traces[0];
+            points.push({ x: current.points[0].x, y: current.points[0].y });
+            points.push({ x: current.points[1].x, y: current.points[1].y });
+            used.add(0);
+            
+            // Find connecting traces
+            while (used.size < traces.length) {
+                const lastPoint = points[points.length - 1];
+                let found = false;
                 
-                if (p.type === 'path') {
-                    p.properties.fill = false;
-                    p.properties.stroke = true;
-                    p.properties.strokeWidth = 0.1;
+                for (let i = 0; i < traces.length; i++) {
+                    if (used.has(i)) continue;
+                    
+                    const trace = traces[i];
+                    const start = trace.points[0];
+                    const end = trace.points[1];
+                    
+                    // Check if trace connects to last point
+                    if (Math.hypot(start.x - lastPoint.x, start.y - lastPoint.y) < precision) {
+                        points.push({ x: end.x, y: end.y });
+                        used.add(i);
+                        found = true;
+                        break;
+                    } else if (Math.hypot(end.x - lastPoint.x, end.y - lastPoint.y) < precision) {
+                        points.push({ x: start.x, y: start.y });
+                        used.add(i);
+                        found = true;
+                        break;
+                    }
                 }
                 
-                if (p.geometricContext && p.geometricContext.containsArcs) {
-                    p.properties.preserveArcs = true;
-                }
-                
-                return p;
+                if (!found) break; // Can't find connecting trace
+            }
+            
+            // Verify closed path
+            const first = points[0];
+            const last = points[points.length - 1];
+            const isClosed = Math.hypot(first.x - last.x, first.y - last.y) < precision;
+            
+            if (!isClosed || points.length < 3) {
+                console.warn('[Core] Failed to merge traces into closed path');
+                return null;
+            }
+            
+            // Remove any duplicate final point first
+            if (points.length > 1 && 
+                Math.hypot(last.x - points[0].x, last.y - points[0].y) < precision) {
+                points.pop();
+            }
+            // Explicitly close
+            points.push({ ...points[0] });
+            
+            return new PathPrimitive(points, {
+                isCutout: true,
+                fill: true,
+                stroke: false,
+                closed: true,
+                mergedFromTraces: traces.length
             });
         }
         

@@ -147,9 +147,11 @@ class GeometryOffsetter {
         
         const miterLimit = options.miterLimit || 2.0;
 
-        const isStroke = (props.stroke && !props.fill) || props.isTrace;
-        const isClosed = props.fill || (!props.stroke && path.closed);
-        
+        // Force cutouts into polygon offsetting regardless of fill/stroke
+        const isCutout = props.isCutout || props.layerType === 'cutout';
+        const isStroke = !isCutout && ((props.stroke && !props.fill) || props.isTrace);
+        const isClosed = props.fill || (!props.stroke && path.closed) || isCutout;
+
         if (isStroke) {
             const originalWidth = props.strokeWidth || 0;
             const totalWidth = originalWidth + Math.abs(distance * 2);

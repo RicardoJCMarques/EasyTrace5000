@@ -651,14 +651,22 @@
                 // Color based on offset TYPE, not operation type
                 const passColors = {
                     'external': ['#a60000ff'],  // Red for external (isolation)
-                    'internal': ['#00a600ff']   // Green for internal (clear)
+                    'internal': ['#00a600ff'],   // Green for internal (clear)
+                    'on': ['#bcbc02ff']   // Yellow for on (clear)
                 };
                 
                 if (operation.offsets && operation.offsets.length > 0) {
                     operation.offsets.forEach((offset, passIndex) => {
                         if (offset.primitives && offset.primitives.length > 0) {
                             // Use offset.offsetType instead of operation.type
-                            const offsetType = offset.distance > 0 ? 'external' : 'internal';
+                            let offsetType;
+                            if (offset.distance > 0) {
+                            offsetType = 'external';
+                            } else if (offset.distance < 0) {
+                            offsetType = 'internal';
+                            } else {
+                            offsetType = 'on';
+                            }
                             const colorArray = passColors[offsetType] || ['#888888ff'];
                             const colorIndex = Math.min(passIndex, colorArray.length - 1);
                             const color = colorArray[colorIndex];

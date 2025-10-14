@@ -91,7 +91,7 @@ window.PCBCAMConfig = {
                 chipBreaking: false
             },
             defaultSettings: {
-                cannedCycle: 'none', // Changed from 'G83' to 'none'
+                cannedCycle: 'none',
                 peckDepth: 0,
                 dwellTime: 0,
                 retractHeight: 0.5,
@@ -138,7 +138,7 @@ window.PCBCAMConfig = {
         cutout: {
             name: 'Board Cutout',
             icon: '✂️',
-            color: '#ff00ff',
+            color: '#333333ff', // Actual polygon fill color
             extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill', '.svg'],
             defaultTool: 'em_1.0mm_flat',
             tool: {
@@ -236,7 +236,7 @@ window.PCBCAMConfig = {
                     clear: '#44ff88',
                     clear: '#44ff88',
                     drill: '#4488ff',
-                    cutout: '#ff00ff',
+                    cutout: '#3f3f3fff',
                     copper: '#ff8844',
                     fused: '#00ff00',
                     toolpath: '#00ffff',
@@ -265,7 +265,7 @@ window.PCBCAMConfig = {
                     clear: '#008844',
                     clear: '#008844',
                     drill: '#0066cc',
-                    cutout: '#cc00cc',
+                    cutout: '#a8a8a8ff',
                     copper: '#cc6600',
                     fused: '#00aa00',
                     toolpath: '#0099cc',

@@ -743,5 +743,38 @@
 
         document.addEventListener('DOMContentLoaded', initializeApp);
     </script>
+    <!--<script>
+        // Dynamically load renderer based on preference
+        (function() {
+            const rendererType = localStorage.getItem('pcbcam-renderer') || 'canvas2d';
+            const scripts = [];
+            
+            if (rendererType === 'webgl' && typeof WebGL2RenderingContext !== 'undefined') {
+                scripts.push(
+                    'renderer/webgl-renderer-core.js',
+                    'renderer/webgl-tessellator.js',
+                    'renderer/webgl-layer-renderer.js',
+                    'renderer/webgl-overlay-renderer.js',
+                    'renderer/renderer-interaction.js' // Shared
+                );
+            } else {
+                scripts.push(
+                    'renderer/renderer-core.js',
+                    'renderer/renderer-primitives.js',
+                    'renderer/renderer-overlay.js',
+                    'renderer/renderer-interaction.js',
+                    'renderer/renderer-layer.js'
+                );
+            }
+            
+            // Load scripts sequentially
+            scripts.forEach(src => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.async = false;
+                document.head.appendChild(script);
+            });
+        })();
+    </script>-->
 </body>
 </html>

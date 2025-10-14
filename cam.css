@@ -1537,6 +1537,43 @@ body {
     color: var(--text-secondary);
 }
 
+.renderer-selection {
+    margin-bottom: var(--spacing-xl);
+    padding: var(--spacing-lg);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius);
+}
+
+.renderer-selection h3 {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.renderer-select {
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.renderer-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.renderer-description {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.4;
+}
+
 /* ============================================================================
    LOADING OVERLAY
    ============================================================================ */

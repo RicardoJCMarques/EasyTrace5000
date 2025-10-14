@@ -527,15 +527,15 @@
             
             const colors = theme.layers || {};
             switch (layer.type) {
-                case 'isolation': return colors.isolation || '#ff8844';
-                case 'clear': return colors.clear || '#44ff88';
-                case 'drill': return colors.drill || '#4488ff';
-                case 'cutout': return colors.cutout || '#ff00ff';
+                case 'isolation': return colors.isolation;
+                case 'clear': return colors.clear;
+                case 'drill': return colors.drill;
+                case 'cutout': return colors.cutout;
                 case 'offset': return '#ff0000';
                 case 'preview': return '#00ffff';
-                case 'toolpath': return colors.toolpath || '#00ffff';
-                case 'fused': return colors.fused || '#00ff00';
-                default: return colors.copper || '#ff8844';
+                case 'toolpath': return colors.toolpath;
+                case 'fused': return colors.fused;
+                default: return colors.copper;
             }
         }
         

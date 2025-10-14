@@ -210,8 +210,12 @@
                 }
             });
             
-            // Render in proper order
-            sourceLayers.forEach(({ layer }) => this.renderLayer(layer));
+            // Render cutouts first (bottom), then others, then offsets (top)
+            const cutoutLayers = sourceLayers.filter(({ layer }) => layer.type === 'cutout');
+            const nonCutoutLayers = sourceLayers.filter(({ layer }) => layer.type !== 'cutout');
+
+            cutoutLayers.forEach(({ layer }) => this.renderLayer(layer));
+            nonCutoutLayers.forEach(({ layer }) => this.renderLayer(layer));
             fusedLayers.forEach(({ layer }) => this.renderLayer(layer));
             offsetLayers.forEach(({ layer }) => this.renderOffsetLayer(layer));
             previewLayers.forEach(({ layer }) => this.renderPreviewLayer(layer));
