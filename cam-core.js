@@ -499,103 +499,138 @@
         }
         
         processCutoutPrimitives(primitives) {
-            if (!primitives || primitives.length === 0) return primitives;
-
-            // Separate traces from other primitives
-            const traces = [];
-            const others = [];
-
-            primitives.forEach(p => {
-                if (p.type === 'path' && p.points && p.points.length === 2) {
-                    traces.push(p);
-                } else {
-                    others.push(p);
-                }
-            });
-
-            // If we have multiple traces, try to merge them into a closed path
-            if (traces.length > 1) {
-                const merged = this.mergeTracesIntoClosedPath(traces);
-                if (merged) {
-                    merged.properties.isCutout = true;
-                    merged.properties.fill = true;
-                    merged.properties.stroke = false;
-                    merged.properties.closed = true;
-                    return [merged, ...others];
-                }
+            if (!primitives || primitives.length < 2) {
+                return primitives;
             }
 
-            // FIX: If no merging happened, return the original primitives.
-            // This handles cases where the parser already provided a single, complete shape.
+            // This function acts as the entry point for the new merging logic.
+            // It attempts to stitch lines and arcs into a closed path.
+            const mergedPath = this.mergeSegmentsIntoClosedPath(primitives);
+
+            if (mergedPath) {
+                if (debugConfig.enabled) {
+                    console.log(`[Core] Implicit region closure successful. Replaced ${primitives.length} segments with 1 closed path.`);
+                }
+                // Important: We return an array containing the SINGLE new primitive.
+                return [mergedPath];
+            }
+
+            if (debugConfig.enabled) {
+                console.warn('[Core] Implicit region closure failed. Outline may have gaps. Rendering individual segments.');
+            }
+            // If merging fails, return the original segments so the user can see the issue.
             return primitives;
         }
 
-        mergeTracesIntoClosedPath(traces) {
-            if (!traces || traces.length < 2) return null;
-            
-            const precision = 0.001;
-            const points = [];
-            const used = new Set();
-            
-            // Start with first trace
-            let current = traces[0];
-            points.push({ x: current.points[0].x, y: current.points[0].y });
-            points.push({ x: current.points[1].x, y: current.points[1].y });
-            used.add(0);
-            
-            // Find connecting traces
-            while (used.size < traces.length) {
-                const lastPoint = points[points.length - 1];
-                let found = false;
-                
-                for (let i = 0; i < traces.length; i++) {
-                    if (used.has(i)) continue;
-                    
-                    const trace = traces[i];
-                    const start = trace.points[0];
-                    const end = trace.points[1];
-                    
-                    // Check if trace connects to last point
-                    if (Math.hypot(start.x - lastPoint.x, start.y - lastPoint.y) < precision) {
-                        points.push({ x: end.x, y: end.y });
-                        used.add(i);
-                        found = true;
-                        break;
-                    } else if (Math.hypot(end.x - lastPoint.x, end.y - lastPoint.y) < precision) {
-                        points.push({ x: start.x, y: start.y });
-                        used.add(i);
-                        found = true;
-                        break;
-                    }
-                }
-                
-                if (!found) break; // Can't find connecting trace
+        mergeSegmentsIntoClosedPath(segments) {
+            if (!segments || segments.length < 2) {
+                return null;
             }
+
+            const precision = geomConfig.coordinatePrecision || 0.001;
+            const usedIndices = new Set();
+            const stitchedPoints = [];
+
+            // Helper to get start/end points from any primitive type
+            const getEndpoints = (prim) => {
+                if (prim.type === 'arc') {
+                    return { start: prim.startPoint, end: prim.endPoint };
+                }
+                if (prim.type === 'path' && prim.points.length >= 2) {
+                    return { start: prim.points[0], end: prim.points[prim.points.length - 1] };
+                }
+                return null;
+            };
+
+            // Helper to get polygonized points from a primitive
+            const getPoints = (prim) => {
+                if (prim.type === 'arc') {
+                    // Polygonize the arc to get its points
+                    return prim.toPolygon().points;
+                }
+                return prim.points;
+            };
             
-            // Verify closed path
-            const first = points[0];
-            const last = points[points.length - 1];
-            const isClosed = Math.hypot(first.x - last.x, first.y - last.y) < precision;
-            
-            if (!isClosed || points.length < 3) {
-                console.warn('[Core] Failed to merge traces into closed path');
+            // Start with the first segment
+            let currentSegment = segments[0];
+            stitchedPoints.push(...getPoints(currentSegment));
+            usedIndices.add(0);
+
+            // Loop until we can't connect any more segments
+            let connectionsMade;
+            do {
+                connectionsMade = false;
+                const lastPoint = stitchedPoints[stitchedPoints.length - 1];
+
+                for (let i = 0; i < segments.length; i++) {
+                    if (usedIndices.has(i)) {
+                        continue;
+                    }
+
+                    const nextSegment = segments[i];
+                    const endpoints = getEndpoints(nextSegment);
+                    if (!endpoints) continue;
+
+                    let segmentToAdd = nextSegment;
+                    let reversed = false;
+
+                    // Check for connection: current_end -> next_start
+                    if (Math.hypot(endpoints.start.x - lastPoint.x, endpoints.start.y - lastPoint.y) < precision) {
+                        // Correct direction, do nothing
+                    }
+                    // Check for connection: current_end -> next_end (requires reversal)
+                    else if (Math.hypot(endpoints.end.x - lastPoint.x, endpoints.end.y - lastPoint.y) < precision) {
+                        reversed = true;
+                        if (nextSegment.type === 'arc') {
+                            segmentToAdd = nextSegment.reverse();
+                        }
+                    }
+                    // No connection found with this segment
+                    else {
+                        continue;
+                    }
+
+                    let pointsToAdd = getPoints(segmentToAdd);
+                    if (reversed && segmentToAdd.type === 'path') {
+                        pointsToAdd = [...pointsToAdd].reverse();
+                    }
+
+                    // Append points (excluding the first point, which is a duplicate of the last)
+                    stitchedPoints.push(...pointsToAdd.slice(1));
+                    usedIndices.add(i);
+                    connectionsMade = true;
+                    break; // Restart search from the beginning
+                }
+            } while (connectionsMade && usedIndices.size < segments.length);
+
+            // After looping, check if we used all segments and if the path is closed
+            if (usedIndices.size !== segments.length) {
+                console.warn(`[Core] Failed to merge all segments. Only used ${usedIndices.size}/${segments.length}. The outline is likely open or has multiple separate contours.`);
+                return null;
+            }
+
+            const firstPoint = stitchedPoints[0];
+            const finalPoint = stitchedPoints[stitchedPoints.length - 1];
+            const isClosed = Math.hypot(firstPoint.x - finalPoint.x, firstPoint.y - finalPoint.y) < precision;
+
+            if (!isClosed) {
+                console.warn('[Core] Merged segments do not form a closed path.');
                 return null;
             }
             
-            // Remove any duplicate final point first
-            if (points.length > 1 && 
-                Math.hypot(last.x - points[0].x, last.y - points[0].y) < precision) {
-                points.pop();
+            // Clean up the final point if it's a duplicate of the first
+            if (isClosed) {
+                stitchedPoints.pop();
             }
-            // Explicitly close
-            points.push({ ...points[0] });
-            
-            return new PathPrimitive(points, {
+
+            // Success! Create a new, single PathPrimitive.
+            return new PathPrimitive(stitchedPoints, {
                 isCutout: true,
                 fill: true,
                 stroke: false,
                 closed: true,
-                mergedFromTraces: traces.length
+                mergedFromSegments: segments.length,
+                polarity: 'dark' // Cutouts are dark polarity geometry
             });
         }
         

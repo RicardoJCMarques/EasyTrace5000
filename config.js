@@ -369,11 +369,9 @@ window.PCBCAMConfig = {
         },
 
         implicitRegionClosure: {
-            enabled: false,  // Default off
-            cutoutOnly: true, // Only apply to cutouts
-            requireUserConfirmation: true,
-            minSegments: 3,
-            maxGapTolerance: 0.001
+            enabled: true,  // Enable by default
+            cutoutOnly: true, // Only apply to cutout operations
+            warnOnFailure: true // Log a warning if merging fails
         },
         
         simplifyTolerance: 0.01,

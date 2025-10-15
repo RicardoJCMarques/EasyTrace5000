@@ -376,47 +376,49 @@
             let arcSegments = [];
             
             // Broader arc detection - check multiple conditions
-            const isArc = trace.arc || 
-                         trace.interpolation === 'cw_arc' || 
-                         trace.interpolation === 'ccw_arc' ||
-                         trace.interpolation === 'G02' ||
-                         trace.interpolation === 'G03' ||
-                         trace.interpolation === 'G2' ||
-                         trace.interpolation === 'G3';
-            
-            if (isArc && trace.arc) {
-                const center = {
-                    x: trace.start.x + trace.arc.i,
-                    y: trace.start.y + trace.arc.j
-                };
-                
-                const radius = Math.sqrt(
-                    Math.pow(trace.start.x - center.x, 2) +
-                    Math.pow(trace.start.y - center.y, 2)
-                );
-                
-                const startAngle = Math.atan2(trace.start.y - center.y, trace.start.x - center.x);
-                const endAngle = Math.atan2(trace.end.y - center.y, trace.end.x - center.x);
-                
-                const clockwise = trace.interpolation === 'cw_arc' || 
-                                trace.interpolation === 'G02' ||
-                                trace.clockwise === true;
-                
-                // Create ArcPrimitive directly
-                const arcPrimitive = new ArcPrimitive(
-                    center, radius, startAngle, endAngle, clockwise, properties
-                );
-                
-                // Store as a segment for implicit region handling
-                arcPrimitive.isImplicitSegment = true;
-                arcPrimitive.segmentStart = trace.start;
-                arcPrimitive.segmentEnd = trace.end;
-                
-                this.creationStats.arcTraces++;
-                return arcPrimitive;
+            const isArc = (trace.arc && (trace.arc.i !== 0 || trace.arc.j !== 0)) ||
+                         trace.interpolation === 'cw_arc' || trace.interpolation === 'ccw_arc';
+
+            if (isArc) {
+                try {
+                    const center = {
+                        x: trace.start.x + trace.arc.i,
+                        y: trace.start.y + trace.arc.j
+                    };
+
+                    const radius = Math.hypot(trace.arc.i, trace.arc.j);
+
+                    // Check if radius is consistent for the end point as well.
+                    // Some exporters have floating point errors.
+                    const endRadius = Math.hypot(trace.end.x - center.x, trace.end.y - center.y);
+                    if (Math.abs(radius - endRadius) > (geomConfig.coordinatePrecision || 0.001) * 10) {
+                         console.warn(`[Plotter] Inconsistent arc radii detected. Start=${radius.toFixed(4)}, End=${endRadius.toFixed(4)}. Proceeding with start radius.`);
+                    }
+
+                    const startAngle = Math.atan2(trace.start.y - center.y, trace.start.x - center.x);
+                    const endAngle = Math.atan2(trace.end.y - center.y, trace.end.x - center.x);
+
+                    const clockwise = trace.interpolation === 'cw_arc' || trace.clockwise === true;
+
+                    this.creationStats.arcTraces++;
+                    
+                    // Return a proper ArcPrimitive, which is essential for the merging logic
+                    return new ArcPrimitive(
+                        center, radius, startAngle, endAngle, clockwise, properties
+                    );
+
+                } catch (error) {
+                    console.error('[Plotter] Failed to create ArcPrimitive from trace, falling back to line.', error, trace);
+                    // Fallback to creating a straight line if arc calculation fails
+                    return new PathPrimitive([trace.start, trace.end], properties);
+                }
+
             } else {
-                // Simple line
-                points = [trace.start, trace.end];
+                // Simple line segment
+                const primitive = new PathPrimitive([trace.start, trace.end], properties);
+                this.creationStats.tracesCreated++;
+                this.creationStats.traceLengths.push(length);
+                return primitive;
             }
             
             const primitive = new PathPrimitive(points, properties);

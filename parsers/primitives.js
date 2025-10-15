@@ -691,6 +691,27 @@
                 this.curveIds = [this.curveId];
             }
         }
+
+        /**
+         * Returns a new ArcPrimitive representing the same arc traversed in the opposite direction.
+         * @returns {ArcPrimitive} A new, reversed ArcPrimitive.
+         */
+        reverse() {
+            // To reverse an arc, we swap the start and end angles and flip the clockwise flag.
+            // The properties are carried over.
+            const reversedProperties = { ...this.properties };
+            // We can add a property to track that this happened, for debugging.
+            reversedProperties.isReversed = true;
+
+            return new ArcPrimitive(
+                this.center,
+                this.radius,
+                this.endAngle,      // Swap start and end
+                this.startAngle,
+                !this.clockwise,    // Flip direction
+                reversedProperties
+            );
+        }
         
         registerAsGlobalCurve() {
             if (!window.globalCurveRegistry) {
