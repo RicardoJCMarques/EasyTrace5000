@@ -122,12 +122,16 @@
                 this.boardBounds = { ...bounds };
                 
                 // Set rotation center to board center
-                this.rotationCenter = {
-                    x: bounds.centerX,
-                    y: bounds.centerY
-                };
-                
-                this.debug('Board bounds calculated:', this.boardBounds);
+
+                if (this.currentRotation === 0 || !this.initialized) {
+                    this.rotationCenter = {
+                        x: bounds.centerX,
+                        y: bounds.centerY
+                    };
+                    this.debug('Board bounds and rotation center calculated:', this.boardBounds);
+                } else {
+                    this.debug('Board bounds recalculated (rotation center preserved):', this.boardBounds);
+                }
                 
                 // Initialize origins if not already initialized
                 if (!this.initialized) {
@@ -372,9 +376,10 @@
         }
 
         getStatus() {
-            const boardSize = this.boardBounds ? {
-                width: this.boardBounds.width,
-                height: this.boardBounds.height
+            const rotatedBounds = this.getRotatedBoardBounds() || this.boardBounds;
+            const boardSize = rotatedBounds ? {
+                width: rotatedBounds.width,
+                height: rotatedBounds.height
             } : { width: 0, height: 0 };
             
             const currentPosition = { ...this.previewOrigin };

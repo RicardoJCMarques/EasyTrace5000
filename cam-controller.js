@@ -257,11 +257,11 @@
                 e.preventDefault();
             });
             
-            window.addEventListener('drop', (e) => {
+            window.addEventListener('drop', async (e) => {
                 e.preventDefault();
                 // Only handle if not over a specific drop zone
                 if (!e.target.closest('.file-drop-zone') && !e.target.closest('#file-drop-zone')) {
-                    this.handleGlobalFileDrop(e.dataTransfer.files);
+                    await this.handleGlobalFileDrop(e.dataTransfer.files);
                 }
             });
             
@@ -617,8 +617,8 @@
                 this.ui.treeManager.refreshTree();
             }
             
-            // Load all files in parallel
-            const filePromises = Object.entries(example.files).map(async ([type, filepath]) => {
+            // Load all files serially
+            for (const [type, filepath] of Object.entries(example.files)) {
                 try {
                     // Map 'clear' in examples to 'clearing' if that's what exists in config
                     let actualType = type;
@@ -643,16 +643,14 @@
                     const file = new File([content], fileName, { type: 'text/plain' });
                     
                     // Process the file with corrected type
-                    await this.processFile(file, actualType);
+                    await this.processFile(file, actualType); // <-- await
                     
                 } catch (e) {
                     console.error(`Failed to load example file ${filepath}:`, e);
                     this.ui?.updateStatus(`Failed to load ${filepath.split('/').pop()}`, 'error');
                     this.ui?.showOperationMessage?.(type, `Failed to load ${filepath.split('/').pop()}`, 'error');
                 }
-            });
-            
-            await Promise.all(filePromises);
+            }
             
             // Force coordinate system initialization after loading
             if (this.core?.coordinateSystem) {
@@ -797,37 +795,36 @@
             }
         }
         
-        handleGlobalFileDrop(files) {
+        async handleGlobalFileDrop(files) {
             if (!this.ui) return;
             
-            // Process files directly
+            // Process files serially to avoid race conditions
             for (let file of files) {
                 const ext = file.name.toLowerCase().split('.').pop();
                 const opType = this.getOperationTypeFromExtension(ext);
                 
                 if (opType) {
                     if (this.initState.fullyReady) {
-                        this.processFile(file, opType);
+                        await this.processFile(file, opType);
                     } else {
                         this.pendingOperations.push({ file, opType });
                     }
                 }
             }
             
+            // Auto-fit *after* all files are loaded
             if (this.pendingOperations.length === 0 && this.initState.fullyReady) {
                 // Ensure coordinate system updates
                 if (this.core?.coordinateSystem) {
                     this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
                 }
                 
-                // Force renderer update
+                // Force renderer update and zoom
                 if (this.ui?.updateRendererAsync) {
-                    setTimeout(() => {
-                        this.ui.updateRendererAsync();
-                        if (this.ui.renderer) {
-                            this.ui.renderer.zoomFit();
-                        }
-                    }, 100);
+                    await this.ui.updateRendererAsync();
+                    if (this.ui.renderer) {
+                        this.ui.renderer.zoomFit();
+                    }
                 }
             }
             

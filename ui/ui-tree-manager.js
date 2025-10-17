@@ -459,16 +459,38 @@
             const geoData = fileData.geometries.get(geometryId);
             if (!geoData) return;
             
-            if (geoData.type.startsWith('offset_')) {
-                const passIndex = parseInt(geoData.type.split('_')[1]);
+            let layerName;
+            
+            if (geoData.type === 'offsets_combined') {
+                // Handle combined offset
+                layerName = `offset_${fileData.operation.id}_combined`;
+                if (fileData.operation.offsets) {
+                    fileData.operation.offsets = []; // Clear all offsets
+                }
+                
+            } else if (geoData.type.startsWith('offset_')) {
+                // Handle individual offset pass
+                const passIndex = parseInt(geoData.type.split('_')[1]); // e.g., "offset_0" -> 0
+                const passNumber = passIndex + 1;
+                layerName = `offset_${fileData.operation.id}_pass_${passNumber}`;
+                
                 if (fileData.operation.offsets) {
                     fileData.operation.offsets.splice(passIndex, 1);
                 }
+            } else {
+                // Handle other types like 'preview'
+                layerName = `${geoData.type}_${fileData.operation.id}`;
+                
+                if (geoData.type === 'preview' && fileData.operation.preview) {
+                    fileData.operation.preview = null;
+                }
             }
-            
-            const layerName = `${geoData.type}_${fileData.operation.id}`;
-            if (this.ui.renderer.layers.has(layerName)) {
+
+            // Now delete the correctly named layer
+            if (layerName && this.ui.renderer.layers.has(layerName)) {
                 this.ui.renderer.layers.delete(layerName);
+            } else {
+                console.warn(`[TreeManager] Could not find layer to delete: ${layerName}`);
             }
             
             geoData.element.remove();

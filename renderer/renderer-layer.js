@@ -112,6 +112,17 @@
             this.overlayRenderer.renderScaleIndicator();
             if (this.options.showStats) { this.overlayRenderer.renderStats(); }
 
+            // --- START ROTATED OBJECT BLOCK ---
+            // Save the simple pan/zoom transform
+            this.ctx.save();
+            
+            // Apply object rotation if it exists
+            if (this.core.currentRotation !== 0 && this.core.rotationCenter) {
+                this.ctx.translate(this.core.rotationCenter.x, this.core.rotationCenter.y);
+                this.ctx.rotate((this.core.currentRotation * Math.PI) / 180);
+                this.ctx.translate(-this.core.rotationCenter.x, -this.core.rotationCenter.y);
+            }
+
             // Main geometry rendering logic
             if (this.options.showWireframe) {
                 this.layers.forEach(layer => {
@@ -121,12 +132,15 @@
                     }
                 });
             } else {
-                // This is the missing call to the normal rendering pipeline
+                // This renders all PCB layers *inside* the rotated transform
                 this.renderVisibleLayers();
             }
             
-            // CRITICAL: Reset the transform AFTER all world-space drawing is done,
-            // regardless of which rendering mode was used.
+            // Restore from the object rotation
+            this.ctx.restore();
+            // --- END ROTATED OBJECT BLOCK ---
+            
+            // Reset the transform AFTER all world-space drawing is done
             this.core.resetTransform();
 
             // Pre-transform debug primitives to screen space
@@ -210,15 +224,40 @@
                 }
             });
             
-            // Render cutouts first (bottom), then others, then offsets (top)
-            const cutoutLayers = sourceLayers.filter(({ layer }) => layer.type === 'cutout');
-            const nonCutoutLayers = sourceLayers.filter(({ layer }) => layer.type !== 'cutout');
+            // Separate source layers into cutouts, drills, and others
+            const cutoutLayers = [];
+            const drillLayers = [];
+            const otherSourceLayers = [];
+            
+            sourceLayers.forEach(({ name, layer }) => {
+                if (layer.type === 'cutout') {
+                    cutoutLayers.push({ name, layer });
+                } else if (layer.type === 'drill') {
+                    drillLayers.push({ name, layer });
+                } else {
+                    otherSourceLayers.push({ name, layer });
+                }
+            });
 
+            // 1. Render Cutouts (Bottom)
             cutoutLayers.forEach(({ layer }) => this.renderLayer(layer));
-            nonCutoutLayers.forEach(({ layer }) => this.renderLayer(layer));
+            
+            // 2. Render normal source geometry
+            otherSourceLayers.forEach(({ layer }) => this.renderLayer(layer));
+            
+            // 3. Render Fused (replaces normal source)
             fusedLayers.forEach(({ layer }) => this.renderLayer(layer));
+            
+            // 4. Render Drills (on top of copper)
+            drillLayers.forEach(({ layer }) => this.renderLayer(layer));
+            
+            // 5. Render Offsets
             offsetLayers.forEach(({ layer }) => this.renderOffsetLayer(layer));
+            
+            // 6. Render Previews
             previewLayers.forEach(({ layer }) => this.renderPreviewLayer(layer));
+            
+            // 7. Render Toolpaths (Top)
             toolpathLayers.forEach(({ layer }) => this.renderLayer(layer));
         }
         
@@ -238,6 +277,17 @@
         
         renderLayerPrimitives(layer, viewBounds, fillColor, strokeColor = null) {
             const vb = viewBounds || this.core.getViewBounds();
+            const isRotated = this.core.currentRotation !== 0;
+
+            // Get the layer's axis-aligned bounding box, accounting for rotation
+            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            
+            // If the layer's entire display bounds are outside the view, skip it.
+            if (!displayBounds || !this.core.boundsIntersect(displayBounds, vb)) {
+                this.core.renderStats.primitives += layer.primitives.length;
+                this.core.renderStats.skippedPrimitives += layer.primitives.length;
+                return;
+            }
             
             // Set common layer state ONCE
             this.ctx.fillStyle = fillColor;
@@ -257,8 +307,15 @@
                 this.core.renderStats.primitives++;
                 
                 const primBounds = primitive.getBounds();
-                if (!this.core.boundsIntersect(primBounds, vb) || 
-                    !this.core.shouldRenderPrimitive(primitive, layer.type)) {
+                
+                // We only trust per-primitive culling if NOT rotated, because the simple primBounds AABB is incorrect when rotated.
+                if (!isRotated && !this.core.boundsIntersect(primBounds, vb)) {
+                    this.core.renderStats.skippedPrimitives++;
+                    return;
+                }
+                
+                // LOD/Type check is always safe
+                if (!this.core.shouldRenderPrimitive(primitive, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
@@ -318,6 +375,15 @@
 
         renderOffsetLayer(layer) {
             const viewBounds = this.core.getViewBounds();
+            const isRotated = this.core.currentRotation !== 0;
+
+            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            if (!displayBounds || !this.core.boundsIntersect(displayBounds, viewBounds)) {
+                this.core.renderStats.primitives += layer.primitives.length;
+                this.core.renderStats.skippedPrimitives += layer.primitives.length;
+                return;
+            }
+
             const offsetColor = layer.color || '#ff0000';
             
             // Separate peck marks from normal geometry
@@ -328,7 +394,7 @@
                 this.core.renderStats.primitives++;
                 
                 const primBounds = primitive.getBounds();
-                if (!this.core.boundsIntersect(primBounds, viewBounds)) {
+                if (!isRotated && !this.core.boundsIntersect(primBounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
@@ -380,6 +446,14 @@
 
         renderPreviewLayer(layer) {
             const viewBounds = this.core.getViewBounds();
+            const isRotated = this.core.currentRotation !== 0;
+
+            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            if (!displayBounds || !this.core.boundsIntersect(displayBounds, viewBounds)) {
+                this.core.renderStats.primitives += layer.primitives.length;
+                this.core.renderStats.skippedPrimitives += layer.primitives.length;
+                return;
+            }
             
             // Drill operations get distinct color
             const isDrill = layer.operationType === 'drill' || layer.metadata?.isDrillPreview;
@@ -393,7 +467,7 @@
                 this.core.renderStats.primitives++;
                 
                 const primBounds = primitive.getBounds();
-                if (!this.core.boundsIntersect(primBounds, viewBounds)) {
+                if (!isRotated && !this.core.boundsIntersect(primBounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
@@ -494,6 +568,50 @@
             }
             
             return null;
+        }
+
+        _getRotatedLayerBounds(layer) {
+            const bounds = layer.bounds;
+            if (!bounds || this.core.currentRotation === 0) {
+                return bounds;
+            }
+
+            // Get the four corners of the layer's original bounds
+            const corners = [
+                { x: bounds.minX, y: bounds.minY },
+                { x: bounds.maxX, y: bounds.minY },
+                { x: bounds.maxX, y: bounds.maxY },
+                { x: bounds.minX, y: bounds.maxY }
+            ];
+
+            // Rotate each corner around the rotation center
+            const rotationCenter = this.core.rotationCenter || { x: 0, y: 0 };
+            const angle = (this.core.currentRotation * Math.PI) / 180;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            const rotatedCorners = corners.map(corner => {
+                const dx = corner.x - rotationCenter.x;
+                const dy = corner.y - rotationCenter.y;
+                
+                return {
+                    x: rotationCenter.x + (dx * cos - dy * sin),
+                    y: rotationCenter.y + (dx * sin + dy * cos)
+                };
+            });
+
+            // Find the new axis-aligned bounding box (aabb)
+            let minX = Infinity, minY = Infinity;
+            let maxX = -Infinity, maxY = -Infinity;
+
+            rotatedCorners.forEach(corner => {
+                minX = Math.min(minX, corner.x);
+                minY = Math.min(minY, corner.y);
+                maxX = Math.max(maxX, corner.x);
+                maxY = Math.max(maxY, corner.y);
+            });
+
+            return { minX, minY, maxX, maxY };
         }
         
         shouldCollectDebugPoints(primitive) {

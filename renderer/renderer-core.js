@@ -223,12 +223,6 @@
             this.ctx.translate(this.viewOffset.x, this.viewOffset.y);
             this.ctx.scale(this.viewScale, -this.viewScale);
             
-            if (this.currentRotation !== 0) {
-                this.ctx.translate(this.rotationCenter.x, this.rotationCenter.y);
-                this.ctx.rotate((this.currentRotation * Math.PI) / 180);
-                this.ctx.translate(-this.rotationCenter.x, -this.rotationCenter.y);
-            }
-            
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
         }

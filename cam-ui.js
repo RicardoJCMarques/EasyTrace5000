@@ -250,10 +250,6 @@
                 toolbarExportSvgBtn.addEventListener('click', () => this.exportSVG());
             }
             
-            this.setupViewControls();
-            this.setupCoordinateControls();
-            this.setupMachineSettings();
-            
             const fileInput = document.getElementById('file-input-hidden');
             if (fileInput) {
                 fileInput.addEventListener('change', async (e) => {

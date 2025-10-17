@@ -387,10 +387,10 @@
             const isPreview = context?.isPreview || primitive.properties?.isPreview || false;
             
             // Color priority: oversized > undersized > reducedPlunge > default
-            let markColor = fillColor || '#4488ff';
-            if (oversized) markColor = '#ff0000';
-            else if (undersized) markColor = '#d2cb00ff';
-            else if (reducedPlunge) markColor = '#ff5e00ff';
+            let markColor = '#16d329ff'; // Green means tool diameter = drill hole size
+            if (oversized) markColor = '#ff0000';  // Red oversized warning (should be overwrite all others)
+            else if (undersized) markColor = '#d2cb00ff';  // Yellow undersized warning
+            else if (reducedPlunge) markColor = '#ff5e00ff';  // Dark orange reduced plunge rate warning
             
             // === OFFSET STAGE: Outline + center (like source drill) ===
             if (!isPreview) {
