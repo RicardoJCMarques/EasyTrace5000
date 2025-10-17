@@ -951,6 +951,18 @@ body {
     cursor: not-allowed;
 }
 
+.warning-icon {
+    margin-left: 4px;
+    font-size: 12px;
+    cursor: help;
+    animation: pulse-warning 2s ease-in-out infinite;
+}
+
+@keyframes pulse-warning {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
 /* ============================================================================
    MULTI-ZONE UPLOAD MODAL
    ============================================================================ */

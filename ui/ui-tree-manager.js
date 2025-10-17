@@ -197,6 +197,20 @@
                 if (window.TooltipManager) {
                     window.TooltipManager.attach(fileContent, { text: statsText });
                 }
+                // Add warning indicator if operation has warnings
+                if (operation.warnings && operation.warnings.length > 0) {
+                    const warningIcon = document.createElement('span');
+                    warningIcon.className = 'warning-icon';
+                    warningIcon.textContent = '⚠️';
+                    warningIcon.title = `${operation.warnings.length} warning(s)`;
+                    
+                    if (window.TooltipManager) {
+                        const warningText = operation.warnings.map(w => w.message).join('\n');
+                        window.TooltipManager.attach(warningIcon, { text: warningText });
+                    }
+                    
+                    label.appendChild(warningIcon);
+                }
             }
             
             label.textContent = operation.file.name;

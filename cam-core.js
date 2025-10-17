@@ -795,27 +795,27 @@
             const holeContours = [];
             
             operation.primitives.forEach(primitive => {
-            if (primitive.contours && primitive.contours.length > 0) {
-                primitive.contours.forEach(contour => {
-                    const contourPrimitive = this._createPathPrimitive(contour.points, {
-                        ...primitive.properties,
-                        polarity: contour.isHole ? 'clear' : 'dark',
-                        // ADD: Preserve curve metadata from contours
-                        curveIds: contour.curveIds || []
+                if (primitive.contours && primitive.contours.length > 0) {
+                    primitive.contours.forEach(contour => {
+                        const contourPrimitive = this._createPathPrimitive(contour.points, {
+                            ...primitive.properties,
+                            polarity: contour.isHole ? 'clear' : 'dark',
+                            // ADD: Preserve curve metadata from contours
+                            curveIds: contour.curveIds || []
+                        });
+                        // ADD: Transfer point-level curve metadata
+                        contourPrimitive.points = contour.points; // Preserves curveId tags on points
+                        
+                        if (contour.isHole) {
+                            holeContours.push(contourPrimitive);
+                        } else {
+                            outerContours.push(contourPrimitive);
+                        }
                     });
-                    // ADD: Transfer point-level curve metadata
-                    contourPrimitive.points = contour.points; // Preserves curveId tags on points
-                    
-                    if (contour.isHole) {
-                        holeContours.push(contourPrimitive);
-                    } else {
-                        outerContours.push(contourPrimitive);
-                    }
-                });
-            } else {
-                outerContours.push(primitive);
-            }
-        });
+                } else {
+                    outerContours.push(primitive);
+                }
+            });
             
             console.log(`[Core] Separated into ${outerContours.length} outer contours and ${holeContours.length} hole contours.`);
             
@@ -830,6 +830,14 @@
                 
                 const offsetOuters = [];
                 for (const primitive of outerContours) {
+                    const role = primitive.properties?.role;
+                    
+                    // Skip drill primitives - they're handled by generateDrillStrategy()
+                    if (role === 'drill_hole' || role === 'drill_slot') {
+                        continue;
+                    }
+                    
+                    // Normal offset for isolation/clear/cutout
                     const result = await this.geometryOffsetter.offsetPrimitive(primitive, distance, settings);
                     if (result) {
                         Array.isArray(result) ? offsetOuters.push(...result) : offsetOuters.push(result);
@@ -934,6 +942,270 @@
             const totalPrimitives = operation.offsets.reduce((sum, o) => sum + o.primitives.length, 0);
             console.log(`[Core] === REVISED OFFSET PIPELINE COMPLETE ===`);
             console.log(`[Core] Generated ${operation.offsets.length} offset group(s), ${totalPrimitives} total primitives.`);
+
+            // Validate and warn about oversized tools
+            operation.offsets.forEach(offsetGroup => {
+                const oversizedMarks = offsetGroup.primitives.filter(p => p.properties?.oversized);
+                if (oversizedMarks.length > 0) {
+                    const warningMsg = `Warning: ${oversizedMarks.length} hole(s) have tool diameter larger than hole diameter. Check pad clearances.`;
+                    console.warn(`[Core] ${warningMsg}`);
+                    
+                    // Store warning in operation for UI display
+                    if (!operation.warnings) operation.warnings = [];
+                    operation.warnings.push({
+                        type: 'oversized-drill',
+                        count: oversizedMarks.length,
+                        message: warningMsg,
+                        positions: oversizedMarks.map(m => ({
+                            x: m.center.x,
+                            y: m.center.y,
+                            holeDiameter: m.properties.originalHoleDiameter,
+                            toolDiameter: m.properties.toolDiameter
+                        }))
+                    });
+                }
+            });
+            
+            this.isToolpathCacheValid = false;
+            return operation.offsets;
+        }
+
+        /**
+         * PART 1: The "Brain" - Decides what to do (pure logic, no side effects)
+         * @returns {object} { plan: Array, warnings: Array }
+         */
+        _determineDrillStrategy(operation, settings) {
+            const plan = [];
+            const warnings = [];
+            const toolRadius = (settings.toolDiameter || settings.tool?.diameter || 0.8) / 2;
+            const precision = this.core?.geometryProcessor?.options?.precision || 0.001;
+
+            for (const primitive of operation.primitives) {
+                const role = primitive.properties?.role;
+                
+                if (role === 'drill_hole') {
+                    const holeRadius = primitive.radius;
+                    const holeDiameter = primitive.properties.diameter;
+                    const comparison = toolRadius - holeRadius;
+
+                    // Tool must be at least 0.1mm smaller to mill effectively
+                    if (settings.millHoles && (holeRadius - toolRadius) >= 0.05) {
+                        plan.push({
+                            type: 'mill',
+                            primitiveToOffset: primitive,
+                            passes: settings.passes
+                        });
+                    } else {
+                        const isOversized = comparison > precision;
+                        const isUndersized = comparison < -precision;
+                        
+                        // Oversized tool warning
+                        if (isOversized) {
+                            warnings.push({
+                                type: 'oversized-drill',
+                                message: `Hole at (${primitive.center.x.toFixed(1)}, ${primitive.center.y.toFixed(1)}): Tool (${(toolRadius * 2).toFixed(2)}mm) larger than hole (${holeDiameter.toFixed(2)}mm). Pad clearance may be compromised.`,
+                                severity: 'warning',
+                                recommendation: 'Select a smaller tool diameter'
+                            });
+                        }
+                        
+                        // Undersized tool warning
+                        if (isUndersized) {
+                            warnings.push({
+                                type: 'undersized-drill',
+                                message: `Hole at (${primitive.center.x.toFixed(1)}, ${primitive.center.y.toFixed(1)}): Tool (${(toolRadius * 2).toFixed(2)}mm) too close to hole size (${holeDiameter.toFixed(2)}mm). Consider enabling milling mode or using a smaller tool.`,
+                                severity: 'warning',
+                                recommendation: 'Leave milling mode enabled'
+                            });
+                        }
+                        
+                        plan.push({
+                            type: 'peck',
+                            position: primitive.center,
+                            toolDiameter: toolRadius * 2,
+                            originalDiameter: holeDiameter,
+                            oversized: isOversized,
+                            undersized: isUndersized
+                        });
+                    }
+                } else if (role === 'drill_slot') {
+                    const slot = primitive.properties.originalSlot;
+                    const slotRadius = primitive.properties.diameter / 2;
+                    const slotDiameter = primitive.properties.diameter;
+                    const comparison = toolRadius - slotRadius;
+                    const slotLength = Math.hypot(slot.end.x - slot.start.x, slot.end.y - slot.start.y);
+                    const toolDiameter = toolRadius * 2;
+
+                    // Can we mill this slot?
+                    const canMill = settings.millHoles && comparison < -precision;
+
+                    if (!canMill) {
+                        // Must use dual-peck
+                        const proximityRisk = slotLength < toolDiameter;
+                        
+                        if (proximityRisk) {
+                            warnings.push({
+                                type: 'slot-dual-drill',
+                                message: `Slot at (${slot.start.x.toFixed(1)}, ${slot.start.y.toFixed(1)}) to (${slot.end.x.toFixed(1)}, ${slot.end.y.toFixed(1)}): Too short for tool. Using dual-drill with 50% reduced plunge on second mark.`,
+                                severity: 'error',
+                                recommendation: 'Reduce plunge rate by 50% to minimize drill bit bending'
+                            });
+                        }
+                        
+                        plan.push(
+                            {
+                                type: 'peck',
+                                position: slot.start,
+                                toolDiameter: toolDiameter,
+                                originalDiameter: slotDiameter,
+                                oversized: comparison > precision,
+                                undersized: comparison < -precision 
+                            },
+                            {
+                                type: 'peck',
+                                position: slot.end,
+                                toolDiameter: toolDiameter,
+                                originalDiameter: slotDiameter,
+                                oversized: comparison > precision,
+                                undersized: comparison < -precision,
+                                reducedPlunge: proximityRisk  // Only second mark
+                            }
+                        );
+                    } else {
+                        // Plan to mill
+                        plan.push({
+                            type: 'mill',
+                            primitiveToOffset: primitive,
+                            passes: settings.passes || 2
+                        });
+                    }
+                }
+            }
+            
+            return { plan, warnings };
+        }
+
+        /**
+         * PART 2: The "Factory" - Creates geometry from plan
+         */
+        async _generateDrillGeometryFromStrategy(plan, operation, settings) {
+            const strategyPrimitives = [];
+            
+            // Calculate internal offset distances for milling
+            const toolDiameter = settings.toolDiameter || settings.tool?.diameter || 0.8;
+            const stepOver = (settings.stepOver || 50) / 100;
+            const stepDistance = toolDiameter * (1 - stepOver);
+            const internalOffsets = [];
+            
+            for (let i = 0; i < (settings.passes || 2); i++) {
+                internalOffsets.push(-(toolDiameter / 2 + i * stepDistance));
+            }
+
+            for (const action of plan) {
+                if (action.type === 'peck') {
+                    // Create peck mark circle
+                    strategyPrimitives.push(new CirclePrimitive(
+                        action.position,
+                        action.toolDiameter / 2,
+                        {
+                            role: 'peck_mark',  // ← KEY: New role
+                            originalDiameter: action.originalDiameter,
+                            toolDiameter: action.toolDiameter,
+                            oversized: action.oversized,
+                            undersized: action.undersized,
+                            reducedPlunge: action.reducedPlunge,
+                            slotPart: action.slotPart,
+                            operationId: operation.id
+                        }
+                    ));
+                    
+                } else if (action.type === 'mill') {
+                    // Single pass at tool centerline
+                    const source = action.primitiveToOffset;
+                    const holeRadius = source.radius || Math.min(source.width, source.height) / 2;
+                    const toolRadius = toolDiameter / 2;
+                    const pathRadius = holeRadius - toolRadius;
+                    
+                    if (pathRadius > 0.01) {
+                        // For circles, create circular path
+                        if (source.type === 'circle') {
+                            const millingPath = new CirclePrimitive(
+                                source.center,
+                                pathRadius,
+                                {
+                                    role: 'drill_milling_path',
+                                    originalDiameter: source.properties.diameter,
+                                    operationId: operation.id,
+                                    toolDiameter: toolDiameter
+                                }
+                            );
+                            strategyPrimitives.push(millingPath);
+                        } 
+                        // For slots (obrounds), create offset obround
+                        else if (source.type === 'obround') {
+                            const newWidth = source.width - toolDiameter;
+                            const newHeight = source.height - toolDiameter;
+                            
+                            if (newWidth > 0.01 && newHeight > 0.01) {
+                                const millingPath = new ObroundPrimitive(
+                                    {
+                                        x: source.position.x + toolRadius,
+                                        y: source.position.y + toolRadius
+                                    },
+                                    newWidth,
+                                    newHeight,
+                                    {
+                                        role: 'drill_milling_path',
+                                        originalDiameter: source.properties.diameter,
+                                        operationId: operation.id,
+                                        toolDiameter: toolDiameter
+                                    }
+                                );
+                                strategyPrimitives.push(millingPath);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return strategyPrimitives;
+        }
+
+        /**
+         * PART 3: Public API - Orchestrator
+         * This is called by ui-property-inspector.js
+         */
+        async generateDrillStrategy(operation, settings) {
+            console.log(`[Core] === DRILL STRATEGY GENERATION ===`);
+            console.log(`[Core] Mode: ${settings.millHoles ? 'milling' : 'pecking'}`);
+
+            // Get the plan
+            const { plan, warnings } = this._determineDrillStrategy(operation, settings);
+            operation.warnings = warnings;
+
+            // Generate geometry
+            const strategyGeometry = await this._generateDrillGeometryFromStrategy(
+                plan, operation, settings
+            );
+
+            // Store in operation.offsets for UI compatibility
+            operation.offsets = [{
+                id: `drill_strategy_${operation.id}`,
+                distance: 0,
+                pass: 1,
+                primitives: strategyGeometry,
+                combined: true,
+                isDrillStrategy: true,
+                mode: settings.millHoles ? 'milling' : 'pecking',
+                settings: { ...settings },
+                metadata: {
+                    sourceCount: operation.primitives.length,
+                    peckCount: strategyGeometry.filter(p => p.properties?.role === 'peck_mark').length,
+                    millCount: strategyGeometry.filter(p => p.properties?.role === 'drill_milling_path').length,
+                    generatedAt: Date.now(),
+                    toolDiameter: settings.toolDiameter || settings.tool?.diameter // ← ADD THIS
+                }
+            }];
             
             this.isToolpathCacheValid = false;
             return operation.offsets;

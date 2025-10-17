@@ -48,44 +48,49 @@
         // ==================== MAIN DISPATCHER ====================
         
         renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false, context = {}) {
+            const role = primitive.properties?.role;
+
+            // === ROLE-BASED DISPATCH (Highest Priority) ===
+            if (role) {
+                switch (role) {
+                    case 'drill_hole':
+                    case 'drill_slot':
+                        // Source drill geometry
+                        this.renderSourceDrill(primitive, fillColor, strokeColor);
+                        return;
+                        
+                    case 'peck_mark':
+                        // Strategy layer peck marks
+                        this.renderPeckMark(primitive, fillColor, strokeColor, context);
+                        return;
+                        
+                    case 'drill_milling_path':
+                        // Strategy layer milling paths (reuse offset renderer)
+                        this.renderOffsetPrimitive(primitive, strokeColor || fillColor, context);
+                        return;
+                }
+            }
             
-            // PRIORITY 1: Check for special preview rendering
-            if (context.isPreview || context.isPreviewRender || primitive.properties?.isPreview) {
+            if (context.isPreview || primitive.properties?.isPreview) {
                 this.renderToolPreview(primitive, fillColor || strokeColor, context);
                 return;
             }
             
-            // PRIORITY 2: Check for offset rendering
             if (context.isOffset || primitive.properties?.isOffset) {
                 this.renderOffsetPrimitive(primitive, strokeColor || fillColor, context);
                 return;
             }
             
-            // PRIORITY 3: Check for drill holes
-            if (primitive.properties?.isDrillHole && context.layer?.type === 'drill') {
-                this.renderDrillHole(primitive, fillColor, strokeColor);
-                return;
-            }
-
-            // PRIORITY 4: Check for drill slots
-            if (primitive.properties?.isDrillSlot && context.layer?.type === 'drill') {
-                this.renderDrillSlot(primitive, fillColor, strokeColor);
-                return;
-            }
-            
-            // PRIORITY 5: Check for reconstructed arcs/circles
             if (primitive.properties?.reconstructed) {
                 this.renderReconstructedPrimitive(primitive, fillColor, strokeColor);
                 return;
             }
             
-            // PRIORITY 6: Check wireframe mode
             if (this.core.options.showWireframe) {
                 this.renderWireframe(primitive);
                 return;
             }
             
-            // The default rendering path is now direct, not batched.
             this.renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed);
         }
         
@@ -227,56 +232,50 @@
         
         renderToolPreview(primitive, color, context) {
             this.ctx.save();
+            
+            // Drill previews are filled, not stroked
+            if (primitive.properties?.role === 'peck_mark') {
+                this.renderPeckMark(primitive, color, color, context);
+                this.ctx.restore();
+                return;
+            }
+            
+            // Milling previews use tool diameter stroke
             const toolDiameter = context.toolDiameter || 
                                 context.layer?.metadata?.toolDiameter || 
                                 primitive.properties?.toolDiameter || 0.2;
-            _setStrokeState(color, toolDiameter)
             
-            if (primitive.properties?.isDrillPreview) {
-                // Drill preview - show as filled circle
-                this.ctx.fillStyle = color;
+            this._setStrokeState(color, toolDiameter);
+            
+            if (primitive.type === 'path') {
                 this.ctx.beginPath();
-                this.ctx.arc(primitive.center.x, primitive.center.y, toolDiameter / 2, 0, Math.PI * 2);
-                this.ctx.fill();
-            } else {
-                // Path preview - show toolpath with tool width
-                this.ctx.strokeStyle = color;
-                this.ctx.lineWidth = toolDiameter;
-                
-                if (primitive.type === 'path') {
-                    this.ctx.beginPath();
-                    if (primitive.contours && primitive.contours.length > 0) {
-                        primitive.contours.forEach(contour => {
-                            if (contour.points && contour.points.length > 0) {
-                                contour.points.forEach((p, i) => {
-                                    if (i === 0) this.ctx.moveTo(p.x, p.y);
-                                    else this.ctx.lineTo(p.x, p.y);
-                                });
-                                this.ctx.closePath();
-                            }
-                        });
-                    } else if (primitive.points) {
-                        primitive.points.forEach((p, i) => {
-                            if (i === 0) this.ctx.moveTo(p.x, p.y);
-                            else this.ctx.lineTo(p.x, p.y);
-                        });
-                        if (primitive.closed !== false) this.ctx.closePath();
-                    }
-                    this.ctx.stroke();
-                }else if (primitive.type === 'circle') {
-                    this.ctx.beginPath();
-                    this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, Math.PI * 2);
-                    this.ctx.stroke();
+                if (primitive.points) {
+                    primitive.points.forEach((p, i) => {
+                        if (i === 0) this.ctx.moveTo(p.x, p.y);
+                        else this.ctx.lineTo(p.x, p.y);
+                    });
+                    if (primitive.closed !== false) this.ctx.closePath();
                 }
+                this.ctx.stroke();
+            } else if (primitive.type === 'circle') {
+                this.ctx.beginPath();
+                this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, Math.PI * 2);
+                this.ctx.stroke();
             }
+            
             this.ctx.restore();
         }
         
         renderOffsetPrimitive(primitive, color, context) {
+            // Check if this is a drill peck mark
+            if (primitive.properties?.isToolPeckMark) {
+                this.renderDrillPeckMark(primitive, color, color, context);
+                return;
+            }
+            
             const offsetDistance = context.distance || primitive.properties?.offsetDistance || 0;
             const isInternal = offsetDistance < 0;
             this._setStrokeState(isInternal ? '#00aa00' : color || '#ff0000', 2 / this.core.viewScale);
-
             this.ctx.setLineDash([]);
             
             if (primitive.type === 'path') {
@@ -314,20 +313,10 @@
             
             this.ctx.restore();
         }
-        
-        renderDrillHole(primitive, fillColor, strokeColor) {
-            const center = primitive.center;
-            const radius = primitive.radius;
-            
-            // Draw the hole outline
-            this.ctx.beginPath();
-            this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-            this.ctx.strokeStyle = strokeColor || fillColor;
-            this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
-            this.ctx.stroke();
-            
-            // Draw center crosshair marks
-            const markSize = Math.min(0.2, radius * 0.4);
+
+        _renderCenterMarks(center, markSize, color) {
+            this.ctx.strokeStyle = color;
+            this.ctx.lineWidth = 3 / this.core.viewScale;
             this.ctx.beginPath();
             this.ctx.moveTo(center.x - markSize, center.y);
             this.ctx.lineTo(center.x + markSize, center.y);
@@ -335,55 +324,146 @@
             this.ctx.lineTo(center.x, center.y + markSize);
             this.ctx.stroke();
         }
-
-        renderDrillSlot(primitive, fillColor, strokeColor) {
-            // This function now handles its own drawing instead of calling renderObround,
-            // ensuring the center marks are not obscured by a fill.
-            const props = primitive.properties || {};
-            const stroke = strokeColor || fillColor;
-
-            // 1. Stroke the main obround body outline
-            this.ctx.strokeStyle = stroke;
-            this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
+        
+        /**
+         * Renders source drill geometry (holes and slots from parser)
+         */
+        renderSourceDrill(primitive, fillColor, strokeColor) {
+            const color = strokeColor || fillColor || '#4488ff';
+            this.ctx.strokeStyle = color;
+            this.ctx.lineWidth = 3 / this.core.viewScale;
             
-            const x = primitive.position.x;
-            const y = primitive.position.y;
-            const w = primitive.width;
-            const h = primitive.height;
-            const r = Math.min(w, h) / 2;
-            
-            this.ctx.beginPath();
-            if (w > h) { // Horizontal
-                this.ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2, false);
-                this.ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2, false);
-            } else { // Vertical
-                this.ctx.arc(x + r, y + r, r, Math.PI, 0, false);
-                this.ctx.arc(x + r, y + h - r, r, 0, Math.PI, false);
+            if (primitive.properties.role === 'drill_hole') {
+                const r = primitive.radius;
+                
+                // Draw circle outline
+                this.ctx.beginPath();
+                this.ctx.arc(primitive.center.x, primitive.center.y, r, 0, Math.PI * 2);
+                this.ctx.stroke();
+                
+                // Draw center crosshair
+                const markSize = Math.min(0.2, r * 0.4);
+                this._renderCenterMarks(primitive.center, markSize, color);
+                
+            } else if (primitive.properties.role === 'drill_slot') {
+                const slot = primitive.properties.originalSlot;
+                const r = primitive.properties.diameter / 2;
+                
+                // Draw slot outline (obround shape)
+                const x = primitive.position.x;
+                const y = primitive.position.y;
+                const w = primitive.width;
+                const h = primitive.height;
+                
+                this.ctx.beginPath();
+                if (w > h) {
+                    // Horizontal slot
+                    this.ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2, false);
+                    this.ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2, false);
+                } else {
+                    // Vertical slot
+                    this.ctx.arc(x + r, y + r, r, Math.PI, 0, false);
+                    this.ctx.arc(x + r, y + h - r, r, 0, Math.PI, false);
+                }
+                this.ctx.closePath();
+                this.ctx.stroke();
+                
+                // Draw crosshairs at both ends
+                const markSize = Math.min(0.2, r * 0.4);
+                this._renderCenterMarks(slot.start, markSize, color);
+                this._renderCenterMarks(slot.end, markSize, color);
             }
-            this.ctx.closePath();
+        }
+
+        /**
+         * Renders peck mark previews (strategy layer)
+         */
+        renderPeckMark(primitive, fillColor, strokeColor, context) {
+            const center = primitive.center;
+            const radius = primitive.radius;
+            const oversized = primitive.properties?.oversized || false;
+            const undersized = primitive.properties?.undersized || false;
+            const reducedPlunge = primitive.properties?.reducedPlunge || false;
+            const isPreview = context?.isPreview || primitive.properties?.isPreview || false;
+            
+            // Color priority: oversized > undersized > reducedPlunge > default
+            let markColor = fillColor || '#4488ff';
+            if (oversized) markColor = '#ff0000';
+            else if (undersized) markColor = '#d2cb00ff';
+            else if (reducedPlunge) markColor = '#ff5e00ff';
+            
+            // === OFFSET STAGE: Outline + center (like source drill) ===
+            if (!isPreview) {
+                // Just outline
+                this.ctx.strokeStyle = markColor;
+                this.ctx.lineWidth = 3 / this.core.viewScale;
+                this.ctx.beginPath();
+                this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+                this.ctx.stroke();
+                
+                // Center crosshair
+                const markSize = Math.min(0.2, radius * 0.4);
+                this._renderCenterMarks(center, markSize, markColor);
+                
+                // Reduced plunge indicator (dashed ring AROUND the mark)
+                if (reducedPlunge) {
+                    this.ctx.save();
+                    this.ctx.strokeStyle = '#ff5e00ff';
+                    this.ctx.lineWidth = 3 / this.core.viewScale;
+                    this.ctx.setLineDash([0.15, 0.15]);
+                    this.ctx.beginPath();
+                    this.ctx.arc(center.x, center.y, radius * 1.3, 0, Math.PI * 2);
+                    this.ctx.stroke();
+                    this.ctx.restore();
+                }
+                
+                return;
+            }
+            
+            // === PREVIEW STAGE: Filled circles ===
+            // Semi-transparent fill
+            this.ctx.fillStyle = markColor;
+            this.ctx.beginPath();
+            this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            // Solid outline
+            this.ctx.strokeStyle = markColor;
+            this.ctx.lineWidth = 3 / this.core.viewScale;
             this.ctx.stroke();
-
-            // 2. Draw drill-specific crosshair markings on the end-caps.
-            const originalSlot = props.originalSlot;
-            if (originalSlot) {
-                // Use the same stroke style and width for the marks
-                const markSize = Math.min(0.2, (props.diameter || 0.4) * 0.4);
-
-                // Crosshair at the start point
+            
+            // Center crosshair
+            const markSize = Math.min(0.2, radius * 0.4);
+            this._renderCenterMarks(center, markSize, markColor);
+            
+            // Warning indicators (only in preview)
+            if (oversized) {
+                this.ctx.save();
+                this.ctx.font = `${Math.max(0.3, radius * 0.5)}px monospace`;
+                this.ctx.fillStyle = '#ff0000';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText('!', center.x, center.y + radius + 0.3);
+                this.ctx.restore();
+            }
+            
+            if (reducedPlunge) {
+                this.ctx.save();
+                this.ctx.strokeStyle = '#ff5e00ff';
+                this.ctx.lineWidth = 3 / this.core.viewScale;
+                this.ctx.setLineDash([0.15, 0.15]);
                 this.ctx.beginPath();
-                this.ctx.moveTo(originalSlot.start.x - markSize, originalSlot.start.y);
-                this.ctx.lineTo(originalSlot.start.x + markSize, originalSlot.start.y);
-                this.ctx.moveTo(originalSlot.start.x, originalSlot.start.y - markSize);
-                this.ctx.lineTo(originalSlot.start.x, originalSlot.start.y + markSize);
+                this.ctx.arc(center.x, center.y, radius * 1.3, 0, Math.PI * 2);
                 this.ctx.stroke();
-
-                // Crosshair at the end point
-                this.ctx.beginPath();
-                this.ctx.moveTo(originalSlot.end.x - markSize, originalSlot.end.y);
-                this.ctx.lineTo(originalSlot.end.x + markSize, originalSlot.end.y);
-                this.ctx.moveTo(originalSlot.end.x, originalSlot.end.y - markSize);
-                this.ctx.lineTo(originalSlot.end.x, originalSlot.end.y + markSize);
-                this.ctx.stroke();
+                
+                // "50%" label for reduced plunge
+                this.ctx.setLineDash([]);
+                this.ctx.font = `${Math.max(0.25, radius * 0.4)}px monospace`;
+                this.ctx.fillStyle = '#ff5e00ff';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText('50%', center.x, center.y - radius - 0.4);
+                this.ctx.restore();
             }
         }
 

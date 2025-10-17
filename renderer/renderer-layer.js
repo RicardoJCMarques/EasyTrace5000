@@ -257,7 +257,8 @@
                 this.core.renderStats.primitives++;
                 
                 const primBounds = primitive.getBounds();
-                if (!this.core.boundsIntersect(primBounds, vb) || !this.core.shouldRenderPrimitive(primitive, layer.type)) {
+                if (!this.core.boundsIntersect(primBounds, vb) || 
+                    !this.core.shouldRenderPrimitive(primitive, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
@@ -268,35 +269,29 @@
                 
                 this.core.renderStats.renderedPrimitives++;
                 
-                // Drills need different state (outline + center marks)
-                if (primitive.properties?.isDrillHole) {
-                    flushFlashBatch();
-                    this.ctx.save();
-                    this.primitiveRenderer.renderDrillHole(primitive, fillColor, strokeColor);
-                    this.ctx.restore();
-                    this.core.renderStats.drawCalls++;
-                    return;
-                }
+                // Check if this primitive has a role that prevents batching
+                const role = primitive.properties?.role;
+                const cannotBatch = (
+                    role === 'drill_hole' ||
+                    role === 'drill_slot' ||
+                    role === 'peck_mark' ||
+                    primitive.type === 'path'
+                );
 
-                // Drill Slots also need special rendering
-                if (primitive.properties?.isDrillSlot) {
+                if (cannotBatch) {
                     flushFlashBatch();
                     this.ctx.save();
-                    this.primitiveRenderer.renderDrillSlot(primitive, fillColor, strokeColor);
+                    // Delegate to role-based dispatcher
+                    this.primitiveRenderer.renderPrimitive(
+                        primitive, fillColor, strokeColor, layer.isPreprocessed, 
+                        { layer: layer }
+                    );
                     this.ctx.restore();
                     this.core.renderStats.drawCalls++;
                     return;
                 }
                 
-                // Paths can't be batched (winding complexity)
-                if (primitive.type === 'path') {
-                    flushFlashBatch();
-                    this.primitiveRenderer.renderPrimitiveNormal(primitive, fillColor, strokeColor, layer.isPreprocessed);
-                    this.core.renderStats.drawCalls++;
-                    return;
-                }
-                
-                // Batch simple shapes (circle, rectangle, obround)
+                // Batch simple shapes
                 if (primitive.type === 'circle' || primitive.type === 'rectangle' || primitive.type === 'obround') {
                     if (!simpleFlashBatch) {
                         simpleFlashBatch = new Path2D();
@@ -305,11 +300,16 @@
                 } else {
                     // Unknown type, render individually
                     flushFlashBatch();
-                    this.primitiveRenderer.renderPrimitiveNormal(primitive, fillColor, strokeColor, layer.isPreprocessed);
+                    this.ctx.save();
+                    this.primitiveRenderer.renderPrimitive(
+                        primitive, fillColor, strokeColor, layer.isPreprocessed,
+                        { layer: layer }
+                    );
+                    this.ctx.restore();
                     this.core.renderStats.drawCalls++;
                 }
             });
-            
+
             flushFlashBatch();
         }
 
@@ -320,14 +320,15 @@
             const viewBounds = this.core.getViewBounds();
             const offsetColor = layer.color || '#ff0000';
             
-            // Create a single Path2D object for the entire layer.
-            const layerBatch = new Path2D();
-
+            // Separate peck marks from normal geometry
+            const peckMarks = [];
+            const normalPrimitives = [];
+            
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
                 
                 const primBounds = primitive.getBounds();
-                if (!this.core.boundsIntersect(primBounds, viewBounds) || !this.core.shouldRenderPrimitive(primitive, 'offset')) {
+                if (!this.core.boundsIntersect(primBounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
@@ -338,29 +339,61 @@
                 
                 this.core.renderStats.renderedPrimitives++;
                 
-                this.primitiveRenderer.addPrimitiveToPath2D(primitive, layerBatch);
+                // Separate drill peck marks from normal offset geometry
+                 if (primitive.properties?.role === 'peck_mark' || 
+                    primitive.properties?.isToolPeckMark || 
+                    primitive.properties?.isDrillPreview) {
+                    peckMarks.push(primitive);
+                } else {
+                    normalPrimitives.push(primitive);
+                }
             });
-
-            // Perform a SINGLE stroke operation for the entire layer. This is a huge optimization.
-            this.ctx.strokeStyle = offsetColor;
-            this.ctx.lineWidth = 2 / this.core.viewScale;
-            this.ctx.setLineDash([]);
-            this.ctx.stroke(layerBatch);
-            this.core.renderStats.drawCalls++;
+            
+            // Batch render normal geometry
+            if (normalPrimitives.length > 0) {
+                const layerBatch = new Path2D();
+                normalPrimitives.forEach(primitive => {
+                    this.primitiveRenderer.addPrimitiveToPath2D(primitive, layerBatch);
+                });
+                
+                this.ctx.strokeStyle = offsetColor;
+                this.ctx.lineWidth = 2 / this.core.viewScale;
+                this.ctx.setLineDash([]);
+                this.ctx.stroke(layerBatch);
+                this.core.renderStats.drawCalls++;
+            }
+            
+            // Render drill peck marks as filled circles with warning colors
+            peckMarks.forEach(primitive => {
+                this.ctx.save();
+                this.primitiveRenderer.renderPrimitive(
+                    primitive, 
+                    null,
+                    null, 
+                    false,
+                    { layer: layer }
+                );
+                this.ctx.restore();
+                this.core.renderStats.drawCalls++;
+            });
         }
 
         renderPreviewLayer(layer) {
             const viewBounds = this.core.getViewBounds();
-            const previewColor = layer.color || '#0080ff';
             
-            // Use a Map to group primitives by tool diameter (our batching key).
+            // Drill operations get distinct color
+            const isDrill = layer.operationType === 'drill' || layer.metadata?.isDrillPreview;
+            const previewColor = layer.color;
+            
+            // Separate peck marks from normal geometry
+            const peckMarks = [];
             const batchesByTool = new Map();
 
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
                 
                 const primBounds = primitive.getBounds();
-                if (!this.core.boundsIntersect(primBounds, viewBounds) || !this.core.shouldRenderPrimitive(primitive, 'preview')) {
+                if (!this.core.boundsIntersect(primBounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
@@ -371,6 +404,13 @@
                 
                 this.core.renderStats.renderedPrimitives++;
                 
+                // Separate drill peck marks
+                if (primitive.properties?.role === 'peck_mark') {
+                    peckMarks.push(primitive);
+                    return;
+                }
+                
+                // Normal preview batching
                 const toolDiameter = layer.metadata?.toolDiameter || 
                                     primitive.properties?.toolDiameter ||
                                     this.getToolDiameterForPrimitive(primitive) || 
@@ -380,11 +420,10 @@
                     batchesByTool.set(toolDiameter, new Path2D());
                 }
                 const batch = batchesByTool.get(toolDiameter);
-
                 this.primitiveRenderer.addPrimitiveToPath2D(primitive, batch);
             });
 
-            // Iterate through the map and render each batch with its correct tool width.
+            // Render batched milling paths
             this.ctx.strokeStyle = previewColor;
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
@@ -392,6 +431,20 @@
             batchesByTool.forEach((batch, toolDiameter) => {
                 this.ctx.lineWidth = toolDiameter;
                 this.ctx.stroke(batch);
+                this.core.renderStats.drawCalls++;
+            });
+            
+            // Render drill peck marks with warning colors from offset stage
+            peckMarks.forEach(primitive => {
+                this.ctx.save();
+                this.primitiveRenderer.renderPrimitive(
+                    primitive, 
+                    null, 
+                    null, 
+                    false,
+                    { layer: layer }
+                );
+                this.ctx.restore();
                 this.core.renderStats.drawCalls++;
             });
         }

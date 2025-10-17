@@ -580,6 +580,13 @@
             if (this.ui?.treeManager) {
                 this.ui.treeManager.expandAll();
             }
+
+            // Auto-fit to show all loaded geometry
+            if (this.ui?.renderer) {
+                setTimeout(() => {
+                    this.ui.renderer.zoomFit(1.1);
+                }, 100); // Small delay to ensure rendering is complete
+            }
         }
         
         async loadExample(exampleId) {
@@ -742,9 +749,17 @@
                         }
                     }
                     
-                    // Update renderer
-                    if (this.ui?.renderer) {
-                        await this.ui.updateRendererAsync?.() || await this.ui.updateRenderer?.();
+                    // Update renderer to show new geometry
+                    if (this.ui?.updateRendererAsync) {
+                        await this.ui.updateRendererAsync();
+                    } else if (this.ui?.updateRenderer) {
+                        await this.ui.updateRenderer();
+                    }
+
+                    // Auto-fit on first file
+                    const hasMultipleOps = this.core.operations.length > 1;
+                    if (!hasMultipleOps && this.ui?.renderer) {
+                        this.ui.renderer.zoomFit();
                     }
                     
                     // Update statistics
@@ -796,6 +811,23 @@
                     } else {
                         this.pendingOperations.push({ file, opType });
                     }
+                }
+            }
+            
+            if (this.pendingOperations.length === 0 && this.initState.fullyReady) {
+                // Ensure coordinate system updates
+                if (this.core?.coordinateSystem) {
+                    this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
+                }
+                
+                // Force renderer update
+                if (this.ui?.updateRendererAsync) {
+                    setTimeout(() => {
+                        this.ui.updateRendererAsync();
+                        if (this.ui.renderer) {
+                            this.ui.renderer.zoomFit();
+                        }
+                    }, 100);
                 }
             }
             

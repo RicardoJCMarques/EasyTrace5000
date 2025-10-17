@@ -66,6 +66,13 @@
                 this.clearProperties();
                 return;
             }
+
+            // Save previous operation's settings before switching
+            if (this.currentOperation && 
+                this.currentOperation.id !== operation.id && 
+                this.isDirty) {
+                this.saveSettings();
+            }
             
             this.currentOperation = operation;
             this.currentGeometryStage = geometryStage;
@@ -78,6 +85,11 @@
             
             title.textContent = operation.file.name;
             container.innerHTML = '';
+
+            // Show warnings if any exist
+            if (operation.warnings && operation.warnings.length > 0) {
+                container.appendChild(this.createWarningPanel(operation.warnings));
+            }
             
             // Render based on operation type and stage
             if (operation.type === 'drill') {
@@ -89,6 +101,56 @@
             }
             
             this.attachEventHandlers(container);
+        }
+
+        resetInspectorState() {
+            if (this.currentOperation && this.isDirty) {
+                // Optionally prompt user to save changes
+                this.saveSettings();
+            }
+            
+            this.currentOperation = null;
+            this.currentGeometryStage = 'source';
+            this.originalSettings = null;
+            this.isDirty = false;
+            
+            // Clear any cached UI state
+            const container = document.getElementById('property-form');
+            if (container) {
+                container.innerHTML = '<div class="property-empty">Select an operation</div>';
+            }
+        }
+
+        // Helper to get user-friendly stage name
+        getStageName(stage, operationType) {
+            const stageNames = {
+                isolation: {
+                    source: 'Tool Selection',
+                    offset: 'Offset Generation',
+                    preview: 'Toolpath Preview',
+                    gcode: 'G-code Setup'
+                },
+                drill: {
+                    source: 'Tool & Hole Selection',
+                    offset: 'Drill Strategy', // NOT "offset"
+                    preview: 'Drilling Preview',
+                    gcode: 'G-code Setup'
+                },
+                clear: {
+                    source: 'Tool Selection',
+                    offset: 'Clearing Paths',
+                    preview: 'Toolpath Preview',
+                    gcode: 'G-code Setup'
+                },
+                cutout: {
+                    source: 'Tool Selection',
+                    offset: 'Cutout Path',
+                    preview: 'Cutting Preview',
+                    gcode: 'G-code Setup'
+                }
+            };
+            
+            return stageNames[operationType]?.[stage] || stage;
         }
         
         renderIsolationProperties(container, operation, stage) {
@@ -203,7 +265,11 @@
         
         renderDrillProperties(container, operation, stage) {
             if (stage === 'source') {
-                container.appendChild(this.createSection('Tool Selection', [
+                // Drilling Mode section
+                const isMilling = operation.settings.millHoles !== false;
+
+                const sectionName = this.getStageName('source', 'drill');
+                container.appendChild(this.createSection(sectionName, [
                     this.createToolField('tool', operation),
                     this.createField('toolDiameter', 'number', {
                         value: operation.settings.tool?.diameter || 0.8,
@@ -212,74 +278,60 @@
                     })
                 ]));
                 
-                // Mill holes option
+                
+
                 container.appendChild(this.createSection('Drilling Mode', [
                     this.createField('millHoles', 'checkbox', {
-                        checked: operation.settings.millHoles || true,
+                        checked: isMilling,
                         label: 'Mill Holes (for undersized tools)'
                     })
                 ]));
                 
-                // Show either direct drilling or milling params
-                const millHoles = operation.settings.millHoles || true;
-                
-                if (!millHoles) {
-                    // Direct drilling parameters
-                    const cannedCycleField = this.createSelectField('cannedCycle', 'Cycle', 
+                // Show parameters based on mode
+                if (!isMilling) {
+                    // Pecking mode parameters
+                    const cannedCycleField = this.createSelectField('cannedCycle', 'Cycle',
                         operation.settings.cannedCycle || 'none', [
                         { value: 'none', label: 'None (G0 + G1)' },
                         { value: 'G81', label: 'G81 - Simple Drill' },
-                        { value: 'G82', label: 'G82 - Dwell at Bottom' },
-                        { value: 'G83', label: 'G83 - Peck Drilling' },
-                        { value: 'G73', label: 'G73 - Peck Step Drilling' }
+                        { value: 'G83', label: 'G83 - Peck Drilling' }
                     ]);
                     
                     container.appendChild(this.createSection('Drilling Parameters', [
                         cannedCycleField,
                         this.createField('dwellTime', 'number', {
                             value: operation.settings.dwellTime || 0,
-                            step: 0.1,
-                            min: 0
+                            step: 0.1
                         }),
                         this.createField('retractHeight', 'number', {
                             value: operation.settings.retractHeight || 0.5,
-                            step: 0.01,
-                            min: 0
+                            step: 0.01
                         }),
                         this.createField('peckDepth', 'number', {
                             value: operation.settings.peckDepth || 0,
-                            step: 0.01,
-                            min: 0
-                        }),
-                        this.createField('peckStepDepth', 'number', {
-                            value: operation.settings.peckStepDepth || 0,
-                            step: 0.01,
-                            min: 0
+                            step: 0.01
                         })
                     ]));
                     
                     container.appendChild(this.createSection('Cutting Parameters', [
                         this.createField('cutDepth', 'number', {
-                            value: operation.settings.cutDepth || -1.8,
-                            step: 0.1
+                            value: operation.settings.cutDepth || -1.8
                         }),
                         this.createField('feedRate', 'number', {
-                            value: operation.settings.feedRate || 60,
-                            min: 1, max: 500
+                            value: operation.settings.feedRate || 60
                         }),
                         this.createField('plungeRate', 'number', {
-                            value: operation.settings.plungeRate || 30,
-                            min: 1, max: 500
+                            value: operation.settings.plungeRate || 30
                         }),
                         this.createField('spindleSpeed', 'number', {
-                            value: operation.settings.spindleSpeed || 10000,
-                            min: 100, max: 30000
+                            value: operation.settings.spindleSpeed || 10000
                         })
                     ]));
                     
-                    container.appendChild(this.createActionButton('Generate Preview'));
+                    container.appendChild(this.createActionButton('Generate Drill Preview'));
+                    
                 } else {
-                    // Milling mode: offset generation parameters
+                    // Milling mode parameters
                     container.appendChild(this.createSection('Hole Milling', [
                         this.createField('passes', 'number', {
                             value: operation.settings.passes || 2,
@@ -291,7 +343,18 @@
                         })
                     ]));
                     
-                    container.appendChild(this.createActionButton('Generate Offsets'));
+                    container.appendChild(this.createActionButton('Generate Milling Paths'));
+                }
+
+                const actionBtn = container.querySelector('#action-button');
+                if (actionBtn) {
+                    if (stage === 'source') {
+                        actionBtn.textContent = isMilling ? 'Generate Milling Offsets' : 'Generate Drill Positions';
+                    } else if (stage === 'offset') {
+                        actionBtn.textContent = 'Generate Preview';
+                    } else {
+                        actionBtn.textContent = 'Generate G-code';
+                    }
                 }
                 
             } else if (stage === 'offset') {
@@ -543,15 +606,35 @@
                 });
             }
             
-            // Mill holes toggle changes button text
+            // Mill holes toggle - regenerates property UI AND clears offset geometry
             const millCheck = container.querySelector('#prop-millHoles');
             if (millCheck) {
-                millCheck.addEventListener('change', (e) => {
+                millCheck.addEventListener('change', async (e) => {
+                    const isMilling = e.target.checked;
+                    
+                    // Clear dependent geometry immediately
                     if (this.currentOperation) {
-                        this.currentOperation.settings.millHoles = e.target.checked;
+                        // Save the mode change
+                        this.currentOperation.settings.millHoles = isMilling;
+                        
+                        // Clear offset/preview ONLY if they exist
+                        if (this.currentOperation.offsets?.length > 0 || this.currentOperation.preview) {
+                            this.currentOperation.offsets = [];
+                            this.currentOperation.preview = null;
+                            this.currentOperation.warnings = [];
+                        }
                     }
-                    //    updated state to show the correct parameters and button.
+                    
+                    // Re-render inspector UI
                     this.showOperationProperties(this.currentOperation, this.currentGeometryStage);
+                    
+                    // Update renderer
+                    await this.ui.updateRendererAsync();
+                    
+                    this.ui.statusManager.showStatus(
+                        `Switched to ${isMilling ? 'milling' : 'pecking'} mode`,
+                        'info'
+                    );
                 });
             }
             
@@ -560,6 +643,52 @@
             if (actionBtn) {
                 actionBtn.addEventListener('click', () => this.handleAction());
             }
+        }
+
+        createWarningPanel(warnings) {
+            const panel = document.createElement('div');
+            panel.className = 'warning-panel';
+            panel.style.cssText = `
+                background: #fff3cd;
+                border: 1px solid #ffc107;
+                border-radius: 4px;
+                padding: 12px;
+                margin-bottom: 16px;
+                color: #856404;
+            `;
+            
+            const header = document.createElement('div');
+            header.style.cssText = 'font-weight: bold; margin-bottom: 8px;';
+            header.innerHTML = `⚠️ ${warnings.length} Warning${warnings.length > 1 ? 's' : ''}`;
+            panel.appendChild(header);
+            
+            const list = document.createElement('ul');
+            list.style.cssText = 'margin: 0; padding-left: 20px; font-size: 13px;';
+            
+            warnings.forEach(warning => {
+                const item = document.createElement('li');
+                item.style.marginBottom = '4px';
+                item.textContent = warning.message;
+                
+                // Add severity styling
+                if (warning.severity === 'error') {
+                    item.style.color = '#dc3545';
+                    item.style.fontWeight = 'bold';
+                }
+                
+                // Add recommendation if present
+                if (warning.recommendation) {
+                    const rec = document.createElement('div');
+                    rec.style.cssText = 'font-size: 12px; font-style: italic; margin-top: 2px; color: #666;';
+                    rec.textContent = `→ ${warning.recommendation}`;
+                    item.appendChild(rec);
+                }
+                
+                list.appendChild(item);
+            });
+            
+            panel.appendChild(list);
+            return panel;
         }
         
         async handleAction() {
@@ -570,11 +699,7 @@
             
             if (op.type === 'drill') {
                 if (stage === 'source') {
-                    if (op.settings.millHoles) {
-                        await this.generateDrillOffsets(op);
-                    } else {
-                        await this.generateDrillPreview(op);
-                    }
+                    await this.generateDrillStrategy(op);
                 } else if (stage === 'offset') {
                     await this.generatePreview(op);
                 } else {
@@ -689,39 +814,34 @@
                 return;
             }
 
-            // FIX: Retrieve the toolDiameter from the metadata of the offset geometry itself.
-            // This is the most reliable source, as it's the value that was actually used
-            // to create the paths we are about to preview.
             const firstOffset = operation.offsets[0];
             const toolDiameter = firstOffset.metadata?.toolDiameter;
 
-            // Safety check to ensure the required parameter exists in the metadata.
             if (typeof toolDiameter === 'undefined' || toolDiameter <= 0) {
                 this.ui.statusManager.showStatus('Error: Tool diameter not found in offset metadata.', 'error');
-                console.error("Preview failed: toolDiameter is missing from offset metadata", firstOffset);
                 return;
             }
             
-            // Collect all primitive objects from the existing offset passes.
             const allPrimitives = [];
             operation.offsets.forEach(offset => {
-                allPrimitives.push(...offset.primitives);
+                // DON'T clone - just mark primitives as preview
+                offset.primitives.forEach(prim => {
+                    if (!prim.properties) prim.properties = {};
+                    prim.properties.isPreview = true;
+                    prim.properties.toolDiameter = toolDiameter;
+                    allPrimitives.push(prim);
+                });
             });
             
-            // Reuse the existing primitive objects for the preview layer, as requested.
-            const previewPrimitives = allPrimitives;
-            
-            // Create the preview object on the operation. The renderer will use this.
             operation.preview = {
-                primitives: previewPrimitives,
+                primitives: allPrimitives,
                 metadata: {
                     generatedAt: Date.now(),
                     sourceOffsets: operation.offsets.length,
-                    toolDiameter: toolDiameter // Pass the confirmed toolDiameter from the offset metadata.
+                    toolDiameter: toolDiameter
                 }
             };
             
-            // Trigger the UI and renderer to update.
             if (this.ui.treeManager) {
                 const fileNode = Array.from(this.ui.treeManager.nodes.values())
                     .find(n => n.operation?.id === operation.id);
@@ -733,29 +853,19 @@
             await this.ui.updateRendererAsync();
             this.ui.statusManager.showStatus('Preview generated', 'success');
         }
-        
-        async generateDrillOffsets(operation) {
+        async generateDrillStrategy(operation) {
             const settings = this.collectSettings();
             
-            // For drill hole milling, we are clearing material inside the hole.
-            // Therefore, we generate INTERNAL offsets. The `isInternal` flag tells
-            // calculateOffsetDistances to generate negative distances.
-            const isInternal = true;
-            
-            const offsets = this.calculateOffsetDistances(
-                settings.toolDiameter,
-                settings.passes,
-                settings.stepOver,
-                isInternal 
+            this.ui.statusManager.showStatus(
+                settings.millHoles ? 'Generating milling paths...' : 'Generating peck positions...',
+                'info'
             );
             
-            this.ui.statusManager.showStatus('Generating drill hole milling offsets...', 'info');
-            
             try {
-                // The core offset generator will correctly interpret the negative distances
-                // as an instruction to offset inwards.
-                await this.core.generateOffsetGeometry(operation, offsets, settings);
+                // Call the new core method
+                await this.core.generateDrillStrategy(operation, settings);
                 
+                // Update tree
                 if (this.ui.treeManager) {
                     const fileNode = Array.from(this.ui.treeManager.nodes.values())
                         .find(n => n.operation?.id === operation.id);
@@ -765,58 +875,34 @@
                 }
                 
                 await this.ui.updateRendererAsync();
-                this.ui.statusManager.showStatus(`Generated ${operation.offsets.length} milling offset(s) for drills`, 'success');
+                
+                // Show warnings if any
+                const warnings = operation.warnings || [];
+                if (warnings.length > 0) {
+                    this.ui.statusManager.showStatus(
+                        `Generated with ${warnings.length} warning(s)`,
+                        'warning'
+                    );
+                    // Re-render to show warning panel
+                    this.showOperationProperties(operation, this.currentGeometryStage);
+                } else {
+                    const count = operation.offsets[0]?.primitives.length || 0;
+                    const mode = settings.millHoles ? 'milling paths' : 'peck positions';
+                    this.ui.statusManager.showStatus(
+                        `Generated ${count} ${mode}`,
+                        'success'
+                    );
+                }
             } catch (error) {
-                console.error('Drill offset generation failed:', error);
+                console.error('Drill strategy generation failed:', error);
                 this.ui.statusManager.showStatus('Failed: ' + error.message, 'error');
             }
         }
-        
-        async generateDrillPreview(operation) {
-            const settings = this.collectSettings();
-            const toolRadius = settings.toolDiameter / 2;
-            
-            const previewPrimitives = [];
-            operation.primitives.forEach(drillHole => {
-                if (drillHole.type === 'circle') {
-                    previewPrimitives.push({
-                        type: 'circle',
-                        center: drillHole.center,
-                        radius: toolRadius, // The radius of the preview is the tool's radius
-                        properties: {
-                            isDrillPreview: true, // This flag is used by the fixed renderer
-                            toolDiameter: settings.toolDiameter,
-                            fill: true // Important for correct rendering intent
-                        },
-                        getBounds: function() { /* ...bounds logic... */ }
-                    });
-                }
-            });
-            
-            operation.preview = {
-                primitives: previewPrimitives,
-                metadata: {
-                    generatedAt: Date.now(),
-                    toolDiameter: settings.toolDiameter // This is now correctly stored and passed
-                }
-            };
-            
-            if (this.ui.treeManager) {
-                const fileNode = Array.from(this.ui.treeManager.nodes.values())
-                    .find(n => n.operation?.id === operation.id);
-                if (fileNode) {
-                    this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
-                }
-            }
-            
-            await this.ui.updateRendererAsync();
-            this.ui.statusManager.showStatus('Drill preview generated', 'success');
-        }
-        
+
         async generateGcode(operation) {
             this.ui.statusManager.showStatus('G-code generation not yet implemented', 'info');
         }
-        
+
         collectSettings() {
             const settings = {};
             document.querySelectorAll('[data-param]').forEach(field => {

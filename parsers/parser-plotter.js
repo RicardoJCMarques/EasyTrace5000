@@ -155,92 +155,65 @@
                 
                 drillData.holes.forEach((item, index) => {
                     let primitive = null;
+                    const properties = {
+                        tool: item.tool,
+                        plated: item.plated,
+                        polarity: 'dark'
+                    };
 
                     if (item.type === 'slot') {
                         const { start, end, diameter } = item;
-                        
-                        // Check if slot is actually circular (start == end)
                         const tolerance = geomConfig.coordinatePrecision || 0.001;
                         const slotLength = Math.hypot(end.x - start.x, end.y - start.y);
-                        
+
                         if (slotLength < tolerance) {
-                            // Treat as circular drill hole
-                            this.debug(`Plotting circular drill slot ${index} as CirclePrimitive, diameter ${diameter}mm`);
-                            
-                            const radius = diameter / 2;
+                            // Zero-length slot = circular hole
                             primitive = new CirclePrimitive(
-                                start,  // Use start point as center
-                                radius,
+                                start,
+                                diameter / 2,
                                 {
-                                    isDrillHole: true,  // Not isDrillSlot
-                                    diameter: diameter,
-                                    fill: true,
-                                    stroke: false,
-                                    tool: item.tool,
-                                    plated: item.plated,
-                                    polarity: 'dark'
+                                    ...properties,
+                                    role: 'drill_hole',
+                                    diameter: diameter
                                 }
                             );
-                            this.creationStats.drillsCreated++;
                         } else {
-                            // True slot - create obround
-                            this.debug(`Plotting drill slot ${index} as ObroundPrimitive, diameter ${diameter}mm, length ${slotLength.toFixed(3)}mm`);
-
+                            // True slot
                             const halfDiameter = diameter / 2;
                             const minX = Math.min(start.x, end.x) - halfDiameter;
                             const minY = Math.min(start.y, end.y) - halfDiameter;
                             const maxX = Math.max(start.x, end.x) + halfDiameter;
                             const maxY = Math.max(start.y, end.y) + halfDiameter;
-
-                            const obroundPosition = { x: minX, y: minY };
-                            const obroundWidth = maxX - minX;
-                            const obroundHeight = maxY - minY;
-
-                            // Create the analytic ObroundPrimitive.
-                            primitive = new ObroundPrimitive(obroundPosition, obroundWidth, obroundHeight, {
-                                isDrillSlot: true, // Key property for specialized rendering
-                                fill: true,
-                                stroke: false,
-                                polarity: 'dark',
-                                tool: item.tool,
-                                plated: item.plated,
-                                diameter: diameter,
-                                originalSlot: { // Preserve original centers for renderer
-                                    start: item.start,
-                                    end: item.end
+                            
+                            primitive = new ObroundPrimitive(
+                                { x: minX, y: minY },
+                                maxX - minX,
+                                maxY - minY,
+                                {
+                                    ...properties,
+                                    role: 'drill_slot',
+                                    diameter: diameter,
+                                    originalSlot: { start: item.start, end: item.end }
                                 }
-                            });
-                            this.creationStats.drillsCreated++;
+                            );
                         }
-                    } else { // Default case is a standard 'hole'
-                        if (debugConfig.enabled) {
-                            console.log(`[Plotter] Hole ${index}: raw diameter=${item.diameter}mm`);
-                        }
-                         
-                        const radius = item.diameter / 2;
-                        if (debugConfig.enabled) {
-                            console.log(`[Plotter] Calculated radius=${radius}mm`);
-                        }
-                        
+                    } else {
+                        // Standard hole
                         primitive = new CirclePrimitive(
                             item.position,
-                            radius,
+                            item.diameter / 2,
                             {
-                                isDrillHole: true,
-                                diameter: item.diameter,
-                                fill: true,
-                                stroke: false,
-                                tool: item.tool,
-                                plated: item.plated,
-                                polarity: 'dark'
+                                ...properties,
+                                role: 'drill_hole',
+                                diameter: item.diameter
                             }
                         );
-                        this.creationStats.drillsCreated++;
                     }
-
+                    
                     if (primitive) {
                         this.primitives.push(primitive);
                         this.creationStats.primitivesCreated++;
+                        this.creationStats.drillsCreated++;
                     }
                 });
             }
