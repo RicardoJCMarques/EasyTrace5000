@@ -103,16 +103,7 @@
             this.debugPrimitives = [];
             
             this.core.setupTransform();
-            
-            // Background elements & Overlays (These are fine)
-            if (this.options.showGrid) { this.overlayRenderer.renderGrid(); }
-            if (this.options.showBounds) { this.overlayRenderer.renderBounds(); }
-            if (this.options.showOrigin) { this.overlayRenderer.renderOrigin(); }
-            if (this.options.showRulers) { this.overlayRenderer.renderRulers(); }
-            this.overlayRenderer.renderScaleIndicator();
-            if (this.options.showStats) { this.overlayRenderer.renderStats(); }
 
-            // --- START ROTATED OBJECT BLOCK ---
             // Save the simple pan/zoom transform
             this.ctx.save();
             
@@ -135,10 +126,17 @@
                 // This renders all PCB layers *inside* the rotated transform
                 this.renderVisibleLayers();
             }
+
+            // Background elements & Overlays
+            if (this.options.showGrid) { this.overlayRenderer.renderGrid(); }
+            if (this.options.showBounds) { this.overlayRenderer.renderBounds(); }
+            if (this.options.showOrigin) { this.overlayRenderer.renderOrigin(); }
+            if (this.options.showRulers) { this.overlayRenderer.renderRulers(); }
+            this.overlayRenderer.renderScaleIndicator();
+            if (this.options.showStats) { this.overlayRenderer.renderStats(); }
             
             // Restore from the object rotation
             this.ctx.restore();
-            // --- END ROTATED OBJECT BLOCK ---
             
             // Reset the transform AFTER all world-space drawing is done
             this.core.resetTransform();

@@ -1,7 +1,7 @@
 <!--
 /**
  * @file        index.html
- * @description EasyTrace5000 entry point
+ * @description EasyTrace5000 entry point - Extended for toolpath/G-code systems
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -59,10 +59,10 @@
                         <span>📂</span> Add Files...
                     </button>
                     <div class="menu-divider"></div>
-                    <button class="menu-item" id="toolbar-generate-toolpaths" disabled>
-                        <span>🔧</span> Generate Toolpaths
+                    <button class="menu-item" id="toolbar-manage-toolpaths">
+                        <span>🔧</span> Manage Toolpaths
                     </button>
-                    <button class="menu-item" id="toolbar-export-gcode" disabled>
+                    <button class="menu-item" id="toolbar-export-gcode">
                         <span>📄</span> Export G-Code
                     </button>
                     <button class="menu-item" id="toolbar-export-svg">
@@ -265,8 +265,6 @@
                     <div class="property-empty">Select an operation to view properties</div>
                 </div>
             </div>
-
-
         </aside>
     </div>
 
@@ -392,6 +390,7 @@
                 <span class="tree-expand-icon">▶</span>
                 <span class="file-icon">📄</span>
                 <span class="file-label"></span>
+                <span class="unsaved-indicator hidden" title="Unsaved changes">●</span>
                 <div class="node-actions">
                     <button class="btn-icon btn-tiny settings-btn" title="Settings">
                         <svg width="12" height="12" viewBox="0 0 20 20">
@@ -569,24 +568,35 @@
         </div>
     </div>
 
-    <!-- Multi-Operation G-code Export Modal -->
+    <!-- Toolpath Management & G-code Export Modal -->
     <div id="gcode-export-modal" class="modal">
         <div class="modal-content modal-gcode">
             <div class="modal-header">
-                <h2>Export G-code</h2>
+                <h2>Toolpath Manager & Export</h2>
                 <button class="modal-close" id="gcode-modal-close">×</button>
             </div>
             <div class="modal-body">
                 <div class="gcode-options">
-                    <h3>Select Operations to Export</h3>
+                    <h3>Select Operations to Process</h3>
                     <div class="operation-checklist" id="gcode-operation-list">
                         <!-- Dynamically populated -->
                     </div>
 
-                    <h3>Export Order</h3>
-                    <p class="help-text">Drag operations to reorder. Operations will be exported in this sequence.</p>
+                    <h3>Processing Order</h3>
+                    <p class="help-text">Drag operations to reorder. Operations will be processed in this sequence.</p>
                     <div class="operation-order" id="gcode-operation-order">
                         <!-- Dynamically populated, sortable -->
+                    </div>
+
+                    <h3>Post-Processor Settings</h3>
+                    <div class="property-field">
+                        <label>Post-Processor</label>
+                        <select id="gcode-post-processor">
+                            <option value="grbl" selected>GRBL</option>
+                            <option value="marlin">Marlin</option>
+                            <option value="linuxcnc">LinuxCNC</option>
+                            <option value="mach3">Mach3</option>
+                        </select>
                     </div>
 
                     <h3>Output Options</h3>
@@ -612,6 +622,13 @@
                     </div>
 
                     <div class="property-field">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="gcode-optimize-paths" checked>
+                            <span>Optimize toolpaths</span>
+                        </label>
+                    </div>
+
+                    <div class="property-field">
                         <label>Output Filename</label>
                         <input type="text" id="gcode-filename" value="pcb-output.nc" placeholder="output.nc">
                     </div>
@@ -623,12 +640,14 @@
                         <span>Lines: <strong id="gcode-line-count">0</strong></span>
                         <span>Operations: <strong id="gcode-op-count">0</strong></span>
                         <span>Est. Time: <strong id="gcode-est-time">--:--</strong></span>
+                        <span>Distance: <strong id="gcode-distance">0mm</strong></span>
                     </div>
                     <textarea id="gcode-preview-text" readonly rows="15" placeholder="G-code preview will appear here..."></textarea>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="gcode-cancel-btn">Cancel</button>
+                <button class="btn btn-secondary" id="gcode-calculate-btn">Calculate Toolpaths</button>
                 <button class="btn btn-secondary" id="gcode-preview-btn">Update Preview</button>
                 <button class="btn btn-primary" id="gcode-export-btn">Export G-code</button>
             </div>
@@ -649,6 +668,7 @@
             'geometry/geometry-clipper-wrapper.js',
             'geometry/geometry-utils.js',
             'geometry/geometry-offsetter.js',
+            
             // Parsers and primitives
             'parsers/primitives.js',
             'parsers/parser-core.js',
@@ -656,16 +676,20 @@
             'parsers/parser-excellon.js',
             'parsers/parser-svg.js',
             'parsers/parser-plotter.js',
+            
             // Rendering
             'renderer/renderer-core.js',
             'renderer/renderer-primitives.js',
             'renderer/renderer-overlay.js',
             'renderer/renderer-interaction.js',
             'renderer/renderer-layer.js',
+            
             // Exports
             'export/svg-exporter.js',
+            
             // Coordinate system
             'coordinate/coordinate-system.js',
+            
             // UI Components
             'ui/ui-tooltip.js',
             'ui/tool-library.js',
@@ -675,6 +699,17 @@
             'ui/ui-visibility-panel.js',
             'ui/ui-status-manager.js',
             'ui/ui-controls.js',
+            'ui/ui-modal-manager.js',
+            
+            // Toolpath system
+            'toolpath/toolpath-strategies.js',
+            'toolpath/toolpath-optimizer.js',
+            'toolpath/toolpath-calculator.js',
+            
+            // G-code generation
+            'export/gcode-templates.js',
+            'export/gcode-generator.js',
+            
             // Core application
             'cam-core.js',
             'cam-ui.js',
@@ -692,7 +727,7 @@
                 script.src = src;
                 script.async = false;
                 script.onload = () => {
-                    console.log(`✓ Loaded: ${src}`);
+                    console.log(`✔ Loaded: ${src}`);
                     loadedCount++;
                     updateLoadingProgress();
                     resolve();
@@ -743,38 +778,5 @@
 
         document.addEventListener('DOMContentLoaded', initializeApp);
     </script>
-    <!--<script>
-        // Dynamically load renderer based on preference
-        (function() {
-            const rendererType = localStorage.getItem('pcbcam-renderer') || 'canvas2d';
-            const scripts = [];
-            
-            if (rendererType === 'webgl' && typeof WebGL2RenderingContext !== 'undefined') {
-                scripts.push(
-                    'renderer/webgl-renderer-core.js',
-                    'renderer/webgl-tessellator.js',
-                    'renderer/webgl-layer-renderer.js',
-                    'renderer/webgl-overlay-renderer.js',
-                    'renderer/renderer-interaction.js' // Shared
-                );
-            } else {
-                scripts.push(
-                    'renderer/renderer-core.js',
-                    'renderer/renderer-primitives.js',
-                    'renderer/renderer-overlay.js',
-                    'renderer/renderer-interaction.js',
-                    'renderer/renderer-layer.js'
-                );
-            }
-            
-            // Load scripts sequentially
-            scripts.forEach(src => {
-                const script = document.createElement('script');
-                script.src = src;
-                script.async = false;
-                document.head.appendChild(script);
-            });
-        })();
-    </script>-->
 </body>
 </html>

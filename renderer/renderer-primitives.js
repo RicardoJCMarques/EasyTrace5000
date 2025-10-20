@@ -455,14 +455,6 @@
                 this.ctx.beginPath();
                 this.ctx.arc(center.x, center.y, radius * 1.3, 0, Math.PI * 2);
                 this.ctx.stroke();
-                
-                // "50%" label for reduced plunge
-                this.ctx.setLineDash([]);
-                this.ctx.font = `${Math.max(0.25, radius * 0.4)}px monospace`;
-                this.ctx.fillStyle = '#ff5e00ff';
-                this.ctx.textAlign = 'center';
-                this.ctx.textBaseline = 'middle';
-                this.ctx.fillText('50%', center.x, center.y - radius - 0.4);
                 this.ctx.restore();
             }
         }

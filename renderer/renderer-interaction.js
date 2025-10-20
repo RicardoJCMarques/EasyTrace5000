@@ -47,6 +47,8 @@
                 startScale: 1,
                 lastTouchPos: null
             };
+
+            this.lastScreenPos = { x: 0, y: 0 };
             
             this.handleMouseDown = this._handleMouseDown.bind(this);
             this.handleMouseMove = this._handleMouseMove.bind(this);
@@ -108,7 +110,8 @@
             
             const worldPos = this.core.screenToWorld(x, y);
             
-            this.updateCoordinateDisplay(worldPos.x, worldPos.y);
+            this.lastScreenPos = { x: x, y: y };
+            this.updateCoordinateDisplay();
             
             if (this.isDragging || this.isRightDragging) {
                 if (this.lastMousePos) {
@@ -143,7 +146,7 @@
             const zoomDelta = e.deltaY * wheelSpeed;
             const zoomFactor = Math.exp(-zoomDelta);
             
-            this.core.zoomToPoint(worldPos.x, worldPos.y, zoomFactor);
+            this.core.zoomToPoint(mouseX, mouseY, zoomFactor);
             this.renderer.render();
             
             this.updateZoomDisplay();
@@ -254,12 +257,15 @@
         
         // ==================== UI UPDATES ====================
         
-        updateCoordinateDisplay(worldX, worldY) {
+        updateCoordinateDisplay() {
             const coordX = document.getElementById('coord-x');
             const coordY = document.getElementById('coord-y');
+
+            // Re-calculate world position from stored screen position
+            const worldPos = this.core.screenToWorld(this.lastScreenPos.x, this.lastScreenPos.y);
             
-            if (coordX) coordX.textContent = worldX.toFixed(2);
-            if (coordY) coordY.textContent = worldY.toFixed(2);
+            if (coordX) coordX.textContent = worldPos.x.toFixed(2);
+            if (coordY) coordY.textContent = worldPos.y.toFixed(2);
         }
         
         updateZoomDisplay() {

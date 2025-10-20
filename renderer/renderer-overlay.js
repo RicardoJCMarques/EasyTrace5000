@@ -187,12 +187,12 @@
             const majorStep = this.calculateRulerStep();
             const viewBounds = this.core.getViewBounds();
             
-            // Draw ruler backgrounds
-            this.ctx.fillStyle = colors.background;
-            this.ctx.fillRect(0, 0, this.canvas.width, rulerSize);
-            this.ctx.fillRect(0, 0, rulerSize, this.canvas.height);
-            
-            this.ctx.strokeStyle = colors.ruler || '#888888';
+            // Ruler backgrounds
+            const bgColorWithAlpha = colors.background + '99'; 
+            this.ctx.fillStyle = bgColorWithAlpha; // Apply semi-transparent background
+            this.ctx.fillRect(0, 0, this.canvas.width, rulerSize); // Horizontal bg
+            this.ctx.fillRect(0, 0, rulerSize, this.canvas.height); // Vertical bg
+            this.ctx.strokeStyle = colors.ruler || '#888888ff';
             this.ctx.fillStyle = colors.rulerText || '#cccccc';
             
             // Horizontal ruler
@@ -269,8 +269,8 @@
             }
             this.ctx.stroke();
             
-            // Corner box
-            this.ctx.fillStyle = colors.background;
+            // Corner stat box
+            this.ctx.fillStyle = bgColorWithAlpha; 
             this.ctx.fillRect(0, 0, rulerSize, rulerSize);
             this.ctx.strokeRect(0, 0, rulerSize, rulerSize);
             

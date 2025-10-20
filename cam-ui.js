@@ -78,7 +78,7 @@
             this._eventHandlersAttached = false;
         }
         
-        async init() {
+        async init(parameterManager) {
             try {
                 // Initialize tool library
                 if (typeof ToolLibrary !== 'undefined') {
@@ -97,7 +97,7 @@
                 
                 if (typeof PropertyInspector !== 'undefined') {
                     this.propertyInspector = new PropertyInspector(this);
-                    this.propertyInspector.init(this.toolLibrary);
+                    this.propertyInspector.init(this.toolLibrary, parameterManager);
                 }
                 
                 if (typeof VisibilityPanel !== 'undefined') {

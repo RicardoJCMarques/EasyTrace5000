@@ -59,6 +59,15 @@
             this.core = null;
             this.ui = null;
             
+            // Phase 1: State managers
+            this.parameterManager = null;
+            this.modalManager = null;
+            
+            // Phase 2: Pipeline components (declare but don't instantiate yet)
+            this.toolpathCalculator = null;
+            this.gcodeGenerator = null;
+            this.toolpathOptimizer = null;
+            
             // Track initialization state
             this.initState = {
                 coreReady: false,
@@ -90,11 +99,15 @@
                 // Initialize core with skip init flag to control WASM loading
                 this.core = new PCBCamCore({ skipInit: true });
                 
+                // NEW: Initialize managers before UI
+                this.parameterManager = new ParameterManager();
+                this.modalManager = new ModalManager(this);
+                
                 // Initialize UI with core reference
                 this.ui = new PCBCamUI(this.core);
                 
-                // Initialize UI (which creates tool library from config)
-                const uiReady = await this.ui.init();
+                // Initialize UI (pass parameter manager)
+                const uiReady = await this.ui.init(this.parameterManager);
                 this.initState.uiReady = uiReady;
                 
                 if (!uiReady) {
@@ -120,6 +133,10 @@
                 
                 // Setup toolbar handlers
                 this.setupToolbarHandlers();
+                
+                // Expose controller globally for PropertyInspector
+                window.pcbcam = this;
+                window.pcbcam.modalManager = this.modalManager;
                 
                 // Process any pending operations
                 await this.processPendingOperations();
@@ -223,10 +240,16 @@
                 });
             }
             
-            const genToolpathsBtn = document.getElementById('toolbar-generate-toolpaths');
-            if (genToolpathsBtn) {
-                genToolpathsBtn.addEventListener('click', () => {
-                    this.generateToolpaths();
+            const manageToolpathsBtn = document.getElementById('toolbar-manage-toolpaths');
+            if (manageToolpathsBtn) {
+                manageToolpathsBtn.addEventListener('click', () => {
+                    // Collect operations with previews
+                    const readyOps = this.core.operations.filter(op => op.preview);
+                    if (readyOps.length === 0) {
+                        this.ui?.updateStatus('No operations ready. Generate previews first.', 'warning');
+                        return;
+                    }
+                    this.modalManager.showToolpathModal(readyOps);
                     quickActionsBtn.classList.remove('active');
                     quickActionsMenu.classList.remove('show');
                 });
@@ -240,8 +263,6 @@
                     quickActionsMenu.classList.remove('show');
                 });
             }
-            
-
         }
         
         setupGlobalHandlers() {
@@ -643,7 +664,7 @@
                     const file = new File([content], fileName, { type: 'text/plain' });
                     
                     // Process the file with corrected type
-                    await this.processFile(file, actualType); // <-- await
+                    await this.processFile(file, actualType);
                     
                 } catch (e) {
                     console.error(`Failed to load example file ${filepath}:`, e);
@@ -789,9 +810,9 @@
                 genBtn.disabled = !hasOperations;
             }
             
-            const exportGcodeBtn = document.getElementById('toolbar-export-gcode');
-            if (exportGcodeBtn) {
-                exportGcodeBtn.disabled = !hasToolpaths;
+            const exportBtn = document.getElementById('toolbar-export-gcode');
+            if (exportBtn) {
+                exportBtn.disabled = !hasToolpaths;
             }
         }
         
@@ -1086,7 +1107,7 @@
             console.log('Checking optional classes:');
             optionalClasses.forEach(cls => {
                 const available = typeof window[cls] !== 'undefined';
-                console.log(`  ${available ? '✔' : '○'} ${cls}`);
+                console.log(`  ${available ? '✓' : '○'} ${cls}`);
             });
         }
         

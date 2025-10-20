@@ -1,13 +1,11 @@
 /**
  * @file        ui/ui-property-inspector.js
- * @description Manages the properties panel (right sidebar
- * @comment     Unified: Stage-based parameters with consistent offset distance calculation
+ * @description Refactored property inspector using parameter manager
  * @author      Eltryus - Ricardo Marques
- * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
-/*
+ /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
  * Copyright (C) 2025 Eltryus
  *
@@ -30,24 +28,33 @@
     
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
-    const opsConfig = config.operations || {};
     
     class PropertyInspector {
         constructor(ui) {
             this.ui = ui;
             this.core = ui.core;
             this.toolLibrary = null;
+            this.parameterManager = null;
             
             this.currentOperation = null;
             this.currentGeometryStage = 'source';
             
-            this.isDirty = false;
-            this.originalSettings = null;
+            // Track input changes for auto-save
+            this.changeTimeout = null;
         }
         
-        init(toolLibrary) {
+        init(toolLibrary, parameterManager) {
             this.toolLibrary = toolLibrary;
-            if (debugConfig.enabled) console.log('PropertyInspector initialized');
+            this.parameterManager = parameterManager || new ParameterManager();
+            
+            // Listen for parameter changes from other sources
+            this.parameterManager.addChangeListener((change) => {
+                this.onExternalParameterChange(change);
+            });
+            
+            if (debugConfig.enabled) {
+                console.log('[PropertyInspector] Initialized with parameter manager');
+            }
         }
         
         clearProperties() {
@@ -66,17 +73,17 @@
                 this.clearProperties();
                 return;
             }
-
-            // Save previous operation's settings before switching
-            if (this.currentOperation && 
-                this.currentOperation.id !== operation.id && 
-                this.isDirty) {
-                this.saveSettings();
+            
+            // Auto-save current operation before switching
+            if (this.currentOperation && this.currentOperation.id !== operation.id) {
+                this.saveCurrentState();
             }
             
             this.currentOperation = operation;
             this.currentGeometryStage = geometryStage;
-            this.originalSettings = JSON.parse(JSON.stringify(operation.settings || {}));
+            
+            // Load existing parameters for this operation
+            this.parameterManager.loadFromOperation(operation);
             
             const container = document.getElementById('property-form');
             const title = document.getElementById('inspector-title');
@@ -85,343 +92,73 @@
             
             title.textContent = operation.file.name;
             container.innerHTML = '';
-
-            // Show warnings if any exist
+            
+            // Show warnings if any
             if (operation.warnings && operation.warnings.length > 0) {
                 container.appendChild(this.createWarningPanel(operation.warnings));
             }
             
-            // Render based on operation type and stage
-            if (operation.type === 'drill') {
-                this.renderDrillProperties(container, operation, geometryStage);
-            } else if (operation.type === 'cutout') {
-                this.renderCutoutProperties(container, operation, geometryStage);
-            } else {
-                this.renderIsolationProperties(container, operation, geometryStage);
+            // Get appropriate parameters for this stage and operation type
+            const stageParams = this.parameterManager.getStageParameters(geometryStage, operation.type);
+            const currentValues = this.parameterManager.getParameters(operation.id, geometryStage);
+            
+            // Group parameters by category
+            const categories = this.groupByCategory(stageParams);
+            
+            // Render each category
+            for (const [category, params] of Object.entries(categories)) {
+                const section = this.createSection(
+                    this.getCategoryTitle(category, operation.type),
+                    params.map(param => this.createField(param, currentValues[param.name]))
+                );
+                container.appendChild(section);
+            }
+            
+            // Add action button
+            const actionText = this.getActionButtonText(geometryStage, operation.type);
+            if (actionText) {
+                container.appendChild(this.createActionButton(actionText));
             }
             
             this.attachEventHandlers(container);
         }
-
-        resetInspectorState() {
-            if (this.currentOperation && this.isDirty) {
-                // Optionally prompt user to save changes
-                this.saveSettings();
+        
+        groupByCategory(params) {
+            const groups = {};
+            for (const param of params) {
+                const category = param.category || 'general';
+                if (!groups[category]) groups[category] = [];
+                groups[category].push(param);
             }
-            
-            this.currentOperation = null;
-            this.currentGeometryStage = 'source';
-            this.originalSettings = null;
-            this.isDirty = false;
-            
-            // Clear any cached UI state
-            const container = document.getElementById('property-form');
-            if (container) {
-                container.innerHTML = '<div class="property-empty">Select an operation</div>';
-            }
+            return groups;
         }
-
-        // Helper to get user-friendly stage name
-        getStageName(stage, operationType) {
-            const stageNames = {
-                isolation: {
-                    source: 'Tool Selection',
-                    offset: 'Offset Generation',
-                    preview: 'Toolpath Preview',
-                    gcode: 'G-code Setup'
-                },
-                drill: {
-                    source: 'Tool & Hole Selection',
-                    offset: 'Drill Strategy', // NOT "offset"
-                    preview: 'Drilling Preview',
-                    gcode: 'G-code Setup'
-                },
-                clear: {
-                    source: 'Tool Selection',
-                    offset: 'Clearing Paths',
-                    preview: 'Toolpath Preview',
-                    gcode: 'G-code Setup'
-                },
-                cutout: {
-                    source: 'Tool Selection',
-                    offset: 'Cutout Path',
-                    preview: 'Cutting Preview',
-                    gcode: 'G-code Setup'
-                }
+        
+        getCategoryTitle(category, operationType) {
+            const titles = {
+                tool: 'Tool Selection',
+                offset: 'Offset Generation',
+                depth: 'Depth Settings',
+                feeds: 'Feeds & Speeds',
+                strategy: 'Cutting Strategy',
+                drill: 'Drilling Parameters',
+                cutout: 'Cutout Settings',
+                machine: 'Machine Configuration',
+                general: 'General Settings'
             };
-            
-            return stageNames[operationType]?.[stage] || stage;
+            return titles[category] || category;
         }
         
-        renderIsolationProperties(container, operation, stage) {
+        getActionButtonText(stage, operationType) {
             if (stage === 'source') {
-                // Source stage: 2D X&Y parameters
-                container.appendChild(this.createSection('Tool Selection', [
-                    this.createToolField('tool', operation),
-                    this.createField('toolDiameter', 'number', {
-                        value: operation.settings.tool?.diameter || 0.2,
-                        step: 0.001,
-                        min: 0.01
-                    })
-                ]));
-                
-                container.appendChild(this.createSection('Offset Generation', [
-                    this.createField('passes', 'number', {
-                        value: operation.settings.passes || 3,
-                        min: 1, max: 10
-                    }),
-                    this.createField('stepOver', 'number', {
-                        value: operation.settings.stepOver || 50,
-                        min: 10, max: 100
-                    }),
-                    this.createField('combineOffsets', 'checkbox', {
-                        checked: operation.settings.combineOffsets !== false
-                    })
-                ]));
-                
-                container.appendChild(this.createActionButton('Generate Offsets'));
-                
+                if (operationType === 'drill') return 'Generate Drill Strategy';
+                if (operationType === 'cutout') return 'Generate Cutout Path';
+                return 'Generate Offsets';
             } else if (stage === 'offset') {
-                // Offset stage: Depth parameters
-                container.appendChild(this.createSection('Toolpath Depth', [
-                    this.createField('cutDepth', 'number', {
-                        value: operation.settings.cutDepth || -0.05,
-                        step: 0.001
-                    }),
-                    this.createField('travelZ', 'number', {
-                        value: operation.settings.travelZ || 2.0,
-                        step: 0.1
-                    }),
-                    this.createField('safeZ', 'number', {
-                        value: operation.settings.safeZ || 5.0,
-                        step: 0.1
-                    }),
-                    this.createField('multiDepth', 'checkbox', {
-                        checked: operation.settings.multiDepth || false
-                    }),
-                    this.createField('depthPerPass', 'number', {
-                        value: operation.settings.depthPerPass || 0.025,
-                        step: 0.001,
-                        disabled: !operation.settings.multiDepth
-                    })
-                ]));
-                
-                container.appendChild(this.createSection('Feeds & Speeds', [
-                    this.createField('feedRate', 'number', {
-                        value: operation.settings.feedRate || 150,
-                        min: 1, max: 5000
-                    }),
-                    this.createField('plungeRate', 'number', {
-                        value: operation.settings.plungeRate || 50,
-                        min: 1, max: 1000
-                    }),
-                    this.createField('spindleSpeed', 'number', {
-                        value: operation.settings.spindleSpeed || 12000,
-                        min: 100, max: 30000
-                    })
-                ]));
-                
-                container.appendChild(this.createSection('Strategy', [
-                    this.createSelectField('direction', 'Direction', operation.settings.direction || 'climb', [
-                        { value: 'climb', label: 'Climb' },
-                        { value: 'conventional', label: 'Conventional' }
-                    ]),
-                    this.createSelectField('entryType', 'Entry', operation.settings.entryType || 'plunge', [
-                        { value: 'plunge', label: 'Plunge' },
-                        { value: 'ramp', label: 'Ramp' },
-                        { value: 'helix', label: 'Helix' }
-                    ])
-                ]));
-                
-                container.appendChild(this.createActionButton('Generate Preview'));
-                
+                return 'Generate Preview';
             } else if (stage === 'preview') {
-                // Preview stage: Machine configuration
-                container.appendChild(this.createSection('Machine Configuration', [
-                    this.createSelectField('postProcessor', 'Post Processor', operation.settings.postProcessor || 'grbl', [
-                        { value: 'grbl', label: 'GRBL' },
-                        { value: 'marlin', label: 'Marlin' },
-                        { value: 'linuxcnc', label: 'LinuxCNC' },
-                        { value: 'mach3', label: 'Mach3' }
-                    ]),
-                    this.createSelectField('workOffset', 'Work Offset', operation.settings.workOffset || 'G54', [
-                        { value: 'G54', label: 'G54' },
-                        { value: 'G55', label: 'G55' },
-                        { value: 'G56', label: 'G56' }
-                    ])
-                ]));
-                
-                // Pre/postamble text areas
-                container.appendChild(this.createSection('G-code Pre/Postambles', [
-                    this.createTextAreaField('startCode', 'Start G-code', 
-                        operation.settings.startCode || 'G90 G21\nG0 Z5\nM3 S12000\nG4 P1', 4),
-                    this.createTextAreaField('endCode', 'End G-code', 
-                        operation.settings.endCode || 'M5\nG0 Z10\nM2', 3)
-                ]));
-                
-                container.appendChild(this.createActionButton('Generate G-code'));
+                return 'Operations Manager';
             }
-        }
-        
-        renderDrillProperties(container, operation, stage) {
-            if (stage === 'source') {
-                // Drilling Mode section
-                const isMilling = operation.settings.millHoles !== false;
-
-                const sectionName = this.getStageName('source', 'drill');
-                container.appendChild(this.createSection(sectionName, [
-                    this.createToolField('tool', operation),
-                    this.createField('toolDiameter', 'number', {
-                        value: operation.settings.tool?.diameter || 0.8,
-                        step: 0.001,
-                        min: 0.01
-                    })
-                ]));
-                
-                
-
-                container.appendChild(this.createSection('Drilling Mode', [
-                    this.createField('millHoles', 'checkbox', {
-                        checked: isMilling,
-                        label: 'Mill Holes (for undersized tools)'
-                    })
-                ]));
-                
-                // Show parameters based on mode
-                if (!isMilling) {
-                    // Pecking mode parameters
-                    const cannedCycleField = this.createSelectField('cannedCycle', 'Cycle',
-                        operation.settings.cannedCycle || 'none', [
-                        { value: 'none', label: 'None (G0 + G1)' },
-                        { value: 'G81', label: 'G81 - Simple Drill' },
-                        { value: 'G83', label: 'G83 - Peck Drilling' }
-                    ]);
-                    
-                    container.appendChild(this.createSection('Drilling Parameters', [
-                        cannedCycleField,
-                        this.createField('dwellTime', 'number', {
-                            value: operation.settings.dwellTime || 0,
-                            step: 0.1
-                        }),
-                        this.createField('retractHeight', 'number', {
-                            value: operation.settings.retractHeight || 0.5,
-                            step: 0.01
-                        }),
-                        this.createField('peckDepth', 'number', {
-                            value: operation.settings.peckDepth || 0,
-                            step: 0.01
-                        })
-                    ]));
-                    
-                    container.appendChild(this.createSection('Cutting Parameters', [
-                        this.createField('cutDepth', 'number', {
-                            value: operation.settings.cutDepth || -1.8
-                        }),
-                        this.createField('feedRate', 'number', {
-                            value: operation.settings.feedRate || 60
-                        }),
-                        this.createField('plungeRate', 'number', {
-                            value: operation.settings.plungeRate || 30
-                        }),
-                        this.createField('spindleSpeed', 'number', {
-                            value: operation.settings.spindleSpeed || 10000
-                        })
-                    ]));
-                    
-                    container.appendChild(this.createActionButton('Generate Drill Preview'));
-                    
-                } else {
-                    // Milling mode parameters
-                    container.appendChild(this.createSection('Hole Milling', [
-                        this.createField('passes', 'number', {
-                            value: operation.settings.passes || 2,
-                            min: 1, max: 10
-                        }),
-                        this.createField('stepOver', 'number', {
-                            value: operation.settings.stepOver || 50,
-                            min: 10, max: 100
-                        })
-                    ]));
-                    
-                    container.appendChild(this.createActionButton('Generate Milling Paths'));
-                }
-
-                const actionBtn = container.querySelector('#action-button');
-                if (actionBtn) {
-                    if (stage === 'source') {
-                        actionBtn.textContent = isMilling ? 'Generate Milling Offsets' : 'Generate Drill Positions';
-                    } else if (stage === 'offset') {
-                        actionBtn.textContent = 'Generate Preview';
-                    } else {
-                        actionBtn.textContent = 'Generate G-code';
-                    }
-                }
-                
-            } else if (stage === 'offset') {
-                // Milled holes - same as isolation offset stage
-                this.renderIsolationProperties(container, operation, 'offset');
-                
-            } else if (stage === 'preview') {
-                // Same machine config as isolation
-                this.renderIsolationProperties(container, operation, 'preview');
-            }
-        }
-        
-        renderCutoutProperties(container, operation, stage) {
-            if (stage === 'source') {
-                container.appendChild(this.createSection('Tool Selection', [
-                    this.createToolField('tool', operation),
-                    this.createField('toolDiameter', 'number', {
-                        value: operation.settings.tool?.diameter || 1.0,
-                        step: 0.001,
-                        min: 0.01
-                    })
-                ]));
-                
-                container.appendChild(this.createSection('Cutout Path', [
-                    this.createSelectField('cutSide', 'Cut Side', operation.settings.cutSide || 'outside', [
-                        { value: 'outside', label: 'Outside (keep inner)' },
-                        { value: 'inside', label: 'Inside (keep outer)' },
-                        { value: 'on', label: 'On Line' }
-                    ])
-                ]));
-                
-                container.appendChild(this.createActionButton('Generate Offset'));
-                
-            } else if (stage === 'offset') {
-                // Move tabs here
-                container.appendChild(this.createSection('Multi-pass Cutting', [
-                    this.createField('cutDepth', 'number', {
-                        value: operation.settings.cutDepth || -1.8,
-                        step: 0.1
-                    }),
-                    this.createField('depthPerPass', 'number', {
-                        value: operation.settings.depthPerPass || 0.2,
-                        step: 0.01
-                    })
-                ]));
-                
-                container.appendChild(this.createSection('Tabs', [
-                    this.createField('tabs', 'number', {
-                        value: operation.settings.tabs || 4,
-                        min: 0, max: 12
-                    }),
-                    this.createField('tabWidth', 'number', {
-                        value: operation.settings.tabWidth || 3.0,
-                        step: 0.1
-                    }),
-                    this.createField('tabHeight', 'number', {
-                        value: operation.settings.tabHeight || 0.5,
-                        step: 0.1
-                    })
-                ]));
-                
-                container.appendChild(this.createActionButton('Generate Offsets'));
-                
-            } else if (stage === 'preview') {
-                // Same machine config
-                this.renderIsolationProperties(container, operation, 'preview');
-            }
+            return null;
         }
         
         createSection(title, fields) {
@@ -437,139 +174,126 @@
             return section;
         }
         
-        createToolField(paramName, operation) {
+        createField(param, currentValue) {
             const field = document.createElement('div');
             field.className = 'param-field';
-            field.dataset.param = paramName;
+            field.dataset.param = param.name;
+            
+            // Handle conditionals
+            if (param.conditional) {
+                field.dataset.conditional = param.conditional;
+                // Will be evaluated in attachEventHandlers
+            }
             
             const label = document.createElement('label');
-            label.textContent = 'Tool';
+            label.textContent = param.label;
             field.appendChild(label);
             
-            const select = document.createElement('select');
-            select.id = `prop-${paramName}`;
-            this.populateToolSelect(select, operation.type, operation.settings.tool?.id);
-            field.appendChild(select);
+            // Use default if no current value
+            if (currentValue === undefined) {
+                const defaults = this.parameterManager.getDefaults(this.currentOperation.type);
+                currentValue = defaults[param.name];
+            }
             
-            return field;
-        }
-        
-        createField(paramName, type, options = {}) {
-            const field = document.createElement('div');
-            field.className = 'param-field';
-            field.dataset.param = paramName;
-            if (options.conditionalOn) field.dataset.conditionalOn = options.conditionalOn;
-            
-            if (type === 'checkbox') {
-                const label = document.createElement('label');
-                label.className = 'checkbox-label';
-                
-                const input = document.createElement('input');
-                input.type = 'checkbox';
-                input.id = `prop-${paramName}`;
-                input.checked = options.checked || false;
-                
-                const span = document.createElement('span');
-                span.textContent = options.label || this.getLabel(paramName);
-                
-                label.appendChild(input);
-                label.appendChild(span);
-                field.appendChild(label);
-            } else {
-                const label = document.createElement('label');
-                label.textContent = this.getLabel(paramName);
-                field.appendChild(label);
-                
-                const wrapper = document.createElement('div');
-                wrapper.className = 'input-unit';
-                
-                const input = document.createElement('input');
-                input.type = type;
-                input.id = `prop-${paramName}`;
-                if (options.value !== undefined) input.value = options.value;
-                if (options.min !== undefined) input.min = options.min;
-                if (options.max !== undefined) input.max = options.max;
-                if (options.step !== undefined) input.step = options.step;
-                if (options.disabled) input.disabled = true;
-                
-                wrapper.appendChild(input);
-                
-                const unit = this.getUnit(paramName);
-                if (unit) {
-                    const unitSpan = document.createElement('span');
-                    unitSpan.className = 'unit';
-                    unitSpan.textContent = unit;
-                    wrapper.appendChild(unitSpan);
-                }
-                
-                field.appendChild(wrapper);
+            switch (param.type) {
+                case 'number':
+                    this.createNumberField(field, param, currentValue);
+                    break;
+                case 'checkbox':
+                    this.createCheckboxField(field, param, currentValue);
+                    break;
+                case 'select':
+                    this.createSelectField(field, param, currentValue);
+                    break;
+                case 'textarea':
+                    this.createTextAreaField(field, param, currentValue);
+                    break;
+                default:
+                    console.warn(`Unknown parameter type: ${param.type}`);
             }
             
             return field;
         }
         
-        createTextAreaField(paramName, label, defaultValue, rows = 4) {
-            const field = document.createElement('div');
-            field.className = 'param-field';
-            field.dataset.param = paramName;
+        createNumberField(field, param, value) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'input-unit';
             
-            const labelEl = document.createElement('label');
-            labelEl.textContent = label;
-            field.appendChild(labelEl);
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.id = `prop-${param.name}`;
+            input.value = value || 0;
+            if (param.min !== undefined) input.min = param.min;
+            if (param.max !== undefined) input.max = param.max;
+            if (param.step !== undefined) input.step = param.step;
             
+            wrapper.appendChild(input);
+            
+            if (param.unit) {
+                const unitSpan = document.createElement('span');
+                unitSpan.className = 'unit';
+                unitSpan.textContent = param.unit;
+                wrapper.appendChild(unitSpan);
+            }
+            
+            field.appendChild(wrapper);
+        }
+        
+        createCheckboxField(field, param, value) {
+            // Clear the label already added
+            field.innerHTML = '';
+            
+            const label = document.createElement('label');
+            label.className = 'checkbox-label';
+            
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.id = `prop-${param.name}`;
+            input.checked = value || false;
+            
+            const span = document.createElement('span');
+            span.textContent = param.label;
+            
+            label.appendChild(input);
+            label.appendChild(span);
+            field.appendChild(label);
+        }
+        
+        createSelectField(field, param, value) {
+            const select = document.createElement('select');
+            select.id = `prop-${param.name}`;
+            
+            // Special case for tool selection
+            if (param.name === 'tool') {
+                this.populateToolSelect(select, this.currentOperation.type, value);
+            } else if (param.options) {
+                param.options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.label;
+                    if (opt.value === value) option.selected = true;
+                    select.appendChild(option);
+                });
+            }
+            
+            field.appendChild(select);
+        }
+        
+        createTextAreaField(field, param, value) {
             const textarea = document.createElement('textarea');
-            textarea.id = `prop-${paramName}`;
-            textarea.rows = rows;
-            textarea.value = defaultValue;
+            textarea.id = `prop-${param.name}`;
+            textarea.rows = param.rows || 4;
+            textarea.value = value || '';
             textarea.style.fontFamily = 'monospace';
             textarea.style.fontSize = '11px';
             field.appendChild(textarea);
-            
-            return field;
-        }
-        
-        createSelectField(paramName, label, value, options) {
-            const field = document.createElement('div');
-            field.className = 'param-field';
-            field.dataset.param = paramName;
-            
-            const labelEl = document.createElement('label');
-            labelEl.textContent = label;
-            field.appendChild(labelEl);
-            
-            const select = document.createElement('select');
-            select.id = `prop-${paramName}`;
-            
-            options.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt.value;
-                option.textContent = opt.label;
-                if (opt.value === value) option.selected = true;
-                select.appendChild(option);
-            });
-            
-            field.appendChild(select);
-            return field;
-        }
-        
-        createActionButton(text) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'action-button';
-            
-            const button = document.createElement('button');
-            button.className = 'btn-primary btn-block';
-            button.id = 'action-button';
-            button.textContent = text;
-            
-            wrapper.appendChild(button);
-            return wrapper;
         }
         
         populateToolSelect(select, operationType, selectedId) {
             const tools = this.toolLibrary?.getToolsForOperation(operationType) || [];
             
             if (tools.length === 0) {
-                select.innerHTML = '<option>No tools</option>';
+                select.innerHTML = '<option>No tools available</option>';
                 select.disabled = true;
                 return;
             }
@@ -584,67 +308,6 @@
             });
         }
         
-        attachEventHandlers(container) {
-            // Tool selection updates diameter
-            const toolSelect = container.querySelector('#prop-tool');
-            if (toolSelect) {
-                toolSelect.addEventListener('change', (e) => {
-                    const tool = this.toolLibrary?.getTool(e.target.value);
-                    if (tool) {
-                        const diamInput = container.querySelector('#prop-toolDiameter');
-                        if (diamInput) diamInput.value = tool.geometry.diameter;
-                    }
-                });
-            }
-            
-            // Multi-depth enables/disables depth per pass
-            const multiCheck = container.querySelector('#prop-multiDepth');
-            if (multiCheck) {
-                multiCheck.addEventListener('change', (e) => {
-                    const depthInput = container.querySelector('#prop-depthPerPass');
-                    if (depthInput) depthInput.disabled = !e.target.checked;
-                });
-            }
-            
-            // Mill holes toggle - regenerates property UI AND clears offset geometry
-            const millCheck = container.querySelector('#prop-millHoles');
-            if (millCheck) {
-                millCheck.addEventListener('change', async (e) => {
-                    const isMilling = e.target.checked;
-                    
-                    // Clear dependent geometry immediately
-                    if (this.currentOperation) {
-                        // Save the mode change
-                        this.currentOperation.settings.millHoles = isMilling;
-                        
-                        // Clear offset/preview ONLY if they exist
-                        if (this.currentOperation.offsets?.length > 0 || this.currentOperation.preview) {
-                            this.currentOperation.offsets = [];
-                            this.currentOperation.preview = null;
-                            this.currentOperation.warnings = [];
-                        }
-                    }
-                    
-                    // Re-render inspector UI
-                    this.showOperationProperties(this.currentOperation, this.currentGeometryStage);
-                    
-                    // Update renderer
-                    await this.ui.updateRendererAsync();
-                    
-                    this.ui.statusManager.showStatus(
-                        `Switched to ${isMilling ? 'milling' : 'pecking'} mode`,
-                        'info'
-                    );
-                });
-            }
-            
-            // Action button
-            const actionBtn = container.querySelector('#action-button');
-            if (actionBtn) {
-                actionBtn.addEventListener('click', () => this.handleAction());
-            }
-        }
-
         createWarningPanel(warnings) {
             const panel = document.createElement('div');
             panel.className = 'warning-panel';
@@ -667,23 +330,7 @@
             
             warnings.forEach(warning => {
                 const item = document.createElement('li');
-                item.style.marginBottom = '4px';
                 item.textContent = warning.message;
-                
-                // Add severity styling
-                if (warning.severity === 'error') {
-                    item.style.color = '#dc3545';
-                    item.style.fontWeight = 'bold';
-                }
-                
-                // Add recommendation if present
-                if (warning.recommendation) {
-                    const rec = document.createElement('div');
-                    rec.style.cssText = 'font-size: 12px; font-style: italic; margin-top: 2px; color: #666;';
-                    rec.textContent = `→ ${warning.recommendation}`;
-                    item.appendChild(rec);
-                }
-                
                 list.appendChild(item);
             });
             
@@ -691,106 +338,254 @@
             return panel;
         }
         
-        async handleAction() {
-            this.saveSettings();
+        createActionButton(text) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'action-button';
             
-            const op = this.currentOperation;
-            const stage = this.currentGeometryStage;
+            const button = document.createElement('button');
+            button.className = 'btn-primary btn-block';
+            button.id = 'action-button';
+            button.textContent = text;
             
-            if (op.type === 'drill') {
-                if (stage === 'source') {
-                    await this.generateDrillStrategy(op);
-                } else if (stage === 'offset') {
-                    await this.generatePreview(op);
-                } else {
-                    await this.generateGcode(op);
-                }
-            } else if (op.type === 'cutout') {
-                if (stage === 'source') await this.generateCutoutOffset(op);
-                else if (stage === 'offset') await this.generatePreview(op);
-                else await this.generateGcode(op);
-            } else {
-                if (stage === 'source') await this.generateOffsets(op);
-                else if (stage === 'offset') await this.generatePreview(op);
-                else await this.generateGcode(op);
-            }
+            wrapper.appendChild(button);
+            return wrapper;
         }
         
-        async generateOffsets(operation) {
-            const settings = this.collectSettings();
+        attachEventHandlers(container) {
+            // Tool selection updates diameter
+            const toolSelect = container.querySelector('#prop-tool');
+            if (toolSelect) {
+                toolSelect.addEventListener('change', (e) => {
+                    const tool = this.toolLibrary?.getTool(e.target.value);
+                    if (tool) {
+                        const diamInput = container.querySelector('#prop-toolDiameter');
+                        if (diamInput) {
+                            diamInput.value = tool.geometry.diameter;
+                            this.onParameterChange('toolDiameter', tool.geometry.diameter);
+                        }
+                        this.onParameterChange('tool', e.target.value);
+                    }
+                });
+            }
             
-            // Determine if internal offset based on operation type
-            const isInternal = operation.type === 'clear';
+            // Auto-save on all inputs
+            container.querySelectorAll('input, select, textarea').forEach(input => {
+                if (input.id === 'prop-tool') return; // Already handled
+                
+                const paramName = input.id.replace('prop-', '');
+                
+                input.addEventListener('change', () => {
+                    let value;
+                    if (input.type === 'checkbox') {
+                        value = input.checked;
+                    } else if (input.type === 'number') {
+                        value = parseFloat(input.value);
+                    } else {
+                        value = input.value;
+                    }
+                    
+                    this.onParameterChange(paramName, value);
+                    this.evaluateConditionals(container);
+                });
+                
+                // Also save on blur for text inputs
+                if (input.type === 'text' || input.type === 'number' || input.tagName === 'TEXTAREA') {
+                    input.addEventListener('blur', () => {
+                        this.saveCurrentState();
+                    });
+                }
+            });
             
-            // Calculate offset distances with proper sign
-            const offsets = this.calculateOffsetDistances(
-                settings.toolDiameter,
-                settings.passes,
-                settings.stepOver,
-                isInternal
+            // Mill holes toggle - special handling for drill operations
+            const millCheck = container.querySelector('#prop-millHoles');
+            if (millCheck) {
+                millCheck.addEventListener('change', async (e) => {
+                    const isMilling = e.target.checked;
+                    this.onParameterChange('millHoles', isMilling);
+                    
+                    // Clear dependent geometry
+                    if (this.currentOperation) {
+                        this.currentOperation.settings.millHoles = isMilling;
+                        if (this.currentOperation.offsets?.length > 0) {
+                            this.currentOperation.offsets = [];
+                            this.currentOperation.preview = null;
+                            this.currentOperation.warnings = [];
+                        }
+                    }
+                    
+                    // Re-render inspector
+                    this.showOperationProperties(this.currentOperation, this.currentGeometryStage);
+                    await this.ui.updateRendererAsync();
+                    
+                    this.ui.statusManager?.showStatus(
+                        `Switched to ${isMilling ? 'milling' : 'pecking'} mode`,
+                        'info'
+                    );
+                });
+            }
+            
+            // Action button
+            const actionBtn = container.querySelector('#action-button');
+            if (actionBtn) {
+                actionBtn.addEventListener('click', () => this.handleAction());
+            }
+            
+            // Initial conditional evaluation
+            this.evaluateConditionals(container);
+        }
+        
+        evaluateConditionals(container) {
+            container.querySelectorAll('[data-conditional]').forEach(field => {
+                const conditional = field.dataset.conditional;
+                let shouldShow = true;
+                
+                if (conditional.startsWith('!')) {
+                    const paramName = conditional.slice(1);
+                    const input = container.querySelector(`#prop-${paramName}`);
+                    shouldShow = !input?.checked;
+                } else {
+                    const input = container.querySelector(`#prop-${conditional}`);
+                    shouldShow = input?.checked;
+                }
+                
+                field.style.display = shouldShow ? '' : 'none';
+            });
+        }
+        
+        onParameterChange(name, value) {
+            if (!this.currentOperation) return;
+            
+            // Save to parameter manager
+            this.parameterManager.setParameter(
+                this.currentOperation.id,
+                this.currentGeometryStage,
+                name,
+                value
             );
             
-            this.ui.statusManager.showStatus('Generating offset geometry...', 'info');
-            
-            try {
-                await this.core.generateOffsetGeometry(operation, offsets, settings);
-                
-                if (this.ui.treeManager) {
-                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
-                        .find(n => n.operation?.id === operation.id);
-                    if (fileNode) {
-                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+            // Debounced auto-save
+            clearTimeout(this.changeTimeout);
+            this.changeTimeout = setTimeout(() => {
+                this.saveCurrentState();
+            }, 500);
+        }
+        
+        onExternalParameterChange(change) {
+            // Update UI if the change is for current operation/stage
+            if (change.operationId === this.currentOperation?.id &&
+                change.stage === this.currentGeometryStage) {
+                const input = document.querySelector(`#prop-${change.name}`);
+                if (input) {
+                    if (input.type === 'checkbox') {
+                        input.checked = change.value;
+                    } else {
+                        input.value = change.value;
                     }
                 }
-                
-                await this.ui.updateRendererAsync();
-                this.ui.statusManager.showStatus(`Generated ${operation.offsets.length} offset(s)`, 'success');
-            } catch (error) {
-                console.error('Offset generation failed:', error);
-                this.ui.statusManager.showStatus('Failed: ' + error.message, 'error');
             }
         }
         
-        // Unified offset distance calculation
-        calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal) {
-            const stepOver = stepOverPercent / 100;
-            const stepDistance = toolDiameter * (1 - stepOver);
-            const offsets = [];
+        saveCurrentState() {
+            if (!this.currentOperation) return;
             
-            // Internal offsets are negative (deflate), External are positive (inflate)
-            const sign = isInternal ? -1 : 1;
+            // Commit to operation
+            this.parameterManager.commitToOperation(this.currentOperation);
             
-            for (let i = 0; i < passes; i++) {
-                offsets.push(sign * (toolDiameter / 2 + i * stepDistance));
+            if (debugConfig.enabled) {
+                console.log(`[PropertyInspector] Saved state for operation ${this.currentOperation.id}`);
             }
-            
-            return offsets;
         }
+        
+        async handleAction() {
+            this.saveCurrentState(); 
+            // Ensure current parameters are committed
+            
+            const op = this.currentOperation; 
+            const stage = this.currentGeometryStage; 
+            
+            if (stage === 'source') {
+                // STAGE 1: Source -> Offset
+                // This logic is correct and remains unchanged.
+                if (op.type === 'drill') { 
+                    await this.generateDrillStrategy(op); 
+                } else if (op.type === 'cutout') { 
+                    await this.generateCutoutOffset(op); 
+                } else {
+                    await this.generateOffsets(op); 
+                }
+                
+            } else if (stage === 'offset') {
+                // STAGE 2: Offset -> Preview
+                // It generates the preview configuration. 
+                try {
+                    this.ui.statusManager?.showStatus('Generating preview configuration...', 'info'); 
+                    // Call the new core method (defined in the Main Report)
+                    // This method STORES settings in 'op.preview', it does NOT calculate toolpaths. 
+                    
+                    this.generatePreview(op); 
+                    
+                    // Update the tree manager to show the new 'preview' node
+                    if (this.ui.treeManager) {
+                        const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                            .find(n => n.operation?.id === op.id);
+                        if (fileNode) { 
+                            this.ui.treeManager.updateFileGeometries(fileNode.id, op); 
+                        }
+                    }
+                    
+                    // Update the renderer to visualize the preview
+                    await this.ui.updateRendererAsync(); 
+                    this.ui.statusManager?.showStatus('Preview generated - ready for export', 'success'); 
+                    
+                } catch (error) {
+                    console.error('Preview generation failed:', error); 
+                    this.ui.statusManager?.showStatus('Preview failed: ' + error.message, 'error'); 
+                }
+                
+            } else if (stage === 'preview') {
+                // STAGE 3: Preview -> Modal
+                // It opens the multi-operation modal. 
+                if (window.pcbcam?.modalManager) {
+                    // Collect all operations that are "ready" (have a preview object)
+                    const readyOps = this.ui.core.operations.filter(o => o.preview?.ready); 
+                    if (readyOps.length === 0) { 
+                        this.ui.statusManager?.showStatus('No operations ready. Generate previews first.', 'warning'); 
+                        return; 
+                    }
+                    
+                    // Open the modal, passing all ready operations
+                    window.pcbcam.modalManager.showToolpathModal(readyOps, op.id); 
+                } else {
+                    this.ui.statusManager?.showStatus('Operations manager not available', 'error'); 
+                }
+            }
+        }
+        
+        // Existing generation methods remain the same
+        async generateOffsets(operation) {
+            const params = this.parameterManager.getAllParameters(operation.id);
 
-        async generateCutoutOffset(operation) {
-            const settings = this.collectSettings();
-            const cutSide = settings.cutSide;
-            
-            let offsetDistance;
-            
-            if (cutSide === 'on') {
-                // A zero distance means the toolpath will follow the line directly.
-                offsetDistance = 0;
-            } else if (cutSide === 'outside') {
-                // A positive distance creates an external offset.
-                offsetDistance = settings.toolDiameter / 2;
-            } else { // 'inside'
-                // A negative distance creates an internal offset.
-                offsetDistance = -(settings.toolDiameter / 2);
+            // Re-hydrate the tool object for cam-core.js compatibility
+            if (params.tool && params.toolDiameter !== undefined) {
+                params.tool = {
+                    id: params.tool,
+                    diameter: params.toolDiameter,
+                    // Add other properties if cam-core needs them, e.g., type
+                    type: this.toolLibrary?.getTool(params.tool)?.type || 'end_mill'
+                };
             }
             
-            console.log('[Inspector] Cutout offset distance:', offsetDistance, 'for cutSide:', cutSide);
+            const offsets = this.calculateOffsetDistances(
+                params.toolDiameter,
+                params.passes,
+                params.stepOver,
+                operation.type === 'clear'
+            );
             
-            this.ui.statusManager.showStatus('Generating cutout path...', 'info');
+            this.ui.statusManager?.showStatus('Generating offset geometry...', 'info');
             
             try {
-                // The core generator expects an array of distances. For cutouts, it's just one.
-                await this.core.generateOffsetGeometry(operation, [offsetDistance], settings);
+                await this.core.generateOffsetGeometry(operation, offsets, params);
                 
                 if (this.ui.treeManager) {
                     const fileNode = Array.from(this.ui.treeManager.nodes.values())
@@ -801,16 +596,97 @@
                 }
                 
                 await this.ui.updateRendererAsync();
-                this.ui.statusManager.showStatus('Cutout path generated', 'success');
+                this.ui.statusManager?.showStatus(`Generated ${operation.offsets.length} offset(s)`, 'success');
+            } catch (error) {
+                console.error('Offset generation failed:', error);
+                this.ui.statusManager?.showStatus('Failed: ' + error.message, 'error');
+            }
+        }
+        
+        async generateDrillStrategy(operation) {
+            const params = this.parameterManager.getAllParameters(operation.id);
+            
+            this.ui.statusManager?.showStatus(
+                params.millHoles ? 'Generating milling paths...' : 'Generating peck positions...',
+                'info'
+            );
+            
+            try {
+                await this.core.generateDrillStrategy(operation, params);
+                
+                if (this.ui.treeManager) {
+                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                        .find(n => n.operation?.id === operation.id);
+                    if (fileNode) {
+                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                    }
+                }
+                
+                await this.ui.updateRendererAsync();
+                
+                if (operation.warnings?.length > 0) {
+                    this.ui.statusManager?.showStatus(
+                        `Generated with ${operation.warnings.length} warning(s)`,
+                        'warning'
+                    );
+                    this.showOperationProperties(operation, this.currentGeometryStage);
+                } else {
+                    const count = operation.offsets[0]?.primitives.length || 0;
+                    const mode = params.millHoles ? 'milling paths' : 'peck positions';
+                    this.ui.statusManager?.showStatus(`Generated ${count} ${mode}`, 'success');
+                }
+            } catch (error) {
+                console.error('Drill strategy generation failed:', error);
+                this.ui.statusManager?.showStatus('Failed: ' + error.message, 'error');
+            }
+        }
+        
+        async generateCutoutOffset(operation) {
+            const params = this.parameterManager.getAllParameters(operation.id);
+
+            if (params.tool && params.toolDiameter !== undefined) {
+                params.tool = {
+                    id: params.tool,
+                    diameter: params.toolDiameter,
+                    type: this.toolLibrary?.getTool(params.tool)?.type || 'end_mill'
+                };
+            }
+
+            const cutSide = params.cutSide;
+            
+            let offsetDistance;
+            if (cutSide === 'on') {
+                offsetDistance = 0;
+            } else if (cutSide === 'outside') {
+                offsetDistance = params.toolDiameter / 2;
+            } else {
+                offsetDistance = -(params.toolDiameter / 2);
+            }
+            
+            this.ui.statusManager?.showStatus('Generating cutout path...', 'info');
+            
+            try {
+                await this.core.generateOffsetGeometry(operation, [offsetDistance], params);
+                
+                if (this.ui.treeManager) {
+                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                        .find(n => n.operation?.id === operation.id);
+                    if (fileNode) {
+                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                    }
+                }
+                
+                await this.ui.updateRendererAsync();
+                this.ui.statusManager?.showStatus('Cutout path generated', 'success');
             } catch (error) {
                 console.error('Cutout offset failed:', error);
-                this.ui.statusManager.showStatus('Failed: ' + error.message, 'error');
+                this.ui.statusManager?.showStatus('Failed: ' + error.message, 'error');
             }
         }
         
         async generatePreview(operation) {
             if (!operation.offsets || operation.offsets.length === 0) {
-                this.ui.statusManager.showStatus('Generate offsets first', 'warning');
+                this.ui.statusManager?.showStatus('Generate offsets first', 'warning');
                 return;
             }
 
@@ -818,13 +694,13 @@
             const toolDiameter = firstOffset.metadata?.toolDiameter;
 
             if (typeof toolDiameter === 'undefined' || toolDiameter <= 0) {
-                this.ui.statusManager.showStatus('Error: Tool diameter not found in offset metadata.', 'error');
+                this.ui.statusManager?.showStatus('Error: Tool diameter not found in offset metadata.', 'error');
                 return;
             }
             
             const allPrimitives = [];
             operation.offsets.forEach(offset => {
-                // DON'T clone - just mark primitives as preview
+                // Mark primitives as preview
                 offset.primitives.forEach(prim => {
                     if (!prim.properties) prim.properties = {};
                     prim.properties.isPreview = true;
@@ -840,6 +716,7 @@
                     sourceOffsets: operation.offsets.length,
                     toolDiameter: toolDiameter
                 }
+                , ready: true
             };
             
             if (this.ui.treeManager) {
@@ -851,138 +728,20 @@
             }
             
             await this.ui.updateRendererAsync();
-            this.ui.statusManager.showStatus('Preview generated', 'success');
+            this.ui.statusManager?.showStatus('Preview generated', 'success');
         }
-        async generateDrillStrategy(operation) {
-            const settings = this.collectSettings();
+        
+        calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal) {
+            const stepOver = stepOverPercent / 100;
+            const stepDistance = toolDiameter * (1 - stepOver);
+            const offsets = [];
+            const sign = isInternal ? -1 : 1;
             
-            this.ui.statusManager.showStatus(
-                settings.millHoles ? 'Generating milling paths...' : 'Generating peck positions...',
-                'info'
-            );
-            
-            try {
-                // Call the new core method
-                await this.core.generateDrillStrategy(operation, settings);
-                
-                // Update tree
-                if (this.ui.treeManager) {
-                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
-                        .find(n => n.operation?.id === operation.id);
-                    if (fileNode) {
-                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
-                    }
-                }
-                
-                await this.ui.updateRendererAsync();
-                
-                // Show warnings if any
-                const warnings = operation.warnings || [];
-                if (warnings.length > 0) {
-                    this.ui.statusManager.showStatus(
-                        `Generated with ${warnings.length} warning(s)`,
-                        'warning'
-                    );
-                    // Re-render to show warning panel
-                    this.showOperationProperties(operation, this.currentGeometryStage);
-                } else {
-                    const count = operation.offsets[0]?.primitives.length || 0;
-                    const mode = settings.millHoles ? 'milling paths' : 'peck positions';
-                    this.ui.statusManager.showStatus(
-                        `Generated ${count} ${mode}`,
-                        'success'
-                    );
-                }
-            } catch (error) {
-                console.error('Drill strategy generation failed:', error);
-                this.ui.statusManager.showStatus('Failed: ' + error.message, 'error');
-            }
-        }
-
-        async generateGcode(operation) {
-            this.ui.statusManager.showStatus('G-code generation not yet implemented', 'info');
-        }
-
-        collectSettings() {
-            const settings = {};
-            document.querySelectorAll('[data-param]').forEach(field => {
-                const param = field.dataset.param;
-                const input = field.querySelector('input, select, textarea');
-                if (!input) return;
-                
-                if (input.type === 'checkbox') {
-                    settings[param] = input.checked;
-                } else if (input.type === 'number') {
-                    settings[param] = parseFloat(input.value) || 0;
-                } else {
-                    settings[param] = input.value;
-                }
-            });
-            
-            // Handle tool
-            if (settings.tool) {
-                const tool = this.toolLibrary?.getTool(settings.tool);
-                settings.tool = {
-                    id: tool?.id || settings.tool,
-                    diameter: settings.toolDiameter || 0.2,
-                    type: tool?.type || 'end_mill'
-                };
+            for (let i = 0; i < passes; i++) {
+                offsets.push(sign * (toolDiameter / 2 + i * stepDistance));
             }
             
-            return settings;
-        }
-        
-        saveSettings() {
-            if (!this.currentOperation) return;
-            const settings = this.collectSettings();
-            this.currentOperation.settings = settings;
-            this.originalSettings = JSON.parse(JSON.stringify(settings));
-        }
-        
-        getLabel(param) {
-            const labels = {
-                toolDiameter: 'Diameter',
-                passes: 'Number of Passes',
-                stepOver: 'Step Over',
-                combineOffsets: 'Combine Passes',
-                millHoles: 'Mill Holes',
-                cutDepth: 'Cut Depth',
-                travelZ: 'Travel Z',
-                safeZ: 'Safe Z',
-                multiDepth: 'Multi-depth',
-                depthPerPass: 'Depth/Pass',
-                feedRate: 'Feed Rate',
-                plungeRate: 'Plunge Rate',
-                spindleSpeed: 'Spindle Speed',
-                peckDepth: 'Peck Depth',
-                peckStepDepth: 'Peck Step Depth',
-                dwellTime: 'Dwell Time',
-                retractHeight: 'Retract Height',
-                tabs: 'Tabs',
-                tabWidth: 'Tab Width',
-                tabHeight: 'Tab Height'
-            };
-            return labels[param] || param;
-        }
-        
-        getUnit(param) {
-            const units = {
-                toolDiameter: 'mm',
-                cutDepth: 'mm',
-                travelZ: 'mm',
-                safeZ: 'mm',
-                depthPerPass: 'mm',
-                feedRate: 'mm/min',
-                plungeRate: 'mm/min',
-                spindleSpeed: 'RPM',
-                stepOver: '%',
-                peckDepth: 'mm',
-                dwellTime: 's',
-                retractHeight: 'mm',
-                tabWidth: 'mm',
-                tabHeight: 'mm'
-            };
-            return units[param] || '';
+            return offsets;
         }
     }
     
