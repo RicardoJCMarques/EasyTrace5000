@@ -318,9 +318,6 @@
                 maxDepthPerPass: tool.cutting.maxDepthPerPass || 0.1
             };
             
-            // Material-specific adjustments could go here
-            // For now, just return base parameters
-            
             return params;
         }
         

@@ -90,92 +90,92 @@
         
         // Main reconstruction method - process fused primitives
         processForReconstruction(primitives) {
-    console.log(`[ArcReconstructor] processForReconstruction() called with ${primitives ? primitives.length : 0} primitives.`);
-    
-    if (!primitives || primitives.length === 0) return primitives;
-    
-    if (this.debug) {
-        console.log(`[ArcReconstructor] Processing ${primitives.length} fused primitives`);
-    }
-    
-    const reconstructed = [];
-    
-    for (const primitive of primitives) {
-        // Check if this is a composite primitive with contours
-        if (primitive.type === 'path' && primitive.contours && primitive.contours.length > 0) {
+            console.log(`[ArcReconstructor] processForReconstruction() called with ${primitives ? primitives.length : 0} primitives.`);
+            
+            if (!primitives || primitives.length === 0) return primitives;
+            
             if (this.debug) {
-                console.log(`[ArcReconstructor] Unpacking composite primitive with ${primitive.contours.length} contours`);
+                console.log(`[ArcReconstructor] Processing ${primitives.length} fused primitives`);
             }
             
-            // Process each contour as a separate primitive
-            for (const contour of primitive.contours) {
-                // Skip degenerate contours
-                if (!contour.points || contour.points.length < 3) continue;
-                
-                // Create a temporary simple primitive for this contour
-                const simplePrimitive = {
-                    type: 'path',
-                    points: contour.points,
-                    closed: true,
-                    properties: {
-                        ...primitive.properties,
-                        isHole: contour.isHole,
-                        nestingLevel: contour.nestingLevel,
-                        parentId: contour.parentId,
-                        // Preserve original composite reference
-                        originalCompositeId: primitive.id
-                    },
-                    // These will be populated if arc detection succeeds
-                    arcSegments: [],
-                    curveIds: contour.curveIds || [],
-                    // Critical: no nested contours to prevent recursion
-                    contours: []
-                };
-                
-                // Check if this contour has curve metadata
-                const hasCurveData = contour.curveIds?.length > 0 || 
-                                     contour.points.some(p => p.curveId > 0);
-                
-                if (hasCurveData) {
-                    // Process for arc reconstruction
-                    const result = this.reconstructPrimitive(simplePrimitive);
-                    reconstructed.push(...result);
-                } else {
-                    // No curve data, pass through as-is
-                    if (typeof PathPrimitive !== 'undefined') {
-                        const pathPrim = new PathPrimitive(simplePrimitive.points, simplePrimitive.properties);
-                        reconstructed.push(pathPrim);
-                    } else {
-                        reconstructed.push(simplePrimitive);
+            const reconstructed = [];
+            
+            for (const primitive of primitives) {
+                // Check if this is a composite primitive with contours
+                if (primitive.type === 'path' && primitive.contours && primitive.contours.length > 0) {
+                    if (this.debug) {
+                        console.log(`[ArcReconstructor] Unpacking composite primitive with ${primitive.contours.length} contours`);
                     }
+                    
+                    // Process each contour as a separate primitive
+                    for (const contour of primitive.contours) {
+                        // Skip degenerate contours
+                        if (!contour.points || contour.points.length < 3) continue;
+                        
+                        // Create a temporary simple primitive for this contour
+                        const simplePrimitive = {
+                            type: 'path',
+                            points: contour.points,
+                            closed: true,
+                            properties: {
+                                ...primitive.properties,
+                                isHole: contour.isHole,
+                                nestingLevel: contour.nestingLevel,
+                                parentId: contour.parentId,
+                                // Preserve original composite reference
+                                originalCompositeId: primitive.id
+                            },
+                            // These will be populated if arc detection succeeds
+                            arcSegments: [],
+                            curveIds: contour.curveIds || [],
+                            // No nested contours to prevent recursion
+                            contours: []
+                        };
+                        
+                        // Check if this contour has curve metadata
+                        const hasCurveData = contour.curveIds?.length > 0 || 
+                                            contour.points.some(p => p.curveId > 0);
+                        
+                        if (hasCurveData) {
+                            // Process for arc reconstruction
+                            const result = this.reconstructPrimitive(simplePrimitive);
+                            reconstructed.push(...result);
+                        } else {
+                            // No curve data, pass through as-is
+                            if (typeof PathPrimitive !== 'undefined') {
+                                const pathPrim = new PathPrimitive(simplePrimitive.points, simplePrimitive.properties);
+                                reconstructed.push(pathPrim);
+                            } else {
+                                reconstructed.push(simplePrimitive);
+                            }
+                        }
+                    }
+                    
+                } else if (primitive.type === 'path') {
+                    // Simple primitive without contours - process normally
+                    const hasCurveIds = (primitive.curveIds && primitive.curveIds.length > 0) ||
+                                    (primitive.points && primitive.points.some(p => p.curveId > 0));
+                    
+                    if (hasCurveIds) {
+                        const result = this.reconstructPrimitive(primitive);
+                        reconstructed.push(...result);
+                    } else {
+                        reconstructed.push(primitive);
+                    }
+                } else {
+                    // Non-path primitive, pass through
+                    reconstructed.push(primitive);
                 }
             }
             
-        } else if (primitive.type === 'path') {
-            // Simple primitive without contours - process normally
-            const hasCurveIds = (primitive.curveIds && primitive.curveIds.length > 0) ||
-                               (primitive.points && primitive.points.some(p => p.curveId > 0));
-            
-            if (hasCurveIds) {
-                const result = this.reconstructPrimitive(primitive);
-                reconstructed.push(...result);
-            } else {
-                reconstructed.push(primitive);
+            if (this.debug) {
+                const holes = reconstructed.filter(p => p.properties?.isHole).length;
+                console.log(`[ArcReconstructor] Results: ${primitives.length} → ${reconstructed.length} primitives (${holes} holes)`);
+                console.log(`[ArcReconstructor] Full circles: ${this.stats.fullCircles}, Partial arcs: ${this.stats.partialArcs}`);
             }
-        } else {
-            // Non-path primitive, pass through
-            reconstructed.push(primitive);
+            
+            return reconstructed;
         }
-    }
-    
-    if (this.debug) {
-        const holes = reconstructed.filter(p => p.properties?.isHole).length;
-        console.log(`[ArcReconstructor] Results: ${primitives.length} → ${reconstructed.length} primitives (${holes} holes)`);
-        console.log(`[ArcReconstructor] Full circles: ${this.stats.fullCircles}, Partial arcs: ${this.stats.partialArcs}`);
-    }
-    
-    return reconstructed;
-}
         
         // Reconstruct primitive with curve data
         reconstructPrimitive(primitive) {
@@ -219,8 +219,7 @@
                 const point = points[i];
                 const curveId = point.curveId > 0 ? point.curveId : null;
         
-                // If the curveId is different from the current group's,
-                // finalize the current group and start a new one.
+                // If the curveId is different from the current group's, finalize the current group and start a new one.
                 if (curveId !== currentGroup.curveId) {
                     groups.push(currentGroup);
                     currentGroup = {
@@ -241,8 +240,7 @@
                 groups.push(currentGroup);
             }
         
-            // This logic to merge the first and last groups if they are part of the same
-            // curve on a closed path is still valid and important.
+            // This logic to merge the first and last groups if they are part of the same curve on a closed path is still valid and important.
             if (isClosed && groups.length > 1) {
                 const firstGroup = groups[0];
                 const lastGroup = groups[groups.length - 1];
@@ -284,7 +282,7 @@
                 totalSweep += delta;
             }
 
-            // CRITICAL FIX: If the path is closed, add the final segment's sweep
+            // If the path is closed, add the final segment's sweep
             if (isClosed && points.length > 1) {
                 const p_last = points[points.length - 1];
                 const p_first = points[0];
@@ -392,18 +390,18 @@
                             // An arc was successfully identified.
                             this.stats.partialArcs++;
                             
-                            // FIX: Add BOTH the start and end points of the arc group to the new path.
+                            // Add BOTH the start and end points of the arc group to the new path.
                             // The renderer needs both vertices to define the segment.
                             const startPoint = group.points[0];
                             const endPoint = group.points[group.points.length - 1];
 
                             newPoints.push(startPoint);
-                            newPoints.push(endPoint); // <-- CRITICAL FIX: Add the end point.
+                            newPoints.push(endPoint);
                             
                             detectedArcSegments.push({
-                                // FIX: The startIndex is now the second-to-last point added.
+                                // The startIndex is now the second-to-last point added.
                                 startIndex: newPoints.length - 2, 
-                                // FIX: The endIndex is now the last point added.
+                                // The endIndex is now the last point added.
                                 endIndex: newPoints.length - 1,     
                                 center: arcFromPoints.center,
                                 radius: arcFromPoints.radius,
@@ -428,8 +426,7 @@
             }
         
             // 3. Post-process to handle duplicate points at segment joins.
-            // This happens because we added both start and end points. The end of one segment
-            // is often the start of the next.
+            // This happens because we added both start and end points. The end of one segment is often the start of the next.
             const finalPoints = [];
             if (newPoints.length > 0) {
                 finalPoints.push(newPoints[0]);
@@ -454,7 +451,8 @@
             // 4. Perform validation check
             const newPointCount = finalPoints.length;
             if (this.debug && detectedArcSegments.length > 0) {
-                if (newPointCount >= originalPointCount) { // It can be equal if only 2 points were replaced by 2 points
+                // It can be equal if only 2 points were replaced by 2 points
+                if (newPointCount >= originalPointCount) {
                     console.warn(`[ArcReconstructor VALIDATION] Point count not reduced or increased: ${originalPointCount} -> ${newPointCount}. This is acceptable if arcs had few segments.`, {
                         primitive: primitive
                     });
@@ -466,7 +464,7 @@
             // 5. Create the final primitive
             const enhancedPrimitive = {
                 ...primitive,
-                points: finalPoints, // <-- OVERWRITE with the new, de-duplicated points array
+                points: finalPoints,
                 arcSegments: detectedArcSegments,
                 properties: {
                     ...primitive.properties,

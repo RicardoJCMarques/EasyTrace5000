@@ -64,9 +64,9 @@
             this.modalManager = null;
             
             // Phase 2: Pipeline components (declare but don't instantiate yet)
-            this.toolpathCalculator = null;
-            this.gcodeGenerator = null;
-            this.toolpathOptimizer = null;
+            this.toolpathCalculator = null
+            this.gcodeGenerator = null
+            this.toolpathOptimizer = null
             
             // Track initialization state
             this.initState = {
@@ -99,9 +99,15 @@
                 // Initialize core with skip init flag to control WASM loading
                 this.core = new PCBCamCore({ skipInit: true });
                 
-                // NEW: Initialize managers before UI
+                // Initialize managers before UI
                 this.parameterManager = new ParameterManager();
                 this.modalManager = new ModalManager(this);
+
+                // Instantiate pipeline components *after* core exists
+                this.toolpathCalculator = new ToolpathCalculator(this.core);
+                this.gcodeGenerator = new GCodeGenerator(config.gcode);
+                this.gcodeGenerator.setCore(this.core); // This will now pass the valid core
+                this.toolpathOptimizer = new ToolpathOptimizer();
                 
                 // Initialize UI with core reference
                 this.ui = new PCBCamUI(this.core);
@@ -250,15 +256,6 @@
                         return;
                     }
                     this.modalManager.showToolpathModal(readyOps);
-                    quickActionsBtn.classList.remove('active');
-                    quickActionsMenu.classList.remove('show');
-                });
-            }
-            
-            const exportGcodeBtn = document.getElementById('toolbar-export-gcode');
-            if (exportGcodeBtn) {
-                exportGcodeBtn.addEventListener('click', () => {
-                    this.exportGcode();
                     quickActionsBtn.classList.remove('active');
                     quickActionsMenu.classList.remove('show');
                 });
@@ -1004,10 +1001,6 @@
                 console.error('SVG export error:', error);
                 this.ui?.updateStatus('SVG export failed: ' + error.message, 'error');
             }
-        }
-        
-        async exportGcode() {
-            this.ui?.updateStatus('G-code generation in development...', 'info');
         }
         
         // API for external access

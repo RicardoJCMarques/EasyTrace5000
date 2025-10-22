@@ -2,6 +2,7 @@
  * @file        ui/ui-parameter-manager.js
  * @description Enhanced parameter management with state storage and validation
  * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
@@ -122,6 +123,7 @@
                 multiDepth: {
                     type: 'checkbox',
                     label: 'Multi-depth Cutting',
+                    default: true, // connect to config.js in the future.
                     stage: 'offset',
                     category: 'depth'
                 },
@@ -353,7 +355,7 @@
                 passes: (val) => Number.isInteger(val) && val >= 1 && val <= 10,
                 stepOver: (val) => val >= 10 && val <= 100,
                 cutDepth: (val) => val <= 0 && val >= -10,
-                depthPerPass: (val) => val > 0 && val <= 5,
+                depthPerPass: (val) => val > 0 && val <= 5, // MUST BE POSITIVE
                 feedRate: (val) => val >= 1 && val <= 5000,
                 plungeRate: (val) => val >= 1 && val <= 1000,
                 spindleSpeed: (val) => val >= 100 && val <= 30000
@@ -457,7 +459,7 @@
             const state = this.getOperationState(operation.id);
             
             const opSettings = operation.settings || {};
-            const defaults = this.getDefaults(operation.type); // Get config defaults
+            const defaults = this.getDefaults(operation.type);
 
             // Iterate over ALL definitions, not just operation.settings
             for (const [name, def] of Object.entries(this.parameterDefinitions)) {
@@ -546,12 +548,15 @@
         getDefaults(operationType) {
             const opConfig = config.operations?.[operationType];
             if (!opConfig) return {};
+
+            const enableMultiDepth = (operationType === 'drill' || operationType === 'cutout');
             
             return {
                 passes: opConfig.defaultSettings?.passes || 1,
                 stepOver: opConfig.defaultSettings?.stepOver || 50,
                 cutDepth: opConfig.cutting?.cutDepth || -0.05,
                 depthPerPass: opConfig.cutting?.passDepth || 0.05,
+                multiDepth: enableMultiDepth,
                 feedRate: opConfig.cutting?.cutFeed || 150,
                 plungeRate: opConfig.cutting?.plungeFeed || 50,
                 spindleSpeed: opConfig.cutting?.spindleSpeed || 12000,

@@ -196,7 +196,6 @@
         }
     }
     
-    // Export singleton instance
     window.TooltipManager = new TooltipManager();
     
 })();

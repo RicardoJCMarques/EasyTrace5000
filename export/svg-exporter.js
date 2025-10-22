@@ -451,7 +451,7 @@ Exported from the current canvas view.
                 layerGroup.setAttribute('data-layer-type', layer.type);
 
                 layer.primitives.forEach(primitive => {
-                    // CRITICAL FIX: Pass the full 'layer' object, not just its type.
+                    // Pass the full 'layer' object, not just its type.
                     const element = this.primitiveToSVG(svgNS, primitive, layer, exportConfig);
                     if (element) {
                         layerGroup.appendChild(element);
@@ -697,7 +697,6 @@ Exported from the current canvas view.
             // Iterate through the high-level arc segments
             for (const arc of sortedArcs) {
                 // Draw all straight line segments from the last position up to the start point of this arc.
-                // This is the key fix for the concatenation issue.
                 for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
                     pathParts.push(`L${this.formatNumber(points[i].x, precision)},${this.formatNumber(points[i].y, precision)}`);
                 }

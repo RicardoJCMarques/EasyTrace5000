@@ -1,7 +1,6 @@
 /**
  * @file        ui/ui-tree-manager.js
  * @description Manages the operations tree view (left sidebar)
- * @comment     Refactored: No source tree object (file IS source), combined offset support, stage-aware selection
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later

@@ -1,7 +1,6 @@
 /**
  * @file        geometry/geometry-offsetter.js
  * @description Handles geometry offsetting
- * @comment     Fixed: End-cap curves registered with explicit clockwise=false
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -287,11 +286,8 @@ class GeometryOffsetter {
                 return null;
             }
             
-            // --- FIX START: Explicitly close the polygon path ---
-            // By appending the first point to the end, we ensure the final segment
-            // is explicitly defined, fixing potential connection issues at the seam.
+            // By appending the first point to the end, we ensure the final segment is explicitly defined, fixing potential connection issues at the seam.
             offsetPoints.push(offsetPoints[0]);
-            // --- FIX END ---
             
             return new PathPrimitive(offsetPoints, {
                 ...path.properties, originalType: 'filled_path', closed: true, fill: true, stroke: false,
@@ -395,8 +391,7 @@ class GeometryOffsetter {
         }
 
         // 4. Create a new ObroundPrimitive using the calculated offset geometry.
-        // This leverages the existing robust logic for creating obround polygons and,
-        // critically, for registering their end-cap curves in the global registry.
+        // This leverages the existing robust logic for creating obround polygons and, critically, for registering their end-cap curves in the global registry.
         const offsetObroundPrimitive = new ObroundPrimitive(newPosition, newWidth, newHeight, {
             ...obround.properties
         });

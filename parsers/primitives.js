@@ -1,7 +1,6 @@
 /**
  * @file        parsers/primitives.js
  * @description Defines geometric primitives (Path, Circle, Arc, Rectangle, Obround)
- * @comment     Store clockwise property for all curve registrations
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -102,7 +101,7 @@
             this.arcSegments = properties.arcSegments || [];
             this.curveIds = properties.curveIds || [];
             
-            // UNIFIED CONTOURS SYSTEM
+            // Unified contours system
             this.contours = properties.contours || [];
             
             // Auto-generate simple contour if not provided
@@ -464,7 +463,7 @@
             const r = Math.min(this.width, this.height) / 2;
             this.curveIds = [];
             
-            // FIXED: Store clockwise property for all semicircle registrations
+            // Store clockwise property for all semicircle registrations
             // End-caps are always generated CCW
             if (this.width > this.height) {
                 // Horizontal obround - two semicircles
@@ -685,7 +684,7 @@
                 y: center.y + radius * Math.sin(endAngle)
             };
             
-            // REGISTER THIS ARC AS A CURVE WITH DIRECTION
+            // Register this arc as a curve with direction
             this.curveId = this.registerAsGlobalCurve();
             if (this.curveId) {
                 this.curveIds = [this.curveId];
@@ -718,14 +717,14 @@
                 return null;
             }
             
-            // FIXED: Store actual clockwise property
+            // Store actual clockwise property
             const curveId = window.globalCurveRegistry.register({
                 type: 'arc',
                 center: { ...this.center },
                 radius: this.radius,
                 startAngle: this.startAngle,
                 endAngle: this.endAngle,
-                clockwise: this.clockwise,  // CRITICAL: Store actual direction
+                clockwise: this.clockwise,  // Store actual direction
                 primitiveId: this.id,
                 source: 'primitive_arc'
             });

@@ -1,9 +1,27 @@
 /**
  * @file        parser/parser-svg.js
- * @description SVG parsing module (Polarity-based, compatible with GeometryProcessor)
+ * @description SVG parsing module
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 (function() {
@@ -238,15 +256,13 @@
                     contours: allContours,  // Array of all contours with metadata
                     polarity: 'dark'
                 });
-                // if (this.debug) {
+                if (this.debug) {
                     console.log(`[SVG Parser] Created region with ${allContours.length} contours (${allContours.filter(c => c.isHole).length} holes)`);
-                // }
+                }
                 this.stats.objectsCreated++;
             });
         }
 
-        // --- All other helper functions for parsing shapes, transforms, and styles remain the same ---
-        // (Full code for these helpers is included for completeness)
         _parseShape(node) {
             const tagName = node.tagName.toLowerCase();
             switch (tagName) {

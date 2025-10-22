@@ -124,7 +124,6 @@
         }
     }
     
-    // Export
     window.StatusManager = StatusManager;
     
 })();

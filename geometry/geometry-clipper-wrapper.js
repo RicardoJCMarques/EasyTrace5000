@@ -1,7 +1,6 @@
 /**
  * @file        geometry/geometry-curve-registry.js
- * @description Manages the Curve Registry for arc-reconstruction - 64-bit Packing: CurveID (24-bit) + SegmentIndex (31-bit) + Clockwise Winding (1-bit)
- * @comment     Fixed: Preserve clockwise property during metadata unpacking
+ * @description Manages the Curve Registry for arc-reconstruction - 64-bit Packing: CurveID (24-bit) + SegmentIndex (31-bit) + Clockwise Winding (1-bit) + Unused (8-bit)
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -40,7 +39,7 @@
             // Track allocated WASM objects for cleanup
             this.allocatedObjects = [];
             
-            // Metadata packing configuration - UPDATED to include clockwise bit
+            // Metadata packing configuration
             this.metadataPacking = {
                 curveIdBits: 24n,      // Bits 0-23: supports 16.7 million curves
                 segmentIndexBits: 31n,  // Bits 24-54: supports 2.1 billion points per curve (reduced by 1)
@@ -50,10 +49,10 @@
             
             // Pre-calculate bit masks for efficiency
             this.bitMasks = {
-                curveId: (1n << this.metadataPacking.curveIdBits) - 1n,        // 0xFFFFFF
-                segmentIndex: (1n << this.metadataPacking.segmentIndexBits) - 1n, // 0x7FFFFFFF
-                clockwise: 1n,          // Single bit for clockwise flag
-                reserved: (1n << this.metadataPacking.reservedBits) - 1n        // 0xFF
+                curveId: (1n << this.metadataPacking.curveIdBits) - 1n,
+                segmentIndex: (1n << this.metadataPacking.segmentIndexBits) - 1n,
+                clockwise: 1n,
+                reserved: (1n << this.metadataPacking.reservedBits) - 1n
             };
         }
         
@@ -102,7 +101,7 @@
         }
         
         // Calculate signed area of a path (negative = clockwise, positive = CCW)
-        // FIXED: Properly exposed for external use with coordinate conversion
+        // Properly exposed for external use with coordinate conversion
         calculateSignedArea(points) {
             if (!this.initialized || !points || points.length < 3) {
                 return 0;
@@ -215,7 +214,7 @@
             return area < 0;
         }
         
-        // Pack metadata into 64-bit Z coordinate - UPDATED to include clockwise
+        // Pack metadata into 64-bit Z coordinate
         packMetadata(curveId, segmentIndex, clockwise = false, reserved = 0) {
             if (!curveId || curveId === 0) return BigInt(0);
             
@@ -233,7 +232,7 @@
             return z;
         }
         
-        // Unpack metadata from 64-bit Z coordinate - FIXED to extract clockwise
+        // Unpack metadata from 64-bit Z coordinate
         unpackMetadata(z) {
             if (!z || z === 0n) {
                 return { curveId: 0, segmentIndex: 0, clockwise: false, reserved: 0 };
@@ -243,7 +242,7 @@
             
             const curveId = Number(zBigInt & this.bitMasks.curveId);
             const segmentIndex = Number((zBigInt >> 24n) & this.bitMasks.segmentIndex);
-            const clockwise = Boolean((zBigInt >> 55n) & 1n);  // FIXED: Extract clockwise bit
+            const clockwise = Boolean((zBigInt >> 55n) & 1n);
             const reserved = Number((zBigInt >> 56n) & this.bitMasks.reserved);
             
             return { curveId, segmentIndex, clockwise, reserved };
@@ -352,7 +351,7 @@
             }
         }
         
-        // Convert JS path to Clipper Path64 with metadata packing - UPDATED to pack clockwise
+        // Convert JS path to Clipper Path64 with metadata packing
         _jsPathToClipper(points, curveIds = [], isClockwise = false, polarity = 'dark') {
             const { Path64, Point64, AreaPath64 } = this.clipper2;
             
@@ -509,7 +508,7 @@
                             y: Number(pt.y) / this.scale
                         };
                         
-                        // ADD THIS: Extract metadata for ALL contours
+                        // Extract metadata for ALL contours
                         if (this.supportsZ && pt.z !== undefined) {
                             const z = BigInt(pt.z);
                             if (z > 0n) {

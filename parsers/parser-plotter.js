@@ -1,7 +1,6 @@
 /**
  * @file        parser/parser-plotter.js
  * @description Converts parsed data into geometric primitives
- * @comment     Fixed: Arc detection and better winding property handling
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -316,7 +315,7 @@
             
             this.debug(`Plotting trace: (${trace.start.x.toFixed(3)}, ${trace.start.y.toFixed(3)}) to (${trace.end.x.toFixed(3)}, ${trace.end.y.toFixed(3)}), length: ${length.toFixed(3)}mm`);
             
-            // Debug: Log interpolation info
+            // Log interpolation info
             if (trace.interpolation) {
                 this.debug(`  Interpolation: "${trace.interpolation}"${trace.arc ? ', has arc data' : ''}`);
             }
@@ -451,8 +450,7 @@
                     
                     this.debug(`  Obround flash, size: ${oWidth.toFixed(3)} x ${oHeight.toFixed(3)}mm`);
 
-                    // A flash's position is its center, but ObroundPrimitive's
-                    // position is its top-left corner. We must adjust for this.
+                    // A flash's position is its center, but ObroundPrimitive's position is its top-left corner. We must adjust for this.
                     const obroundPosition = {
                         x: flash.position.x - oWidth / 2,
                         y: flash.position.y - oHeight / 2
@@ -720,8 +718,6 @@
         }
     }
     
-    // Export with backward compatibility
     window.ParserPlotter = ParserPlotter;
-    window.GerberPlotter = ParserPlotter;  // Alias for compatibility
     
 })();

@@ -513,7 +513,6 @@
         }
     }
     
-    // Export
     window.UIControls = UIControls;
     
 })();

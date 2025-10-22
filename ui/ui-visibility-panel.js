@@ -391,7 +391,6 @@
         }
     }
     
-    // Export
     window.VisibilityPanel = VisibilityPanel;
     
 })();

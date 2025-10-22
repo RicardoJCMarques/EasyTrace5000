@@ -2,6 +2,7 @@
  * @file        export/gcode-generator.js
  * @description Complete G-code generation from toolpath plans
  * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
@@ -27,440 +28,294 @@
     'use strict';
     
     const config = window.PCBCAMConfig || {};
-    const gcodeConfig = config.gcode || {};
-    const machineConfig = config.machine || {};
     
     class GCodeGenerator {
         constructor(config) {
             this.config = config;
-            this.output = [];
-            this.currentPosition = {x: 0, y: 0, z: 0};
-            this.currentFeed = null;
-            this.currentSpindleSpeed = null;
-            this.modalState = {
-                motionMode: null, // G0, G1, G2, G3
-                coordinateMode: 'G90', // G90 absolute, G91 relative
-                units: 'G21', // G20 inch, G21 mm
-                plane: 'G17', // G17 XY, G18 XZ, G19 YZ
-                feedRateMode: 'G94', // G93 inverse time, G94 units/min
-                workOffset: 'G54'
-            };
+            this.processors = new Map();
+            this.currentProcessor = null;
+            this.core = null;
+
+            // Add untransformed state tracker
+            this.untransformedPosition = { x: 0, y: 0, z: 0 };
             
-            // Post-processor templates
-            this.postProcessors = this.initializePostProcessors();
+            // Register available processors
+            this.registerDefaultProcessors();
+        }
+
+        setCore(coreInstance) {
+            this.core = coreInstance;
         }
         
-        initializePostProcessors() {
-            return {
-                grbl: {
-                    name: 'GRBL',
-                    fileExtension: '.nc',
-                    supportsToolChange: false,
-                    supportsArcCommands: true,
-                    supportsCannedCycles: false,
-                    arcFormat: 'IJ', // IJ or R
-                    precision: {
-                        coordinates: 3,
-                        feedrate: 0,
-                        spindle: 0
-                    },
-                    templates: {
-                        start: 'G90 G21 G17\nG94\nM3 S{spindleSpeed}\nG4 P1',
-                        end: 'M5\nG0 Z{safeZ}\nM2',
-                        toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P1'
-                    }
-                },
-                marlin: {
-                    name: 'Marlin',
-                    fileExtension: '.gcode',
-                    supportsToolChange: false,
-                    supportsArcCommands: true,
-                    supportsCannedCycles: false,
-                    arcFormat: 'IJ',
-                    precision: {
-                        coordinates: 3,
-                        feedrate: 0,
-                        spindle: 0
-                    },
-                    templates: {
-                        start: 'G90 G21\nM3 S255\nG4 P1000',
-                        end: 'M5\nG0 Z10\nM84',
-                        toolChange: 'M5\nG0 Z{safeZ}\nM0\nM3 S255\nG4 P1000'
-                    }
-                },
-                linuxcnc: {
-                    name: 'LinuxCNC',
-                    fileExtension: '.ngc',
-                    supportsToolChange: true,
-                    supportsArcCommands: true,
-                    supportsCannedCycles: true,
-                    arcFormat: 'IJ',
-                    precision: {
-                        coordinates: 4,
-                        feedrate: 1,
-                        spindle: 0
-                    },
-                    templates: {
-                        start: 'G90 G21 G17\nG64 P0.01\nM3 S{spindleSpeed}\nG4 P1',
-                        end: 'M5\nG0 Z{safeZ}\nM2',
-                        toolChange: 'M5\nG0 Z{safeZ}\nT{toolNumber} M6\nM3 S{spindleSpeed}\nG4 P1'
-                    }
-                },
-                mach3: {
-                    name: 'Mach3',
-                    fileExtension: '.tap',
-                    supportsToolChange: true,
-                    supportsArcCommands: true,
-                    supportsCannedCycles: true,
-                    arcFormat: 'IJ',
-                    precision: {
-                        coordinates: 4,
-                        feedrate: 1,
-                        spindle: 0
-                    },
-                    templates: {
-                        start: 'G90 G21 G17\nM3 S{spindleSpeed}\nG4 P1',
-                        end: 'M5\nG0 Z{safeZ}\nM30',
-                        toolChange: 'M5\nG0 Z{safeZ}\nT{toolNumber} M6\nM3 S{spindleSpeed}\nG4 P1'
-                    }
-                }
-            };
+        registerDefaultProcessors() {
+            if (typeof GRBLPostProcessor !== 'undefined') {
+                this.registerProcessor('grbl', new GRBLPostProcessor());
+            }
+            if (typeof MarlinPostProcessor !== 'undefined') {
+                this.registerProcessor('marlin', new MarlinPostProcessor());
+            }
+            if (typeof RolandPostProcessor !== 'undefined') {
+                this.registerProcessor('roland', new RolandPostProcessor());
+            }
+            if (typeof LinuxCNCPostProcessor !== 'undefined') {
+                this.registerProcessor('linuxcnc', new LinuxCNCPostProcessor());
+            }
+            if (typeof Mach3PostProcessor !== 'undefined') {
+                this.registerProcessor('mach3', new Mach3PostProcessor());
+            }
+        }
+        
+        registerProcessor(name, processor) {
+            this.processors.set(name.toLowerCase(), processor);
+        }
+        
+        getProcessor(name) {
+            return this.processors.get(name.toLowerCase());
         }
         
         generate(toolpathPlans, options) {
             if (!toolpathPlans || toolpathPlans.length === 0) {
-                return '; No toolpath data to generate G-code from';
+                return '; No toolpath data available';
             }
-            
-            // Select post-processor
-            const postName = options.postProcessor || 'grbl';
-            this.postProcessor = this.postProcessors[postName] || this.postProcessors.grbl;
-            
-            // Reset state
-            this.output = [];
-            this.currentPosition = {x: 0, y: 0, z: 0};
-            this.currentFeed = null;
-            this.currentSpindleSpeed = null;
-            
-            // Generate header
-            this.generateHeader(options, toolpathPlans[0]);
-            
-            // Track tool changes
-            let lastToolId = null;
-            
-            // Process each toolpath plan
-            for (let i = 0; i < toolpathPlans.length; i++) {
-                const plan = toolpathPlans[i];
-                
-                // Add operation comment
-                if (options.includeComments) {
-                    this.output.push('');
-                    this.output.push(`; Operation ${i + 1}/${toolpathPlans.length}: ${plan.operationId}`);
-                    if (plan.metadata?.tool) {
-                        this.output.push(`; Tool: ${plan.metadata.tool.id || 'unknown'} (Dia: ${plan.metadata.tool.diameter}mm)`);
-                    }
-                    if (plan.metadata?.estimatedTime) {
-                        const minutes = Math.floor(plan.metadata.estimatedTime / 60);
-                        const seconds = Math.floor(plan.metadata.estimatedTime % 60);
-                        this.output.push(`; Estimated time: ${minutes}:${seconds.toString().padStart(2, '0')}`);
-                    }
-                }
-                
-                // Handle tool change
-                if (options.toolChanges && plan.metadata?.tool?.id !== lastToolId) {
-                    if (lastToolId !== null) { // Not first tool
-                        this.generateToolChange(plan.metadata.tool, options);
-                    }
-                    lastToolId = plan.metadata?.tool?.id;
-                }
-                
-                // Process commands
-                for (const cmd of plan.commands) {
-                    const gcode = this.commandToGCode(cmd, options);
-                    if (gcode) {
-                        this.output.push(gcode);
-                    }
-                }
-            }
-            
-            // Generate footer
-            this.generateFooter(options);
-            
-            return this.output.join('\n');
-        }
-        
-        generateHeader(options, firstPlan) {
-            const settings = firstPlan?.metadata || {};
-            const startCode = options.startCode || this.postProcessor.templates.start;
-            
-            // Add header comments
-            this.output.push(`; G-code generated by EasyTrace5000`);
-            this.output.push(`; Date: ${new Date().toISOString()}`);
-            this.output.push(`; Post-processor: ${this.postProcessor.name}`);
-            this.output.push(`; Units: ${options.units || 'mm'}`);
-            this.output.push('');
-            
-            // Process start template
-            const processedCode = this.processTemplate(startCode, {
-                spindleSpeed: settings.tool?.spindleSpeed || options.spindleSpeed || 12000,
-                safeZ: options.safeZ || machineConfig.heights?.safeZ || 5,
-                feedRate: settings.tool?.feedRate || 100
-            });
-            
-            this.output.push(...processedCode.split('\n').filter(line => line.trim()));
-            
-            // Set initial modal states
-            this.modalState.coordinateMode = 'G90';
-            this.modalState.units = 'G21';
-            this.modalState.plane = 'G17';
-            this.modalState.feedRateMode = 'G94';
-        }
-        
-        generateFooter(options) {
-            const endCode = options.endCode || this.postProcessor.templates.end;
-            
-            this.output.push('');
-            
-            // Process end template
-            const processedCode = this.processTemplate(endCode, {
-                safeZ: options.safeZ || machineConfig.heights?.safeZ || 5
-            });
-            
-            this.output.push(...processedCode.split('\n').filter(line => line.trim()));
-        }
-        
-        generateToolChange(tool, options) {
-            if (!this.postProcessor.supportsToolChange) {
-                // Manual tool change
-                this.output.push('M5 ; Stop spindle');
-                this.output.push(`G0 Z${this.formatCoord(options.safeZ || 5)}`);
-                this.output.push(`M0 (Change tool to: ${tool.id || 'unknown'})`);
-                this.output.push(`M3 S${tool.spindleSpeed || 12000}`);
-                this.output.push('G4 P1 ; Wait for spindle');
-            } else {
-                // Automatic tool change
-                const template = this.postProcessor.templates.toolChange;
-                const toolNumber = this.extractToolNumber(tool.id) || 1;
-                
-                const processedCode = this.processTemplate(template, {
-                    toolNumber: toolNumber,
-                    toolName: tool.id || 'unknown',
-                    spindleSpeed: tool.spindleSpeed || 12000,
-                    safeZ: options.safeZ || 5
+
+            // ==================== OPTIMIZER INTEGRATION ====================
+            // Apply optimization if enabled in config
+            const config = window.PCBCAMConfig || {};
+            if (config.gcode?.enableOptimization && window.ToolpathOptimizer) {
+                const optimizer = new ToolpathOptimizer({
+                    enablePathOrdering: config.gcode.optimization.pathOrdering,
+                    enableSegmentSimplification: config.gcode.optimization.segmentSimplification,
+                    enableLeadInOut: config.gcode.optimization.leadInOut,
+                    enableZLevelGrouping: config.gcode.optimization.zLevelGrouping,
+                    angleTolerance: config.gcode.optimization.angleTolerance,
+                    minSegmentLength: config.gcode.optimization.minSegmentLength
                 });
                 
-                this.output.push(...processedCode.split('\n').filter(line => line.trim()));
+                toolpathPlans = optimizer.optimize(toolpathPlans);
+                
+                // Log optimization results
+                const stats = optimizer.getStats();
+                console.log('Toolpath optimization:', stats);
             }
-        }
-        
-        commandToGCode(cmd, options) {
-            let code = '';
+            // ==================== END OPTIMIZER INTEGRATION ====================
             
-            switch (cmd.type) {
-                case 'RAPID':
-                    code = this.generateRapid(cmd);
-                    break;
+            const processorName = options.postProcessor || 'grbl';
+            this.currentProcessor = this.getProcessor(processorName);
+            
+            if (!this.currentProcessor) {
+                throw new Error(`Post-processor '${processorName}' not found`);
+            }
+            
+            this.currentProcessor.resetState();
+            
+            // This is the *global* untransformed state tracker
+            this.untransformedPosition = { x: 0, y: 0, z: 0 };
+            
+            const output = [];
+            output.push(this.currentProcessor.generateHeader(options));
+            
+            let coordinateTransform = null;
+            if (this.core && this.core.coordinateSystem) {
+                coordinateTransform = this.core.coordinateSystem.getCoordinateTransform();
+            }
+
+            for (const plan of toolpathPlans) {
+                // ... (TODO - tool change logic)
+
+                for (const cmd of plan.commands) {
                     
-                case 'LINEAR':
-                    code = this.generateLinear(cmd);
-                    break;
-                    
-                case 'ARC_CW':
-                case 'ARC_CCW':
-                    code = this.generateArc(cmd);
-                    break;
-                    
-                case 'PLUNGE':
-                    code = this.generatePlunge(cmd);
-                    break;
-                    
-                case 'RETRACT':
-                    code = this.generateRetract(cmd);
-                    break;
-                    
-                case 'DWELL':
-                    code = `G4 P${cmd.dwell}`;
-                    break;
-                    
-                default:
-                    if (options.includeComments && cmd.comment) {
-                        code = `; ${cmd.comment}`;
+                    // Snapshot the start position for this command
+                    const untransformedStartPos = { ...this.untransformedPosition };
+
+                    // Default: process the original command
+                    let commandsToProcess = [cmd]; 
+
+                    // 1. Check if we need to linearize
+                    if ((cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') &&
+                        !this.currentProcessor.config.supportsArcCommands) 
+                    {
+                        const radius = Math.hypot(cmd.i || 0, cmd.j || 0);
+                        // Adaptive: 0.05mm for small features, 0.2mm for large arcs
+                        const baseResolution = options.arcResolution || 0.1;
+                        const adaptiveResolution = radius < 2 ? baseResolution * 0.5 : 
+                                                radius > 10 ? baseResolution * 2 : 
+                                                baseResolution;
+                        
+                        commandsToProcess = this.linearizeArc(cmd, untransformedStartPos, adaptiveResolution);
                     }
+                    
+                    // 2. Process the (now 1-or-many) commands
+                    for (const commandToProcess of commandsToProcess) {
+                        
+                        // The "start" position for *this specific segment* is the "end" position of the *last* segment.
+                        // This is tracked by this.untransformedPosition
+                        const startPosForTransform = { ...this.untransformedPosition };
+                        
+                        // Apply coordinate transformation
+                        let transformedCmd = commandToProcess;
+                        if (coordinateTransform) {
+                            // Pass the *correct* start position for this segment
+                            transformedCmd = this.transformCommand(commandToProcess, coordinateTransform, startPosForTransform);
+                        }
+
+                        // Generate G-code
+                        const gcode = this.currentProcessor.processCommand(transformedCmd, options);
+                        if (gcode) {
+                            output.push(gcode);
+                        }
+
+                        // Update the global untransformed position state
+                        // to the end of *this segment*
+                        if (commandToProcess.x !== null && commandToProcess.x !== undefined) {
+                            this.untransformedPosition.x = commandToProcess.x;
+                        }
+                        if (commandToProcess.y !== null && commandToProcess.y !== undefined) {
+                            this.untransformedPosition.y = commandToProcess.y;
+                        }
+                        if (commandToProcess.z !== null && commandToProcess.z !== undefined) {
+                            this.untransformedPosition.z = commandToProcess.z;
+                        }
+                    }
+                }
             }
             
-            return code;
+            output.push(this.currentProcessor.generateFooter(options));
+            return output.join('\n');
+        }
+
+        transformCommand(cmd, transform, currentUntransformedPos) {
+            const transformed = { ...cmd };
+            
+            const hasX = cmd.x !== null && cmd.x !== undefined;
+            const hasY = cmd.y !== null && cmd.y !== undefined;
+            
+            // Get full untransformed coordinate for THIS command
+            // If coordinate not specified, use CURRENT position
+            const x = hasX ? cmd.x : currentUntransformedPos.x;
+            const y = hasY ? cmd.y : currentUntransformedPos.y;
+            
+            // Apply Offset
+            let tx = x + transform.offsetX;
+            let ty = y + transform.offsetY;
+            
+            // Apply Rotation
+            if (transform.rotation !== 0 && transform.rotationCenter) {
+                const rad = (transform.rotation * Math.PI) / 180;
+                const cx = transform.rotationCenter.x + transform.offsetX;
+                const cy = transform.rotationCenter.y + transform.offsetY;
+                
+                const dx = tx - cx;
+                const dy = ty - cy;
+                
+                tx = cx + (dx * Math.cos(rad) - dy * Math.sin(rad));
+                ty = cy + (dx * Math.sin(rad) + dy * Math.cos(rad));
+            }
+            
+            // Write back ONLY the coordinates present in the original command
+            if (hasX) transformed.x = tx;
+            if (hasY) transformed.y = ty;
+            // Z is never transformed
+            
+            // Transform I,J for arcs (relative offsets)
+            if ((cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') && transform.rotation !== 0) {
+                const rad = (transform.rotation * Math.PI) / 180;
+                const i = cmd.i || 0;
+                const j = cmd.j || 0;
+                
+                // I,J are RELATIVE, so only rotation applies (no offset)
+                transformed.i = i * Math.cos(rad) - j * Math.sin(rad);
+                transformed.j = i * Math.sin(rad) + j * Math.cos(rad);
+            }
+            
+            return transformed;
         }
         
-        generateRapid(cmd) {
-            let code = '';
-            
-            // Only output G0 if not in rapid mode
-            if (this.modalState.motionMode !== 'G0') {
-                code = 'G0';
-                this.modalState.motionMode = 'G0';
-            }
-            
-            // Add coordinates
-            if (cmd.x !== null && cmd.x !== this.currentPosition.x) {
-                code += ` X${this.formatCoord(cmd.x)}`;
-                this.currentPosition.x = cmd.x;
-            }
-            if (cmd.y !== null && cmd.y !== this.currentPosition.y) {
-                code += ` Y${this.formatCoord(cmd.y)}`;
-                this.currentPosition.y = cmd.y;
-            }
-            if (cmd.z !== null && cmd.z !== this.currentPosition.z) {
-                code += ` Z${this.formatCoord(cmd.z)}`;
-                this.currentPosition.z = cmd.z;
-            }
-            
-            return code.trim();
+        getAvailableProcessors() {
+            return Array.from(this.processors.keys());
         }
         
-        generateLinear(cmd) {
-            let code = '';
+        getProcessorInfo(name) {
+            const processor = this.getProcessor(name);
+            if (!processor) return null;
             
-            // Only output G1 if not in linear mode
-            if (this.modalState.motionMode !== 'G1') {
-                code = 'G1';
-                this.modalState.motionMode = 'G1';
-            }
-            
-            // Add coordinates
-            if (cmd.x !== null && cmd.x !== this.currentPosition.x) {
-                code += ` X${this.formatCoord(cmd.x)}`;
-                this.currentPosition.x = cmd.x;
-            }
-            if (cmd.y !== null && cmd.y !== this.currentPosition.y) {
-                code += ` Y${this.formatCoord(cmd.y)}`;
-                this.currentPosition.y = cmd.y;
-            }
-            if (cmd.z !== null && cmd.z !== this.currentPosition.z) {
-                code += ` Z${this.formatCoord(cmd.z)}`;
-                this.currentPosition.z = cmd.z;
-            }
-            
-            // Add feed rate if changed
-            if (cmd.f && cmd.f !== this.currentFeed) {
-                code += ` F${this.formatFeed(cmd.f)}`;
-                this.currentFeed = cmd.f;
-            }
-            
-            return code.trim();
+            return {
+                name: processor.name,
+                fileExtension: processor.config.fileExtension,
+                supportsToolChange: processor.config.supportsToolChange,
+                supportsArcCommands: processor.config.supportsArcCommands,
+                supportsCannedCycles: processor.config.supportsCannedCycles
+            };
         }
-        
-        generateArc(cmd) {
-            if (!this.postProcessor.supportsArcCommands) {
-                // Fallback to linear approximation
-                return this.generateLinear(cmd);
+
+        /**
+         * Converts an ARC MotionCommand into an array of LINEAR MotionCommands.
+         * Uses the provided start position.
+         * @param {MotionCommand} cmd - The ARC_CW or ARC_CCW command.
+         * @param {object} startPos - The *untransformed* start position {x, y, z}.
+         * @param {number} [resolution=1.0] - The maximum length of a linear segment.
+         * @returns {MotionCommand[]} An array of LINEAR MotionCommands.
+         */
+        linearizeArc(cmd, startPos, resolution = 1.0) {
+            const linearizedCmds = [];
+            
+            const start = {
+                x: startPos.x,
+                y: startPos.y,
+                z: startPos.z
+            };
+            const end = {
+                x: (cmd.x !== null && cmd.x !== undefined) ? cmd.x : start.x,
+                y: (cmd.y !== null && cmd.y !== undefined) ? cmd.y : start.y,
+                z: (cmd.z !== null && cmd.z !== undefined) ? cmd.z : start.z
+            };
+            const center = {
+                x: start.x + (cmd.i || 0),
+                y: start.y + (cmd.j || 0)
+            };
+            const radius = Math.hypot(cmd.i || 0, cmd.j || 0);
+            
+            // Prevent division by zero if radius is tiny
+            if (radius < 1e-9) {
+                return [new MotionCommand('LINEAR', end, { feed: cmd.f })];
             }
             
-            const gCommand = cmd.type === 'ARC_CW' ? 'G2' : 'G3';
-            let code = '';
+            const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+            const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
             
-            // Only output G2/G3 if not in arc mode
-            if (this.modalState.motionMode !== gCommand) {
-                code = gCommand;
-                this.modalState.motionMode = gCommand;
+            let sweep = endAngle - startAngle;
+            if (cmd.type === 'ARC_CW') {
+                if (sweep >= 1e-9) sweep -= 2 * Math.PI;
+            } else {
+                if (sweep <= -1e-9) sweep += 2 * Math.PI;
             }
             
-            // End point
-            code += ` X${this.formatCoord(cmd.x)}`;
-            code += ` Y${this.formatCoord(cmd.y)}`;
-            code += ` Z${this.formatCoord(cmd.z)}`;
-            
-            // Arc center (I,J format)
-            if (this.postProcessor.arcFormat === 'IJ') {
-                code += ` I${this.formatCoord(cmd.i)}`;
-                code += ` J${this.formatCoord(cmd.j)}`;
-            } else if (this.postProcessor.arcFormat === 'R') {
-                // R format (radius)
-                const radius = Math.hypot(cmd.i, cmd.j);
-                code += ` R${this.formatCoord(radius)}`;
+            // Handle full circle
+            const dist = Math.hypot(start.x - end.x, start.y - end.y);
+            if (dist < 1e-6 && Math.abs(sweep) < 1e-6) {
+                sweep = (cmd.type === 'ARC_CW') ? -2 * Math.PI : 2 * Math.PI;
             }
             
-            // Feed rate
-            if (cmd.f && cmd.f !== this.currentFeed) {
-                code += ` F${this.formatFeed(cmd.f)}`;
-                this.currentFeed = cmd.f;
+            const arcLength = Math.abs(sweep) * radius;
+            const segments = Math.max(2, Math.ceil(arcLength / resolution));
+            const angleStep = sweep / segments;
+            const zStep = (end.z - start.z) / segments;
+
+            for (let i = 1; i <= segments; i++) {
+                const angle = startAngle + i * angleStep;
+                
+                const nextX = (i === segments) ? end.x : (center.x + radius * Math.cos(angle));
+                const nextY = (i === segments) ? end.y : (center.y + radius * Math.sin(angle));
+                const nextZ = (i === segments) ? end.z : (start.z + i * zStep);
+
+                linearizedCmds.push(new MotionCommand('LINEAR', 
+                    { x: nextX, y: nextY, z: nextZ }, 
+                    { feed: cmd.f }
+                ));
             }
             
-            // Update position
-            this.currentPosition.x = cmd.x;
-            this.currentPosition.y = cmd.y;
-            this.currentPosition.z = cmd.z;
-            
-            return code.trim();
-        }
-        
-        generatePlunge(cmd) {
-            // Plunge is just a Z-only linear move
-            let code = '';
-            
-            if (this.modalState.motionMode !== 'G1') {
-                code = 'G1';
-                this.modalState.motionMode = 'G1';
-            }
-            
-            code += ` Z${this.formatCoord(cmd.z)}`;
-            
-            if (cmd.f && cmd.f !== this.currentFeed) {
-                code += ` F${this.formatFeed(cmd.f)}`;
-                this.currentFeed = cmd.f;
-            }
-            
-            this.currentPosition.z = cmd.z;
-            
-            return code.trim();
-        }
-        
-        generateRetract(cmd) {
-            // Retract is a rapid Z move
-            let code = '';
-            
-            if (this.modalState.motionMode !== 'G0') {
-                code = 'G0';
-                this.modalState.motionMode = 'G0';
-            }
-            
-            code += ` Z${this.formatCoord(cmd.z)}`;
-            this.currentPosition.z = cmd.z;
-            
-            return code.trim();
-        }
-        
-        formatCoord(value) {
-            if (value === null || value === undefined) return '';
-            const precision = this.postProcessor.precision.coordinates;
-            return value.toFixed(precision).replace(/\.?0+$/, '');
-        }
-        
-        formatFeed(value) {
-            const precision = this.postProcessor.precision.feedrate;
-            if (precision === 0) {
-                return Math.round(value).toString();
-            }
-            return value.toFixed(precision).replace(/\.?0+$/, '');
-        }
-        
-        processTemplate(template, variables) {
-            let processed = template;
-            
-            for (const [key, value] of Object.entries(variables)) {
-                const regex = new RegExp(`\\{${key}\\}`, 'g');
-                processed = processed.replace(regex, value);
-            }
-            
-            return processed;
-        }
-        
-        extractToolNumber(toolId) {
-            if (!toolId) return null;
-            const match = toolId.match(/\d+/);
-            return match ? parseInt(match[0]) : null;
+            return linearizedCmds;
         }
     }
     
     window.GCodeGenerator = GCodeGenerator;
-    
 })();

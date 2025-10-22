@@ -1,7 +1,6 @@
 /**
  * @file        geometry/geometry-utils.js
  * @description Contains general auxiliary functions
- * @comment     Fixed: End-cap curves registered with explicit clockwise=false
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -206,14 +205,14 @@
             const leftSide = [];
             const rightSide = [];
             
-            // FIXED: Register end-caps with explicit clockwise=false
+            // Register end-caps with explicit clockwise=false
             const startCapId = window.globalCurveRegistry?.register({
                 type: 'arc',
                 center: { x: points[0].x, y: points[0].y },
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: false,  // CRITICAL: End-caps always CCW
+                clockwise: false,  // End-caps always CCW
                 source: 'end_cap'
             });
             
@@ -223,7 +222,7 @@
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: false,  // CRITICAL: End-caps always CCW
+                clockwise: false,  // End-caps always CCW
                 source: 'end_cap'
             });
             
@@ -281,12 +280,12 @@
             if (len < this.PRECISION) {
                 const segments = 24;
                 const points = [];
-                // FIXED: Register circle end-cap with clockwise=false
+                // Register circle end-cap with clockwise=false
                 const curveId = window.globalCurveRegistry?.register({
                     type: 'circle',
                     center: { x: from.x, y: from.y },
                     radius: halfWidth,
-                    clockwise: false,  // CRITICAL: Always CCW
+                    clockwise: false,  // Always CCW
                     source: 'end_cap'
                 });
                 
@@ -316,14 +315,14 @@
             const capSegments = this.getOptimalSegments(halfWidth, 16, 64);
             const halfSegments = Math.floor(capSegments / 2);
             
-            // FIXED: Register end-caps with explicit clockwise=false
+            // Register end-caps with explicit clockwise=false
             const startCapId = window.globalCurveRegistry?.register({
                 type: 'arc',
                 center: { x: from.x, y: from.y },
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: false,  // CRITICAL: End-caps always CCW
+                clockwise: false,  // End-caps always CCW
                 source: 'end_cap'
             });
             
@@ -333,7 +332,7 @@
                 radius: halfWidth,
                 startAngle: 0,
                 endAngle: Math.PI * 2,
-                clockwise: false,  // CRITICAL: End-caps always CCW
+                clockwise: false,  // End-caps always CCW
                 source: 'end_cap'
             });
             
@@ -459,7 +458,6 @@
                 y: center.y + radius * Math.sin(endRad)
             };
 
-            // --- FIX START ---
             // Calculate and register START cap with perpendicular sweep angles.
             const startCapAngleStart = startRad + Math.PI / 2;
             const startCapAngleEnd = startRad + 3 * Math.PI / 2;
@@ -542,7 +540,6 @@
                 };
                 points.push(point);
             }
-            // --- FIX END ---
             
             return points;
         },

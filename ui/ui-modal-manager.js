@@ -2,6 +2,7 @@
  * @file        ui/ui-modal-manager.js
  * @description Unified modal management for all modals
  * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
@@ -305,11 +306,11 @@
             }
         }
         
-        // Toolpath modal handler (repurposed G-code export modal)
+        // Toolpath modal handler
         showToolpathModal(operations, highlightOperationId = null) {
             console.log(`[ModalManager] Opening toolpath manager with ${operations.length} operation(s)`);
             
-            // Store operations but DO NOT calculate toolpaths yet
+            // Store operations
             this.selectedOperations = operations;
             this.highlightedOpId = highlightOperationId;
             this.toolpathPlans.clear();
@@ -432,7 +433,6 @@
         
         async calculateToolpaths() {
             if (!this.controller.toolpathCalculator) {
-                // Create toolpath calculator if not exists
                 if (typeof ToolpathCalculator !== 'undefined') {
                     this.controller.toolpathCalculator = new ToolpathCalculator(this.controller.core);
                 } else {
@@ -441,9 +441,30 @@
                 }
             }
             
+            // Create optimizer if needed
+            if (!this.controller.toolpathOptimizer && typeof ToolpathOptimizer !== 'undefined') {
+                this.controller.toolpathOptimizer = new ToolpathOptimizer();
+            }
+            
             for (const op of this.selectedOperations) {
+                console.log(`[Modal] Calculating toolpath for ${op.id}:`, {
+                    type: op.type,
+                    hasOffsets: !!op.offsets,
+                    offsetCount: op.offsets?.length || 0,
+                    hasPreview: !!op.preview
+                });
+                
                 try {
-                    const plan = await this.controller.toolpathCalculator.calculateToolpath(op);
+                    let plan = await this.controller.toolpathCalculator.calculateToolpath(op);
+                    
+                    // Optimize if enabled
+                    const optimizeEnabled = document.getElementById('gcode-optimize-paths')?.checked === true;
+                    if (optimizeEnabled && this.controller.toolpathOptimizer) {
+                        // Optimizer expects an array of plans
+                        const optimized = this.controller.toolpathOptimizer.optimize([plan]);
+                        plan = optimized[0]; // Extract the single optimized plan
+                    }
+                    
                     this.toolpathPlans.set(op.id, plan);
                 } catch (error) {
                     console.error(`Failed to calculate toolpath for ${op.id}:`, error);
@@ -493,6 +514,11 @@
                 singleFile: document.getElementById('gcode-single-file')?.checked !== false,
                 toolChanges: document.getElementById('gcode-tool-changes')?.checked || false
             };
+
+            // Get coordinate transformation
+            if (this.controller.core?.coordinateSystem) {
+                options.coordinateTransform = this.controller.core.coordinateSystem.getCoordinateTransform();
+            }
             
             const gcode = this.controller.gcodeGenerator.generate(selectedPlans, options);
             
@@ -518,17 +544,56 @@
         
         estimateTime(plans) {
             let totalTime = 0;
-            
+            let lastPos = { x: 0, y: 0, z: 0 }; // Track position
+            const rapidFeed = this.controller.core?.getSetting('machine', 'rapidFeed') || 1000;
+
             for (const plan of plans) {
                 if (!plan.commands) continue;
                 
                 for (const cmd of plan.commands) {
-                    if (cmd.type === 'LINEAR' || cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') {
-                        // Rough distance calculation
-                        const dist = 10; // Placeholder - should calculate actual distance
-                        const feed = cmd.f || 100;
-                        totalTime += (dist / feed) * 60; // Convert to seconds
+                    let dist = 0;
+                    let feed = 100;
+                    let nextPos = { ...lastPos };
+                    
+                    if (cmd.x !== null) nextPos.x = cmd.x;
+                    if (cmd.y !== null) nextPos.y = cmd.y;
+                    if (cmd.z !== null) nextPos.z = cmd.z;
+
+                    if (cmd.type === 'RAPID' || cmd.type === 'RETRACT') {
+                        dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y, nextPos.z - lastPos.z);
+                        feed = rapidFeed;
+                    } 
+                    else if (cmd.type === 'LINEAR' || cmd.type === 'PLUNGE') {
+                        dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y, nextPos.z - lastPos.z);
+                        feed = cmd.f || 100;
+                    } 
+                    else if (cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') {
+                        // Approximate arc distance using radius
+                        const radius = Math.hypot(cmd.i, cmd.j);
+                        if (radius > 0) {
+                            // Calculate angle
+                            const v1 = { x: -cmd.i, y: -cmd.j };
+                            const v2 = { x: nextPos.x - (lastPos.x + cmd.i), y: nextPos.y - (lastPos.y + cmd.j) };
+                            const angle = Math.acos((v1.x * v2.x + v1.y * v2.y) / (radius * radius));
+                            dist = radius * angle;
+                            // If dist is NaN (e.g., full circle), approximate
+                            if (isNaN(dist) || dist === 0) {
+                                dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y);
+                            }
+                        } else {
+                            dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y);
+                        }
+                        feed = cmd.f || 100;
                     }
+                    else if (cmd.type === 'DWELL') {
+                        totalTime += cmd.dwell || 0; // Add dwell time directly
+                    }
+
+                    if (feed > 0 && dist > 0) {
+                        totalTime += (dist / feed) * 60; // Time in seconds
+                    }
+                    
+                    lastPos = nextPos; // Update position
                 }
             }
             

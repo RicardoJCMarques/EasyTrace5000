@@ -32,7 +32,7 @@
             this.registry = new Map();
             this.hashToId = new Map();
             this.primitiveIdToCurves = new Map();
-            this.offsetCurveMap = new Map(); // Track offset-derived curves
+            this.offsetCurveMap = new Map();
             this.nextId = 1;
             this.hashPrecision = 1000;
             

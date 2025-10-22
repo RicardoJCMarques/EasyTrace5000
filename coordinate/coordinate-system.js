@@ -441,8 +441,8 @@
 
         getCoordinateTransform() {
             return {
-                offsetX: -this.savedOrigin.x,
-                offsetY: -this.savedOrigin.y,
+                offsetX: -this.previewOrigin.x,
+                offsetY: -this.previewOrigin.y,
                 rotation: this.currentRotation,
                 rotationCenter: this.rotationCenter ? { ...this.rotationCenter } : null
             };

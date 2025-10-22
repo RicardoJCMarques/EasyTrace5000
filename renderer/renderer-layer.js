@@ -1,6 +1,6 @@
 /**
  * @file        renderer/renderer-layer.js
- * @description Manages layers
+ * @description Manages canvas layers
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -118,7 +118,6 @@
             if (this.options.showWireframe) {
                 this.layers.forEach(layer => {
                     if (layer.visible) {
-                        // You will need to implement this function as we discussed
                         this.renderWireframeLayer(layer); 
                     }
                 });
@@ -270,7 +269,7 @@
             }
 
             const viewBounds = this.core.getViewBounds();
-            this.renderLayerPrimitives(layer, viewBounds, fillColor); // Correctly delegates
+            this.renderLayerPrimitives(layer, viewBounds, fillColor);
         }
         
         renderLayerPrimitives(layer, viewBounds, fillColor, strokeColor = null) {
@@ -336,7 +335,6 @@
                 if (cannotBatch) {
                     flushFlashBatch();
                     this.ctx.save();
-                    // Delegate to role-based dispatcher
                     this.primitiveRenderer.renderPrimitive(
                         primitive, fillColor, strokeColor, layer.isPreprocessed, 
                         { layer: layer }

@@ -2,6 +2,7 @@
  * @file        ui/ui-property-inspector.js
  * @description Refactored property inspector using parameter manager
  * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
@@ -226,6 +227,21 @@
             if (param.min !== undefined) input.min = param.min;
             if (param.max !== undefined) input.max = param.max;
             if (param.step !== undefined) input.step = param.step;
+            
+            // Prevent negative sign if min is >= 0
+            if (param.min !== undefined && param.min >= 0) {
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === '-' || e.key === 'Subtract') {
+                        e.preventDefault();
+                    }
+                });
+                input.addEventListener('paste', (e) => {
+                    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                    if (pastedText.includes('-')) {
+                        e.preventDefault();
+                    }
+                });
+            }
             
             wrapper.appendChild(input);
             
@@ -513,6 +529,14 @@
                 } else {
                     await this.generateOffsets(op); 
                 }
+
+                // Auto-transition to offset stage
+                const config = window.PCBCAMConfig || {};
+                if (config.layout?.ui?.autoTransition) {
+                    setTimeout(() => {
+                        this.switchGeometryStage('offset');
+                    }, config.layout.ui.transitionDelay || 500);
+                }
                 
             } else if (stage === 'offset') {
                 // STAGE 2: Offset -> Preview
@@ -535,7 +559,15 @@
                     
                     // Update the renderer to visualize the preview
                     await this.ui.updateRendererAsync(); 
-                    this.ui.statusManager?.showStatus('Preview generated - ready for export', 'success'); 
+                    this.ui.statusManager?.showStatus('Preview generated - ready for export', 'success');
+
+                    // Auto-transition to preview stage
+                    const config = window.PCBCAMConfig || {};
+                    if (config.layout?.ui?.autoTransition) {
+                        setTimeout(() => {
+                            this.switchGeometryStage('preview');
+                        }, config.layout.ui.transitionDelay || 500);
+                    }
                     
                 } catch (error) {
                     console.error('Preview generation failed:', error); 
@@ -558,6 +590,21 @@
                 } else {
                     this.ui.statusManager?.showStatus('Operations manager not available', 'error'); 
                 }
+            }
+        }
+
+        switchGeometryStage(newStage) {
+            const validStages = ['source', 'offset', 'preview'];
+            if (!validStages.includes(newStage)) {
+                console.warn(`Invalid geometry stage: ${newStage}`);
+                return;
+            }
+            
+            this.currentGeometryStage = newStage;
+            
+            // Simply rebuild the parameter panel for the new stage
+            if (this.currentOperation) {
+                this.showOperationProperties(this.currentOperation, newStage);
             }
         }
         

@@ -1,6 +1,6 @@
 /**
  * @file        parsers/parser-core.js
- * @description hared parsing infrastructure for all file formats
+ * @description Shared parsing infrastructure for all file formats
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later

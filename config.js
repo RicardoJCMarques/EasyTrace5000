@@ -78,8 +78,8 @@ window.PCBCAMConfig = {
                 pointAngle: 118
             },
             cutting: {
-                cutDepth: 1.8,
-                passDepth: 0.2,
+                cutDepth: -1.8,
+                passDepth: 0.3, // Negative values blow the pipeline
                 cutFeed: 50,
                 plungeFeed: 25,
                 spindleSpeed: 10000
@@ -97,7 +97,8 @@ window.PCBCAMConfig = {
                 dwellTime: 0,
                 retractHeight: 0.5,
                 autoToolChange: true,
-                depthCompensation: true
+                depthCompensation: true,
+                entryType: 'helix',
             }
         },
         clear: {
@@ -114,7 +115,8 @@ window.PCBCAMConfig = {
             },
             cutting: {
                 cutDepth: 0.1,
-                passDepth: 0.05,
+                passDepth: 0.1,
+                multiDepth: false,
                 cutFeed: 200,
                 plungeFeed: 50,
                 spindleSpeed: 10000
@@ -127,12 +129,12 @@ window.PCBCAMConfig = {
                 stepDown: 0.1
             },
             defaultSettings: {
-                passes: 3,
+                passes: 4,
                 stepOver: 60,
                 cutDepth: 0.1,
                 pattern: 'offset',
                 direction: 'climb',
-                entryType: 'ramp',
+                entryType: 'plunge',
                 preserveIslands: true
             }
         },
@@ -149,8 +151,8 @@ window.PCBCAMConfig = {
                 flutes: 2
             },
             cutting: {
-                cutDepth: 1.8,
-                passDepth: 0.2,
+                cutDepth: -1.8,
+                passDepth: 0.3,  // Negative values blow the pipeline
                 cutFeed: 150,
                 plungeFeed: 50,
                 spindleSpeed: 10000
@@ -173,7 +175,7 @@ window.PCBCAMConfig = {
                 tabWidth: 3.0,
                 tabHeight: 0.5,
                 direction: 'climb',
-                entryType: 'ramp',
+                entryType: 'plunge',
                 leadIn: 0.5,
                 leadOut: 0.5,
                 cutSide: 'outside'
@@ -182,7 +184,7 @@ window.PCBCAMConfig = {
     },
 
     // ============================================================================
-    // UI LAYOUT
+    // UI
     // ============================================================================
     layout: {
         sidebarLeftWidth: 320,
@@ -214,6 +216,12 @@ window.PCBCAMConfig = {
                 toolpath: false,
                 preview: false
             }
+        },
+
+        // UI Auto-transition settings
+        ui: {
+            autoTransition: true,         // Auto-advance after generation
+            transitionDelay: 125          // ms delay before transition
         }
     },
 
@@ -478,6 +486,18 @@ window.PCBCAMConfig = {
             workOffsets: true,
             toolCompensation: false,
             variableSpindle: true
+        },
+
+        // Optimization settings
+        enableOptimization: false, // Master switch
+        
+        optimization: {
+            pathOrdering: true,           // Minimize rapid movements
+            segmentSimplification: true,  // Remove co-linear segments
+            leadInOut: true,              // Optimize loop entry points
+            zLevelGrouping: false,        // Group by Z-height (experimental)
+            angleTolerance: 0.1,          // Degrees for co-linear detection
+            minSegmentLength: 0.01        // mm minimum segment
         }
     },
     

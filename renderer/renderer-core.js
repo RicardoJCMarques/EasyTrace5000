@@ -177,7 +177,7 @@
                      b2.maxY < b1.minY);
         }
         
-        // ==================== LOD & VISIBILITY ====================
+        // ==================== Level Of Detail & VISIBILITY ====================
         
         shouldRenderPrimitive(primitive, layerType) {
             if (primitive.properties?.isFused) {

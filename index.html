@@ -62,9 +62,6 @@
                     <button class="menu-item" id="toolbar-manage-toolpaths">
                         <span>🔧</span> Manage Toolpaths
                     </button>
-                    <button class="menu-item" id="toolbar-export-gcode">
-                        <span>📄</span> Export G-Code
-                    </button>
                     <button class="menu-item" id="toolbar-export-svg">
                         <span>🖼</span> Export SVG
                     </button>
@@ -616,15 +613,15 @@
 
                     <div class="property-field">
                         <label class="checkbox-label">
-                            <input type="checkbox" id="gcode-tool-changes">
+                            <input type="checkbox" id="gcode-tool-changes" disabled>
                             <span>Insert tool change commands</span>
                         </label>
                     </div>
 
                     <div class="property-field">
                         <label class="checkbox-label">
-                            <input type="checkbox" id="gcode-optimize-paths" checked>
-                            <span>Optimize toolpaths</span>
+                            <input type="checkbox" id="gcode-optimize-paths">
+                            <span>Optimize toolpaths (Experimental)</span>
                         </label>
                     </div>
 
@@ -702,13 +699,13 @@
             'ui/ui-modal-manager.js',
             
             // Toolpath system
-            'toolpath/toolpath-strategies.js',
             'toolpath/toolpath-optimizer.js',
             'toolpath/toolpath-calculator.js',
             
             // G-code generation
-            'export/gcode-templates.js',
-            'export/gcode-generator.js',
+            "export/processors/base-processor.js",
+            "export/processors/grbl-processor.js",
+            "export/gcode-generator.js",
             
             // Core application
             'cam-core.js',

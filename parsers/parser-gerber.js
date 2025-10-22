@@ -1,6 +1,6 @@
 /**
  * @file        parser/parser-gerber.js
- * @description Gerber parsing module (RS-274X
+ * @description Gerber parsing module (RS-274X)
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -480,43 +480,41 @@
             
             return newPos;
         }
-        
-        // Replace the finalizeRegion() method in parser-gerber.js (around line 460)
 
         finalizeRegion() {
-    if (this.state.regionPoints.length < 3) {
-        this.warnings.push(`Region with only ${this.state.regionPoints.length} points discarded`);
-        return;
-    }
-    
-    // Close region if needed
-    const first = this.state.regionPoints[0];
-    const last = this.state.regionPoints[this.state.regionPoints.length - 1];
-    const precision = config.geometry?.coordinatePrecision || 0.001;
-    
-    if (Math.abs(first.x - last.x) > precision || Math.abs(first.y - last.y) > precision) {
-        this.state.regionPoints.push({ ...first });
-    }
-    
-    // Create contours structure (matching SVG parser format)
-    const contours = [{
-        points: [...this.state.regionPoints],
-        nestingLevel: 0,
-        isHole: false,
-        parentId: null
-    }];
-    
-    const region = {
-        type: 'region',
-        points: [...this.state.regionPoints],
-        polarity: this.state.polarity,
-        contours: contours  // Use contours, not holes
-    };
-    
-    this.layers.objects.push(region);
-    this.stats.objectsCreated++;
-    this.debug(`Created region with ${region.points.length} points`);
-}
+            if (this.state.regionPoints.length < 3) {
+                this.warnings.push(`Region with only ${this.state.regionPoints.length} points discarded`);
+                return;
+            }
+            
+            // Close region if needed
+            const first = this.state.regionPoints[0];
+            const last = this.state.regionPoints[this.state.regionPoints.length - 1];
+            const precision = config.geometry?.coordinatePrecision || 0.001;
+            
+            if (Math.abs(first.x - last.x) > precision || Math.abs(first.y - last.y) > precision) {
+                this.state.regionPoints.push({ ...first });
+            }
+            
+            // Create contours structure (matching SVG parser format)
+            const contours = [{
+                points: [...this.state.regionPoints],
+                nestingLevel: 0,
+                isHole: false,
+                parentId: null
+            }];
+            
+            const region = {
+                type: 'region',
+                points: [...this.state.regionPoints],
+                polarity: this.state.polarity,
+                contours: contours  // Use contours, not holes
+            };
+            
+            this.layers.objects.push(region);
+            this.stats.objectsCreated++;
+            this.debug(`Created region with ${region.points.length} points`);
+        }
         
         createTrace(start, end, arcData = null) {
             if (!this.state.aperture) {
@@ -658,8 +656,6 @@
         }
     }
     
-    // Export with backward compatibility
     window.GerberParser = GerberParser;
-    window.GerberSemanticParser = GerberParser;  // Alias for compatibility
     
 })();

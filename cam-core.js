@@ -329,17 +329,14 @@
                 let parseResult;
                 const fileName = operation.file.name.toLowerCase();
                 
-                // === START MODIFICATION (Refined Logic) ===
                 if (fileName.endsWith('.svg')) {
                     if (typeof SVGParser === 'undefined') {
                         throw new Error('SVG parser not available');
                     }
                     const parser = new SVGParser({ debug: debugConfig.enabled });
-                    // The new SVGParser returns the same structure as GerberParser,
-                    // so we can use its result directly.
+                    // The new SVGParser returns the same structure as GerberParser, so we can use its result directly.
                     parseResult = parser.parse(operation.file.content);
                 } else if (operation.type === 'drill') {
-                // === END MODIFICATION ===
                     if (typeof ExcellonParser === 'undefined') {
                         throw new Error('Excellon parser not available');
                     }
@@ -511,7 +508,7 @@
                 if (debugConfig.enabled) {
                     console.log(`[Core] Implicit region closure successful. Replaced ${primitives.length} segments with 1 closed path.`);
                 }
-                // Important: We return an array containing the SINGLE new primitive.
+                // We return an array containing the SINGLE new primitive.
                 return [mergedPath];
             }
 
@@ -800,10 +797,10 @@
                         const contourPrimitive = this._createPathPrimitive(contour.points, {
                             ...primitive.properties,
                             polarity: contour.isHole ? 'clear' : 'dark',
-                            // ADD: Preserve curve metadata from contours
+                            // Preserve curve metadata from contours
                             curveIds: contour.curveIds || []
                         });
-                        // ADD: Transfer point-level curve metadata
+                        // Transfer point-level curve metadata
                         contourPrimitive.points = contour.points; // Preserves curveId tags on points
                         
                         if (contour.isHole) {
@@ -1108,7 +1105,7 @@
                         action.position,
                         action.toolDiameter / 2,
                         {
-                            role: 'peck_mark',  // ← KEY: New role
+                            role: 'peck_mark',
                             originalDiameter: action.originalDiameter,
                             toolDiameter: action.toolDiameter,
                             oversized: action.oversized,
@@ -1158,7 +1155,8 @@
                                         role: 'drill_milling_path',
                                         originalDiameter: source.properties.diameter,
                                         operationId: operation.id,
-                                        toolDiameter: toolDiameter
+                                        toolDiameter: toolDiameter,
+                                        originalSlot: source.properties?.originalSlot
                                     }
                                 );
                                 strategyPrimitives.push(millingPath);
@@ -1203,7 +1201,7 @@
                     peckCount: strategyGeometry.filter(p => p.properties?.role === 'peck_mark').length,
                     millCount: strategyGeometry.filter(p => p.properties?.role === 'drill_milling_path').length,
                     generatedAt: Date.now(),
-                    toolDiameter: settings.toolDiameter || settings.tool?.diameter // ← ADD THIS
+                    toolDiameter: settings.toolDiameter || settings.tool?.diameter
                 }
             }];
             

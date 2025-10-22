@@ -190,8 +190,8 @@
             // Ruler backgrounds
             const bgColorWithAlpha = colors.background + '99'; 
             this.ctx.fillStyle = bgColorWithAlpha; // Apply semi-transparent background
-            this.ctx.fillRect(0, 0, this.canvas.width, rulerSize); // Horizontal bg
-            this.ctx.fillRect(0, 0, rulerSize, this.canvas.height); // Vertical bg
+            this.ctx.fillRect(0, 0, this.canvas.width, rulerSize); // Horizontal background
+            this.ctx.fillRect(0, 0, rulerSize, this.canvas.height); // Vertical background
             this.ctx.strokeStyle = colors.ruler || '#888888ff';
             this.ctx.fillStyle = colors.rulerText || '#cccccc';
             

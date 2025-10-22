@@ -1,7 +1,6 @@
 /**
  * @file        renderer/renderer-primitives.js
  * @description Dedicated geometry object renderer
- * @comment     Fixed: Preview check BEFORE offset check, dedicated preview rendere
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -50,7 +49,7 @@
         renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false, context = {}) {
             const role = primitive.properties?.role;
 
-            // === ROLE-BASED DISPATCH (Highest Priority) ===
+            // === ROLE-BASED DISPATCH ===
             if (role) {
                 switch (role) {
                     case 'drill_hole':
@@ -147,7 +146,7 @@
             const points = primitive.points;
             if (!points || points.length === 0) return;
 
-            // This is the key: If there are no arc segments, we do a simple, fast line loop.
+            // If there are no arc segments do a simple, fast line loop.
             if (!primitive.arcSegments || primitive.arcSegments.length === 0) {
                 path2d.moveTo(points[0].x, points[0].y);
                 for (let i = 1; i < points.length; i++) {
@@ -386,7 +385,7 @@
             const reducedPlunge = primitive.properties?.reducedPlunge || false;
             const isPreview = context?.isPreview || primitive.properties?.isPreview || false;
             
-            // Color priority: oversized > undersized > reducedPlunge > default
+            // Color priority: oversized > undersized > reducedPlunge > perfect fit
             let markColor = '#16d329ff'; // Green means tool diameter = drill hole size
             if (oversized) markColor = '#ff0000';  // Red oversized warning (should be overwrite all others)
             else if (undersized) markColor = '#d2cb00ff';  // Yellow undersized warning

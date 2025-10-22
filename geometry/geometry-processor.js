@@ -1,7 +1,6 @@
 /**
  * @file        geometry/geometry-processor.js
  * @description Processes geometric boolean operations
- * @comment     Fixed: End-cap curves registered with explicit clockwise=false
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -167,9 +166,9 @@
             this.debug(`  Partial arcs found: ${stats.partialArcs}`);
             this.debug(`  Groups with gaps merged: ${stats.wrappedGroups}`);
             
-            // if (this.options.debug) {
+            if (this.options.debug) {
                 this.verifyReconstructionResults(finalGeometry);
-            // }
+            }
             console.log('[Geometry-Processor] <<< Exiting arc reconstruction block. Result count:', finalGeometry.length);
             
         } else {
@@ -395,10 +394,9 @@
         
         // Standardize primitive to polygon with curve metadata
         standardizePrimitive(primitive, curveIds, options) {
-            // --- FIX: Provide default values for optional parameters ---
+            // Provide default values for optional parameters
             const localCurveIds = curveIds || [];
             const localOptions = options || {};
-            // --- END FIX ---
 
             let points = [];
             let arcSegments = [];
