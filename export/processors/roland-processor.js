@@ -95,19 +95,51 @@
         }
         
         generateLinear(cmd) {
-            if (cmd.x === null && cmd.y === null) {
-                const z = this.config.zAxisInverted ? -cmd.z : cmd.z;
-                if (cmd.z !== null && cmd.z !== undefined) this.currentPosition.z = cmd.z;
-                return `Z${this.formatCoordinate(z)},${this.formatCoordinate(z)};`;
+            // Handle Z-only moves
+            if ((cmd.x === null || cmd.x === undefined) && 
+                (cmd.y === null || cmd.y === undefined)) {
+                if (cmd.z !== null && cmd.z !== undefined) {
+                    const z = this.config.zAxisInverted ? -cmd.z : cmd.z;
+                    this.currentPosition.z = cmd.z;
+                    return `Z${this.formatCoordinate(z)},${this.formatCoordinate(z)};`;
+                }
+                return ''; // No motion at all
             }
 
-            // Use current position as fallback for unspecified coordinates
+            // Determine target position, using current position for unspecified axes
             const targetX = (cmd.x !== null && cmd.x !== undefined) ? cmd.x : this.currentPosition.x;
             const targetY = (cmd.y !== null && cmd.y !== undefined) ? cmd.y : this.currentPosition.y;
+            
+            // Check if position actually changed
+            const xChanged = Math.abs(targetX - this.currentPosition.x) > 1e-6;
+            const yChanged = Math.abs(targetY - this.currentPosition.y) > 1e-6;
+            
+            if (!xChanged && !yChanged) {
+                // No XY motion, check for Z
+                if (cmd.z !== null && cmd.z !== undefined) {
+                    const zChanged = Math.abs(cmd.z - this.currentPosition.z) > 1e-6;
+                    if (zChanged) {
+                        const z = this.config.zAxisInverted ? -cmd.z : cmd.z;
+                        this.currentPosition.z = cmd.z;
+                        return `Z${this.formatCoordinate(z)},${this.formatCoordinate(z)};`;
+                    }
+                }
+                // Even if no motion, update state for null coordinates
+                if (cmd.x !== null && cmd.x !== undefined) this.currentPosition.x = cmd.x;
+                if (cmd.y !== null && cmd.y !== undefined) this.currentPosition.y = cmd.y;
+                return ''; // Truly redundant move
+            }
 
-            // Update state
-            if (cmd.x !== null && cmd.x !== undefined) this.currentPosition.x = cmd.x;
-            if (cmd.y !== null && cmd.y !== undefined) this.currentPosition.y = cmd.y;
+            // Update state for X and Y
+            this.currentPosition.x = targetX;
+            this.currentPosition.y = targetY;
+            
+            // Handle Z if specified (helical move in Roland terms)
+            if (cmd.z !== null && cmd.z !== undefined) {
+                this.currentPosition.z = cmd.z;
+                // Roland doesn't really support helical pen-down moves well
+                // This might need special handling
+            }
 
             return `PD${this.formatCoordinate(targetX)},${this.formatCoordinate(targetY)};`;
         }

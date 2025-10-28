@@ -54,6 +54,8 @@
             
             // Communication with renderer
             this.renderer = null;
+
+            this.changeListeners = new Set(); // To notify UI of changes
             
             this.debug('CoordinateSystemManager initialized with config integration');
         }
@@ -91,6 +93,7 @@
                 
                 this.syncToRenderer();
                 this.debug('Initialized with empty canvas bounds');
+                this.notifyChange({ action: 'syncPreview' });
             }
             
             return this.getStatus();
@@ -233,6 +236,9 @@
             this.savedOrigin.y = this.previewOrigin.y;
             
             this.debug(`Saved origin: (${this.savedOrigin.x.toFixed(3)}, ${this.savedOrigin.y.toFixed(3)})`);
+
+            this.notifyChange({ action: 'saveOrigin' });
+
             return { success: true };
         }
 
@@ -249,6 +255,9 @@
             this.syncToRenderer();
             
             this.debug(`Reset preview to saved origin: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)})`);
+
+            this.notifyChange({ action: 'resetOrigin' });
+
             return { success: true };
         }
 
@@ -332,6 +341,8 @@
             
             this.debug(`Board rotated by ${normalizedAngle}°, total rotation: ${this.currentRotation}°`);
             
+            this.notifyChange({ action: 'rotate', angle: normalizedAngle });
+
             return { 
                 success: true,
                 appliedRotation: normalizedAngle,
@@ -354,6 +365,8 @@
             this.syncToRenderer();
             
             this.debug(`Board rotation reset: ${previousRotation}° → ${this.currentRotation}°`);
+
+            this.notifyChange({ action: 'resetRotation' });
             
             return { 
                 success: true,
@@ -477,6 +490,31 @@
                     console.log(`[CoordinateSystem] ${message}`, data);
                 } else {
                     console.log(`[CoordinateSystem] ${message}`);
+                }
+            }
+        }
+
+        addChangeListener(callback) {
+            this.changeListeners.add(callback);
+            this.debug('Change listener added');
+        }
+
+        removeChangeListener(callback) {
+            this.changeListeners.delete(callback);
+            this.debug('Change listener removed');
+        }
+
+        notifyChange(changeDetails = {}) {
+            if (this.changeListeners.size > 0) {
+                const status = this.getStatus(); // Get current state to send with notification
+                this.debug('Notifying listeners of change:', status);
+                for (const listener of this.changeListeners) {
+                    try {
+                        // Pass the full status or specific change details
+                        listener({ ...status, ...changeDetails });
+                    } catch (error) {
+                        console.error("Error in coordinate system change listener:", error);
+                    }
                 }
             }
         }

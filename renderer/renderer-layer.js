@@ -141,54 +141,54 @@
             this.core.resetTransform();
 
             // Pre-transform debug primitives to screen space
-            if ((this.options.debugPoints || this.options.debugPaths) && 
+            if ((this.options.debugPoints || this.options.debugPaths) &&
                 this.debugPrimitives.length > 0) {
-                
+
+                // [!!!] This mapping logic needs to handle arcSegments correctly [!!!]
                 this.debugPrimitivesScreen = this.debugPrimitives.map(prim => {
                     const screenData = {
                         type: prim.type,
-                        properties: prim.properties
+                        properties: prim.properties,
+                        // Add other necessary top-level properties if needed
+                        center: prim.center, // For circles/arcs original center (world)
+                        radius: prim.radius, // For circles/arcs original radius (world)
+                        startAngle: prim.startAngle, // For arcs
+                        endAngle: prim.endAngle,     // For arcs
+                        clockwise: prim.clockwise    // For arcs
                     };
-                    
+
                     // Transform points if they exist
                     if (prim.points) {
                         screenData.screenPoints = prim.points.map(p => {
                             const s = this.core.worldToScreen(p.x, p.y);
-                            return {
-                                x: s.x,
-                                y: s.y,
-                                curveId: p.curveId,
-                                segmentIndex: p.segmentIndex,
-                                totalSegments: p.totalSegments,
-                                t: p.t,
-                                angle: p.angle
-                            };
+                            return { ...s, ...p }; // Combine screen coords with original point metadata
                         });
                     }
-                    
+
                     // Transform arc segments if they exist
                     if (prim.arcSegments) {
                         screenData.arcSegments = prim.arcSegments.map(seg => {
                             const centerScreen = this.core.worldToScreen(seg.center.x, seg.center.y);
                             return {
-                                ...seg,
-                                centerScreen: centerScreen,
-                                radiusScreen: seg.radius * this.core.viewScale
+                                ...seg, // Keep original arc data (angles, radius, etc.)
+                                centerScreen: centerScreen, // Add screen center
+                                radiusScreen: seg.radius * this.core.viewScale // Add screen radius
                             };
                         });
                     }
-                    
+
                     // Transform contours if they exist
                     if (prim.contours) {
                         screenData.contours = prim.contours.map(c => ({
-                            ...c,
+                            ...c, // Keep original contour data (nesting, isHole)
+                            // Transform points within the contour
                             screenPoints: c.points.map(p => this.core.worldToScreen(p.x, p.y))
                         }));
                     }
-                    
+
                     return screenData;
                 });
-                
+
                 this.renderDebugOverlay();
             }
             
@@ -302,6 +302,11 @@
 
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
+
+                // Store all debug points before culling
+                if (this.shouldCollectDebugPoints(primitive)) {
+                    this.debugPrimitives.push(primitive);
+                }
                 
                 const primBounds = primitive.getBounds();
                 
@@ -315,10 +320,6 @@
                 if (!this.core.shouldRenderPrimitive(primitive, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
-                }
-                
-                if (this.shouldCollectDebugPoints(primitive)) {
-                    this.debugPrimitives.push(primitive);
                 }
                 
                 this.core.renderStats.renderedPrimitives++;

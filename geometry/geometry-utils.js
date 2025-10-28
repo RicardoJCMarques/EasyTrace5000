@@ -414,133 +414,126 @@
         },
         
         // Convert arc to polygon with metadata for end-caps
-        arcToPolygon(center, radius, startDeg, endDeg, width) {
+        arcToPolygon(arc, width) {
+            console.log(`[GeoUtils] arcToPolygon called for Arc ${arc.id}, r=${arc.radius.toFixed(3)}, width=${width.toFixed(3)}`);
             const points = [];
             const halfWidth = width / 2;
-            const innerR = radius - halfWidth;
-            const outerR = radius + halfWidth;
-            
-            // Fallback to filled circle if inner radius is negative
-            if (innerR < 0) {
-                const circleSegments = 48;
+            const innerR = arc.radius - halfWidth;
+            const outerR = arc.radius + halfWidth;
+            const center = arc.center;
+            const clockwise = arc.clockwise;
+            const startRad = arc.startAngle;
+            const endRad = arc.endAngle;
+            const startCapCenter = arc.startPoint;
+            const endCapCenter = arc.endPoint;
+
+            // Fallback to filled circle
+            if (innerR < this.PRECISION) {
+                const circleSegments = this.getOptimalSegments(outerR, 16, 64);
                 const curveId = window.globalCurveRegistry?.register({
-                    type: 'circle',
-                    center: { x: center.x, y: center.y },
-                    radius: outerR,
-                    clockwise: false,
-                    source: 'arc_fallback'
+                    type: 'circle', center: { x: center.x, y: center.y }, radius: outerR,
+                    clockwise: false, source: 'arc_fallback'
                 });
-                
                 for (let i = 0; i < circleSegments; i++) {
-                    const angle = (i / circleSegments) * 2 * Math.PI;
-                    const point = {
-                        x: center.x + outerR * Math.cos(angle),
-                        y: center.y + outerR * Math.sin(angle),
-                        curveId: curveId,
-                        segmentIndex: i,
-                        totalSegments: circleSegments,
-                        t: i / circleSegments
-                    };
-                    points.push(point);
+                    const t = i / circleSegments; const angle = t * 2 * Math.PI;
+                    points.push({
+                        x: center.x + outerR * Math.cos(angle), y: center.y + outerR * Math.sin(angle),
+                        curveId: curveId, segmentIndex: i, totalSegments: circleSegments, t: t
+                    });
                 }
+                points.curveIds = [curveId].filter(Boolean);
+                console.log(`[GeoUtils] arcToPolygon fallback to circle. Points: ${points.length}, ID: ${curveId}`);
                 return points;
             }
-            
-            const startRad = startDeg * Math.PI / 180;
-            const endRad = endDeg * Math.PI / 180;
-            
-            const startCapCenter = {
-                x: center.x + radius * Math.cos(startRad),
-                y: center.y + radius * Math.sin(startRad)
-            };
-            const endCapCenter = {
-                x: center.x + radius * Math.cos(endRad),
-                y: center.y + radius * Math.sin(endRad)
-            };
 
-            // Calculate and register START cap with perpendicular sweep angles.
-            const startCapAngleStart = startRad + Math.PI / 2;
-            const startCapAngleEnd = startRad + 3 * Math.PI / 2;
-            
+            // Register all 4 new curves
+            const outerArcId = window.globalCurveRegistry?.register({
+                type: 'arc', center: center, radius: outerR, startAngle: startRad, endAngle: endRad,
+                clockwise: clockwise, isOffsetDerived: true, source: 'arc_outer'
+            });
+            const innerArcId = window.globalCurveRegistry?.register({
+                type: 'arc', center: center, radius: innerR, startAngle: startRad, endAngle: endRad,
+                clockwise: clockwise, isOffsetDerived: true, source: 'arc_inner'
+            });
+            // Register placeholders for cap IDs - generateCompleteRoundedCap will use these
             const startCapId = window.globalCurveRegistry?.register({
-                type: 'arc',
-                center: startCapCenter,
-                radius: halfWidth,
-                startAngle: startCapAngleStart,
-                endAngle: startCapAngleEnd,
-                clockwise: false,
-                source: 'arc_end_cap'
-            });
-            
-            // Calculate and register END cap with perpendicular sweep angles.
-            const endCapAngleStart = endRad - Math.PI / 2;
-            const endCapAngleEnd = endRad + Math.PI / 2;
+                 type: 'arc', center: startCapCenter, radius: halfWidth, startAngle: 0, endAngle: 2*Math.PI,
+                 clockwise: false, source: 'arc_end_cap' // Caps are CCW
+             });
+             const endCapId = window.globalCurveRegistry?.register({
+                 type: 'arc', center: endCapCenter, radius: halfWidth, startAngle: 0, endAngle: 2*Math.PI,
+                 clockwise: false, source: 'arc_end_cap' // Caps are CCW
+             });
 
-            const endCapId = window.globalCurveRegistry?.register({
-                type: 'arc',
-                center: endCapCenter,
-                radius: halfWidth,
-                startAngle: endCapAngleStart,
-                endAngle: endCapAngleEnd,
-                clockwise: false,
-                source: 'arc_end_cap'
-            });
-            
-            const segments = 48;
-            const capSegments = this.getOptimalSegments(halfWidth, 8, 16);
-            
-            // Outer arc
-            for (let i = 0; i <= segments; i++) {
-                const t = i / segments;
-                const angle = startRad + (endRad - startRad) * t;
-                points.push({
-                    x: center.x + outerR * Math.cos(angle),
-                    y: center.y + outerR * Math.sin(angle)
+
+            // Generate points and tag them
+            const arcSegments = this.getOptimalSegments(arc.radius, 16, 128);
+
+            // Calculate angle span correctly based on clockwise flag
+            let angleSpan = endRad - startRad;
+            if (clockwise) { if (angleSpan > 0) angleSpan -= 2 * Math.PI; }
+            else { if (angleSpan < 0) angleSpan += 2 * Math.PI; }
+
+            // A. Generate Outer arc points (tag with outerArcId)
+            const outerPoints = [];
+            for (let i = 0; i <= arcSegments; i++) {
+                const t = i / arcSegments; const angle = startRad + angleSpan * t;
+                outerPoints.push({
+                    x: center.x + outerR * Math.cos(angle), y: center.y + outerR * Math.sin(angle),
+                    curveId: outerArcId, segmentIndex: i, totalSegments: arcSegments + 1, t: t
                 });
             }
-            
-            // End cap with complete metadata, using corrected perpendicular angles
-            for (let i = 0; i <= capSegments; i++) {
-                const t = i / capSegments;
-                const angle = endCapAngleStart + (Math.PI * t); // Sweep 180deg from correct start
-                const point = {
-                    x: endCapCenter.x + halfWidth * Math.cos(angle),
-                    y: endCapCenter.y + halfWidth * Math.sin(angle),
-                    curveId: endCapId,
-                    segmentIndex: i,
-                    totalSegments: capSegments + 1,
-                    t: t,
-                    isConnectionPoint: (i === 0 || i === capSegments)
-                };
-                points.push(point);
-            }
-            
-            // Inner arc (reversed)
-            for (let i = segments; i >= 0; i--) {
-                const t = i / segments;
-                const angle = startRad + (endRad - startRad) * t;
-                points.push({
-                    x: center.x + innerR * Math.cos(angle),
-                    y: center.y + innerR * Math.sin(angle)
+
+            // B. Generate End Cap points using helper
+            // Direction vector points *along* the arc direction at the end
+            const endDirX = -Math.sin(endRad) * (clockwise ? 1 : -1);
+            const endDirY =  Math.cos(endRad) * (clockwise ? 1 : -1);
+            // generateCompleteRoundedCap generates points CCW. isStart=false means it starts perpendicular *clockwise* from the direction vector.
+            const endCapPoints = this.generateCompleteRoundedCap(endCapCenter, endDirX, endDirY, halfWidth, false, endCapId);
+
+            // C. Generate Inner arc points (reversed, tag with innerArcId)
+            const innerPointsReversed = [];
+            for (let i = arcSegments; i >= 0; i--) {
+                const t = i / arcSegments; const angle = startRad + angleSpan * t;
+                innerPointsReversed.push({
+                    x: center.x + innerR * Math.cos(angle), y: center.y + innerR * Math.sin(angle),
+                    curveId: innerArcId, segmentIndex: i, totalSegments: arcSegments + 1, t: t
                 });
             }
-            
-            // Start cap with complete metadata, using corrected perpendicular angles
-            for (let i = 0; i <= capSegments; i++) {
-                const t = i / capSegments;
-                const angle = startCapAngleStart + (Math.PI * t); // Sweep 180deg from correct start
-                const point = {
-                    x: startCapCenter.x + halfWidth * Math.cos(angle),
-                    y: startCapCenter.y + halfWidth * Math.sin(angle),
-                    curveId: startCapId,
-                    segmentIndex: i,
-                    totalSegments: capSegments + 1,
-                    t: t,
-                    isConnectionPoint: (i === 0 || i === capSegments)
-                };
-                points.push(point);
+
+            // D. Generate Start Cap points using helper
+            // Direction vector points *along* the arc direction at the start
+            const startDirX = -Math.sin(startRad) * (clockwise ? 1 : -1);
+            const startDirY =  Math.cos(startRad) * (clockwise ? 1 : -1);
+             // isStart=true means it starts perpendicular *counter-clockwise* from the direction vector.
+            const startCapPoints = this.generateCompleteRoundedCap(startCapCenter, startDirX, startDirY, halfWidth, true, startCapId);
+
+            // E. Assemble final points array
+            // Add outer points
+            points.push(...outerPoints);
+            // Add end cap points (skip first point - should match last outer point)
+            points.push(...endCapPoints.slice(1));
+             // Add inner points (reversed) (skip first point - should match last end cap point)
+            points.push(...innerPointsReversed.slice(1));
+            // Add start cap points (skip first point - should match last inner point)
+            points.push(...startCapPoints.slice(1));
+
+            // Final check for duplicate closing point (first vs last)
+            const first = points[0];
+            const last = points[points.length - 1];
+            if (Math.hypot(first.x - last.x, first.y - last.y) < this.PRECISION * 0.1) {
+                 points.pop(); // Remove duplicate last point
+                 console.log("[GeoUtils] arcToPolygon removed duplicate closing point.");
+            } else {
+                 console.warn("[GeoUtils] arcToPolygon closing points didn't match:", first, last);
+                 // Force close if they *don't* match - might hide issues but prevents open polys
+                 points.push({...points[0]});
+                 console.warn("[GeoUtils] Force-closed polygon.");
             }
-            
+
+            // Attach all curve IDs
+            points.curveIds = [outerArcId, innerArcId, startCapId, endCapId].filter(Boolean);
+            console.log(`[GeoUtils] arcToPolygon finished. Points: ${points.length}, Registered curve IDs:`, points.curveIds);
             return points;
         },
         
@@ -571,11 +564,6 @@
             }
             
             return points;
-        },
-        
-        // Backward compatibility wrapper
-        generateRoundedCap(center, dirX, dirY, radius, isStart, curveId) {
-            return this.generateCompleteRoundedCap(center, dirX, dirY, radius, isStart, curveId);
         },
         
         // Generate join between segments

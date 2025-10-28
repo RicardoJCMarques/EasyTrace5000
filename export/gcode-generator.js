@@ -6,7 +6,7 @@
  * @license     AGPL-3.0-or-later
  */
 
- /*
+/*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
  * Copyright (C) 2025 Eltryus
  *
@@ -35,11 +35,8 @@
             this.processors = new Map();
             this.currentProcessor = null;
             this.core = null;
-
-            // Add untransformed state tracker
             this.untransformedPosition = { x: 0, y: 0, z: 0 };
             
-            // Register available processors
             this.registerDefaultProcessors();
         }
 
@@ -77,27 +74,6 @@
             if (!toolpathPlans || toolpathPlans.length === 0) {
                 return '; No toolpath data available';
             }
-
-            // ==================== OPTIMIZER INTEGRATION ====================
-            // Apply optimization if enabled in config
-            const config = window.PCBCAMConfig || {};
-            if (config.gcode?.enableOptimization && window.ToolpathOptimizer) {
-                const optimizer = new ToolpathOptimizer({
-                    enablePathOrdering: config.gcode.optimization.pathOrdering,
-                    enableSegmentSimplification: config.gcode.optimization.segmentSimplification,
-                    enableLeadInOut: config.gcode.optimization.leadInOut,
-                    enableZLevelGrouping: config.gcode.optimization.zLevelGrouping,
-                    angleTolerance: config.gcode.optimization.angleTolerance,
-                    minSegmentLength: config.gcode.optimization.minSegmentLength
-                });
-                
-                toolpathPlans = optimizer.optimize(toolpathPlans);
-                
-                // Log optimization results
-                const stats = optimizer.getStats();
-                console.log('Toolpath optimization:', stats);
-            }
-            // ==================== END OPTIMIZER INTEGRATION ====================
             
             const processorName = options.postProcessor || 'grbl';
             this.currentProcessor = this.getProcessor(processorName);
@@ -107,8 +83,6 @@
             }
             
             this.currentProcessor.resetState();
-            
-            // This is the *global* untransformed state tracker
             this.untransformedPosition = { x: 0, y: 0, z: 0 };
             
             const output = [];
@@ -120,22 +94,18 @@
             }
 
             for (const plan of toolpathPlans) {
-                // ... (TODO - tool change logic)
-
                 for (const cmd of plan.commands) {
                     
-                    // Snapshot the start position for this command
+                    // Snapshot untransformed position at START of command
                     const untransformedStartPos = { ...this.untransformedPosition };
 
-                    // Default: process the original command
-                    let commandsToProcess = [cmd]; 
+                    let commandsToProcess = [cmd];
 
-                    // 1. Check if we need to linearize
+                    // Linearize arcs if needed
                     if ((cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') &&
                         !this.currentProcessor.config.supportsArcCommands) 
                     {
                         const radius = Math.hypot(cmd.i || 0, cmd.j || 0);
-                        // Adaptive: 0.05mm for small features, 0.2mm for large arcs
                         const baseResolution = options.arcResolution || 0.1;
                         const adaptiveResolution = radius < 2 ? baseResolution * 0.5 : 
                                                 radius > 10 ? baseResolution * 2 : 
@@ -144,28 +114,21 @@
                         commandsToProcess = this.linearizeArc(cmd, untransformedStartPos, adaptiveResolution);
                     }
                     
-                    // 2. Process the (now 1-or-many) commands
+                    // Process each command/segment
                     for (const commandToProcess of commandsToProcess) {
-                        
-                        // The "start" position for *this specific segment* is the "end" position of the *last* segment.
-                        // This is tracked by this.untransformedPosition
                         const startPosForTransform = { ...this.untransformedPosition };
                         
-                        // Apply coordinate transformation
                         let transformedCmd = commandToProcess;
                         if (coordinateTransform) {
-                            // Pass the *correct* start position for this segment
                             transformedCmd = this.transformCommand(commandToProcess, coordinateTransform, startPosForTransform);
                         }
 
-                        // Generate G-code
                         const gcode = this.currentProcessor.processCommand(transformedCmd, options);
                         if (gcode) {
                             output.push(gcode);
                         }
 
-                        // Update the global untransformed position state
-                        // to the end of *this segment*
+                        // Update untransformed position to END of segment
                         if (commandToProcess.x !== null && commandToProcess.x !== undefined) {
                             this.untransformedPosition.x = commandToProcess.x;
                         }
@@ -189,8 +152,6 @@
             const hasX = cmd.x !== null && cmd.x !== undefined;
             const hasY = cmd.y !== null && cmd.y !== undefined;
             
-            // Get full untransformed coordinate for THIS command
-            // If coordinate not specified, use CURRENT position
             const x = hasX ? cmd.x : currentUntransformedPos.x;
             const y = hasY ? cmd.y : currentUntransformedPos.y;
             
@@ -211,10 +172,9 @@
                 ty = cy + (dx * Math.sin(rad) + dy * Math.cos(rad));
             }
             
-            // Write back ONLY the coordinates present in the original command
+            // Only write back coordinates present in original command
             if (hasX) transformed.x = tx;
             if (hasY) transformed.y = ty;
-            // Z is never transformed
             
             // Transform I,J for arcs (relative offsets)
             if ((cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') && transform.rotation !== 0) {
@@ -222,7 +182,6 @@
                 const i = cmd.i || 0;
                 const j = cmd.j || 0;
                 
-                // I,J are RELATIVE, so only rotation applies (no offset)
                 transformed.i = i * Math.cos(rad) - j * Math.sin(rad);
                 transformed.j = i * Math.sin(rad) + j * Math.cos(rad);
             }
@@ -230,30 +189,8 @@
             return transformed;
         }
         
-        getAvailableProcessors() {
-            return Array.from(this.processors.keys());
-        }
-        
-        getProcessorInfo(name) {
-            const processor = this.getProcessor(name);
-            if (!processor) return null;
-            
-            return {
-                name: processor.name,
-                fileExtension: processor.config.fileExtension,
-                supportsToolChange: processor.config.supportsToolChange,
-                supportsArcCommands: processor.config.supportsArcCommands,
-                supportsCannedCycles: processor.config.supportsCannedCycles
-            };
-        }
-
         /**
-         * Converts an ARC MotionCommand into an array of LINEAR MotionCommands.
-         * Uses the provided start position.
-         * @param {MotionCommand} cmd - The ARC_CW or ARC_CCW command.
-         * @param {object} startPos - The *untransformed* start position {x, y, z}.
-         * @param {number} [resolution=1.0] - The maximum length of a linear segment.
-         * @returns {MotionCommand[]} An array of LINEAR MotionCommands.
+         * Linearize arc command
          */
         linearizeArc(cmd, startPos, resolution = 1.0) {
             const linearizedCmds = [];
@@ -274,7 +211,6 @@
             };
             const radius = Math.hypot(cmd.i || 0, cmd.j || 0);
             
-            // Prevent division by zero if radius is tiny
             if (radius < 1e-9) {
                 return [new MotionCommand('LINEAR', end, { feed: cmd.f })];
             }
@@ -314,6 +250,23 @@
             }
             
             return linearizedCmds;
+        }
+        
+        getAvailableProcessors() {
+            return Array.from(this.processors.keys());
+        }
+        
+        getProcessorInfo(name) {
+            const processor = this.getProcessor(name);
+            if (!processor) return null;
+            
+            return {
+                name: processor.name,
+                fileExtension: processor.config.fileExtension,
+                supportsToolChange: processor.config.supportsToolChange,
+                supportsArcCommands: processor.config.supportsArcCommands,
+                supportsCannedCycles: processor.config.supportsCannedCycles
+            };
         }
     }
     

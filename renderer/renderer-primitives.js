@@ -538,41 +538,61 @@
         renderPath(primitive, fillColor, strokeColor, isPreprocessed) {
             const shouldFill = primitive.properties?.fill !== false && !primitive.properties?.stroke;
             const shouldStroke = primitive.properties?.stroke === true || primitive.properties?.isTrace;
-            
+            const points = primitive.points;
+
+            if (!points || points.length === 0) return;
+
             this.ctx.beginPath();
-            
-            if (primitive.contours && primitive.contours.length > 0) {
-                primitive.contours.forEach(contour => {
-                    if (!contour.points || contour.points.length === 0) return;
-                    
-                    contour.points.forEach((p, i) => {
-                        if (i === 0) this.ctx.moveTo(p.x, p.y);
-                        else this.ctx.lineTo(p.x, p.y);
-                    });
-                    
-                    this.ctx.closePath();
-                });
-                
-                if (shouldFill) {
-                    this.ctx.fillStyle = fillColor;
-                    this.ctx.fill('nonzero');
+
+            // Handle paths with arcs
+            if (primitive.arcSegments && primitive.arcSegments.length > 0) {
+                const sortedArcs = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
+                let currentIndex = 0;
+
+                this.ctx.moveTo(points[0].x, points[0].y);
+
+                for (const arc of sortedArcs) {
+                    // Draw lines up to the arc start
+                    for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
+                        this.ctx.lineTo(points[i].x, points[i].y);
+                    }
+
+                    // Draw the arc
+                    // Canvas arc direction depends on the start/end angles AND the clockwise flag.
+                    // The 'anticlockwise' parameter is true if clockwise is false.
+                    this.ctx.arc(
+                        arc.center.x, arc.center.y, arc.radius,
+                        arc.startAngle, arc.endAngle, !arc.clockwise // Use NOT clockwise for anticlockwise param
+                    );
+
+                    currentIndex = arc.endIndex;
                 }
-            } else if (primitive.points && primitive.points.length > 0) {
-                primitive.points.forEach((p, i) => {
+
+                // Draw remaining lines after the last arc
+                for (let i = currentIndex + 1; i < points.length; i++) {
+                    this.ctx.lineTo(points[i].x, points[i].y);
+                }
+
+            } else {
+                // Simple path logic
+                points.forEach((p, i) => {
                     if (i === 0) this.ctx.moveTo(p.x, p.y);
                     else this.ctx.lineTo(p.x, p.y);
                 });
-                
-                if (primitive.closed !== false) {
-                    this.ctx.closePath();
-                }
-                
-                if (shouldFill) {
-                    this.ctx.fillStyle = fillColor;
-                    this.ctx.fill();
-                }
             }
-            
+
+            // Closing, Filling, Stroking
+            if (primitive.closed !== false) {
+                this.ctx.closePath();
+            }
+
+            if (shouldFill) {
+                // Handle fill rules for complex shapes (like fused geometry)
+                const fillRule = (primitive.holes && primitive.holes.length > 0) || (primitive.contours && primitive.contours.length > 1) ? 'evenodd' : 'nonzero';
+                this.ctx.fillStyle = fillColor;
+                this.ctx.fill(fillRule);
+            }
+
             if (shouldStroke) {
                 this.ctx.strokeStyle = strokeColor || fillColor;
                 this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
@@ -678,23 +698,50 @@
             
             switch (primitive.type) {
                 case 'path':
-                    if (primitive.contours && primitive.contours.length > 0) {
-                        primitive.contours.forEach(contour => {
-                            if (!contour.points || contour.points.length === 0) return;
-                            contour.points.forEach((p, i) => {
-                                if (i === 0) this.ctx.moveTo(p.x, p.y);
-                                else this.ctx.lineTo(p.x, p.y);
-                            });
-                            this.ctx.closePath();
-                        });
-                    } else if (primitive.points) {
-                        primitive.points.forEach((p, i) => {
+                    const points = primitive.points;
+                    if (!points || points.length === 0) break; // Skip if no points
+
+                    // Handle paths with arcs in wireframe
+                    if (primitive.arcSegments && primitive.arcSegments.length > 0) {
+                        const sortedArcs = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
+                        let currentIndex = 0;
+
+                        this.ctx.moveTo(points[0].x, points[0].y);
+
+                        for (const arc of sortedArcs) {
+                            // Draw lines up to the arc start
+                            for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
+                                this.ctx.lineTo(points[i].x, points[i].y);
+                            }
+
+                            // Draw the arc for wireframe
+                            // Use the same !arc.clockwise logic as renderPath
+                            this.ctx.arc(
+                                arc.center.x, arc.center.y, arc.radius,
+                                arc.startAngle, arc.endAngle, !arc.clockwise
+                            );
+
+                            currentIndex = arc.endIndex;
+                        }
+
+                        // Draw remaining lines
+                        for (let i = currentIndex + 1; i < points.length; i++) {
+                            this.ctx.lineTo(points[i].x, points[i].y);
+                        }
+
+                    } else {
+                        // Simple path logic for wireframe
+                        points.forEach((p, i) => {
                             if (i === 0) this.ctx.moveTo(p.x, p.y);
                             else this.ctx.lineTo(p.x, p.y);
                         });
-                        if (primitive.closed !== false) this.ctx.closePath();
                     }
-                    break;
+
+                    // Closing logic
+                    if (primitive.closed !== false) {
+                        this.ctx.closePath();
+                    }
+                    break; // End of case 'path'
                     
                 case 'circle':
                     this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, Math.PI * 2);
@@ -736,109 +783,130 @@
             }
         }
         
-        renderCurveDebugPoints(primitive) {
-            if (!primitive.screenPoints) return; // Changed from primitive.points
-            
+        renderCurveDebugPoints(primitive) { // primitive is screen-space data
+            if (!primitive.screenPoints) return; // Use screenPoints
+
             const pointSize = 4;
             this.ctx.font = '10px monospace';
-            
-            primitive.screenPoints.forEach((p, index) => {
-                if (p.curveId === undefined) return;
-                
+
+            // Reset stats for this render pass
+            this.debugStats.totalPoints = 0;
+            this.debugStats.taggedPoints = 0;
+
+            primitive.screenPoints.forEach((p, index) => { // Iterate screenPoints
+                // Check for curveId on the screen point
+                if (p.curveId === undefined || p.curveId <= 0) return;
+
                 const color = this.getCurveDebugColor(p.curveId);
-                
+
                 // p.x and p.y are ALREADY in screen space
                 this.ctx.fillStyle = color;
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
                 this.ctx.fill();
-                
+
                 // Labels
                 this.ctx.fillStyle = '#FFFFFF';
                 this.ctx.strokeStyle = '#000000';
                 this.ctx.lineWidth = 2;
-                const label = `C${p.curveId}:${p.segmentIndex || index}`;
+                // Use segmentIndex if available, otherwise fall back to array index
+                const segIdx = p.segmentIndex !== undefined ? p.segmentIndex : index;
+                const label = `C${p.curveId}:${segIdx}`;
                 this.ctx.strokeText(label, p.x + 6, p.y - 6);
                 this.ctx.fillText(label, p.x + 6, p.y - 6);
-                
+
                 this.debugStats.taggedPoints++;
             });
-            
+
             this.debugStats.totalPoints += primitive.screenPoints.length;
         }
         
-        renderArcSegmentDebug(primitive) {
+        renderArcSegmentDebug(primitive) { // primitive is screen-space data
+            // Use screen-space arcSegments
             if (!primitive.arcSegments || primitive.arcSegments.length === 0) return;
-            
+
             primitive.arcSegments.forEach((segment, idx) => {
-                // Use pre-transformed values
+                // Use pre-transformed screen values directly
                 const centerScreen = segment.centerScreen;
                 const radiusScreen = segment.radiusScreen;
-                
+
+                if (!centerScreen || radiusScreen === undefined) {
+                    console.warn("Missing screen coords for arc debug", segment);
+                    return; // Skip if screen coords weren't calculated
+                }
+
                 const hue = ((idx * 137) + 60) % 360;
                 const color = `hsl(${hue}, 100%, 50%)`;
-                
+
                 // Draw arc - centerScreen and radiusScreen already in screen coords
                 this.ctx.strokeStyle = color;
                 this.ctx.lineWidth = 3;
                 this.ctx.beginPath();
-                const startAngle = -segment.startAngle;
-                const endAngle = -segment.endAngle;
-                this.ctx.arc(centerScreen.x, centerScreen.y, radiusScreen, 
-                            endAngle, startAngle, segment.clockwise);
+
+                // Angles are NOT transformed, they remain in world space radians
+                const startAngle = segment.startAngle;
+                const endAngle = segment.endAngle;
+                // Use the correct anticlockwise flag based on the original segment data
+                const anticlockwise = !segment.clockwise;
+
+                // Draw arc in screen space using world angles
+                this.ctx.arc(centerScreen.x, centerScreen.y, radiusScreen,
+                            startAngle, endAngle, anticlockwise);
                 this.ctx.stroke();
-                
+
                 // Draw center point
                 this.ctx.fillStyle = color;
                 this.ctx.beginPath();
                 this.ctx.arc(centerScreen.x, centerScreen.y, 4, 0, 2 * Math.PI);
                 this.ctx.fill();
-                
+
                 // Draw label
                 this.ctx.fillStyle = '#FFFFFF';
                 this.ctx.strokeStyle = '#000000';
                 this.ctx.lineWidth = 2;
                 this.ctx.font = 'bold 12px monospace';
-                
+
                 const angleDeg = Math.abs(segment.sweepAngle || (segment.endAngle - segment.startAngle)) * 180 / Math.PI;
-                const label = `Arc ${idx + 1}: r=${segment.radius.toFixed(2)}, ${angleDeg.toFixed(1)}°`;
+                // Display original world radius
+                const label = `Arc ${idx}: r=${segment.radius.toFixed(2)}, ${angleDeg.toFixed(1)}°`;
                 this.ctx.strokeText(label, centerScreen.x + 10, centerScreen.y - 10);
                 this.ctx.fillText(label, centerScreen.x + 10, centerScreen.y - 10);
             });
         }
         
-        renderContourDebug(primitive) {
+        renderContourDebug(primitive) { // primitive is screen-space data
             if (!primitive.contours || primitive.contours.length <= 1) return;
-            
+
             const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
-            
+
             primitive.contours.forEach((contour, idx) => {
-                if (!contour.points || contour.points.length === 0) return;
-                
+                // Use screenPoints from the contour
+                if (!contour.screenPoints || contour.screenPoints.length === 0) return;
+
                 const color = colors[contour.nestingLevel % colors.length];
                 this.ctx.strokeStyle = color;
                 this.ctx.lineWidth = 2;
                 this.ctx.setLineDash(contour.isHole ? [5, 5] : []);
-                
+
                 this.ctx.beginPath();
-                contour.points.forEach((p, i) => {
-                    const screenPos = this.core.worldToScreen(p.x, p.y);
-                    if (i === 0) this.ctx.moveTo(screenPos.x, screenPos.y);
-                    else this.ctx.lineTo(screenPos.x, screenPos.y);
+                // Iterate screenPoints
+                contour.screenPoints.forEach((p, i) => {
+                    if (i === 0) this.ctx.moveTo(p.x, p.y);
+                    else this.ctx.lineTo(p.x, p.y);
                 });
                 this.ctx.closePath();
                 this.ctx.stroke();
-                
-                // Label
-                if (contour.points.length > 0) {
-                    const firstPoint = this.core.worldToScreen(contour.points[0].x, contour.points[0].y);
+
+                // Label using the first screen point
+                if (contour.screenPoints.length > 0) {
+                    const firstPoint = contour.screenPoints[0];
                     this.ctx.fillStyle = '#FFFFFF';
                     this.ctx.font = '12px monospace';
                     const label = `L${contour.nestingLevel}${contour.isHole ? 'H' : ''}`;
                     this.ctx.fillText(label, firstPoint.x + 5, firstPoint.y - 5);
                 }
             });
-            
+
             this.ctx.setLineDash([]);
         }
         

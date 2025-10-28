@@ -235,16 +235,6 @@
                 addFileBtn.addEventListener('click', () => this.showFileModal());
             }
             
-            const genToolpathsBtn = document.getElementById('generate-toolpaths-btn');
-            if (genToolpathsBtn) {
-                genToolpathsBtn.addEventListener('click', () => this.generateToolpaths());
-            }
-            
-            const exportGcodeBtn = document.getElementById('export-gcode-btn');
-            if (exportGcodeBtn) {
-                exportGcodeBtn.addEventListener('click', () => this.exportGCode());
-            }
-            
             const toolbarExportSvgBtn = document.getElementById('toolbar-export-svg');
             if (toolbarExportSvgBtn) {
                 toolbarExportSvgBtn.addEventListener('click', () => this.exportSVG());
@@ -281,110 +271,6 @@
             });
 
             this._eventHandlersAttached = true;
-        }
-        
-        setupViewControls() {
-            const wireframeControl = document.getElementById('show-wireframe');
-            if (wireframeControl) {
-                wireframeControl.checked = this.viewState.showWireframe;
-                wireframeControl.addEventListener('change', (e) => {
-                    this.viewState.showWireframe = e.target.checked;
-                    if (this.renderer) {
-                        this.renderer.setOptions({ showWireframe: e.target.checked });
-                        this.renderer.render();
-                    }
-                });
-            }
-            
-            const gridControl = document.getElementById('show-grid');
-            if (gridControl) {
-                gridControl.checked = this.viewState.showGrid;
-                gridControl.addEventListener('change', (e) => {
-                    this.viewState.showGrid = e.target.checked;
-                    if (this.renderer) {
-                        this.renderer.setOptions({ showGrid: e.target.checked });
-                        this.renderer.render();
-                    }
-                });
-            }
-            
-            const fuseControl = document.getElementById('fuse-geometry');
-            if (fuseControl) {
-                fuseControl.checked = this.viewState.fuseGeometry;
-                fuseControl.addEventListener('change', async (e) => {
-                    this.viewState.fuseGeometry = e.target.checked;
-                    if (this.renderer) {
-                        this.renderer.setOptions({ fuseGeometry: e.target.checked });
-                    }
-                    await this.updateRendererAsync();
-                });
-            }
-            
-            const arcControl = document.getElementById('enable-arc-reconstruction');
-            if (arcControl) {
-                arcControl.checked = this.viewState.enableArcReconstruction;
-                arcControl.addEventListener('change', async (e) => {
-                    if (!this.viewState.fuseGeometry && e.target.checked) {
-                        e.target.checked = false;
-                        this.updateStatus('Enable fusion first to use arc reconstruction', 'warning');
-                        return;
-                    }
-                    
-                    this.viewState.enableArcReconstruction = e.target.checked;
-                    this.fusionStats.arcReconstructionEnabled = e.target.checked;
-                    
-                    if (this.core.geometryProcessor) {
-                        this.core.geometryProcessor.clearCachedStates();
-                    }
-                    
-                    await this.updateRendererAsync();
-                });
-            }
-
-            const toolPreviewControl = document.getElementById('show-tool-preview');
-            if (toolPreviewControl) {
-                toolPreviewControl.checked = this.viewState.showToolPreview || false;
-                toolPreviewControl.addEventListener('change', (e) => {
-                    this.viewState.showToolPreview = e.target.checked;
-                    if (this.renderer) {
-                        this.renderer.setOptions({ showToolPreview: e.target.checked });
-                        this.renderer.render();
-                    }
-                });
-            }
-            
-            const displayOptions = [
-                { id: 'show-bounds', option: 'showBounds' },
-                { id: 'show-rulers', option: 'showRulers' },
-                { id: 'show-regions', option: 'showRegions' },
-                { id: 'show-traces', option: 'showTraces' },
-                { id: 'show-pads', option: 'showPads' },
-                { id: 'show-drills', option: 'showDrills' },
-                { id: 'show-cutouts', option: 'showCutouts' },
-                { id: 'show-preprocessed', option: 'showPreprocessed' },
-                { id: 'debug-points', option: 'debugCurvePoints' },
-                { id: 'debug-paths', option: 'debugCurvePoints' },
-                { id: 'black-and-white', option: 'blackAndWhite' }
-            ];
-            
-            displayOptions.forEach(({ id, option }) => {
-                const control = document.getElementById(id);
-                if (control) {
-                    control.checked = this.viewState[option] || (this.renderer && this.renderer.options[option]);
-                    control.addEventListener('change', async (e) => {
-                        this.viewState[option] = e.target.checked;
-                        if (this.renderer) {
-                            this.renderer.setOptions({ [option]: e.target.checked });
-                        }
-                        
-                        if (option === 'showPreprocessed') {
-                            await this.updateRendererAsync();
-                        } else if (this.renderer) {
-                            this.renderer.render();
-                        }
-                    });
-                }
-            });
         }
         
         setupCoordinateControls() {

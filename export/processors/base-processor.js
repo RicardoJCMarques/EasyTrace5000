@@ -97,89 +97,94 @@
         
         generateArc(cmd) {
             if (!this.config.supportsArcCommands) {
-                return this.generateLinear(cmd); // Fallback is correct
+                return this.generateLinear(cmd);
             }
 
             const gCommand = cmd.type === 'ARC_CW' ? 'G2' : 'G3';
-            let code = '';
-            let motionGenerated = false;
-
-            // Check for full circle using helper method
             const isFullCircle = this._isFullCircle(cmd);
-
-            // Force a new G-code (G2/G3) if it's a full circle as this often follows a helix and confuses controllers.
-            const modeChanged = (!this.config.modalCommands || this.modalState.motionMode !== gCommand || isFullCircle);
-
-            if (modeChanged) {
-                code = gCommand;
-                this.modalState.motionMode = gCommand;
-            }
-
-            // Output X. G2/G3 always requires it.
+            
+            // Determine if we need to output the G-code command
+            const needsGCode = !this.config.modalCommands || 
+                            this.modalState.motionMode !== gCommand ||
+                            isFullCircle;  // Full circles always need explicit G-code
+            
+            // Prepare coordinate outputs
+            const coords = [];
+            let hasMotion = false;
+            
+            // X coordinate
             if (cmd.x !== null && cmd.x !== undefined) {
-                code += ` X${this.formatCoordinate(cmd.x)}`;
-                motionGenerated = true;
+                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > 1e-6;
+                // For full circles or mode changes, always output coordinates
+                if (xChanged || needsGCode || isFullCircle) {
+                    coords.push(`X${this.formatCoordinate(cmd.x)}`);
+                    hasMotion = true;
+                }
                 this.currentPosition.x = cmd.x;
             }
             
-            // Output Y. G2/G3 always requires it.
+            // Y coordinate  
             if (cmd.y !== null && cmd.y !== undefined) {
-                code += ` Y${this.formatCoordinate(cmd.y)}`;
-                motionGenerated = true;
+                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > 1e-6;
+                if (yChanged || needsGCode || isFullCircle) {
+                    coords.push(`Y${this.formatCoordinate(cmd.y)}`);
+                    hasMotion = true;
+                }
                 this.currentPosition.y = cmd.y;
             }
-
-            // Output Z. This is modal (helical).
+            
+            // Z coordinate (helical arcs)
             if (cmd.z !== null && cmd.z !== undefined) {
                 const zChanged = Math.abs(cmd.z - this.currentPosition.z) > 1e-6;
-
-                // Output Z if:
-                // 1. Mode changed (e.g., G0 -> G3)
-                // 2. Z value actually changed
-                // 3. It's a full-circle cleanup pass (Z *must* be specified to be safe)
-                if (modeChanged || zChanged || isFullCircle) {
-                    code += ` Z${this.formatCoordinate(cmd.z)}`;
-                    motionGenerated = true;
+                // Always output Z if changed, for new commands, or full circles
+                if (zChanged || needsGCode || isFullCircle) {
+                    coords.push(`Z${this.formatCoordinate(cmd.z)}`);
+                    hasMotion = true;
                 }
                 this.currentPosition.z = cmd.z;
             }
-
-            // I, J, R - Always output these if specified
+            
+            // Arc parameters - always output if present
             if (this.config.arcFormat === 'IJ') {
-                if (cmd.i !== null && cmd.i !== undefined) code += ` I${this.formatCoordinate(cmd.i)}`;
-                if (cmd.j !== null && cmd.j !== undefined) code += ` J${this.formatCoordinate(cmd.j)}`;
+                if (cmd.i !== null && cmd.i !== undefined) {
+                    coords.push(`I${this.formatCoordinate(cmd.i)}`);
+                }
+                if (cmd.j !== null && cmd.j !== undefined) {
+                    coords.push(`J${this.formatCoordinate(cmd.j)}`);
+                }
             } else if (this.config.arcFormat === 'R') {
                 const radius = Math.hypot(cmd.i ?? 0, cmd.j ?? 0);
-                if (radius > 1e-6) code += ` R${this.formatCoordinate(radius)}`;
-            }
-
-            // Feed rate logic
-            // Feed rate logic - simplified single-pass
-            if (cmd.f !== undefined && cmd.f !== null) {
-                this.currentFeed = cmd.f;
-            }
-
-            // Output F if: explicit feed provided, mode changed with motion, or motion without F
-            const needsFeed = motionGenerated && (
-                (cmd.f !== undefined && cmd.f !== null) ||
-                modeChanged ||
-                this.currentFeed !== null
-            );
-
-            if (needsFeed && code.indexOf('F') === -1 && this.currentFeed !== null) {
-                code += ` F${this.formatFeed(this.currentFeed)}`;
-            }
-
-            // This prevents an empty "G2" or "G3" from being output if a degenerate arc command was somehow sent.
-            if (!modeChanged && !motionGenerated) {
-                // We also check if I, J, or R were added.
-                // If the code is *just* "G2" or "G3", suppress it.
-                if (code === gCommand) {
-                    return '';
+                if (radius > 1e-6) {
+                    coords.push(`R${this.formatCoordinate(radius)}`);
                 }
             }
-
-            return code.trim();
+            
+            // Feed rate handling
+            if (cmd.f !== undefined && cmd.f !== null) {
+                const feedChanged = this.currentFeed === null || 
+                                Math.abs(cmd.f - this.currentFeed) > 1e-6;
+                if (feedChanged) {
+                    coords.push(`F${this.formatFeed(cmd.f)}`);
+                    this.currentFeed = cmd.f;
+                }
+            }
+            
+            // Build final command
+            // Only output if we have either a mode change or actual motion
+            if (!needsGCode && !hasMotion) {
+                return '';
+            }
+            
+            let code = needsGCode ? gCommand : '';
+            if (coords.length > 0) {
+                code += (code ? ' ' : '') + coords.join(' ');
+            }
+            
+            if (needsGCode) {
+                this.modalState.motionMode = gCommand;
+            }
+            
+            return code;
         }
 
         _isFullCircle(cmd) {
@@ -195,102 +200,119 @@
         }
         
         generateRapid(cmd) {
-            let code = '';
-            let motionGenerated = false;
-            const modeChanged = (!this.config.modalCommands || this.modalState.motionMode !== 'G0');
-
-            if (modeChanged) {
-                code = 'G0';
-                this.modalState.motionMode = 'G0';
-            }
-
+            const needsGCode = !this.config.modalCommands || this.modalState.motionMode !== 'G0';
+            
+            const coords = [];
+            let hasMotion = false;
+            
+            // X coordinate
             if (cmd.x !== null && cmd.x !== undefined) {
-                const changed = Math.abs(cmd.x - this.currentPosition.x) > 1e-6;
-                if (changed || modeChanged) {
-                    code += ` X${this.formatCoordinate(cmd.x)}`;
-                    motionGenerated = true;
+                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > 1e-6;
+                if (xChanged || needsGCode) {
+                    coords.push(`X${this.formatCoordinate(cmd.x)}`);
+                    hasMotion = true;
                 }
                 this.currentPosition.x = cmd.x;
             }
+            
+            // Y coordinate
             if (cmd.y !== null && cmd.y !== undefined) {
-                const changed = Math.abs(cmd.y - this.currentPosition.y) > 1e-6;
-                if (changed || modeChanged) {
-                    code += ` Y${this.formatCoordinate(cmd.y)}`;
-                    motionGenerated = true;
+                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > 1e-6;
+                if (yChanged || needsGCode) {
+                    coords.push(`Y${this.formatCoordinate(cmd.y)}`);
+                    hasMotion = true;
                 }
                 this.currentPosition.y = cmd.y;
             }
+            
+            // Z coordinate
             if (cmd.z !== null && cmd.z !== undefined) {
-                const changed = Math.abs(cmd.z - this.currentPosition.z) > 1e-6;
-                if (changed || modeChanged) {
-                    code += ` Z${this.formatCoordinate(cmd.z)}`;
-                    motionGenerated = true;
+                const zChanged = Math.abs(cmd.z - this.currentPosition.z) > 1e-6;
+                if (zChanged || needsGCode) {
+                    coords.push(`Z${this.formatCoordinate(cmd.z)}`);
+                    hasMotion = true;
                 }
                 this.currentPosition.z = cmd.z;
             }
-
-            // Suppress redundant only moves
-            if (!modeChanged && !motionGenerated) {
+            
+            // Only output if we have mode change or actual motion
+            if (!needsGCode && !hasMotion) {
                 return '';
             }
-
-            return code.trim();
+            
+            let code = needsGCode ? 'G0' : '';
+            if (coords.length > 0) {
+                code += (code ? ' ' : '') + coords.join(' ');
+            }
+            
+            if (needsGCode) {
+                this.modalState.motionMode = 'G0';
+            }
+            
+            return code;
         }
         
         generateLinear(cmd) {
-            let code = '';
-            let motionGenerated = false;
-            const modeChanged = (!this.config.modalCommands || this.modalState.motionMode !== 'G1');
-
-            if (modeChanged) {
-                code = 'G1';
-                this.modalState.motionMode = 'G1';
-            }
-
+            const needsGCode = !this.config.modalCommands || this.modalState.motionMode !== 'G1';
+            
+            const coords = [];
+            let hasMotion = false;
+            
+            // X coordinate
             if (cmd.x !== null && cmd.x !== undefined) {
-                const changed = Math.abs(cmd.x - this.currentPosition.x) > 1e-6;
-                if (changed || modeChanged) {
-                    code += ` X${this.formatCoordinate(cmd.x)}`;
-                    motionGenerated = true;
+                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > 1e-6;
+                if (xChanged || needsGCode) {
+                    coords.push(`X${this.formatCoordinate(cmd.x)}`);
+                    hasMotion = true;
                 }
                 this.currentPosition.x = cmd.x;
             }
+            
+            // Y coordinate
             if (cmd.y !== null && cmd.y !== undefined) {
-                const changed = Math.abs(cmd.y - this.currentPosition.y) > 1e-6;
-                if (changed || modeChanged) {
-                    code += ` Y${this.formatCoordinate(cmd.y)}`;
-                    motionGenerated = true;
+                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > 1e-6;
+                if (yChanged || needsGCode) {
+                    coords.push(`Y${this.formatCoordinate(cmd.y)}`);
+                    hasMotion = true;
                 }
                 this.currentPosition.y = cmd.y;
             }
+            
+            // Z coordinate
             if (cmd.z !== null && cmd.z !== undefined) {
-                const changed = Math.abs(cmd.z - this.currentPosition.z) > 1e-6;
-                if (changed || modeChanged) {
-                    code += ` Z${this.formatCoordinate(cmd.z)}`;
-                    motionGenerated = true;
+                const zChanged = Math.abs(cmd.z - this.currentPosition.z) > 1e-6;
+                if (zChanged || needsGCode) {
+                    coords.push(`Z${this.formatCoordinate(cmd.z)}`);
+                    hasMotion = true;
                 }
                 this.currentPosition.z = cmd.z;
             }
-
-            // Output feed rate
+            
+            // Feed rate
             if (cmd.f !== undefined && cmd.f !== null) {
-                const feedChanged = Math.abs(cmd.f - (this.currentFeed || 0)) > 1e-6;
-                if (modeChanged || (motionGenerated && feedChanged)) {
-                    code += ` F${this.formatFeed(cmd.f)}`;
+                const feedChanged = this.currentFeed === null || 
+                                Math.abs(cmd.f - this.currentFeed) > 1e-6;
+                if (feedChanged) {
+                    coords.push(`F${this.formatFeed(cmd.f)}`);
                     this.currentFeed = cmd.f;
-                } else if (motionGenerated && !feedChanged && this.currentFeed !== null) {
-                    code += ` F${this.formatFeed(this.currentFeed)}`;
                 }
-            } else if (modeChanged && this.currentFeed !== null) {
-                 code += ` F${this.formatFeed(this.currentFeed)}`;
             }
             
-            // Suppress redundant only moves
-            if (!modeChanged && !motionGenerated) {
+            // Only output if we have mode change or actual motion
+            if (!needsGCode && !hasMotion) {
                 return '';
             }
-
-            return code.trim();
+            
+            let code = needsGCode ? 'G1' : '';
+            if (coords.length > 0) {
+                code += (code ? ' ' : '') + coords.join(' ');
+            }
+            
+            if (needsGCode) {
+                this.modalState.motionMode = 'G1';
+            }
+            
+            return code;
         }
         
         generatePlunge(cmd) {

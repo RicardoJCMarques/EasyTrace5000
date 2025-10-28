@@ -367,10 +367,15 @@
                 }
                 
                 const operationType = primitive.properties?.operationType;
-                const isStroke = (primitive.properties?.stroke && !primitive.properties?.fill) || 
-                               primitive.properties?.isTrace;
-                const shouldConvertStroke = isStroke && operationType === 'isolation';
-                
+                const isCutoutOp = operationType === 'cutout';
+
+                // Determine if it looks like a stroke based on properties
+                const looksLikeStroke = (primitive.properties?.stroke && !primitive.properties?.fill) ||
+                                      primitive.properties?.isTrace;
+
+                // Only convert actual strokes intended for isolation, NOT cutout segments
+                const shouldConvertStroke = looksLikeStroke && !isCutoutOp && operationType === 'isolation';
+
                 let processedPrimitive;
                 if (shouldConvertStroke) {
                     this.stats.strokesConverted++;
@@ -572,9 +577,42 @@
                     strokeWidth: 0,
                     closed: true
                 });
+
+            } else if (primitive.type === 'arc' && primitive.properties?.strokeWidth) {
+                 console.log(`[GeoProcessor] Converting arc stroke to polygon using GeometryUtils.arcToPolygon...`);
+                 // Use the PRIMITIVE itself as the first argument now
+                const polygonPoints = GeometryUtils.arcToPolygon(
+                    primitive, // Pass the whole ArcPrimitive
+                    primitive.properties.strokeWidth
+                );
+
+                if (!polygonPoints || polygonPoints.length < 3) {
+                     console.warn(`[GeoProcessor] arcToPolygon failed or returned insufficient points for arc ${primitive.id}`);
+                    return null;
+                }
+                 console.log(`[GeoProcessor] arcToPolygon returned ${polygonPoints.length} points.`);
+
+                // Ensure curveIds are collected correctly
+                const originalCurveId = primitive.curveId; // ID of the original arc centerline
+                const generatedCurveIds = polygonPoints.curveIds || []; // IDs from arcToPolygon (endcaps, inner/outer arcs)
+                const allCurveIds = [...(originalCurveId ? [originalCurveId] : []), ...generatedCurveIds];
+                 console.log(`[GeoProcessor] Collected Curve IDs for polygonized arc:`, allCurveIds);
+
+
+                return this._createPathPrimitive(polygonPoints, {
+                    ...primitive.properties,
+                    isPreprocessed: true,
+                    wasStroke: true,
+                    fill: true,
+                    stroke: false,
+                    strokeWidth: 0,
+                    closed: true,
+                    curveIds: allCurveIds // Pass combined IDs
+                });
             }
-            
-            return null;
+
+            console.log(`[GeoProcessor] _convertStrokeToPolygon: No conversion applied for type ${primitive.type}`);
+            return null; // Return null if not converted
         }
         
         // Validate primitive

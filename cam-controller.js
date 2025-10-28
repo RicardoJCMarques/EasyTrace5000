@@ -64,7 +64,6 @@
             this.modalManager = null;
             
             // Phase 2: Pipeline components (declare but don't instantiate yet)
-            this.toolpathCalculator = null
             this.gcodeGenerator = null
             this.toolpathOptimizer = null
             
@@ -104,10 +103,11 @@
                 this.modalManager = new ModalManager(this);
 
                 // Instantiate pipeline components *after* core exists
-                this.toolpathCalculator = new ToolpathCalculator(this.core);
                 this.gcodeGenerator = new GCodeGenerator(config.gcode);
-                this.gcodeGenerator.setCore(this.core); // This will now pass the valid core
+                this.gcodeGenerator.setCore(this.core);
+                this.geometryTranslator = new GeometryTranslator(this.core);
                 this.toolpathOptimizer = new ToolpathOptimizer();
+                this.machineProcessor = new MachineProcessor(this.core);                
                 
                 // Initialize UI with core reference
                 this.ui = new PCBCamUI(this.core);
@@ -298,12 +298,6 @@
                 if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                     e.preventDefault();
                     this.exportSVG();
-                }
-                
-                // Ctrl/Cmd + G: Generate toolpaths
-                if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
-                    e.preventDefault();
-                    this.generateToolpaths();
                 }
                 
                 // F: Fit to view (when not in input)
@@ -781,9 +775,6 @@
                     // Update statistics
                     this.ui?.updateStatistics?.();
                     
-                    // Update toolbar button states
-                    this.updateToolbarButtonStates();
-                    
                     resolve();
                 };
                 
@@ -796,21 +787,6 @@
                 
                 reader.readAsText(file);
             });
-        }
-        
-        updateToolbarButtonStates() {
-            const hasOperations = this.core?.operations?.length > 0;
-            const hasToolpaths = this.core?.stats?.toolpaths > 0;
-            
-            const genBtn = document.getElementById('toolbar-generate-toolpaths');
-            if (genBtn) {
-                genBtn.disabled = !hasOperations;
-            }
-            
-            const exportBtn = document.getElementById('toolbar-export-gcode');
-            if (exportBtn) {
-                exportBtn.disabled = !hasToolpaths;
-            }
         }
         
         async handleGlobalFileDrop(files) {
@@ -895,71 +871,130 @@
                 modal.classList.remove('active');
             }
         }
-        
-        async generateToolpaths() {
-            if (!this.ui || !this.core) {
-                this.ui?.updateStatus('Not ready for toolpath generation', 'error');
-                return;
+
+        async orchestrateToolpaths(options) {
+            if (!options || !options.operationIds || !this.core || !this.gcodeGenerator) {
+                console.error("[Controller] Orchestration failed, missing core components.");
+                return { gcode: "; Generation Failed", lineCount: 1, planCount: 0, estimatedTime: 0 };
+            }
+
+            // Ensure processors exist
+            if (!this.geometryTranslator) {
+                this.geometryTranslator = new GeometryTranslator(this.core);
+            }
+            if (!this.machineProcessor) {
+                this.machineProcessor = new MachineProcessor(this.core);
+            }
+            if (!this.toolpathOptimizer) {
+                this.toolpathOptimizer = new ToolpathOptimizer();
+            }
+
+            // STAGE 1: Get operations
+            const selectedOps = options.operationIds
+                .map(id => options.operations.find(o => o.id === id))
+                .filter(Boolean);
+            
+            if (selectedOps.length === 0) {
+                return { gcode: "; No operations selected", lineCount: 1, planCount: 0, estimatedTime: 0 };
+            }
+
+            // STAGE 2: Separate operations
+            const millingOps = selectedOps.filter(op => op.type !== 'drill');
+            const drillOps = selectedOps.filter(op => op.type === 'drill');
+
+            // STAGE 2a: Translate MILLING ops
+            console.log(`[Controller] Stage 2a: Translating ${millingOps.length} milling operations...`);
+            const pureMillingPlans = [];
+            for (const op of millingOps) {
+                if (!op.offsets || op.offsets.length === 0) {
+                    console.warn(`[Controller] Milling Op ${op.id} has no offset geometry`);
+                    continue;
+                }
+                const opPlans = await this.geometryTranslator.translateOperation(op);
+                pureMillingPlans.push(...opPlans);
+            }
+            console.log(`[Controller] Stage 2a: ${pureMillingPlans.length} pure milling plans`);
+
+            // STAGE 2b: Translate DRILL ops
+            console.log(`[Controller] Stage 2b: Translating ${drillOps.length} drill operations...`);
+            const pureDrillPlans = [];
+            for (const op of drillOps) {
+                if (!op.offsets || op.offsets.length === 0) {
+                    console.warn(`[Controller] Drill Op ${op.id} has no strategy geometry`);
+                    continue;
+                }
+                const opPlans = await this.geometryTranslator.translateOperation(op);
+                pureDrillPlans.push(...opPlans);
+            }
+            console.log(`[Controller] Stage 2b: ${pureDrillPlans.length} pure drill plans`);
+
+            
+            // STAGE 3: Optimize geometry (optional)
+            let optimizedMillingPlans = pureMillingPlans;
+            let optimizedDrillPlans = pureDrillPlans;
+
+            if (options.optimize === true) {
+                console.log('[Controller] Stage 3: Optimizing with clustering...');
+                
+                // STAGE 3a: Optimize MILLING plans
+                // (This runs with Z-grouping, clustering, etc.)
+                optimizedMillingPlans = this.toolpathOptimizer.optimize(pureMillingPlans);
+                
+                // STAGE 3b: Optimize DRILL plans
+                // (This will just do nearest-neighbor, as Z-grouping won't find groups)
+                optimizedDrillPlans = this.toolpathOptimizer.optimize(pureDrillPlans);
+
+                const stats = this.toolpathOptimizer.getStats();
+                console.log(`[Controller] Optimization complete:`, {
+                    pointsRemoved: stats.pointsRemoved,
+                    travelSaved: `${stats.travelSavedPercent}% (${stats.travelDistanceSaved.toFixed(1)}mm)`,
+                    time: `${stats.optimizationTime.toFixed(1)}ms`
+                });
             }
             
-            this.ui.updateStatus('Generating toolpaths...', 'info');
+            // STAGE 3c: Combine lists
+            // We run all optimized milling, then all optimized drilling.
+            const plansToProcess = [...optimizedMillingPlans, ...optimizedDrillPlans];
+
+            // STAGE 4: Add machine moves
+            console.log('[Controller] Stage 4: Adding machine operations...');
+
+            const machineSettings = {
+                safeZ: options.safeZ || this.core.settings.machine.safeZ || 5.0,
+                travelZ: options.travelZ || this.core.settings.machine.travelZ || 2.0,
+                plungeRate: options.plungeRate || 50,
+                rapidFeedRate: options.rapidFeedRate || 1000,
+                ...options
+            };
             
-            try {
-                const toolpaths = await this.core.generateAllToolpaths();
-                
-                if (toolpaths.size === 0) {
-                    this.ui.updateStatus('No toolpaths generated - check operation settings', 'warning');
-                    return;
-                }
-                
-                // Clear existing toolpath layers
-                if (this.ui.renderer) {
-                    this.ui.renderer.layers.forEach((layer, name) => {
-                        if (name.startsWith('toolpath_')) {
-                            this.ui.renderer.layers.delete(name);
-                        }
-                    });
-                    
-                    // Add new toolpath layers
-                    for (const [opId, toolpathData] of toolpaths) {
-                        if (toolpathData.paths && toolpathData.paths.length > 0) {
-                            toolpathData.paths.forEach((path, index) => {
-                                if (path.primitives && path.primitives.length > 0) {
-                                    this.ui.renderer.addLayer(
-                                        `toolpath_${opId}_pass_${index + 1}`,
-                                        path.primitives,
-                                        {
-                                            type: 'toolpath',
-                                            visible: true,
-                                            color: '#00ffff'
-                                        }
-                                    );
-                                }
-                            });
-                        }
-                    }
-                    
-                    this.ui.renderer.render();
-                }
-                
-                // Update tree to show toolpaths if using advanced UI
-                if (this.ui.treeManager) {
-                    this.ui.treeManager.nodes.forEach(node => {
-                        if (node.type === 'file') {
-                            this.ui.treeManager.updateFileGeometries(node.id, node.operation);
-                        }
-                    });
-                }
-                
-                const stats = this.core.getStats();
-                this.ui.updateStatus(`Generated ${stats.toolpaths} toolpaths`, 'success');
-                
-                this.updateToolbarButtonStates();
-                
-            } catch (error) {
-                console.error('Toolpath generation error:', error);
-                this.ui.updateStatus('Toolpath generation failed: ' + error.message, 'error');
+            // Processor now takes ToolpathPlan[] directly
+            const machineReadyPlans = this.machineProcessor.processPlans(plansToProcess, machineSettings);
+            console.log(`[Controller] Stage 3: ${machineReadyPlans.length} machine-ready plans`);
+
+            // STAGE 5: Generate G-code
+            console.log('[Controller] Stage 5: Generating G-code...');
+            const genOptions = {
+                postProcessor: options.postProcessor || 'grbl',
+                includeComments: options.includeComments !== false,
+                singleFile: options.singleFile !== false,
+                toolChanges: options.toolChanges || false,
+                safeZ: machineSettings.safeZ
+            };
+            
+            const gcode = this.gcodeGenerator.generate(machineReadyPlans, genOptions);
+
+            // STAGE 6: Estimate time
+            let estimatedTime = 0;
+            if (this.machineProcessor) {
+                estimatedTime = this.machineProcessor.estimateMachineTime(machineReadyPlans);
             }
+
+            return {
+                gcode: gcode,
+                lineCount: gcode.split('\n').length,
+                planCount: machineReadyPlans.length,
+                estimatedTime: estimatedTime
+            };
         }
         
         async exportSVG() {

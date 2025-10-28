@@ -443,7 +443,7 @@ Exported from the current canvas view.
                     `${currentTransform} rotate(${-viewState.rotation} ${center.x} ${center.y})`);
             }
 
-            const visibleLayers = this.renderer.getVisibleLayers();
+            const visibleLayers = this.renderer.core.getVisibleLayers();
 
             visibleLayers.forEach((layer, name) => {
                 const layerGroup = document.createElementNS(svgNS, 'g');
@@ -661,9 +661,11 @@ Exported from the current canvas view.
             const precision = exportConfig.precision;
             let d = '';
 
+            // ALWAYS check for arcSegments if preserveArcs is enabled
             if (exportConfig.preserveArcs && primitive.arcSegments?.length > 0) {
                 d = this.buildPathWithArcs(primitive, precision, exportConfig);
             } else {
+                // Fallback to simple path if no arcs or preserveArcs is false
                 d = this.buildSimplePath(primitive.points, primitive.closed !== false, precision);
             }
             

@@ -155,6 +155,56 @@
                     }
                 });
             }
+
+            // Expand bounds to include arc segments
+            if (this.arcSegments && this.arcSegments.length > 0) {
+                this.arcSegments.forEach(seg => {
+                    const { center, radius, startAngle, endAngle, clockwise } = seg;
+
+                    // We need to check if the arc crosses the 0, 90, 180, 270-degree axes
+                    // This logic is adapted from ArcPrimitive.getCardinalCrossings
+                    const normalize = angle => {
+                        while (angle < 0) angle += 2 * Math.PI;
+                        while (angle > 2 * Math.PI) angle -= 2 * Math.PI;
+                        return angle;
+                    };
+
+                    const start = normalize(startAngle);
+                    const end = normalize(endAngle);
+
+                    const checkCross = (angle) => {
+                        if (clockwise) {
+                            // Clockwise: startAngle > endAngle (e.g., PI to 0)
+                            if (start > end) {
+                                return angle >= end && angle <= start;
+                            } else { // Wraps around (e.g., PI/2 to 3*PI/2)
+                                return angle >= end || angle <= start;
+                            }
+                        } else {
+                            // Counter-clockwise: startAngle < endAngle (e.g., 0 to PI)
+                            if (start < end) {
+                                return angle >= start && angle <= end;
+                            } else { // Wraps around (e.g., 3*PI/2 to PI/2)
+                                return angle >= start || angle <= end;
+                            }
+                        }
+                    };
+
+                    // Check cardinal axes
+                    if (checkCross(0)) {         // 0 rad (right)
+                        maxX = Math.max(maxX, center.x + radius);
+                    }
+                    if (checkCross(Math.PI / 2)) { // PI/2 rad (bottom in Y-down)
+                        maxY = Math.max(maxY, center.y + radius);
+                    }
+                    if (checkCross(Math.PI)) {     // PI rad (left)
+                        minX = Math.min(minX, center.x - radius);
+                    }
+                    if (checkCross(3 * Math.PI / 2)) { // 3*PI/2 rad (top in Y-down)
+                        minY = Math.min(minY, center.y - radius);
+                    }
+                });
+            }
             
             // Expand bounds by stroke width if stroked
             if (this.properties.stroke && this.properties.strokeWidth) {

@@ -492,10 +492,16 @@ window.PCBCAMConfig = {
         enableOptimization: false, // Master switch
         
         optimization: {
+            enableGrouping: true,         // Group by tool diameter
             pathOrdering: true,           // Minimize rapid movements
             segmentSimplification: true,  // Remove co-linear segments
             leadInOut: true,              // Optimize loop entry points
-            zLevelGrouping: false,        // Group by Z-height (experimental)
+            zLevelGrouping: true,         // Group by Z-height (experimental)
+
+            rapidStrategy: 'adaptive',    // 'safe' | 'adaptive' | 'aggressive'
+            shortTravelThreshold: 5.0,    // mm
+            reducedClearance: 1.0,        // mm for short travels
+
             angleTolerance: 0.1,          // Degrees for co-linear detection
             minSegmentLength: 0.01        // mm minimum segment
         }

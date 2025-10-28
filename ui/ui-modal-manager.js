@@ -343,6 +343,12 @@
             
             // Make list sortable
             this.makeSortable(list);
+            // Initialize checkbox state from config
+            const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
+            if (optimizeCheckbox && config.gcode) {
+                // Use the master switch 'enableOptimization'
+                optimizeCheckbox.checked = config.gcode.enableOptimization || false;
+            }
         }
         
         createOperationItem(operation) {
@@ -432,113 +438,111 @@
         }
         
         async calculateToolpaths() {
-            if (!this.controller.toolpathCalculator) {
-                if (typeof ToolpathCalculator !== 'undefined') {
-                    this.controller.toolpathCalculator = new ToolpathCalculator(this.controller.core);
-                } else {
-                    console.error('ToolpathCalculator not available');
-                    return;
-                }
+            // Validate operations have offsets
+            const readyOps = this.selectedOperations.filter(op => op.offsets && op.offsets.length > 0);
+            
+            if (readyOps.length === 0) {
+                this.showPlaceholderPreview();
+                this.ui?.statusManager?.showStatus('No operations have offset geometry. Generate previews first.', 'warning');
+                return;
+            }
+
+            // Clear cached plans to force recalculation
+            this.toolpathPlans.clear();
+            
+            // Store that we have calculated (even if it's just metadata preparation)
+            for (const op of readyOps) {
+                this.toolpathPlans.set(op.id, { ready: true });
             }
             
-            // Create optimizer if needed
-            if (!this.controller.toolpathOptimizer && typeof ToolpathOptimizer !== 'undefined') {
-                this.controller.toolpathOptimizer = new ToolpathOptimizer();
-            }
-            
-            for (const op of this.selectedOperations) {
-                console.log(`[Modal] Calculating toolpath for ${op.id}:`, {
-                    type: op.type,
-                    hasOffsets: !!op.offsets,
-                    offsetCount: op.offsets?.length || 0,
-                    hasPreview: !!op.preview
-                });
-                
-                try {
-                    let plan = await this.controller.toolpathCalculator.calculateToolpath(op);
-                    
-                    // Optimize if enabled
-                    const optimizeEnabled = document.getElementById('gcode-optimize-paths')?.checked === true;
-                    if (optimizeEnabled && this.controller.toolpathOptimizer) {
-                        // Optimizer expects an array of plans
-                        const optimized = this.controller.toolpathOptimizer.optimize([plan]);
-                        plan = optimized[0]; // Extract the single optimized plan
-                    }
-                    
-                    this.toolpathPlans.set(op.id, plan);
-                } catch (error) {
-                    console.error(`Failed to calculate toolpath for ${op.id}:`, error);
-                }
-            }
-            
+            // Update preview to generate actual G-code
             this.updatePreview();
         }
         
-        updatePreview() {
-            // Get selected operations in current order
+        async updatePreview() {
             const list = document.getElementById('gcode-operation-list');
-            const selectedIds = [];
+            if (!list) return;
             
+            const selectedItemIds = [];
             list.querySelectorAll('.operation-item').forEach(item => {
                 const checkbox = item.querySelector('input[type="checkbox"]');
                 if (checkbox?.checked) {
-                    selectedIds.push(item.dataset.operationId);
+                    selectedItemIds.push(item.dataset.operationId);
                 }
             });
             
-            // Get corresponding toolpath plans
-            const selectedPlans = selectedIds
-                .map(id => this.toolpathPlans.get(id))
-                .filter(plan => plan !== undefined);
-            
-            if (selectedPlans.length === 0) {
-                document.getElementById('gcode-preview-text').value = ''; 
-                document.getElementById('gcode-line-count').textContent = '0';
-                document.getElementById('gcode-op-count').textContent = '0';
+            if (selectedItemIds.length === 0) {
+                this.showPlaceholderPreview();
                 return;
             }
             
-            // Generate preview
-            if (!this.controller.gcodeGenerator) {
-                if (typeof GCodeGenerator !== 'undefined') {
-                    this.controller.gcodeGenerator = new GCodeGenerator(config);
-                } else {
-                    console.error('GCodeGenerator not available');
-                    return;
-                }
+            // Validate operations have offsets
+            const selectedOps = selectedItemIds
+                .map(id => this.selectedOperations.find(o => o.id === id))
+                .filter(Boolean);
+            
+            const opsWithoutOffsets = selectedOps.filter(op => !op.offsets || op.offsets.length === 0);
+            if (opsWithoutOffsets.length > 0) {
+                this.showPlaceholderPreview();
+                const names = opsWithoutOffsets.map(o => o.file.name).join(', ');
+                this.ui?.statusManager?.showStatus(
+                    `Operations missing offset geometry: ${names}`, 
+                    'warning'
+                );
+                return;
             }
             
+            // Gather options - FIX: Actually read the checkbox value
+            const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
             const options = {
+                operationIds: selectedItemIds,
+                operations: this.selectedOperations,
+                
+                // Machine settings
+                safeZ: 5.0,
+                travelZ: 2.0,
+                plungeRate: 50,
+                rapidFeedRate: 1000,
+                
+                // G-code settings
                 postProcessor: document.getElementById('gcode-post-processor')?.value || 'grbl',
                 includeComments: document.getElementById('gcode-include-comments')?.checked !== false,
                 singleFile: document.getElementById('gcode-single-file')?.checked !== false,
-                toolChanges: document.getElementById('gcode-tool-changes')?.checked || false
+                toolChanges: document.getElementById('gcode-tool-changes')?.checked || false,
+                
+                // FIX: Read actual checkbox state
+                optimize: optimizeCheckbox ? optimizeCheckbox.checked : false
             };
 
-            // Get coordinate transformation
-            if (this.controller.core?.coordinateSystem) {
-                options.coordinateTransform = this.controller.core.coordinateSystem.getCoordinateTransform();
-            }
-            
-            const gcode = this.controller.gcodeGenerator.generate(selectedPlans, options);
-            
-            // Update preview
-            const previewText = document.getElementById('gcode-preview-text');
-            if (previewText) previewText.value = gcode;
-            
-            const lineCount = document.getElementById('gcode-line-count');
-            if (lineCount) lineCount.textContent = gcode.split('\n').length;
-            
-            const opCount = document.getElementById('gcode-op-count');
-            if (opCount) opCount.textContent = selectedPlans.length;
-            
-            // Estimate time (rough calculation)
-            const estTime = this.estimateTime(selectedPlans);
-            const estTimeEl = document.getElementById('gcode-est-time');
-            if (estTimeEl) {
-                const minutes = Math.floor(estTime / 60);
-                const seconds = Math.floor(estTime % 60);
-                estTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            try {
+                const result = await this.controller.orchestrateToolpaths(options);
+                
+                if (!result || !result.gcode) {
+                    this.showPlaceholderPreview();
+                    return;
+                }
+
+                // Update UI
+                const previewText = document.getElementById('gcode-preview-text');
+                if (previewText) previewText.value = result.gcode;
+                
+                const lineCount = document.getElementById('gcode-line-count');
+                if (lineCount) lineCount.textContent = result.lineCount;
+                
+                const planCountEl = document.getElementById('gcode-op-count'); 
+                if (planCountEl) planCountEl.textContent = result.planCount;
+                
+                const estTimeEl = document.getElementById('gcode-est-time');
+                if (estTimeEl) {
+                    const minutes = Math.floor(result.estimatedTime / 60);
+                    const seconds = Math.floor(result.estimatedTime % 60);
+                    estTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }
+                
+            } catch (error) {
+                console.error('[ModalManager] Orchestration failed:', error);
+                this.showPlaceholderPreview();
+                this.ui?.statusManager?.showStatus(`Failed: ${error.message}`, 'error');
             }
         }
         
@@ -640,7 +644,11 @@
             }
             
             // Update on options change
-            ['gcode-single-file', 'gcode-include-comments', 'gcode-tool-changes'].forEach(id => {
+            [
+                'gcode-single-file', 
+                'gcode-include-comments', 
+                'gcode-tool-changes'
+            ].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.addEventListener('change', () => this.updatePreview());
             });

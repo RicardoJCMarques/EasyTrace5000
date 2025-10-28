@@ -117,7 +117,7 @@
             // Tool change with pause
             const toolNumber = tool.number || options.toolNumber || 1;
             lines.push(`T${toolNumber} M6`);
-            lines.push(`\G43 H${toolNumber}`)
+            lines.push(`G43 H${toolNumber}`)
             lines.push('M0 (Tool change pause - press cycle start to continue)');
             lines.push('');
             

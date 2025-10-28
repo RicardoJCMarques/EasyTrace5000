@@ -56,183 +56,114 @@
         init(renderer, coordinateSystem) {
             this.renderer = renderer;
             this.coordinateSystem = coordinateSystem;
-            
-            this.setupDebugControls();
-            this.setupRenderControls();
+
+            console.log("[UIControls] Initializing controls..."); // Add log
+
+            // Directly call setup methods to attach listeners
+            this.setupVisualizationToggles(); // NEW: Centralized toggle setup
             this.setupOffsetControls();
             this.setupRotationControls();
-            
+
+            // Link coordinate system changes back to UI updates
+            if (this.coordinateSystem) {
+                this.coordinateSystem.addChangeListener(() => {
+                    this.updateOffsetInputsWithTracking();
+                });
+            }
+
+            console.log("[UIControls] Controls initialized."); // Add log
             return true;
         }
-        
-        setupDebugControls() {
-            // Wireframe toggle
-            const showWireframe = document.getElementById('show-wireframe');
-            if (showWireframe && this.renderer) {
-                showWireframe.checked = this.renderer.options.showWireframe || false;
-                
-                showWireframe.addEventListener('change', async (e) => {
-                    this.renderer.setOptions({ showWireframe: e.target.checked });
-                    await this.ui.updateRendererAsync();
-                    this.ui.statusManager.showStatus(
-                        e.target.checked ? 'Wireframe mode enabled' : 'Fill mode enabled', 
-                        'info'
-                    );
-                });
-                
-                this.debugControls.push(showWireframe);
-            }
-            
-            // Fusion toggle
-            const fuseToggle = document.getElementById('fuse-geometry');
-            if (fuseToggle && this.renderer) {
-                fuseToggle.checked = this.renderer.options.fuseGeometry || false;
-                
-                fuseToggle.addEventListener('change', async (e) => {
-                    this.renderer.setOptions({ fuseGeometry: e.target.checked });
-                    
-                    if (e.target.checked) {
-                        const arcMsg = this.arcReconstructionEnabled ? 
-                            ' with arc reconstruction...' : '...';
-                        this.ui.statusManager.showStatus('Running Clipper2 fusion pipeline' + arcMsg, 'info');
-                    } else {
-                        this.ui.statusManager.showStatus('Fusion disabled', 'info');
-                        this.resetFusionStates();
-                    }
-                    
-                    await this.ui.updateRendererAsync();
-                });
-                
-                this.debugControls.push(fuseToggle);
-            }
-            
-            // Preprocessed view toggle
-            const showPreprocessed = document.getElementById('show-preprocessed');
-            if (showPreprocessed && this.renderer) {
-                showPreprocessed.checked = false;
-                
-                showPreprocessed.addEventListener('change', async (e) => {
-                    if (!this.renderer.options.fuseGeometry) {
-                        e.target.checked = false;
-                        this.ui.statusManager.showStatus('Enable fusion first to view preprocessed geometry', 'warning');
-                        return;
-                    }
-                    
-                    this.ui.viewState.showPreprocessed = e.target.checked;
-                    
-                    this.ui.statusManager.showStatus(
-                        e.target.checked ? 'Switching to preprocessed view...' : 'Switching to fused view...', 
-                        'info'
-                    );
-                    
-                    await this.ui.updateRendererAsync();
-                });
-                
-                this.debugControls.push(showPreprocessed);
-            }
-            
-            // Arc reconstruction toggle
-            const arcReconstructToggle = document.getElementById('enable-arc-reconstruction');
-            if (arcReconstructToggle && this.renderer) {
-                arcReconstructToggle.checked = this.arcReconstructionEnabled;
-                
-                arcReconstructToggle.addEventListener('change', async (e) => {
-                    if (!this.renderer.options.fuseGeometry) {
-                        e.target.checked = false;
-                        this.arcReconstructionEnabled = false;
-                        this.ui.statusManager.showStatus('Enable fusion first to use arc reconstruction', 'warning');
-                        return;
-                    }
-                    
-                    this.arcReconstructionEnabled = e.target.checked;
-                    this.ui.viewState.enableArcReconstruction = e.target.checked;
-                    
-                    const msg = e.target.checked ? 
-                        'Arc reconstruction enabled - rerunning fusion...' : 
-                        'Arc reconstruction disabled - rerunning fusion...';
-                    this.ui.statusManager.showStatus(msg, 'info');
-                    
-                    if (this.ui.core.geometryProcessor) {
-                        this.ui.core.geometryProcessor.clearCachedStates();
-                    }
-                    
-                    await this.ui.updateRendererAsync();
-                    this.updateArcReconstructionStats();
-                });
-                
-                this.debugControls.push(arcReconstructToggle);
-            }
 
-            // Debug Points toggle
-            const debugPoints = document.getElementById('debug-points');
-            if (debugPoints && this.renderer) {
-                debugPoints.checked = this.renderer.options.debugPoints || false;
-                
-                debugPoints.addEventListener('change', async (e) => {
-                    
-                    // This option is part of the core renderer options
-                    this.renderer.setOptions({ debugPoints: e.target.checked });
-                    
-                    // No need to re-fuse, just re-render
-                    this.renderer.render();
-                    
-                    this.ui.statusManager.showStatus(
-                        e.target.checked ? 'Points debug enabled' : 'Points debug disabled', 
-                        'info'
-                    );
-                });
-                
-                this.debugControls.push(debugPoints);
-            }
+        setupVisualizationToggles() {
+             if (!this.renderer) return;
 
-            // Debug Paths toggle
-            const debugPaths = document.getElementById('debug-paths');
-            if (debugPaths && this.renderer) {
-                debugPaths.checked = this.renderer.options.debugPaths || false;
-                
-                debugPaths.addEventListener('change', async (e) => {
-                    
-                    // This option is part of the core renderer options
-                    this.renderer.setOptions({ debugPaths: e.target.checked });
-                    
-                    // No need to re-fuse, just re-render
-                    this.renderer.render();
-                    
-                    this.ui.statusManager.showStatus(
-                        e.target.checked ? 'Paths debug enabled' : 'Paths point debug disabled', 
-                        'info'
-                    );
-                });
-                
-                this.debugControls.push(debugPaths);
-            }
-        }
-        
-        setupRenderControls() {
-            const controls = [
-                { id: 'show-pads', option: 'showPads', default: true },
-                { id: 'show-grid', option: 'showGrid', default: true },
-                { id: 'show-rulers', option: 'showRulers', default: true },
-                { id: 'show-bounds', option: 'showBounds', default: false },
-                { id: 'show-regions', option: 'showRegions', default: true },
-                { id: 'show-traces', option: 'showTraces', default: true },
-                { id: 'show-cutouts', option: 'showCutouts', default: true },
-                { id: 'show-drills', option: 'showDrills', default: true }
+             console.log("[UIControls] Setting up visualization toggles..."); // Add log
+
+            const toggleMappings = [
+                // Display Group
+                { id: 'show-grid', option: 'showGrid', default: true, triggersRender: true },
+                { id: 'show-wireframe', option: 'showWireframe', default: false, triggersRender: true },
+                { id: 'show-bounds', option: 'showBounds', default: false, triggersRender: true },
+                { id: 'show-rulers', option: 'showRulers', default: true, triggersRender: true },
+                // Layers Group
+                { id: 'show-regions', option: 'showRegions', default: true, triggersRender: true },
+                { id: 'show-traces', option: 'showTraces', default: true, triggersRender: true },
+                { id: 'show-pads', option: 'showPads', default: true, triggersRender: true },
+                { id: 'show-drills', option: 'showDrills', default: true, triggersRender: true },
+                { id: 'show-cutouts', option: 'showCutouts', default: true, triggersRender: true },
+                // Advanced Group
+                { id: 'fuse-geometry', option: 'fuseGeometry', default: false, triggersUpdate: true }, // Triggers full update
+                { id: 'show-preprocessed', option: 'showPreprocessed', default: false, triggersUpdate: true }, // Triggers full update
+                { id: 'enable-arc-reconstruction', option: 'enableArcReconstruction', default: false, triggersUpdate: true }, // Triggers full update
+                { id: 'debug-points', option: 'debugPoints', default: false, triggersRender: true }, // Simple render
+                { id: 'debug-paths', option: 'debugPaths', default: false, triggersRender: true }, // Simple render
+                { id: 'black-and-white', option: 'blackAndWhite', default: false, triggersRender: true }
             ];
-            
-            controls.forEach(control => {
-                const element = document.getElementById(control.id);
-                if (element && this.renderer) {
-                    element.checked = this.renderer.options[control.option] !== undefined ? 
-                        this.renderer.options[control.option] : control.default;
-                    
-                    element.onchange = (e) => {
-                        this.renderer.setOptions({ [control.option]: e.target.checked });
-                    };
-                    
-                    this.renderControls.push(element);
+
+            toggleMappings.forEach(mapping => {
+                const element = document.getElementById(mapping.id);
+                if (!element) {
+                     console.warn(`[UIControls] Toggle element not found: #${mapping.id}`);
+                    return;
                 }
+
+                // Initialize state from renderer options or defaults
+                element.checked = this.renderer.options[mapping.option] !== undefined
+                                  ? this.renderer.options[mapping.option]
+                                  : mapping.default;
+
+                // Attach listener
+                element.addEventListener('change', async (e) => {
+                     console.log(`[UIControls] Toggle changed: ${mapping.option} = ${e.target.checked}`); // Add log
+                    const isChecked = e.target.checked;
+
+                    // Special handling for dependent toggles
+                    if (mapping.id === 'enable-arc-reconstruction' && isChecked && !this.renderer.options.fuseGeometry) {
+                        e.target.checked = false; // Prevent enabling arc without fusion
+                        this.ui.statusManager?.showStatus('Enable Fusion Mode first', 'warning');
+                        return;
+                    }
+                    if (mapping.id === 'show-preprocessed' && isChecked && !this.renderer.options.fuseGeometry) {
+                        e.target.checked = false; // Prevent enabling preprocessed without fusion
+                        this.ui.statusManager?.showStatus('Enable Fusion Mode first', 'warning');
+                        return;
+                    }
+
+                    // Update renderer options
+                    this.renderer.setOptions({ [mapping.option]: isChecked });
+
+                    // Update internal state if necessary (used by other logic)
+                    if (mapping.option === 'enableArcReconstruction') {
+                        this.arcReconstructionEnabled = isChecked;
+                         this.ui.viewState.enableArcReconstruction = isChecked; // Keep UI state synced
+                        this.updateArcReconstructionStats(); // Update stats display
+                    }
+                     if (mapping.option === 'fuseGeometry') {
+                          this.ui.viewState.fuseGeometry = isChecked; // Keep UI state synced
+                         if (!isChecked) this.resetFusionStates(); // Reset dependents if fusion is turned off
+                    }
+                     if (mapping.option === 'showPreprocessed') {
+                          this.ui.viewState.showPreprocessed = isChecked; // Keep UI state synced
+                    }
+
+
+                    // Trigger appropriate update
+                    if (mapping.triggersUpdate) {
+                         console.log(`[UIControls] Triggering full UI update for ${mapping.option}`); // Add log
+                        if (mapping.option === 'enableArcReconstruction' || mapping.option === 'fuseGeometry') {
+                             if (this.ui.core.geometryProcessor) {
+                                  this.ui.core.geometryProcessor.clearCachedStates(); // Clear cache on fusion/arc changes
+                             }
+                        }
+                        await this.ui.updateRendererAsync(); // Full update involves re-processing geometry
+                    } else if (mapping.triggersRender) {
+                         console.log(`[UIControls] Triggering simple render for ${mapping.option}`); // Add log
+                        this.renderer.render(); // Simple render just redraws
+                    }
+                });
             });
+             console.log("[UIControls] Visualization toggles setup complete."); // Add log
         }
         
         setupOffsetControls() {
