@@ -45,7 +45,7 @@
             this.renderer = null;
             this.coordinateSystem = null;
             this.svgExporter = null;
-            
+
             this.viewState = {
                 showPreprocessed: false,
                 enableArcReconstruction: false,
@@ -119,7 +119,6 @@
                     this.visibilityPanel.init(this.renderer);
                 }
                 
-                this.setupEventHandlers();
                 this.initializeTheme();
                 
                 this.updateStatus('Ready - Add PCB files to begin');
@@ -161,13 +160,13 @@
                 }
                 
                 this.renderer.setOptions({
-                    showWireframe: this.viewState.showWireframe,
-                    showGrid: this.viewState.showGrid,
-                    showOrigin: true,
-                    showRulers: true,
-                    fuseGeometry: this.viewState.fuseGeometry,
-                    blackAndWhite: this.viewState.blackAndWhite,
-                    debugCurvePoints: this.viewState.debugCurvePoints,
+                    showWireframe: config.rendering.defaultOptions.showWireframe,
+                    showGrid: config.rendering.defaultOptions.showGrid,
+                    showOrigin: config.rendering.defaultOptions.showOrigin,
+                    showRulers: config.rendering.defaultOptions.showRulers,
+                    fuseGeometry: config.rendering.defaultOptions.fuseGeometry,
+                    blackAndWhite: config.rendering.defaultOptions.blackAndWhite,
+                    debugPoints: config.rendering.defaultOptions.debugPoints,
                     theme: document.documentElement.getAttribute('data-theme') || 'dark'
                 });
                 
@@ -191,86 +190,6 @@
             if (this.renderer) {
                 this.renderer.setOptions({ theme: savedTheme });
             }
-        }
-        
-        setupEventHandlers() {
-            if (this._eventHandlersAttached) {
-                return; // Prevent re-attaching listeners
-            }
-            console.log("Attaching UI event handlers...");
-
-            const zoomFitBtn = document.getElementById('zoom-fit-btn');
-            if (zoomFitBtn) {
-                zoomFitBtn.addEventListener('click', () => {
-                    if (this.renderer) this.renderer.zoomFit();
-                });
-            }
-            
-            const zoomInBtn = document.getElementById('zoom-in-btn');
-            if (zoomInBtn) {
-                zoomInBtn.addEventListener('click', () => {
-                    if (this.renderer) this.renderer.zoomIn();
-                });
-            }
-            
-            const zoomOutBtn = document.getElementById('zoom-out-btn');
-            if (zoomOutBtn) {
-                zoomOutBtn.addEventListener('click', () => {
-                    if (this.renderer) this.renderer.zoomOut();
-                });
-            }
-            
-            const gridBtn = document.getElementById('toggle-grid-btn');
-            if (gridBtn) {
-                gridBtn.addEventListener('click', () => this.toggleGrid());
-            }
-            
-            const wireframeBtn = document.getElementById('toggle-wireframe-btn');
-            if (wireframeBtn) {
-                wireframeBtn.addEventListener('click', () => this.toggleWireframe());
-            }
-            
-            const addFileBtn = document.getElementById('add-file-btn');
-            if (addFileBtn) {
-                addFileBtn.addEventListener('click', () => this.showFileModal());
-            }
-            
-            const toolbarExportSvgBtn = document.getElementById('toolbar-export-svg');
-            if (toolbarExportSvgBtn) {
-                toolbarExportSvgBtn.addEventListener('click', () => this.exportSVG());
-            }
-            
-            const fileInput = document.getElementById('file-input-hidden');
-            if (fileInput) {
-                fileInput.addEventListener('change', async (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        const opType = fileInput.getAttribute('data-type') || 
-                                      (fileInput.dataset && fileInput.dataset.opType);
-                        if (opType) {
-                            await this.processFile(file, opType);
-                        }
-                    }
-                    fileInput.value = '';
-                });
-            }
-            
-            const headers = document.querySelectorAll('.collapsible-header');
-            headers.forEach(header => {
-                header.addEventListener('click', () => {
-                    const targetId = header.getAttribute('data-target');
-                    const content = document.getElementById(targetId);
-                    if (content) {
-                        content.classList.toggle('collapsed');
-                        const indicator = header.querySelector('.collapse-indicator');
-                        if (indicator) {
-                            indicator.classList.toggle('collapsed');
-                        }
-                    }
-                });
-            });
-
-            this._eventHandlersAttached = true;
         }
         
         setupCoordinateControls() {
@@ -646,14 +565,6 @@
             }
         }
         
-        toggleWireframe() {
-            this.viewState.showWireframe = !this.viewState.showWireframe;
-            if (this.renderer) {
-                this.renderer.setOptions({ showWireframe: this.viewState.showWireframe });
-                this.renderer.render();
-            }
-        }
-        
         toggleGrid() {
             this.viewState.showGrid = !this.viewState.showGrid;
             if (this.renderer) {
@@ -725,19 +636,21 @@
         }
         
         async exportSVG() {
-            if (!this.svgExporter) {
-                this.updateStatus('SVG exporter not available', 'error');
-                return;
-            }
-            
-            try {
-            // The SVGExporter will handle the download internally.
-            this.svgExporter.exportSVG(); 
-            } catch (error) {
-                console.error('SVG export error:', error);
-                this.updateStatus('SVG export failed: ' + error.message, 'error');
-            }
+        if (!this.svgExporter) {
+            this.updateStatus('SVG exporter not available', 'error');
+            return;
         }
+
+        try {
+            // The SVGExporter will handle the download internally.
+            // This single call is all that's needed. The svgExporter will read the renderer's current layers (source, fused, etc.) and export them.
+            this.svgExporter.exportSVG(); 
+            this.updateStatus('SVG exported successfully', 'success');
+        } catch (error) {
+            console.error('SVG export error:', error);
+            this.updateStatus('SVG export failed: ' + error.message, 'error');
+        }
+    }
         
         async exportGCode() {
             this.updateStatus('G-code export not yet implemented', 'warning');

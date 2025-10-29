@@ -126,6 +126,7 @@
                     }
                     if (mapping.id === 'show-preprocessed' && isChecked && !this.renderer.options.fuseGeometry) {
                         e.target.checked = false; // Prevent enabling preprocessed without fusion
+                        this.ui.viewState.showPreprocessed = false; // ← Ensure sync
                         this.ui.statusManager?.showStatus('Enable Fusion Mode first', 'warning');
                         return;
                     }

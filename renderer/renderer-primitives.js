@@ -536,71 +536,83 @@
         }
         
         renderPath(primitive, fillColor, strokeColor, isPreprocessed) {
-            const shouldFill = primitive.properties?.fill !== false && !primitive.properties?.stroke;
-            const shouldStroke = primitive.properties?.stroke === true || primitive.properties?.isTrace;
-            const points = primitive.points;
+        const shouldFill = primitive.properties?.fill !== false && !primitive.properties?.stroke;
+        const shouldStroke = primitive.properties?.stroke === true || primitive.properties?.isTrace;
+        const points = primitive.points;
 
-            if (!points || points.length === 0) return;
+        if (!points || points.length === 0) return;
 
-            this.ctx.beginPath();
+        this.ctx.beginPath();
 
-            // Handle paths with arcs
-            if (primitive.arcSegments && primitive.arcSegments.length > 0) {
-                const sortedArcs = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
-                let currentIndex = 0;
+        // Handle paths with arcs
+        if (primitive.arcSegments && primitive.arcSegments.length > 0) {
+            const sortedArcs = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
+            let currentIndex = 0;
 
-                this.ctx.moveTo(points[0].x, points[0].y);
+            this.ctx.moveTo(points[0].x, points[0].y);
 
-                for (const arc of sortedArcs) {
-                    // Draw lines up to the arc start
-                    for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
-                        this.ctx.lineTo(points[i].x, points[i].y);
-                    }
-
-                    // Draw the arc
-                    // Canvas arc direction depends on the start/end angles AND the clockwise flag.
-                    // The 'anticlockwise' parameter is true if clockwise is false.
-                    this.ctx.arc(
-                        arc.center.x, arc.center.y, arc.radius,
-                        arc.startAngle, arc.endAngle, !arc.clockwise // Use NOT clockwise for anticlockwise param
-                    );
-
-                    currentIndex = arc.endIndex;
-                }
-
-                // Draw remaining lines after the last arc
-                for (let i = currentIndex + 1; i < points.length; i++) {
+            for (const arc of sortedArcs) {
+                // Draw lines up to the arc start
+                for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
                     this.ctx.lineTo(points[i].x, points[i].y);
                 }
 
-            } else {
-                // Simple path logic
-                points.forEach((p, i) => {
-                    if (i === 0) this.ctx.moveTo(p.x, p.y);
-                    else this.ctx.lineTo(p.x, p.y);
-                });
+                // Draw the arc
+                this.ctx.arc(
+                    arc.center.x, arc.center.y, arc.radius,
+                    arc.startAngle, arc.endAngle, !arc.clockwise // Use NOT clockwise
+                );
+
+                currentIndex = arc.endIndex;
             }
 
-            // Closing, Filling, Stroking
-            if (primitive.closed !== false) {
-                this.ctx.closePath();
+            // Draw remaining lines after the last arc
+            for (let i = currentIndex + 1; i < points.length; i++) {
+                this.ctx.lineTo(points[i].x, points[i].y);
             }
 
-            if (shouldFill) {
-                // Handle fill rules for complex shapes (like fused geometry)
-                const fillRule = (primitive.holes && primitive.holes.length > 0) || (primitive.contours && primitive.contours.length > 1) ? 'evenodd' : 'nonzero';
-                this.ctx.fillStyle = fillColor;
-                this.ctx.fill(fillRule);
-            }
-
-            if (shouldStroke) {
-                this.ctx.strokeStyle = strokeColor || fillColor;
-                this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
-                this.ctx.lineCap = 'round';
-                this.ctx.lineJoin = 'round';
-                this.ctx.stroke();
-            }
+        } else {
+            // Simple path logic
+            points.forEach((p, i) => {
+                if (i === 0) this.ctx.moveTo(p.x, p.y);
+                else this.ctx.lineTo(p.x, p.y);
+            });
         }
+
+        // Closing, Filling, Stroking
+        if (primitive.closed !== false) {
+            this.ctx.closePath();
+        }
+
+        if (shouldFill) {
+            // Handle fill rules for complex shapes (like fused geometry)
+            const fillRule = (primitive.holes && primitive.holes.length > 0) || (primitive.contours && primitive.contours.length > 1) ? 'evenodd' : 'nonzero';
+
+            if (isPreprocessed) {
+                const polarity = primitive.properties?.polarity || 'dark';
+                if (polarity === 'clear') {
+                    // Draw "clear" primitives with the canvas background color
+                    this.ctx.fillStyle = this.core.getBackgroundColor();
+                } else {
+                    // Draw "dark" primitives with the normal layer color
+                    this.ctx.fillStyle = fillColor;
+                }
+            } else {
+                // Normal behavior
+                this.ctx.fillStyle = fillColor;
+            }
+
+            this.ctx.fill(fillRule);
+        }
+
+        if (shouldStroke) {
+            this.ctx.strokeStyle = strokeColor || fillColor;
+            this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
+            this.ctx.lineCap = 'round';
+            this.ctx.lineJoin = 'round';
+            this.ctx.stroke();
+        }
+    }
         
         renderCircle(primitive, fillColor, strokeColor) {
             this.ctx.beginPath();
@@ -774,7 +786,7 @@
                 this.renderArcSegmentDebug(primitive);
             }
             
-            if (options.debugPoints && primitive.points) {
+            if (options.debugPoints && primitive.screenPoints) {
                 this.renderCurveDebugPoints(primitive);
             }
             

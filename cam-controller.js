@@ -260,6 +260,27 @@
                     quickActionsMenu.classList.remove('show');
                 });
             }
+
+            const exportSvgBtn = document.getElementById('toolbar-export-svg');
+            if (exportSvgBtn) {
+                exportSvgBtn.addEventListener('click', async () => {
+                    if (!this.ui?.svgExporter) {
+                        this.ui?.updateStatus('SVG exporter not available', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        this.ui.svgExporter.exportSVG();
+                        this.ui?.updateStatus('SVG exported successfully', 'success');
+                    } catch (error) {
+                        console.error('SVG export error:', error);
+                        this.ui?.updateStatus('SVG export failed: ' + error.message, 'error');
+                    }
+                    
+                    quickActionsBtn.classList.remove('active');
+                    quickActionsMenu.classList.remove('show');
+                });
+            }
         }
         
         setupGlobalHandlers() {
