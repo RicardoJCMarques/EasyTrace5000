@@ -70,7 +70,7 @@ window.PCBCAMConfig = {
             icon: '🔧',
             color: '#4488ff',
             extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'],
-            defaultTool: 'drill_0.8mm',
+            defaultTool: 'drill_1.0mm',
             tool: {
                 diameter: 1.0,
                 type: 'drill',

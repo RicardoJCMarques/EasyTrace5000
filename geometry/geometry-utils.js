@@ -339,73 +339,69 @@
             // Left side of start
             points.push({ x: from.x + nx, y: from.y + ny });
             
-            // Start cap with COMPLETE metadata - ALL points including first and last
-            const startAngle = Math.atan2(ny, nx);
-            for (let i = 0; i <= halfSegments; i++) {
-                const t = i / halfSegments;
-                const angle = startAngle + Math.PI * t;
-                const point = {
-                    x: from.x + halfWidth * Math.cos(angle),
-                    y: from.y + halfWidth * Math.sin(angle),
-                    curveId: startCapId,
-                    segmentIndex: i,
-                    totalSegments: halfSegments + 1,
-                    t: t,
-                    isConnectionPoint: (i === 0 || i === halfSegments)  // Mark both boundaries
-                };
-                
-                // Skip duplicate points but ensure end points are tagged
+            // Start cap - perpendicular direction is the "radial" for line end caps
+            const perpAngle = Math.atan2(ny, nx);
+            const startCapPoints = this.generateCompleteRoundedCap(
+                from,           // cap center
+                perpAngle,      // "radial" direction (perpendicular to line)
+                halfWidth,      // cap radius
+                false,          // no arc direction for straight lines
+                true,           // isStart
+                startCapId
+            );
+
+            // Add cap points, handling duplicates at connection
+            startCapPoints.forEach((point, i) => {
                 if (i === 0 && points.length > 0) {
                     const lastPoint = points[points.length - 1];
                     if (Math.abs(point.x - lastPoint.x) < this.PRECISION &&
                         Math.abs(point.y - lastPoint.y) < this.PRECISION) {
-                        // Transfer metadata to existing point
-                        lastPoint.curveId = point.curveId;
-                        lastPoint.segmentIndex = point.segmentIndex;
-                        lastPoint.totalSegments = point.totalSegments;
-                        lastPoint.t = point.t;
-                        lastPoint.isConnectionPoint = true;
-                        continue;
+                        Object.assign(lastPoint, {
+                            curveId: point.curveId,
+                            segmentIndex: point.segmentIndex,
+                            totalSegments: point.totalSegments,
+                            t: point.t,
+                            isConnectionPoint: true
+                        });
+                        return;
                     }
                 }
                 points.push(point);
-            }
+            });
             
             // Right side
             points.push({ x: from.x - nx, y: from.y - ny });
             points.push({ x: to.x - nx, y: to.y - ny });
             
             // End cap with COMPLETE metadata - ALL points including first and last
-            const endAngle = Math.atan2(-ny, -nx);
-            for (let i = 0; i <= halfSegments; i++) {
-                const t = i / halfSegments;
-                const angle = endAngle + Math.PI * t;
-                const point = {
-                    x: to.x + halfWidth * Math.cos(angle),
-                    y: to.y + halfWidth * Math.sin(angle),
-                    curveId: endCapId,
-                    segmentIndex: i,
-                    totalSegments: halfSegments + 1,
-                    t: t,
-                    isConnectionPoint: (i === 0 || i === halfSegments)  // Mark both boundaries
-                };
-                
-                // Skip duplicate points but ensure end points are tagged
+            const endPerpAngle = Math.atan2(-ny, -nx);
+            const endCapPoints = this.generateCompleteRoundedCap(
+                to,             // cap center
+                endPerpAngle,   // "radial" direction (perpendicular to line)
+                halfWidth,      // cap radius
+                false,          // no arc direction for straight lines
+                false,          // isStart = false for end cap
+                endCapId
+            );
+
+            // Add cap points, handling duplicates at connection
+            endCapPoints.forEach((point, i) => {
                 if (i === 0 && points.length > 0) {
                     const lastPoint = points[points.length - 1];
                     if (Math.abs(point.x - lastPoint.x) < this.PRECISION &&
                         Math.abs(point.y - lastPoint.y) < this.PRECISION) {
-                        // Transfer metadata to existing point
-                        lastPoint.curveId = point.curveId;
-                        lastPoint.segmentIndex = point.segmentIndex;
-                        lastPoint.totalSegments = point.totalSegments;
-                        lastPoint.t = point.t;
-                        lastPoint.isConnectionPoint = true;
-                        continue;
+                        Object.assign(lastPoint, {
+                            curveId: point.curveId,
+                            segmentIndex: point.segmentIndex,
+                            totalSegments: point.totalSegments,
+                            t: point.t,
+                            isConnectionPoint: true
+                        });
+                        return;
                     }
                 }
                 points.push(point);
-            }
+            });
             
             // Left side of end
             points.push({ x: to.x + nx, y: to.y + ny });
@@ -446,7 +442,7 @@
                 return points;
             }
 
-            // Register all 4 new curves
+            // Register all 4 curves
             const outerArcId = window.globalCurveRegistry?.register({
                 type: 'arc', center: center, radius: outerR, startAngle: startRad, endAngle: endRad,
                 clockwise: clockwise, isOffsetDerived: true, source: 'arc_outer'
@@ -455,16 +451,14 @@
                 type: 'arc', center: center, radius: innerR, startAngle: startRad, endAngle: endRad,
                 clockwise: clockwise, isOffsetDerived: true, source: 'arc_inner'
             });
-            // Register placeholders for cap IDs - generateCompleteRoundedCap will use these
             const startCapId = window.globalCurveRegistry?.register({
-                 type: 'arc', center: startCapCenter, radius: halfWidth, startAngle: 0, endAngle: 2*Math.PI,
-                 clockwise: false, source: 'arc_end_cap' // Caps are CCW
-             });
-             const endCapId = window.globalCurveRegistry?.register({
-                 type: 'arc', center: endCapCenter, radius: halfWidth, startAngle: 0, endAngle: 2*Math.PI,
-                 clockwise: false, source: 'arc_end_cap' // Caps are CCW
-             });
-
+                type: 'arc', center: startCapCenter, radius: halfWidth, startAngle: 0, endAngle: 2*Math.PI,
+                clockwise: false, source: 'arc_end_cap'
+            });
+            const endCapId = window.globalCurveRegistry?.register({
+                type: 'arc', center: endCapCenter, radius: halfWidth, startAngle: 0, endAngle: 2*Math.PI,
+                clockwise: false, source: 'arc_end_cap'
+            });
 
             // Generate points and tag them
             const arcSegments = this.getOptimalSegments(arc.radius, 16, 128);
@@ -484,11 +478,16 @@
                 });
             }
 
-            // B. Generate End Cap points using helper
-            // Direction vector points *along* the arc direction at the end
-            const endDirX = Math.sin(endRad) * (clockwise ? 1 : -1);
-            const endDirY = Math.cos(endRad) * (clockwise ? -1 : 1);
-            const endCapPoints = this.generateCompleteRoundedCap(endCapCenter, endDirX, endDirY, halfWidth, false, endCapId);
+            // B. Generate End Cap points
+            // Cap starts at radial angle (pointing to outer arc), sweeps 180° CCW to inner arc
+            const endCapPoints = this.generateCompleteRoundedCap(
+                endCapCenter,    // cap center
+                endRad,          // radial angle at arc end
+                halfWidth,       // cap radius
+                clockwise,       // arc direction (not used in current impl, for future)
+                false,           // isStart = false for end cap
+                endCapId         // curve registry ID
+            );
 
             // C. Generate Inner arc points (reversed, tag with innerArcId)
             const innerPointsReversed = [];
@@ -500,55 +499,115 @@
                 });
             }
 
-            // D. Generate Start Cap points using helper
-            // Direction vector points *along* the arc direction at the start
-            const startDirX = Math.sin(startRad) * (clockwise ? 1 : -1);
-            const startDirY = Math.cos(startRad) * (clockwise ? -1 : 1);
-            const startCapPoints = this.generateCompleteRoundedCap(startCapCenter, startDirX, startDirY, halfWidth, true, startCapId);
+            // D. Generate Start Cap points
+            // Start cap connects from inner back to outer
+            // Start at radial + π (inner side), sweep 180° CCW to radial (outer side)
+            const startCapPoints = this.generateCompleteRoundedCap(
+                startCapCenter,      // cap center
+                startRad + Math.PI,  // start at inner side (radial + 180°)
+                halfWidth,           // cap radius
+                clockwise,           // arc direction (not used in current impl, for future)
+                true,                // isStart = true for start cap
+                startCapId           // curve registry ID
+            );
 
             // E. Assemble final points array
-            // Add outer points
             points.push(...outerPoints);
-            // Add end cap points (skip first point - should match last outer point)
-            points.push(...endCapPoints.slice(1));
-             // Add inner points (reversed) (skip first point - should match last end cap point)
-            points.push(...innerPointsReversed.slice(1));
-            // Add start cap points (skip first point - should match last inner point)
-            points.push(...startCapPoints.slice(1));
+            points.push(...endCapPoints.slice(1)); // Skip first point (matches last outer)
+            points.push(...innerPointsReversed.slice(1)); // Skip first point (matches last end cap)
+            points.push(...startCapPoints.slice(1)); // Skip first point (matches last inner)
 
-            // Final check for duplicate closing point (first vs last)
+            // Final check for duplicate closing point
             const first = points[0];
             const last = points[points.length - 1];
             if (Math.hypot(first.x - last.x, first.y - last.y) < this.PRECISION * 0.1) {
-                 points.pop(); // Remove duplicate last point
-                 console.log("[GeoUtils] arcToPolygon removed duplicate closing point.");
+                points.pop();
+                console.log("[GeoUtils] arcToPolygon removed duplicate closing point.");
             } else {
-                 console.warn("[GeoUtils] arcToPolygon closing points didn't match:", first, last);
-                 // Force close if they *don't* match - might hide issues but prevents open polys
-                 points.push({...points[0]});
-                 console.warn("[GeoUtils] Force-closed polygon.");
+                console.warn("[GeoUtils] arcToPolygon closing points didn't match:", first, last);
+                points.push({...points[0]});
+                console.warn("[GeoUtils] Force-closed polygon.");
             }
 
-            // Attach all curve IDs
+            // Create arcSegments metadata for offset pipeline
+            const arcSegmentsMetadata = [];
+
+            // Outer arc segment
+            arcSegmentsMetadata.push({
+                startIndex: 0,
+                endIndex: outerPoints.length - 1,
+                center: center,
+                radius: outerR,
+                startAngle: startRad,
+                endAngle: endRad,
+                clockwise: clockwise,
+                curveId: outerArcId
+            });
+
+            // End cap (semicircle)
+            const endCapStart = outerPoints.length;
+            const endCapEnd = endCapStart + endCapPoints.length - 2;
+            arcSegmentsMetadata.push({
+                startIndex: endCapStart,
+                endIndex: endCapEnd,
+                center: endCapCenter,
+                radius: halfWidth,
+                startAngle: endRad,
+                endAngle: endRad + (clockwise ? -Math.PI : Math.PI),
+                clockwise: clockwise,
+                curveId: endCapId
+            });
+
+            // Inner arc (reversed)
+            const innerStart = endCapEnd + 1;
+            const innerEnd = innerStart + innerPointsReversed.length - 2;
+            arcSegmentsMetadata.push({
+                startIndex: innerStart,
+                endIndex: innerEnd,
+                center: center,
+                radius: innerR,
+                startAngle: endRad,
+                endAngle: startRad,
+                clockwise: !clockwise, // Reversed direction
+                curveId: innerArcId
+            });
+
+            // Start cap (semicircle)
+            const startCapStart = innerEnd + 1;
+            const startCapEnd = startCapStart + startCapPoints.length - 2;
+            arcSegmentsMetadata.push({
+                startIndex: startCapStart,
+                endIndex: startCapEnd,
+                center: startCapCenter,
+                radius: halfWidth,
+                startAngle: startRad + Math.PI,
+                endAngle: startRad + Math.PI + (clockwise ? -Math.PI : Math.PI),
+                clockwise: clockwise,
+                curveId: startCapId
+            });
+
+            points.arcSegments = arcSegmentsMetadata;
+
             points.curveIds = [outerArcId, innerArcId, startCapId, endCapId].filter(Boolean);
+            points.arcSegments = arcSegmentsMetadata;
             console.log(`[GeoUtils] arcToPolygon finished. Points: ${points.length}, Registered curve IDs:`, points.curveIds);
             return points;
         },
         
         // Generate complete rounded cap with all boundary points tagged - END-CAPS ARE ALWAYS CCW
-        generateCompleteRoundedCap(center, dirX, dirY, radius, isStart, curveId) {
+        generateCompleteRoundedCap(center, radialAngle, radius, clockwiseArc, isStart, curveId) {
             const points = [];
-            // Use same segmentation rules as circles for consistency
             const segments = this.getOptimalSegments(radius, 16, 64);
             const halfSegments = Math.floor(segments / 2);
             
-            const baseAngle = Math.atan2(dirY, dirX);
-            const startAngle = isStart ? baseAngle - Math.PI/2 : baseAngle + Math.PI/2;
+            const capStartAngle = radialAngle;
             
-            // End-caps are always generated CCW (positive angle progression)
-            for (let i = 0; i <= halfSegments; i++) {  // Half circle for end-cap
-                const angle = startAngle + (Math.PI * i / halfSegments);
+            // Sweep in the same direction as the parent arc
+            const angleIncrement = clockwiseArc ? -Math.PI : Math.PI;
+            
+            for (let i = 0; i <= halfSegments; i++) {
                 const t = i / halfSegments;
+                const angle = capStartAngle + (angleIncrement * t);
                 const point = {
                     x: center.x + radius * Math.cos(angle),
                     y: center.y + radius * Math.sin(angle),
@@ -556,7 +615,7 @@
                     segmentIndex: i,
                     totalSegments: halfSegments + 1,
                     t: t,
-                    isConnectionPoint: (i === 0 || i === halfSegments)  // Mark both ends
+                    isConnectionPoint: (i === 0 || i === halfSegments)
                 };
                 points.push(point);
             }

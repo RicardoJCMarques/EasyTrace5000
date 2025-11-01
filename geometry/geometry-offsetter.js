@@ -39,7 +39,62 @@ class GeometryOffsetter {
     async offsetPrimitive(primitive, distance, options = {}) {
         if (!primitive || !primitive.type) return null;
         if (Math.abs(distance) < this.precision) return primitive;
-        
+
+        const props = primitive.properties || {};
+        const isCutout = props.isCutout || props.layerType === 'cutout';
+        const isStroke = !isCutout && ((props.stroke && !props.fill) || props.isTrace);
+
+        // Handle analytic stroke offsetting
+        if (isStroke) {
+            const originalWidth = props.strokeWidth || 0;
+            // totalWidth is the original trace width PLUS the isolation offset on both sides
+            // We use (distance * 2) directly, preserving the sign.
+            // +distance (isolation) will grow the width.
+            // -distance (clear) will shrink the width.
+            const totalWidth = originalWidth + (distance * 2);
+            
+            if (totalWidth < this.precision) {
+                if (this.debug) console.log(`[Offsetter] Stroke width too small, skipping: ${totalWidth}`);
+                return null;
+            }
+
+            let polygonPoints;
+
+            if (primitive.type === 'arc') {
+                if (this.debug) console.log(`[Offsetter] Polygonizing ArcStroke ${primitive.id} with total width ${totalWidth}`);
+                polygonPoints = GeometryUtils.arcToPolygon(primitive, totalWidth);
+            } else if (primitive.type === 'path' && primitive.points && primitive.points.length > 0) {
+                if (this.debug) console.log(`[Offsetter] Polygonizing PathStroke ${primitive.id} with total width ${totalWidth}`);
+                // polylineToPolygon correctly handles single-segment (lineToPolygon) and multi-segment paths
+                polygonPoints = GeometryUtils.polylineToPolygon(primitive.points, totalWidth);
+            } else {
+                if (this.debug) console.warn(`[Offsetter] Unhandled stroke type: ${primitive.type}`);
+                return null;
+            }
+
+            if (!polygonPoints || polygonPoints.length < 3) {
+                if (this.debug) console.warn(`[Offsetter] Polygonization of stroke ${primitive.id} failed to produce points.`);
+                return null;
+            }
+            
+            const isInternal = distance < 0;
+            
+            // Create a new PathPrimitive from the resulting "sausage" polygon
+            // Pass curveIds and arcSegments from the utils to the new primitive
+            return new PathPrimitive(polygonPoints, {
+                ...props,
+                fill: true,
+                stroke: false,
+                isOffset: true,
+                offsetDistance: distance,
+                offsetType: isInternal ? 'internal' : 'external',
+                polygonized: true,
+                curveIds: polygonPoints.curveIds || [],
+                arcSegments: polygonPoints.arcSegments || []
+            });
+        }
+
+        // If not a stroke, proceed with analytic/fill offset logic
         switch (primitive.type) {
             case 'circle':
                 return this.offsetCircle(primitive, distance);
@@ -148,7 +203,6 @@ class GeometryOffsetter {
 
         // Force cutouts into polygon offsetting regardless of fill/stroke
         const isCutout = props.isCutout || props.layerType === 'cutout';
-        const isStroke = !isCutout && ((props.stroke && !props.fill) || props.isTrace);
         const isClosed = props.fill || (!props.stroke && path.closed) || isCutout;
 
         // Check for arc segments in the new contours structure OR the legacy property
@@ -157,41 +211,13 @@ class GeometryOffsetter {
                                 (path.contours && path.contours[0]?.arcSegments?.length > 0) ||
                                 (path.arcSegments && path.arcSegments.length > 0);
 
-        if (hasAnalyticArcs && isClosed && !isStroke) {
+        if (hasAnalyticArcs && isClosed) {
             const arcCount = (path.properties.arcSegments?.length) || (path.contours && path.contours[0]?.arcSegments?.length) || path.arcSegments.length;
             console.log(`[Offsetter] Path has ${arcCount} arc segments, attempting analytic offset`);
             return this.offsetPathWithArcs(path, distance, options);
         }
 
-        if (isStroke) {
-            const originalWidth = props.strokeWidth || 0;
-            const totalWidth = originalWidth + Math.abs(distance * 2);
-            if (totalWidth < this.precision) {
-                if (this.debug) console.log('[Offsetter] Stroke width too small');
-                return null;
-            }
-            
-            const segmentPrimitives = [];
-            const numSegments = path.closed ? path.points.length - 1 : path.points.length - 1;
-            
-            for (let i = 0; i < numSegments; i++) {
-                const p1 = path.points[i];
-                const p2 = path.points[i + 1];
-                if (!p2 || Math.hypot(p2.x-p1.x, p2.y-p1.y) < this.precision) continue;
-
-                const segmentPolygon = GeometryUtils.lineToPolygon(p1, p2, totalWidth);
-                if (!segmentPolygon || segmentPolygon.length < 3) continue;
-                
-                segmentPrimitives.push(new PathPrimitive(segmentPolygon, {
-                    ...path.properties,
-                    originalType: 'stroke_segment',
-                    fill: true, stroke: false, isOffset: true,
-                    offsetDistance: distance, polygonized: true
-                }));
-            }
-            return segmentPrimitives.length > 0 ? segmentPrimitives : null;
-
-        } else if (isClosed) {
+        if (isClosed) {
             let polygonPoints = path.points.slice();
             
             const first = polygonPoints[0];
