@@ -79,7 +79,7 @@ window.PCBCAMConfig = {
             },
             cutting: {
                 cutDepth: -1.8,
-                passDepth: 0.3, // Negative values blow the pipeline
+                passDepth: 0.5, // Negative values blow the pipeline
                 cutFeed: 50,
                 plungeFeed: 25,
                 spindleSpeed: 10000
@@ -243,13 +243,12 @@ window.PCBCAMConfig = {
                 layers: {
                     isolation: '#ff8844',
                     clear: '#44ff88',
-                    clear: '#44ff88',
                     drill: '#4488ff',
                     cutout: '#3f3f3fff',
                     copper: '#ff8844',
-                    fused: '#00ff00',
+                    fused: '#ff8844',
                     toolpath: '#00ffff',
-                    preview: '#ffff00',
+                    preview: '#ff8844',
                     selection: '#00ffff',
                     nonConductor: '#666666'
                 },
@@ -261,23 +260,22 @@ window.PCBCAMConfig = {
             },
             light: {
                 canvas: {
-                    background: '#ffffff',
+                    background: '#b0b0b0ff',
                     grid: '#cccccc',
                     origin: '#000000',
                     originOutline: '#ffffff',
                     bounds: '#ff0000',
-                    ruler: '#666666',
-                    rulerText: '#333333'
+                    ruler: '#000000ff', // ruller scale?
+                    rulerText: '#929292ff' // ruller background what? Where's text?
                 },
                 layers: {
                     isolation: '#cc6600',
                     clear: '#008844',
-                    clear: '#008844',
                     drill: '#0066cc',
                     cutout: '#a8a8a8ff',
                     copper: '#cc6600',
-                    fused: '#00aa00',
-                    toolpath: '#0099cc',
+                    fused: '#ff8844',
+                    toolpath: '#ff8844',
                     preview: '#ccaa00',
                     selection: '#0099cc',
                     nonConductor: '#999999'

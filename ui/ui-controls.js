@@ -57,12 +57,15 @@
             this.renderer = renderer;
             this.coordinateSystem = coordinateSystem;
 
-            console.log("[UIControls] Initializing controls..."); // Add log
+            console.log("[UIControls] Initializing controls...");
 
             // Directly call setup methods to attach listeners
-            this.setupVisualizationToggles(); // NEW: Centralized toggle setup
+            this.setupVisualizationToggles(); // Centralized toggle setup
             this.setupOffsetControls();
             this.setupRotationControls();
+            this.setupZoomControls();
+            this.setupCollapsibleMenus();
+            this.setupMachineSettings(); // Moved from cam-ui.js
 
             // Link coordinate system changes back to UI updates
             if (this.coordinateSystem) {
@@ -71,14 +74,14 @@
                 });
             }
 
-            console.log("[UIControls] Controls initialized."); // Add log
+            console.log("[UIControls] Controls initialized.");
             return true;
         }
 
         setupVisualizationToggles() {
              if (!this.renderer) return;
 
-             console.log("[UIControls] Setting up visualization toggles..."); // Add log
+             console.log("[UIControls] Setting up visualization toggles...");
 
             const toggleMappings = [
                 // Display Group
@@ -115,7 +118,7 @@
 
                 // Attach listener
                 element.addEventListener('change', async (e) => {
-                     console.log(`[UIControls] Toggle changed: ${mapping.option} = ${e.target.checked}`); // Add log
+                     console.log(`[UIControls] Toggle changed: ${mapping.option} = ${e.target.checked}`);
                     const isChecked = e.target.checked;
 
                     // Special handling for dependent toggles
@@ -151,7 +154,7 @@
 
                     // Trigger appropriate update
                     if (mapping.triggersUpdate) {
-                         console.log(`[UIControls] Triggering full UI update for ${mapping.option}`); // Add log
+                         console.log(`[UIControls] Triggering full UI update for ${mapping.option}`);
                         if (mapping.option === 'enableArcReconstruction' || mapping.option === 'fuseGeometry') {
                              if (this.ui.core.geometryProcessor) {
                                   this.ui.core.geometryProcessor.clearCachedStates(); // Clear cache on fusion/arc changes
@@ -159,12 +162,12 @@
                         }
                         await this.ui.updateRendererAsync(); // Full update involves re-processing geometry
                     } else if (mapping.triggersRender) {
-                         console.log(`[UIControls] Triggering simple render for ${mapping.option}`); // Add log
+                         console.log(`[UIControls] Triggering simple render for ${mapping.option}`);
                         this.renderer.render(); // Simple render just redraws
                     }
                 });
             });
-             console.log("[UIControls] Visualization toggles setup complete."); // Add log
+             console.log("[UIControls] Visualization toggles setup complete.");
         }
         
         setupOffsetControls() {
@@ -441,6 +444,90 @@
                 this.ui.statusManager.showStatus('Board rotation reset (position unchanged)', 'success');
             } else {
                 this.ui.statusManager.showStatus(`Cannot reset rotation: ${result.error}`, 'error');
+            }
+        }
+
+        setupZoomControls() {
+            const fitBtn = document.getElementById('zoom-fit-btn');
+            const inBtn = document.getElementById('zoom-in-btn');
+            const outBtn = document.getElementById('zoom-out-btn');
+
+            if (fitBtn) {
+                fitBtn.addEventListener('click', () => this.renderer?.zoomFit());
+            }
+            if (inBtn) {
+                inBtn.addEventListener('click', () => this.renderer?.zoomIn());
+            }
+            if (outBtn) {
+                outBtn.addEventListener('click', () => this.renderer?.zoomOut());
+            }
+        }
+
+        setupCollapsibleMenus() {
+            const headers = document.querySelectorAll('.collapsible-header');
+            headers.forEach(header => {
+                const targetId = header.getAttribute('data-target');
+                const content = document.getElementById(targetId);
+                const indicator = header.querySelector('.collapse-indicator');
+
+                // Set initial indicator state
+                if (content && indicator) {
+                    indicator.textContent = content.classList.contains('collapsed') ? '▼' : '▲';
+                }
+
+                // Add click listener
+                header.addEventListener('click', () => {
+                    if (content) {
+                        content.classList.toggle('collapsed');
+                        if (indicator) {
+                            indicator.textContent = content.classList.contains('collapsed') ? '▼' : '▲';
+                        }
+                    }
+                });
+            });
+        }
+
+        setupMachineSettings() {
+            const thicknessInput = document.getElementById('pcb-thickness');
+            if (thicknessInput) {
+                thicknessInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('pcb', { thickness: parseFloat(e.target.value) });
+                });
+            }
+            
+            const safeZInput = document.getElementById('safe-z');
+            if (safeZInput) {
+                safeZInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { safeZ: parseFloat(e.target.value) });
+                });
+            }
+            
+            const travelZInput = document.getElementById('travel-z');
+            if (travelZInput) {
+                travelZInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { travelZ: parseFloat(e.target.value) });
+                });
+            }
+            
+            const rapidFeedInput = document.getElementById('rapid-feed');
+            if (rapidFeedInput) {
+                rapidFeedInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
+                });
+            }
+            
+            const postProcessorSelect = document.getElementById('post-processor');
+            if (postProcessorSelect) {
+                postProcessorSelect.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('gcode', { postProcessor: e.target.value });
+                });
+            }
+            
+            const gcodeUnitsSelect = document.getElementById('gcode-units');
+            if (gcodeUnitsSelect) {
+                gcodeUnitsSelect.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('gcode', { units: e.target.value });
+                });
             }
         }
     }

@@ -144,7 +144,7 @@
             if ((this.options.debugPoints || this.options.debugPaths) &&
                 this.debugPrimitives.length > 0) {
 
-                // [!!!] This mapping logic needs to handle arcSegments correctly [!!!]
+                // This mapping logic needs to handle arcSegments correctly [!!!]
                 this.debugPrimitivesScreen = this.debugPrimitives.map(prim => {
                     const screenData = {
                         type: prim.type,
@@ -261,7 +261,7 @@
         // ==================== LAYER RENDERING WITH CULLING AND CONTEXT ====================
         
         renderLayer(layer) {
-            const theme = this.core.colors[this.options.theme] || this.core.colors.dark;
+            const theme = this.core.colors[this.options.theme];
             let fillColor = this.core.getLayerColorSettings(layer, theme);
             
             if (this.options.blackAndWhite) {
@@ -302,11 +302,6 @@
 
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
-
-                // Store all debug points before culling
-                if (this.shouldCollectDebugPoints(primitive)) {
-                    this.debugPrimitives.push(primitive);
-                }
                 
                 const primBounds = primitive.getBounds();
                 
@@ -320,6 +315,11 @@
                 if (!this.core.shouldRenderPrimitive(primitive, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
+                }
+                
+                // Store all debug points before culling
+                if (this.shouldCollectDebugPoints(primitive)) {
+                    this.debugPrimitives.push(primitive);
                 }
                 
                 this.core.renderStats.renderedPrimitives++;
@@ -521,7 +521,7 @@
         }
 
         renderWireframeLayer(layer) {
-            const theme = this.core.colors[this.options.theme] || this.core.colors.dark;
+            const theme = this.core.colors[this.options.theme];
             const viewBounds = this.core.getViewBounds();
             const wireframeBatch = new Path2D();
 

@@ -536,8 +536,10 @@
         }
         
         renderPath(primitive, fillColor, strokeColor, isPreprocessed) {
-        const shouldFill = primitive.properties?.fill !== false && !primitive.properties?.stroke;
-        const shouldStroke = primitive.properties?.stroke === true || primitive.properties?.isTrace;
+        // If it's preprocessed, it should *always* fill.
+        const shouldFill = (primitive.properties?.fill !== false && !primitive.properties?.stroke) || isPreprocessed;
+        // If it's preprocessed, it should *never* stroke.
+        const shouldStroke = (primitive.properties?.stroke === true || primitive.properties?.isTrace) && !isPreprocessed;
         const points = primitive.points;
 
         if (!points || points.length === 0) return;
@@ -560,15 +562,20 @@
                 // Draw the arc
                 this.ctx.arc(
                     arc.center.x, arc.center.y, arc.radius,
-                    arc.startAngle, arc.endAngle, !arc.clockwise // Use NOT clockwise
+                    arc.startAngle, arc.endAngle, arc.clockwise
                 );
 
                 currentIndex = arc.endIndex;
             }
 
-            // Draw remaining lines after the last arc
-            for (let i = currentIndex + 1; i < points.length; i++) {
-                this.ctx.lineTo(points[i].x, points[i].y);
+            // Check if last arc wrapped to start (closes path)
+            const pathClosedByArc = (currentIndex === 0 && sortedArcs.length > 0);
+
+            // Draw remaining lines only if path not closed by arc
+            if (!pathClosedByArc) {
+                for (let i = currentIndex + 1; i < points.length; i++) {
+                    this.ctx.lineTo(points[i].x, points[i].y);
+                }
             }
 
         } else {
@@ -727,7 +734,6 @@
                             }
 
                             // Draw the arc for wireframe
-                            // Use the same !arc.clockwise logic as renderPath
                             this.ctx.arc(
                                 arc.center.x, arc.center.y, arc.radius,
                                 arc.startAngle, arc.endAngle, !arc.clockwise
@@ -736,9 +742,14 @@
                             currentIndex = arc.endIndex;
                         }
 
-                        // Draw remaining lines
-                        for (let i = currentIndex + 1; i < points.length; i++) {
-                            this.ctx.lineTo(points[i].x, points[i].y);
+                        // Check if last arc wrapped to start
+                        const pathClosedByArc = (currentIndex === 0 && sortedArcs.length > 0);
+
+                        // Draw remaining lines only if path not closed
+                        if (!pathClosedByArc) {
+                            for (let i = currentIndex + 1; i < points.length; i++) {
+                                this.ctx.lineTo(points[i].x, points[i].y);
+                            }
                         }
 
                     } else {

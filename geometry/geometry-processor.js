@@ -104,9 +104,6 @@
             this.debug(`Input: ${primitives.length} primitives`);
             this.debug(`Arc reconstruction: ${fusionOptions.enableArcReconstruction ? 'ENABLED' : 'DISABLED'}`);
             
-            // Clear previous state
-            this.clearCachedStates();
-            
             // Step 1: Cache originals with indices
             primitives.forEach((p, idx) => {
                 p._originalIndex = idx;
@@ -129,7 +126,12 @@
                 this.cachedStates.originalPrimitives, 
                 fusionOptions
             );
-            this.cachedStates.preprocessedGeometry = preprocessed;
+
+            // Accumulate preprocessed geometry, don't replace it
+            if (!this.cachedStates.preprocessedGeometry) {
+                this.cachedStates.preprocessedGeometry = [];
+            }
+            this.cachedStates.preprocessedGeometry.push(...preprocessed);
             
             // Verify metadata propagation
             if (fusionOptions.enableArcReconstruction && this.options.debug) {
@@ -214,8 +216,9 @@
                 // Count holes in result
                 let holesFound = 0;
                 result.forEach(p => {
-                    if (p.holes && p.holes.length > 0) {
-                        holesFound += p.holes.length;
+                    if (p.contours && p.contours.length > 0) {
+                        // Count all contours that are marked as holes
+                        holesFound += p.contours.filter(c => c.isHole).length;
                     }
                 });
                 
@@ -234,7 +237,6 @@
                     if (typeof PathPrimitive !== 'undefined' && !(p instanceof PathPrimitive)) {
                         return this._createPathPrimitive(p.points, {
                             ...p.properties,
-                            holes: p.holes || [],
                             curveIds: p.curveIds,
                             hasReconstructableCurves: p.hasReconstructableCurves
                         });
@@ -274,7 +276,6 @@
                     if (typeof PathPrimitive !== 'undefined' && !(p instanceof PathPrimitive)) {
                         return this._createPathPrimitive(p.points, {
                             ...p.properties,
-                            holes: p.holes || [],
                             contours: p.contours || [],
                             curveIds: p.curveIds,
                             hasReconstructableCurves: p.hasReconstructableCurves
@@ -370,8 +371,7 @@
                 const isCutoutOp = operationType === 'cutout';
 
                 // Determine if it looks like a stroke based on properties
-                const looksLikeStroke = (primitive.properties?.stroke && !primitive.properties?.fill) ||
-                                      primitive.properties?.isTrace;
+                const looksLikeStroke = (primitive.properties?.stroke && !primitive.properties?.fill) || primitive.properties?.isTrace;
 
                 // Only convert actual strokes intended for isolation, NOT cutout segments
                 const shouldConvertStroke = looksLikeStroke && !isCutoutOp && operationType === 'isolation';
@@ -517,47 +517,100 @@
         }
         
         // Perform boolean fusion
-        async _performFusion(primitives, options) {
+        async _performFusion(primitives, options) { // options parameter remains unused
             const darkPrimitives = [];
-            const clearPrimitives = [];
-            
-            for (const primitive of primitives) {
+            const clearPrimitives = []; // Holes or clear areas
+
+            // 1. Separate primitives by polarity
+            primitives.forEach(primitive => {
+                if (!primitive.properties) primitive.properties = {};
                 const polarity = primitive.properties?.polarity || 'dark';
-                
-                if (polarity === 'clear') {
-                    clearPrimitives.push(primitive);
+                if (!primitive.points || primitive.points.length < 3) {
+                    console.warn('[GeoProcessor._performFusion] Skipping primitive due to missing points:', primitive);
+                    return;
+                }
+                // Ensure properties are carried over AFTER standardization
+                const standardizedPrimitive = this.standardizePrimitive(primitive); // Ensure standardization happens consistently
+                if (!standardizedPrimitive) {
+                    console.warn('[GeoProcessor._performFusion] Standardization failed for primitive:', primitive);
+                    return;
+                }
+                // Use the polarity from the standardized primitive's properties
+                const finalPolarity = standardizedPrimitive.properties?.polarity || 'dark';
+                if (finalPolarity === 'clear') {
+                    clearPrimitives.push(standardizedPrimitive);
                 } else {
-                    darkPrimitives.push(primitive);
-                }
-            }
-            
-            this.debug(`Fusion input: ${darkPrimitives.length} dark, ${clearPrimitives.length} clear`);
-            
-            const result = await this.clipper.difference(darkPrimitives, clearPrimitives);
-            
-            let holesFound = 0;
-            result.forEach(p => {
-                if (p.holes && p.holes.length > 0) {
-                    holesFound += p.holes.length;
+                    darkPrimitives.push(standardizedPrimitive);
                 }
             });
-            
-            if (holesFound > 0) {
-                this.stats.holesDetected = holesFound;
-                this.debug(`Detected ${holesFound} holes in fused geometry`);
+            this.debug(`_performFusion Input (Post-Standardization): ${darkPrimitives.length} dark, ${clearPrimitives.length} clear`);
+
+
+            // 2. Enforce Winding Order *before* Clipper
+            if (typeof GeometryUtils !== 'undefined' && GeometryUtils.isClockwise) {
+                let darkReversed = 0;
+                let clearReversed = 0;
+                darkPrimitives.forEach(prim => { // Ensure dark are CCW
+                    if (GeometryUtils.isClockwise(prim.points)) {
+                        prim.points.reverse(); darkReversed++;
+                    }
+                });
+                clearPrimitives.forEach(prim => { // Ensure clear are CW
+                    if (!GeometryUtils.isClockwise(prim.points)) {
+                        prim.points.reverse(); clearReversed++;
+                    }
+                });
+                 if (this.options.debug) { // Hide log behind debug flag
+                     console.log(`[GeoProcessor._performFusion] Pre-Clipper Winding: Reversed ${darkReversed} dark, ${clearReversed} clear.`);
+                 }
+            } else {
+                 console.warn('[GeoProcessor._performFusion] Cannot enforce pre-Clipper winding: GeometryUtils missing or isClockwise not found.');
+            }
+
+            // 3. Perform Boolean Operation
+            const rawResult = await this.clipper.difference(darkPrimitives, clearPrimitives);
+             console.log('[GeometryProcessor._performFusion] Raw Clipper Result Count:', rawResult.length);
+             
+             const directHolesCount = rawResult.filter(p => p && p.contours && p.contours.filter(c => c.isHole).length > 0).length;
+             console.log('[GeometryProcessor._performFusion] Primitives with structured hole contours in raw result:', directHolesCount);
+
+            // 4. Normalize Winding on Clipper Result
+            // The 'rawResult' from the wrapper is already the array of PathPrimitives with the correct 'contours' structure. We just need to normalize winding.
+            if (typeof GeometryUtils !== 'undefined' && GeometryUtils.isClockwise) {
+                console.log(`[GeoProcessor._performFusion] Normalizing winding for ${rawResult.length} final primitives.`);
+                rawResult.forEach((primitive, index) => {
+                    // Mark as fused. The wrapper already applied properties.
+                    if (primitive.properties) {
+                        primitive.properties.isFused = true;
+                    } else {
+                        primitive.properties = { isFused: true };
+                    }
+
+                    if (primitive.type === 'path' && primitive.contours && primitive.contours.length > 0) {
+                        primitive.contours.forEach((contour, contourIdx) => {
+                            const pathIsClockwise = GeometryUtils.isClockwise(contour.points);
+                            const expectedClockwise = contour.isHole; // Holes should be CW
+
+                            if (pathIsClockwise !== expectedClockwise) {
+                                if (this.options.debug) {
+                                    console.log(`  - Reversing contour ${index}:${contourIdx} (isHole=${contour.isHole}). Was ${pathIsClockwise ? 'CW' : 'CCW'}, expected ${expectedClockwise ? 'CW' : 'CCW'}.`);
+                                }
+                                contour.points.reverse();
+                            }
+                        });
+                    }
+                });
+            } else {
+                 console.warn('[GeoProcessor._performFusion] Cannot normalize post-Clipper winding: GeometryUtils missing or isClockwise function not found.');
             }
             
-            return result.map(p => {
-                if (typeof PathPrimitive !== 'undefined' && !(p instanceof PathPrimitive)) {
-                    return this._createPathPrimitive(p.points, {
-                        ...p.properties,
-                        holes: p.holes || [],
-                        curveIds: p.curveIds,
-                        hasReconstructableCurves: p.hasReconstructableCurves
-                    });
-                }
-                return p;
-            });
+            // The raw result IS the final result.
+            const finalPrimitives = rawResult;
+
+             const totalFinalHoles = finalPrimitives.reduce((sum, p) => sum + (p.contours ? p.contours.filter(c => c.isHole).length : 0), 0);
+             console.log(`[GeoProcessor._performFusion] Mapped ${finalPrimitives.length} final primitives. Total structured hole contours: ${totalFinalHoles}`);
+
+            return finalPrimitives;
         }
         
         // Convert stroke to polygon
@@ -631,52 +684,109 @@
         }
         
         // Create path primitive
+        // Now primarily relies on PathPrimitive class, but ensures fallback handles holes
         _createPathPrimitive(points, properties) {
-            if (typeof PathPrimitive !== 'undefined') {
-                const primitive = new PathPrimitive(points, properties);
-                
-                if (properties.arcSegments) {
-                    primitive.arcSegments = properties.arcSegments;
+            // Check if PathPrimitive class is available
+            if (typeof PathPrimitive !== 'undefined' && PathPrimitive) {
+                if (this.options.debug) {
+                    console.log("[GeoProcessor._createPathPrimitive] Using PathPrimitive CLASS constructor.");
+                    // Log the properties being passed, specifically looking for 'contours'
+                    console.log("  - Input properties:", {
+                        hasContours: properties && properties.contours && properties.contours.length > 0,
+                        contourCount: properties && properties.contours ? properties.contours.length : 0,
+                        pointsLength: points ? points.length : 0
+                    });
                 }
-                
-                if (properties.curveIds) {
-                    primitive.curveIds = properties.curveIds;
+
+                // The PathPrimitive constructor correctly uses `properties.contours` if available.
+                try {
+                    const primitive = new PathPrimitive(points, properties);
+
+                    // Handle legacy arcSegments at primitive level
+                    // Convert to contour-level storage for consistency
+                    if (properties.arcSegments && (!properties.contours || properties.contours.length === 0)) {
+                        // Legacy format: move arcSegments into first contour
+                        const mainContour = {
+                            points: points,
+                            isHole: false,
+                            nestingLevel: 0,
+                            parentId: null,
+                            curveIds: properties.curveIds || [],
+                            arcSegments: properties.arcSegments
+                        };
+                        primitive.contours = [mainContour];
+                        delete properties.arcSegments;  // Remove from top level
+                    }
+                    
+                    if (properties.curveIds) { primitive.curveIds = properties.curveIds; }
+                    if (properties.hasReconstructableCurves) { primitive.hasReconstructableCurves = true; }
+                    // Check if contours were actually set by the constructor
+                    if (!primitive.contours || primitive.contours.length === 0) {
+                        if (this.options.debug) {
+                            console.warn(`[GeoProcessor._createPathPrimitive] PathPrimitive constructor resulted in NO contours despite input. Input contours count: ${properties?.contours?.length || 0}`);
+                        }
+                    } else {
+                        const holeContours = primitive.contours.filter(c => c.isHole).length;
+                        if (this.options.debug) {
+                            console.log(`[GeoProcessor._createPathPrimitive] Constructed PathPrimitive ${primitive.id}. Final contour count: ${primitive.contours.length}, Hole contours: ${holeContours}`);
+                        }
+                    }
+
+                    return primitive;
+                } catch (e) {
+                    if (this.options.debug) {
+                        console.error("[GeoProcessor._createPathPrimitive] Error constructing PathPrimitive:", e, "Points:", points, "Properties:", properties);
+                    }
+                    return null; // Return null if construction fails
                 }
-                
-                if (properties.hasReconstructableCurves) {
-                    primitive.hasReconstructableCurves = true;
-                }
-                
-                return primitive;
             }
-            
-            // Fallback
+
+            // Fallback object creation (If PathPrimitive class somehow fails or is unavailable)
+            console.warn("[GeoProcessor._createPathPrimitive] PathPrimitive class NOT available/failed. Using fallback object.");
+        
+            // The new logic only checks for 'properties.contours'.
+            // If 'contours' exists, it's used.
+            // If not, a single contour is created from 'points'.
+            let fallbackContours = properties?.contours;
+
+            if (!fallbackContours || fallbackContours.length === 0) {
+                // Create a default single contour from the main points
+                fallbackContours = [{ 
+                    points: points, 
+                    isHole: false, 
+                    nestingLevel: 0, 
+                    parentId: null, 
+                    curveIds: properties?.curveIds || [] // Try to preserve curveIds
+                }];
+                console.log("[GeoProcessor Fallback] No contours provided, creating single contour from main points.");
+            } else {
+                console.log(`[GeoProcessor Fallback] Using ${fallbackContours.length} provided contours.`);
+            }
+
+            // Handle legacy arcSegments at top level
+            if (properties?.arcSegments && fallbackContours.length > 0) {
+                fallbackContours[0].arcSegments = properties.arcSegments;
+            }
+
             return {
                 type: 'path',
                 points: points,
                 properties: properties || {},
                 closed: properties?.closed !== false,
-                holes: properties?.holes || [],
-                arcSegments: properties?.arcSegments || [],
+                contours: fallbackContours,
                 curveIds: properties?.curveIds || [],
                 hasReconstructableCurves: properties?.hasReconstructableCurves || false,
                 getBounds: function() {
-                    let minX = Infinity, minY = Infinity;
-                    let maxX = -Infinity, maxY = -Infinity;
-                    this.points.forEach(p => {
-                        minX = Math.min(minX, p.x);
-                        minY = Math.min(minY, p.y);
-                        maxX = Math.max(maxX, p.x);
-                        maxY = Math.max(maxY, p.y);
-                    });
-                    if (this.holes && this.holes.length > 0) {
-                        this.holes.forEach(hole => {
-                            hole.forEach(p => {
-                                minX = Math.min(minX, p.x);
-                                minY = Math.min(minY, p.y);
-                                maxX = Math.max(maxX, p.x);
-                                maxY = Math.max(maxY, p.y);
-                            });
+                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    // Calculate bounds from CONTOURS in fallback
+                    if (this.contours) {
+                        this.contours.forEach(c => {
+                             if (!c.isHole && c.points) { // Only use outer contours for bounds
+                                c.points.forEach(p => {
+                                    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+                                    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+                                });
+                            }
                         });
                     }
                     return { minX, minY, maxX, maxY };
@@ -692,6 +802,10 @@
                 fusedGeometry: null,
                 registeredCurves: null
             };
+        }
+
+        clearProcessorCache() {
+            this.clearCachedStates();
         }
         
         getCachedState(stateName) {

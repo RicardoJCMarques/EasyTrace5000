@@ -167,7 +167,7 @@
                     fuseGeometry: config.rendering.defaultOptions.fuseGeometry,
                     blackAndWhite: config.rendering.defaultOptions.blackAndWhite,
                     debugPoints: config.rendering.defaultOptions.debugPoints,
-                    theme: document.documentElement.getAttribute('data-theme') || 'dark'
+                    theme: document.documentElement.getAttribute('data-theme')
                 });
                 
                 if (window.ResizeObserver) {
@@ -184,115 +184,11 @@
         }
         
         initializeTheme() {
-            const savedTheme = localStorage.getItem('pcbcam-theme') || (config.ui && config.ui.theme) || 'dark';
+            const savedTheme = localStorage.getItem('pcbcam-theme') || (config.ui && config.ui.theme)
             document.documentElement.setAttribute('data-theme', savedTheme);
             
             if (this.renderer) {
                 this.renderer.setOptions({ theme: savedTheme });
-            }
-        }
-        
-        setupCoordinateControls() {
-            const centerBtn = document.getElementById('center-origin-btn');
-            if (centerBtn) {
-                centerBtn.addEventListener('click', () => {
-                    if (this.controls && this.controls.centerOrigin) {
-                        this.controls.centerOrigin();
-                    }
-                });
-            }
-            
-            const bottomLeftBtn = document.getElementById('bottom-left-origin-btn');
-            if (bottomLeftBtn) {
-                bottomLeftBtn.addEventListener('click', () => {
-                    if (this.controls && this.controls.bottomLeftOrigin) {
-                        this.controls.bottomLeftOrigin();
-                    }
-                });
-            }
-            
-            const resetBtn = document.getElementById('reset-origin-btn');
-            if (resetBtn) {
-                resetBtn.addEventListener('click', () => {
-                    if (this.controls && this.controls.resetOrigin) {
-                        this.controls.resetOrigin();
-                    }
-                });
-            }
-            
-            const applyBtn = document.getElementById('apply-set-origin-btn');
-            if (applyBtn) {
-                applyBtn.addEventListener('click', () => {
-                    if (this.controls && this.controls.applyOffsetAndSetOrigin) {
-                        this.controls.applyOffsetAndSetOrigin();
-                    }
-                });
-            }
-            
-            const applyRotBtn = document.getElementById('apply-rotation-btn');
-            if (applyRotBtn) {
-                applyRotBtn.addEventListener('click', () => {
-                    const angleInput = document.getElementById('rotation-angle');
-                    if (angleInput) {
-                        const angle = parseFloat(angleInput.value) || 0;
-                        if (angle !== 0 && this.controls && this.controls.applyBoardRotation) {
-                            this.controls.applyBoardRotation(angle);
-                        }
-                    }
-                });
-            }
-            
-            const resetRotBtn = document.getElementById('reset-rotation-btn');
-            if (resetRotBtn) {
-                resetRotBtn.addEventListener('click', () => {
-                    if (this.controls && this.controls.resetBoardRotationOnly) {
-                        this.controls.resetBoardRotationOnly();
-                    }
-                });
-            }
-        }
-        
-        setupMachineSettings() {
-            const thicknessInput = document.getElementById('pcb-thickness');
-            if (thicknessInput) {
-                thicknessInput.addEventListener('change', (e) => {
-                    this.core.updateSettings('pcb', { thickness: parseFloat(e.target.value) });
-                });
-            }
-            
-            const safeZInput = document.getElementById('safe-z');
-            if (safeZInput) {
-                safeZInput.addEventListener('change', (e) => {
-                    this.core.updateSettings('machine', { safeZ: parseFloat(e.target.value) });
-                });
-            }
-            
-            const travelZInput = document.getElementById('travel-z');
-            if (travelZInput) {
-                travelZInput.addEventListener('change', (e) => {
-                    this.core.updateSettings('machine', { travelZ: parseFloat(e.target.value) });
-                });
-            }
-            
-            const rapidFeedInput = document.getElementById('rapid-feed');
-            if (rapidFeedInput) {
-                rapidFeedInput.addEventListener('change', (e) => {
-                    this.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
-                });
-            }
-            
-            const postProcessorSelect = document.getElementById('post-processor');
-            if (postProcessorSelect) {
-                postProcessorSelect.addEventListener('change', (e) => {
-                    this.core.updateSettings('gcode', { postProcessor: e.target.value });
-                });
-            }
-            
-            const gcodeUnitsSelect = document.getElementById('gcode-units');
-            if (gcodeUnitsSelect) {
-                gcodeUnitsSelect.addEventListener('change', (e) => {
-                    this.core.updateSettings('gcode', { units: e.target.value });
-                });
             }
         }
         
@@ -335,6 +231,10 @@
         }
         
         async performFusion() {
+            if (this.core.geometryProcessor) {
+                this.core.geometryProcessor.clearProcessorCache();
+            }
+            
             const fusionOptions = {
                 enableArcReconstruction: this.viewState.enableArcReconstruction
             };

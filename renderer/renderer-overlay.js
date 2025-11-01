@@ -175,8 +175,8 @@
             const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
             const colors = theme.canvas;
             
-            this.ctx.strokeStyle = colors.ruler || '#888888';
-            this.ctx.fillStyle = colors.rulerText || '#cccccc';
+            this.ctx.strokeStyle = colors.ruler;
+            this.ctx.fillStyle = colors.rulerText;
             this.ctx.lineWidth = 1;
             this.ctx.font = '11px Arial';
             this.ctx.textBaseline = 'top';
@@ -192,8 +192,8 @@
             this.ctx.fillStyle = bgColorWithAlpha; // Apply semi-transparent background
             this.ctx.fillRect(0, 0, this.canvas.width, rulerSize); // Horizontal background
             this.ctx.fillRect(0, 0, rulerSize, this.canvas.height); // Vertical background
-            this.ctx.strokeStyle = colors.ruler || '#888888ff';
-            this.ctx.fillStyle = colors.rulerText || '#cccccc';
+            this.ctx.strokeStyle = colors.ruler;
+            this.ctx.fillStyle = colors.rulerText;
             
             // Horizontal ruler
             this.ctx.beginPath();

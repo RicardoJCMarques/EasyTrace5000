@@ -360,11 +360,10 @@
 
                     const radius = Math.hypot(trace.arc.i, trace.arc.j);
 
-                    // Check if radius is consistent for the end point as well.
-                    // Some exporters have floating point errors.
+                    // Validate radius consistency
                     const endRadius = Math.hypot(trace.end.x - center.x, trace.end.y - center.y);
                     if (Math.abs(radius - endRadius) > (geomConfig.coordinatePrecision || 0.001) * 10) {
-                         console.warn(`[Plotter] Inconsistent arc radii detected. Start=${radius.toFixed(4)}, End=${endRadius.toFixed(4)}. Proceeding with start radius.`);
+                        console.warn(`[Plotter] Inconsistent arc radii. Start=${radius.toFixed(4)}, End=${endRadius.toFixed(4)}`);
                     }
 
                     const startAngle = Math.atan2(trace.start.y - center.y, trace.start.x - center.x);
@@ -374,17 +373,28 @@
 
                     this.creationStats.arcTraces++;
                     
-                    // Return a proper ArcPrimitive, which is essential for the merging logic
-                    return new ArcPrimitive(
-                        center, radius, startAngle, endAngle, clockwise, properties
+                    // Create proper ArcPrimitive with complete metadata
+                    const arcPrimitive = new ArcPrimitive(
+                        center, radius, startAngle, endAngle, clockwise, {
+                            ...properties,
+                            // Store original trace data for debugging
+                            originalTrace: {
+                                start: trace.start,
+                                end: trace.end,
+                                i: trace.arc.i,
+                                j: trace.arc.j
+                            }
+                        }
                     );
+                    
+                    console.log(`[Plotter] Created ArcPrimitive: center=(${center.x.toFixed(3)}, ${center.y.toFixed(3)}), r=${radius.toFixed(3)}, ${clockwise ? 'CW' : 'CCW'}`);
+                    
+                    return arcPrimitive;
 
                 } catch (error) {
-                    console.error('[Plotter] Failed to create ArcPrimitive from trace, falling back to line.', error, trace);
-                    // Fallback to creating a straight line if arc calculation fails
+                    console.error('[Plotter] Failed to create ArcPrimitive, falling back to line:', error);
                     return new PathPrimitive([trace.start, trace.end], properties);
                 }
-
             } else {
                 // Simple line segment
                 const primitive = new PathPrimitive([trace.start, trace.end], properties);
@@ -392,13 +402,6 @@
                 this.creationStats.traceLengths.push(length);
                 return primitive;
             }
-            
-            const primitive = new PathPrimitive(points, properties);
-            
-            this.creationStats.tracesCreated++;
-            this.creationStats.traceLengths.push(length);
-            
-            return primitive;
         }
         
         plotFlash(flash) {

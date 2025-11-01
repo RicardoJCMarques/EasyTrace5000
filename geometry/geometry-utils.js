@@ -486,9 +486,8 @@
 
             // B. Generate End Cap points using helper
             // Direction vector points *along* the arc direction at the end
-            const endDirX = -Math.sin(endRad) * (clockwise ? 1 : -1);
-            const endDirY =  Math.cos(endRad) * (clockwise ? 1 : -1);
-            // generateCompleteRoundedCap generates points CCW. isStart=false means it starts perpendicular *clockwise* from the direction vector.
+            const endDirX = Math.sin(endRad) * (clockwise ? 1 : -1);
+            const endDirY = Math.cos(endRad) * (clockwise ? -1 : 1);
             const endCapPoints = this.generateCompleteRoundedCap(endCapCenter, endDirX, endDirY, halfWidth, false, endCapId);
 
             // C. Generate Inner arc points (reversed, tag with innerArcId)
@@ -503,9 +502,8 @@
 
             // D. Generate Start Cap points using helper
             // Direction vector points *along* the arc direction at the start
-            const startDirX = -Math.sin(startRad) * (clockwise ? 1 : -1);
-            const startDirY =  Math.cos(startRad) * (clockwise ? 1 : -1);
-             // isStart=true means it starts perpendicular *counter-clockwise* from the direction vector.
+            const startDirX = Math.sin(startRad) * (clockwise ? 1 : -1);
+            const startDirY = Math.cos(startRad) * (clockwise ? -1 : 1);
             const startCapPoints = this.generateCompleteRoundedCap(startCapCenter, startDirX, startDirY, halfWidth, true, startCapId);
 
             // E. Assemble final points array

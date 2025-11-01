@@ -596,25 +596,37 @@
                 points: points,
                 properties: properties || {},
                 closed: properties?.closed !== false,
-                holes: [],
+                // Add contours property to fallback for consistency
+                contours: properties?.contours || [{ 
+                    points: points, 
+                    isHole: false, 
+                    nestingLevel: 0, 
+                    parentId: null 
+                }],
                 getBounds: function() {
                     let minX = Infinity, minY = Infinity;
                     let maxX = -Infinity, maxY = -Infinity;
-                    this.points.forEach(p => {
-                        minX = Math.min(minX, p.x);
-                        minY = Math.min(minY, p.y);
-                        maxX = Math.max(maxX, p.x);
-                        maxY = Math.max(maxY, p.y);
-                    });
-                    // Include holes in bounds
-                    if (this.holes && this.holes.length > 0) {
-                        this.holes.forEach(hole => {
-                            hole.forEach(p => {
-                                minX = Math.min(minX, p.x);
-                                minY = Math.min(minY, p.y);
-                                maxX = Math.max(maxX, p.x);
-                                maxY = Math.max(maxY, p.y);
-                            });
+                    
+                    // Get bounds from all NON-HOLE contours
+                    if (this.contours && this.contours.length > 0) {
+                        this.contours.forEach(contour => {
+                            // Only include outer paths (non-holes) in the main bounds
+                            if (!contour.isHole && contour.points) {
+                                contour.points.forEach(p => {
+                                    minX = Math.min(minX, p.x);
+                                    minY = Math.min(minY, p.y);
+                                    maxX = Math.max(maxX, p.x);
+                                    maxY = Math.max(maxY, p.y);
+                                });
+                            }
+                        });
+                    } else if (this.points) {
+                        // Fallback if contours is missing but points exists
+                        this.points.forEach(p => {
+                            minX = Math.min(minX, p.x);
+                            minY = Math.min(minY, p.y);
+                            maxX = Math.max(maxX, p.x);
+                            maxY = Math.max(maxY, p.y);
                         });
                     }
                     return { minX, minY, maxX, maxY };

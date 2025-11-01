@@ -482,7 +482,6 @@
             if (typeof PathPrimitive !== 'undefined') {
                 const pathPrim = new PathPrimitive(enhancedPrimitive.points, enhancedPrimitive.properties);
                 pathPrim.arcSegments = enhancedPrimitive.arcSegments;
-                pathPrim.holes = enhancedPrimitive.holes || [];
                 return pathPrim;
             }
             

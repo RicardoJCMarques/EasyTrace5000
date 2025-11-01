@@ -502,7 +502,7 @@
             const startCapCenter = obroundData.startCapCenter;
             const endCapCenter = obroundData.endCapCenter;
             
-            const requestedPitch = Math.abs(this.settings.depthPerPass || 0.5);
+            const requestedPitch = Math.abs(this.settings.depthPerPass || 0.5); // Using fallback, not connected to UI? depthPerPass doesn't exist in this.settings = {
             const maxPitchForTool = toolDiameter * 0.5;
             const helixPitch = Math.min(requestedPitch, maxPitchForTool);
             const depthPerSemicircle = helixPitch * 0.5;

@@ -99,10 +99,10 @@
             this.points = points;
             this.closed = properties.closed !== false;
             this.arcSegments = properties.arcSegments || [];
-            this.curveIds = properties.curveIds || [];
-            
+
             // Unified contours system
             this.contours = properties.contours || [];
+            this.curveIds = properties.curveIds || [];
             
             // Auto-generate simple contour if not provided
             if (this.contours.length === 0 && this.points.length >= 3) {
@@ -110,14 +110,33 @@
                     points: this.points,
                     nestingLevel: 0,
                     isHole: false,
-                    parentId: null
+                    parentId: null,
+                    arcSegments: properties.arcSegments || []   // If contours are auto-generated, check properties for legacy arcSegments
                 }];
             }
+
+            // PRIORITIZE contours for top-level arcSegments, or use properties, or default to empty
+            this.arcSegments = (this.contours[0]?.arcSegments) || (properties.arcSegments) || [];
             
             // Update geometric context if this path contains arcs
             if (this.arcSegments.length > 0) {
                 this.geometricContext.containsArcs = true;
                 this.geometricContext.arcData = this.arcSegments;
+            }
+            
+            // Validate arc segments
+            if (this.arcSegments.length > 0 && this.points.length > 0) {
+                this.arcSegments.forEach((seg, idx) => {
+                    if (seg.startIndex < 0 || seg.startIndex >= this.points.length) {
+                        console.error(`[PathPrimitive] Invalid startIndex ${seg.startIndex} in arc segment ${idx}`);
+                    }
+                    if (seg.endIndex < 0 || seg.endIndex >= this.points.length) {
+                        console.error(`[PathPrimitive] Invalid endIndex ${seg.endIndex} in arc segment ${idx}`);
+                    }
+                    if (!seg.center || !isFinite(seg.radius) || seg.radius <= 0) {
+                        console.error(`[PathPrimitive] Invalid arc geometry in segment ${idx}:`, seg);
+                    }
+                });
             }
         }
         

@@ -165,10 +165,9 @@ Exported from the current canvas view.
             const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
             const colors = theme.layers;
             const isWireframe = this.core.options.showWireframe;
-            const wireframeColor = theme.debug?.wireframe || '#00ff00';
+            const wireframeColor = theme.debug?.wireframe;
             
-            // This log is still invaluable.
-            console.log(`[SVGExporter._createDefs] Exporting with isWireframe = ${isWireframe}`);
+            console.log(`[SVGExporter._createDefs] Generating styles. isWireframe = ${isWireframe}`);
             
             const wireframeStroke = `fill: none; stroke: ${wireframeColor}; stroke-width: 0.05;`;
             
@@ -313,87 +312,63 @@ Exported from the current canvas view.
          */
         _applySemanticClass(element, primitive, layer, isWireframe) {
             const props = primitive.properties || {};
+            // Get the layer state flags
+            const isPreprocessed = layer.isPreprocessed;
+            const isFused = layer.isFused;
+            // ... other flags
 
-            // if (debugConfig.enabled) {
-                console.log(
-                    `[SVGExporter._applySemanticClass] Checking primitive:`,
-                    `Type: ${primitive.type}`,
-                    `Layer: ${layer.name} (type: ${layer.type})`,
-                    `props.stroke: ${props.stroke}`,
-                    `props.isTrace: ${props.isTrace}`,
-                    `props.strokeWidth: ${props.strokeWidth}`
+            // Check for Preprocessed state
+            if (isPreprocessed) {
+                // Preprocessed geometry *always* uses fill, based on polarity
+                const polarity = props.polarity || 'dark';
+                element.setAttribute('class',
+                    polarity === 'clear' ? 'pcb-preprocessed-clear' : 'pcb-preprocessed-dark'
                 );
-            // }
+                // Ensure no stroke attributes are added later
+                element.removeAttribute('stroke');
+                element.removeAttribute('stroke-width');
+                return; // Styling is complete for preprocessed
+            }
 
-            // 1. Check for specific primitive types first (highest priority)
-            
-            // A primitive is stroked if it's explicitly a trace OR has stroke=true
-            // AND it's not a cutout (which has its own rule).
+            // If NOT preprocessed, continue with other checks...
             const isStrokedPath = (props.isTrace || props.stroke === true) && layer.type !== 'cutout';
 
             if (isStrokedPath) {
                 element.setAttribute('class', 'pcb-trace');
-
-                // Only set the inline stroke-width attribute in SOLID mode.
-                // In Wireframe mode, we OMIT this attribute so the CSS class can apply its width.
+                // Apply inline stroke-width ONLY if not in wireframe
                 if (!isWireframe) {
-                    // Traces MUST have their stroke-width set inline, as this is geometric data.
                     const strokeWidthValue = props.strokeWidth;
-                    let widthToSet = '0.1'; // Default fallback, matches renderer-primitives.js
-                    
+                    let widthToSet; // Fallback
                     if (typeof strokeWidthValue === 'number' && isFinite(strokeWidthValue) && strokeWidthValue > 0) {
-                         widthToSet = strokeWidthValue.toString();
+                        widthToSet = strokeWidthValue.toString();
                     }
-                    
-                    element.setAttribute('style', `stroke-width: ${widthToSet};`);
+                    // Use setAttribute('style', ...) OR individual stroke attributes
+                    element.setAttribute('stroke-width', widthToSet);
+                    // Ensure fill is none if setting stroke explicitly
+                    element.setAttribute('fill', 'none');
                 }
-                
                 return;
             }
-            
+
+            // Cutout check
             if (layer.type === 'cutout') {
                 element.setAttribute('class', 'pcb-cutout');
-                // Cutouts get their stroke-width from the CSS <style> block.
                 return;
             }
 
-            // 2. Check for dynamic strategy layers (Offsets/Previews)
-            if (layer.isPreview) {
-                element.setAttribute('class', 'pcb-preview');
-                const toolDiameter = layer.metadata?.toolDiameter || 
-                                     props.toolDiameter;
-                element.setAttribute('stroke', layer.color);
-                element.setAttribute('stroke-width', toolDiameter.toString());
-                return;
-            }
-
-            if (layer.isOffset) {
-                element.setAttribute('class', 'pcb-offset');
-                element.setAttribute('stroke', layer.color);
-                element.setAttribute('stroke-width', (2 / this.core.viewScale));
-                return;
-            }
-
-            // 3. Check for geometry state (Fused/Preprocessed)
-            if (layer.isFused) {
+            // Fused check
+            if (isFused) {
                 element.setAttribute('class', 'pcb-fused');
                 return;
             }
-            if (layer.isPreprocessed) {
-                const polarity = props.polarity || 'dark';
-                element.setAttribute('class', 
-                    polarity === 'clear' ? 'pcb-preprocessed-clear' : 'pcb-preprocessed-dark'
-                );
-                return;
-            }
-            
-            // 4. Fallback to source layer types
+
+            // Drill check
             if (layer.type === 'drill' || props.role === 'drill_hole' || props.role === 'peck_mark') {
                 element.setAttribute('class', 'pcb-source-drill');
                 return;
             }
-            
-            // Default (isolation, pads, regions, etc.)
+
+            // Default (Source Isolation, etc.)
             element.setAttribute('class', 'pcb-source-isolation');
         }
 
@@ -511,22 +486,41 @@ Exported from the current canvas view.
 
                 const endPointOfArc = points[arc.endIndex];
                 
-                let angleSpan = arc.endAngle - arc.startAngle;
-                if (arc.clockwise && angleSpan > 0) angleSpan -= 2 * Math.PI;
-                if (!arc.clockwise && angleSpan < 0) angleSpan += 2 * Math.PI;
+                // FIX 3: Use the pre-calculated sweep angle from the stitcher
+                let angleSpan = arc.sweepAngle;
+                
+                // Fallback if sweepAngle is missing (shouldn't happen with fixed stitcher)
+                if (angleSpan === undefined) {
+                    console.warn('[SVGExporter] arc.sweepAngle not found, recalculating...');
+                    angleSpan = arc.endAngle - arc.startAngle;
+                    if (arc.clockwise && angleSpan > 0) angleSpan -= 2 * Math.PI;
+                    if (!arc.clockwise && angleSpan < 0) angleSpan += 2 * Math.PI;
+                }
 
+                // Calculate flags
                 const largeArc = Math.abs(angleSpan) > Math.PI ? 1 : 0;
-                // Invert sweep-flag due to Y-axis flip in SVG transform
-                const sweep = !arc.clockwise ? 1 : 0; 
+                
+                // CORRECTED: SVG sweep-flag with Y-flip transform
+                // Your SVG has transform="scale(1,-1)" which inverts Y-axis
+                // This means our CW (in Y-down) becomes CCW (in Y-up after transform)
+                // SVG sweep-flag: 0=CCW, 1=CW (in the transformed coordinate system)
+                // Therefore: our_clockwise=true → transformed_CCW → SVG_sweep=0
+                const sweep = !arc.clockwise ? 1 : 0;  // Inverted mapping for Y-flip
 
                 pathParts.push(`A${p(arc.radius)},${p(arc.radius)} 0 ${largeArc} ${sweep} ${p(endPointOfArc.x)},${p(endPointOfArc.y)}`);
                 
                 currentIndex = arc.endIndex;
             }
 
-            // Draw remaining lines
-            for (let i = currentIndex + 1; i < points.length; i++) {
-                pathParts.push(`L${p(points[i].x)},${p(points[i].y)}`);
+            // Check if last arc wrapped to index 0 (closes path)
+            const lastArc = sortedArcs[sortedArcs.length - 1];
+            const pathClosedByArc = (lastArc && lastArc.endIndex === 0 && lastArc.startIndex > 0);
+
+            // Only add remaining lines if path NOT closed by wrap-around arc
+            if (!pathClosedByArc) {
+                for (let i = currentIndex + 1; i < points.length; i++) {
+                    pathParts.push(`L${p(points[i].x)},${p(points[i].y)}`);
+                }
             }
 
             if (primitive.closed !== false) {

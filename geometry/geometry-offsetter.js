@@ -151,11 +151,17 @@ class GeometryOffsetter {
         const isStroke = !isCutout && ((props.stroke && !props.fill) || props.isTrace);
         const isClosed = props.fill || (!props.stroke && path.closed) || isCutout;
 
-        if (path.arcSegments && path.arcSegments.length > 0 && isClosed && !isStroke) {
-            console.log(`[Offsetter] Path has ${path.arcSegments.length} arc segments, attempting analytic offset`);
+        // Check for arc segments in the new contours structure OR the legacy property
+        // The `arcSegments` property will now be present thanks to Step 1
+        const hasAnalyticArcs = (path.properties.arcSegments && path.properties.arcSegments.length > 0) ||
+                                (path.contours && path.contours[0]?.arcSegments?.length > 0) ||
+                                (path.arcSegments && path.arcSegments.length > 0);
+
+        if (hasAnalyticArcs && isClosed && !isStroke) {
+            const arcCount = (path.properties.arcSegments?.length) || (path.contours && path.contours[0]?.arcSegments?.length) || path.arcSegments.length;
+            console.log(`[Offsetter] Path has ${arcCount} arc segments, attempting analytic offset`);
             return this.offsetPathWithArcs(path, distance, options);
         }
-
 
         if (isStroke) {
             const originalWidth = props.strokeWidth || 0;
@@ -314,59 +320,89 @@ class GeometryOffsetter {
         const offsetDist = Math.abs(distance);
         const isInternal = distance < 0;
         
-        // For each segment, determine if it's a line or arc
+        // Read from contours structure
+        const sourceArcSegments = (path.contours && path.contours[0]?.arcSegments) || 
+                                path.arcSegments || [];
+        const sourcePoints = (path.contours && path.contours[0]?.points) || 
+                            path.points;
+        
+        if (!sourceArcSegments || sourceArcSegments.length === 0) {
+            return this.offsetPath(path, distance, options);
+        }
+        
+        const sortedArcs = sourceArcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
+
+        console.log(`[Offsetter] Input: ${sortedArcs.length} arcs, ${sourcePoints.length} points`);
+        sortedArcs.forEach((arc, i) => {
+            console.log(`  Arc ${i}: [${arc.startIndex}->${arc.endIndex}], r=${arc.radius.toFixed(3)}, ${arc.clockwise ? 'CW' : 'CCW'}`);
+        });
+
         let currentIdx = 0;
-        const sortedArcs = path.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
         
         for (const arcSeg of sortedArcs) {
-            // Process any line segments before this arc
+            // Process line segments before arc
             while (currentIdx < arcSeg.startIndex) {
-                const p1 = path.points[currentIdx];
-                const p2 = path.points[currentIdx + 1];
-                
-                if (p2) {
-                    // Calculate perpendicular offset for line segment
-                    const dx = p2.x - p1.x;
-                    const dy = p2.y - p1.y;
-                    const len = Math.hypot(dx, dy);
-                    
-                    if (len > this.precision) {
-                        const normalX = -dy / len;
-                        const normalY = dx / len;
-                        const sign = isInternal ? -1 : 1;
-                        
+                const p1 = sourcePoints[currentIdx];
+                const p2 = sourcePoints[currentIdx + 1];
+                if (p2 && Math.hypot(p2.x - p1.x, p2.y - p1.y) > this.precision) {
+                    const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy);
+                    const nx = -dy / len, ny = dx / len;
+                    const sign = isInternal ? -1 : 1;
+                    if (currentIdx === 0) {
                         newPoints.push({
-                            x: p1.x + normalX * offsetDist * sign,
-                            y: p1.y + normalY * offsetDist * sign
+                            x: p1.x + nx * offsetDist * sign,
+                            y: p1.y + ny * offsetDist * sign
                         });
                     }
                 }
                 currentIdx++;
             }
             
-            // Process the arc segment analytically
-            // For external offset: increase radius by offsetDist
-            // For internal offset: decrease radius by offsetDist
-            const newRadius = isInternal ? 
-                arcSeg.radius - offsetDist : 
-                arcSeg.radius + offsetDist;
+            // Offset the arc analytically
+            const newRadius = isInternal ? arcSeg.radius - offsetDist : arcSeg.radius + offsetDist;
             
             if (newRadius > this.precision) {
-                // Arc is still valid after offset
+                const offsetClockwise = arcSeg.clockwise;
+
+                const offsetCurveId = window.globalCurveRegistry?.register({
+                    type: 'arc',
+                    center: { ...arcSeg.center },
+                    radius: newRadius,
+                    startAngle: arcSeg.startAngle,
+                    endAngle: arcSeg.endAngle,
+                    clockwise: offsetClockwise,
+                    isOffsetDerived: true,
+                    offsetDistance: distance,
+                    source: 'analytic_offset'
+                });
+                
                 const startPtIdx = newPoints.length;
                 
-                // Calculate new start and end points on the offset arc
-                const startPt = {
+                newPoints.push({
                     x: arcSeg.center.x + newRadius * Math.cos(arcSeg.startAngle),
-                    y: arcSeg.center.y + newRadius * Math.sin(arcSeg.startAngle)
-                };
-                const endPt = {
+                    y: arcSeg.center.y + newRadius * Math.sin(arcSeg.startAngle),
+                    curveId: offsetCurveId,
+                    segmentIndex: 0
+                });
+                newPoints.push({
                     x: arcSeg.center.x + newRadius * Math.cos(arcSeg.endAngle),
-                    y: arcSeg.center.y + newRadius * Math.sin(arcSeg.endAngle)
-                };
+                    y: arcSeg.center.y + newRadius * Math.sin(arcSeg.endAngle),
+                    curveId: offsetCurveId,
+                    segmentIndex: 1
+                });
+
+                let sweepAngle = arcSeg.endAngle - arcSeg.startAngle;
                 
-                newPoints.push(startPt);
-                newPoints.push(endPt);
+                // Normalize to smallest absolute angle
+                while (sweepAngle > Math.PI) sweepAngle -= 2 * Math.PI;
+                while (sweepAngle < -Math.PI) sweepAngle += 2 * Math.PI;
+                
+                // Apply direction: CCW = positive, CW = negative
+                if (!offsetClockwise && sweepAngle < 0) {
+                    sweepAngle += 2 * Math.PI;
+                } else if (offsetClockwise && sweepAngle > 0) {
+                    sweepAngle -= 2 * Math.PI;
+                }
                 
                 newArcSegments.push({
                     startIndex: startPtIdx,
@@ -375,61 +411,67 @@ class GeometryOffsetter {
                     radius: newRadius,
                     startAngle: arcSeg.startAngle,
                     endAngle: arcSeg.endAngle,
-                    clockwise: arcSeg.clockwise
+                    clockwise: offsetClockwise,
+                    curveId: offsetCurveId,
+                    sweepAngle: sweepAngle
                 });
-                
-                console.log(`[Offsetter] Offset arc: r ${arcSeg.radius.toFixed(3)} -> ${newRadius.toFixed(3)}`);
-            } else {
-                console.warn(`[Offsetter] Arc collapsed after offset (r=${newRadius.toFixed(3)})`);
             }
-            
             currentIdx = arcSeg.endIndex;
         }
+
+        console.log(`[Offsetter] Output: ${newArcSegments.length} arcs, ${newPoints.length} points`);
+        newArcSegments.forEach((arc, i) => {
+            console.log(`  Arc ${i}: [${arc.startIndex}->${arc.endIndex}], r=${arc.radius.toFixed(3)}`);
+        });
         
-        // Handle any remaining line segments after last arc
-        while (currentIdx < path.points.length - 1) {
-            const p1 = path.points[currentIdx];
-            const p2 = path.points[currentIdx + 1];
-            
-            if (p2) {
-                const dx = p2.x - p1.x;
-                const dy = p2.y - p1.y;
-                const len = Math.hypot(dx, dy);
-                
-                if (len > this.precision) {
-                    const normalX = -dy / len;
-                    const normalY = dx / len;
+        // Check if last arc wrapped to start (closes path)
+        const pathClosedByArc = (currentIdx === 0 && sortedArcs.length > 0);
+        
+        // Remaining line segments (skip if path closed by arc)
+        if (!pathClosedByArc) {
+            while (currentIdx < sourcePoints.length - 1) {
+                const p1 = sourcePoints[currentIdx];
+                const p2 = sourcePoints[currentIdx + 1];
+                if (p2 && Math.hypot(p2.x - p1.x, p2.y - p1.y) > this.precision) {
+                    const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy);
+                    const nx = -dy / len, ny = dx / len;
                     const sign = isInternal ? -1 : 1;
-                    
                     newPoints.push({
-                        x: p1.x + normalX * offsetDist * sign,
-                        y: p1.y + normalY * offsetDist * sign
+                        x: p1.x + nx * offsetDist * sign,
+                        y: p1.y + ny * offsetDist * sign
                     });
                 }
+                currentIdx++;
             }
-            currentIdx++;
         }
         
-        // Close the path if needed
+        // Close path
         if (newPoints.length > 2) {
-            const first = newPoints[0];
-            const last = newPoints[newPoints.length - 1];
+            const first = newPoints[0], last = newPoints[newPoints.length - 1];
             if (Math.hypot(first.x - last.x, first.y - last.y) > this.precision) {
                 newPoints.push({ ...first });
             }
         }
         
+        // Store in contour structure
+        const offsetContour = {
+            points: newPoints,
+            isHole: false,
+            nestingLevel: 0,
+            parentId: null,
+            curveIds: newArcSegments.map(s => s.curveId).filter(Boolean),
+            arcSegments: newArcSegments
+        };
+        
         return new PathPrimitive(newPoints, {
             ...path.properties,
-            originalType: 'path_with_arcs',
             closed: true,
             fill: true,
-            stroke: false,
             isOffset: true,
             offsetDistance: distance,
             offsetType: isInternal ? 'internal' : 'external',
-            polygonized: false,
-            arcSegments: newArcSegments
+            arcSegments: newArcSegments,
+            contours: [offsetContour]
         });
     }
     

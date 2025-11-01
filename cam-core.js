@@ -229,7 +229,7 @@
                     units: gcodeConfig.units || 'mm'
                 },
                 ui: {
-                    theme: config.ui?.theme || 'dark',
+                    theme: config.ui?.theme,
                     showTooltips: config.ui?.showTooltips !== false
                 },
                 geometry: {
@@ -377,7 +377,13 @@
                 let primitives = plotResult.primitives;
                 
                 if (operation.type === 'cutout') {
-                    primitives = this.processCutoutPrimitives(primitives);
+                    if (primitives.length > 1) {
+                        const merged = this.mergeSegmentsIntoClosedPath(primitives);
+                        if (merged) {
+                            console.log(`[Core] Merged ${primitives.length} cutout segments into 1 closed path`);
+                            primitives = [merged];
+                        }
+                    }
                 }
                 
                 primitives = primitives.map(primitive => {
@@ -495,172 +501,314 @@
             return validPrimitives;
         }
         
-        processCutoutPrimitives(primitives) {
-            if (!primitives || primitives.length === 0) {
-                return primitives;
-            }
-
-            // This function acts as the entry point for the new merging logic.
-            // It attempts to stitch lines and arcs into a closed path.
-            const mergedPath = this.mergeSegmentsIntoClosedPath(primitives);
-
-            if (mergedPath) {
-                // if (debugConfig.enabled) {
-                    console.log(`[Core] Implicit region closure successful. Replaced ${primitives.length} segments with 1 closed path.`);
-                // }
-                // We return an array containing the SINGLE new primitive.
-                return [mergedPath];
-            }
-
-            // if (debugConfig.enabled) {
-                console.warn('[Core] Implicit region closure failed. Outline may have gaps. Rendering individual segments.');
-            // }
-            // If merging fails, return the original segments so the user can see the issue.
-            return primitives;
-        }
-
-        /**
-         * Stitches line and arc primitives into a single, closed PathPrimitive, preserving arc data.
-         */
         mergeSegmentsIntoClosedPath(segments) {
             if (!segments || segments.length < 2) return null;
 
-            const precision = geomConfig.coordinatePrecision || 0.001;
-            const usedIndices = new Set();
-            const stitchedPrimitives = []; // Stores the ordered, potentially reversed primitives
+            console.log('[Core] Merge input:', segments.map((s, i) => 
+                `[${i}] ${s.type} ${s.startPoint ? `(${s.startPoint.x.toFixed(1)},${s.startPoint.y.toFixed(1)})→(${s.endPoint.x.toFixed(1)},${s.endPoint.y.toFixed(1)})` : ''}`
+            ).join(', '));
 
+            const precision = geomConfig.coordinatePrecision || 0.001;
+            
+            // Step 1: Build adjacency graph
+            const graph = this.buildSegmentGraph(segments, precision);
+            
+            // Step 2: Find Eulerian path (if exists)
+            const orderedSegments = this.findClosedPath(graph, segments);
+            
+            if (!orderedSegments || orderedSegments.length !== segments.length) {
+                console.warn('[Core] Failed to create closed path from segments');
+                return null;
+            }
+            
+            // Step 3: Build final PathPrimitive with correct arc indices
+            return this.assembleClosedPath(orderedSegments, precision);
+        }
+
+        buildSegmentGraph(segments, precision) {
             const getEndpoints = (prim) => {
-                if (prim.type === 'arc') return { start: prim.startPoint, end: prim.endPoint };
-                if (prim.type === 'path' && prim.points.length >= 2) return { start: prim.points[0], end: prim.points[prim.points.length - 1] };
+                if (prim.type === 'arc') {
+                    return { start: prim.startPoint, end: prim.endPoint };
+                }
+                if (prim.type === 'path' && prim.points.length >= 2) {
+                    return { 
+                        start: prim.points[0], 
+                        end: prim.points[prim.points.length - 1] 
+                    };
+                }
                 return null;
             };
 
-            // Stitching Logic
-            let currentSegment = segments[0];
-            let endpoints = getEndpoints(currentSegment);
-            if (!endpoints) { console.warn("[Core] Cutout merge failed: First segment invalid."); return null; }
-            stitchedPrimitives.push(currentSegment);
-            usedIndices.add(0);
-            let lastPoint = endpoints.end;
-            let connectionsMade;
-            do {
-                connectionsMade = false;
-                for (let i = 0; i < segments.length; i++) {
-                    if (usedIndices.has(i)) continue;
-                    const nextSegment = segments[i];
-                    endpoints = getEndpoints(nextSegment);
-                    if (!endpoints) continue;
-                    let segmentToAdd = nextSegment;
-                    if (Math.hypot(endpoints.start.x - lastPoint.x, endpoints.start.y - lastPoint.y) < precision) { /* Match */ }
-                    else if (Math.hypot(endpoints.end.x - lastPoint.x, endpoints.end.y - lastPoint.y) < precision) {
-                        if (segmentToAdd.type === 'arc') segmentToAdd = segmentToAdd.reverse();
-                        else if (segmentToAdd.type === 'path') segmentToAdd = new PathPrimitive([segmentToAdd.points[1], segmentToAdd.points[0]], { ...segmentToAdd.properties, isReversed: true });
-                        else { console.warn("[Core] Cannot reverse primitive for stitching", segmentToAdd); continue; }
-                    }
-                    else { continue; }
-                    stitchedPrimitives.push(segmentToAdd);
-                    lastPoint = getEndpoints(segmentToAdd).end;
-                    usedIndices.add(i);
-                    connectionsMade = true;
+            const pointKey = (p) => {
+                return `${p.x.toFixed(4)},${p.y.toFixed(4)}`;
+            };
+
+            const graph = new Map(); // point key -> [{segmentIndex, direction, point}]
+            
+            segments.forEach((seg, idx) => {
+                const endpoints = getEndpoints(seg);
+                if (!endpoints) return;
+                
+                const startKey = pointKey(endpoints.start);
+                const endKey = pointKey(endpoints.end);
+                
+                // Add forward connection
+                if (!graph.has(startKey)) graph.set(startKey, []);
+                graph.get(startKey).push({
+                    segmentIndex: idx,
+                    direction: 'forward',
+                    nextPoint: endpoints.end
+                });
+                
+                // Add reverse connection
+                if (!graph.has(endKey)) graph.set(endKey, []);
+                graph.get(endKey).push({
+                    segmentIndex: idx,
+                    direction: 'reverse',
+                    nextPoint: endpoints.start
+                });
+            });
+
+            console.log('[Core] Graph built:', 
+                Array.from(graph.entries()).map(([key, conns]) => 
+                    `${key}: [${conns.map(c => `seg${c.segmentIndex}${c.direction[0]}`).join(',')}]`
+                ).join('; ')
+            );
+            
+            return graph;
+        }
+
+        findClosedPath(graph, segments) {
+            const pointKey = (p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`;
+            
+            // Find starting point (any point with connections)
+            let startKey = null;
+            for (const [key, connections] of graph.entries()) {
+                if (connections.length > 0) {
+                    startKey = key;
                     break;
                 }
-            } while (connectionsMade && usedIndices.size < segments.length);
+            }
+            
+            if (!startKey) return null;
+            
+            const used = new Set();
+            const path = [];
+            let currentKey = startKey;
+            
+            while (path.length < segments.length) {
+                const connections = graph.get(currentKey);
+                if (!connections) break;
+                
+                // Find unused connection
+                let found = false;
+                for (const conn of connections) {
+                    if (!used.has(conn.segmentIndex)) {
+                        used.add(conn.segmentIndex);
+                        
+                        // Store segment with direction info
+                        path.push({
+                            segment: segments[conn.segmentIndex],
+                            direction: conn.direction,
+                            originalIndex: conn.segmentIndex
+                        });
+                        
+                        currentKey = pointKey(conn.nextPoint);
+                        found = true;
+                        break;
+                    }
+                }
+                
+                if (!found) break;
+            }
+            
+            // Verify closed loop
+            if (path.length === segments.length) {
+                const firstStart = this.getSegmentStart(path[0].segment, path[0].direction);
+                const lastEnd = this.getSegmentEnd(path[path.length - 1].segment, path[path.length - 1].direction);
+                
+                const precision = 0.001;
+                if (Math.hypot(firstStart.x - lastEnd.x, firstStart.y - lastEnd.y) < precision) {
+                    return path;
+                }
+            }
+            
+            return null;
+        }
 
-            if (usedIndices.size !== segments.length) { console.warn(`[Core] Failed to merge all segments (${usedIndices.size}/${segments.length}).`); return null; }
+        getSegmentStart(segment, direction) {
+            if (segment.type === 'arc') {
+                return direction === 'forward' ? segment.startPoint : segment.endPoint;
+            }
+            if (segment.type === 'path') {
+                return direction === 'forward' ? 
+                    segment.points[0] : 
+                    segment.points[segment.points.length - 1];
+            }
+            return null;
+        }
 
-            // Construct the Final PathPrimitive
+        getSegmentEnd(segment, direction) {
+            if (segment.type === 'arc') {
+                return direction === 'forward' ? segment.endPoint : segment.startPoint;
+            }
+            if (segment.type === 'path') {
+                return direction === 'forward' ? 
+                    segment.points[segment.points.length - 1] : 
+                    segment.points[0];
+            }
+            return null;
+        }
+
+        assembleClosedPath(orderedSegments, precision) {
+            console.log('[Core] Stitched order:', orderedSegments.map((seg, i) => 
+                `[${i}] orig[${seg.originalIndex}] ${seg.segment.type} ${seg.direction}`
+            ).join(', '));
+
             const finalPoints = [];
             const finalArcSegments = [];
             
-            finalPoints.push(getEndpoints(stitchedPrimitives[0]).start); // Add P0
+            // Add first point
+            const firstSeg = orderedSegments[0];
+            const firstStart = this.getSegmentStart(firstSeg.segment, firstSeg.direction);
+            finalPoints.push(firstStart);
 
-            console.log("[DEBUG] Starting final path construction...");
+            // Determine path winding for validation
+            const tempPoints = orderedSegments.map(seg => 
+                this.getSegmentStart(seg.segment, seg.direction)
+            );
+            const pathWinding = GeometryUtils.calculateWinding(tempPoints);
+            const pathIsCCW = pathWinding > 0;
             
-            for (let idx = 0; idx < stitchedPrimitives.length; idx++) {
-                const prim = stitchedPrimitives[idx];
-                const currentPointIndex = finalPoints.length - 1; // Index of the point *before* adding the next one
-
-                if (prim.type === 'arc') {
-                    const nextPointIndex = currentPointIndex + 1; // Index where the endpoint will be added
-                    console.log(`[DEBUG] Adding Arc: StartIdx=${currentPointIndex}, TargetEndIdx=${nextPointIndex}, EndPt=(${prim.endPoint.x.toFixed(3)}, ${prim.endPoint.y.toFixed(3)})`);
-                    finalPoints.push(prim.endPoint); // Add P(i+1)
-                    if (prim.center && isFinite(prim.radius) && prim.radius > 0) {
-                    finalArcSegments.push({
-                        startIndex: currentPointIndex,
-                        endIndex: nextPointIndex,
-                        center: { x: prim.center.x, y: prim.center.y },
-                        radius: prim.radius,
-                        startAngle: prim.startAngle,
-                        endAngle: prim.endAngle,
-                        clockwise: prim.clockwise,
-                        // Add sweep angle for convenience
-                        sweepAngle: prim.endAngle - prim.startAngle
-                    });
-                    console.log(`[DEBUG] Added validated arc: idx ${currentPointIndex}->${nextPointIndex}, r=${prim.radius.toFixed(3)}`);
-                } else {
-                    console.warn(`[Core] Invalid arc data, skipping arc segment at index ${currentPointIndex}`);
-                };
-                } else if (prim.type === 'path') {
-                    console.log(`[DEBUG] Adding Path segment: EndPt=(${prim.points[1].x.toFixed(3)}, ${prim.points[1].y.toFixed(3)})`);
-                    finalPoints.push(prim.points[1]); // Add P(i+1)
+            // FIX 2: Updated log message (no longer claiming to invert arcs)
+            console.log(`[Core] Path winding: ${pathIsCCW ? 'CCW' : 'CW'} (preserving original arc directions)`);
+            
+            console.log("[Core] Assembling closed path from ordered segments");
+            
+            for (let idx = 0; idx < orderedSegments.length; idx++) {
+                const {segment, direction} = orderedSegments[idx];
+                const currentPointIndex = finalPoints.length - 1;
+                
+                if (segment.type === 'arc') {
+                    const arc = segment;
+                    const nextPointIndex = currentPointIndex + 1;
+                    
+                    // Handle segment reversal (swap endpoints and direction)
+                    let arcClockwise = arc.clockwise;
+                    let arcStartAngle = arc.startAngle;
+                    let arcEndAngle = arc.endAngle;
+                    let arcEndPoint = arc.endPoint;
+                    
+                    if (direction === 'reverse') {
+                        // Reversed segment: swap start/end and flip direction
+                        arcStartAngle = arc.endAngle;
+                        arcEndAngle = arc.startAngle;
+                        arcClockwise = !arc.clockwise;
+                        arcEndPoint = arc.startPoint;
+                    }
+                    
+                    // FIX 1: REMOVED the incorrect arc direction inversion block
+                    // The original Gerber data has correct arc directions
+                    console.log(`[Core]   Arc ${idx}: ${arcClockwise ? 'CW' : 'CCW'} (direction=${direction})`);
+                    
+                    finalPoints.push(arcEndPoint);
+                    
+                    if (isFinite(arc.radius) && arc.radius > 0) {
+                        // Calculate sweep angle (original logic works correctly now)
+                        let sweepAngle = arcEndAngle - arcStartAngle;
+                        
+                        // Normalize to smallest absolute angle
+                        while (sweepAngle > Math.PI) sweepAngle -= 2 * Math.PI;
+                        while (sweepAngle < -Math.PI) sweepAngle += 2 * Math.PI;
+                        
+                        // Apply direction: CCW = positive, CW = negative
+                        if (!arcClockwise && sweepAngle < 0) {
+                            sweepAngle += 2 * Math.PI;
+                        } else if (arcClockwise && sweepAngle > 0) {
+                            sweepAngle -= 2 * Math.PI;
+                        }
+                        
+                        finalArcSegments.push({
+                            startIndex: currentPointIndex,
+                            endIndex: nextPointIndex,
+                            center: arc.center,
+                            radius: arc.radius,
+                            startAngle: arcStartAngle,
+                            endAngle: arcEndAngle,
+                            clockwise: arcClockwise,
+                            sweepAngle: sweepAngle  // Store for SVG export
+                        });
+                        
+                        console.log(`[Core] Arc ${finalArcSegments.length - 1}: ${currentPointIndex}->${nextPointIndex}, r=${arc.radius.toFixed(3)}, sweep=${(sweepAngle * 180 / Math.PI).toFixed(1)}°, ${arcClockwise ? 'CW' : 'CCW'}`);
+                    }
+                    
+                } else if (segment.type === 'path') {
+                    console.log(`[Core] Path segment orig[${orderedSegments[idx].originalIndex}]: ${segment.points.length} points, ${direction}`);
+                    const points = direction === 'forward' ? 
+                        segment.points.slice(1) : 
+                        segment.points.slice(0, -1).reverse();
+                    console.log(`  Adding ${points.length} points:`, points.map(p => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`).join(' '));
+                    finalPoints.push(...points);
                 }
             }
             
-            // Handle index wrapping
+            // Remove duplicate closing point
             const originalEndPointIndex = finalPoints.length - 1;
-            if (originalEndPointIndex > 0 && Math.hypot(finalPoints[0].x - finalPoints[originalEndPointIndex].x, finalPoints[0].y - finalPoints[originalEndPointIndex].y) < precision) {
-                console.log("[DEBUG] Removing duplicate closing point and adjusting arc indices.");
-                finalPoints.pop(); // Remove duplicate closing point Pn which is same as P0
-                // Adjust any arc segment ending at the removed point to wrap around to index 0
+            if (originalEndPointIndex > 0 && 
+                Math.hypot(finalPoints[0].x - finalPoints[originalEndPointIndex].x,
+                        finalPoints[0].y - finalPoints[originalEndPointIndex].y) < precision) {
+                finalPoints.pop();
+                
+                // Adjust arc indices that referenced the removed point
                 finalArcSegments.forEach(seg => {
                     if (seg.endIndex === originalEndPointIndex) {
-                        seg.endIndex = 0; // Wrap endIndex to the start
-                        console.log(`[DEBUG]   Adjusted ArcSeg ${finalArcSegments.indexOf(seg)} endIndex to 0`);
+                        seg.endIndex = 0;
                     }
-                     // Also check startIndex in case the *first* segment was an arc ending at the start
                     if (seg.startIndex === originalEndPointIndex) {
-                         seg.startIndex = 0;
-                         console.log(`[DEBUG]   Adjusted ArcSeg ${finalArcSegments.indexOf(seg)} startIndex to 0`);
+                        seg.startIndex = 0;
                     }
                 });
             }
-
-
-            console.log(`[DEBUG] Final points: ${finalPoints.length}, Final arc segments: ${finalArcSegments.length}`);
-            finalArcSegments.forEach((seg, i) => console.log(`[DEBUG] ArcSeg ${i}: ${seg.startIndex}->${seg.endIndex}, CW=${seg.clockwise}, R=${seg.radius?.toFixed(3)}`));
-
-            const finalProperties = {
-                ...(segments[0].properties || {}),
-                isCutout: true, fill: true, stroke: false, closed: true,
-                mergedFromSegments: segments.length, polarity: 'dark',
-                arcSegments: finalArcSegments // Pass the final, potentially adjusted segments
+            
+            console.log(`[Core] Final path: ${finalPoints.length} points, ${finalArcSegments.length} arcs`);
+            
+            // Create the final primitive
+            const finalContour = {
+                points: finalPoints,
+                isHole: false,
+                nestingLevel: 0,
+                parentId: null,
+                curveIds: [],
+                arcSegments: finalArcSegments
             };
-
-            console.log('[DEBUG] Returning primitive with arcSegments:', finalArcSegments.length, 'Arc data:', finalArcSegments);
+            
+            const finalProperties = {
+                isCutout: true,
+                fill: true,
+                stroke: false,
+                closed: true,
+                mergedFromSegments: orderedSegments.length,
+                polarity: 'dark',
+                contours: [finalContour],
+                arcSegments: finalArcSegments
+            };
+            
             const finalPrimitive = new PathPrimitive(finalPoints, finalProperties);
-            console.log('[DEBUG] Final PathPrimitive object:', finalPrimitive);
+            
+            console.log('[Core] Final PathPrimitive structure:', {
+                type: finalPrimitive.type,
+                pointCount: finalPrimitive.points?.length,
+                arcSegmentsAtTop: finalPrimitive.arcSegments?.length || 0,
+                arcSegmentsInProperties: finalPrimitive.properties?.arcSegments?.length || 0,
+                arcSegmentsInContours: finalPrimitive.contours?.[0]?.arcSegments?.length || 0,
+                fullArcData: finalPrimitive.arcSegments,
+                properties: {
+                    isCutout: finalPrimitive.properties?.isCutout,
+                    closed: finalPrimitive.properties?.closed,
+                    hasContours: !!finalPrimitive.contours
+                }
+            });
 
-            // Validate the final primitive before returning
-            if (finalPrimitive.arcSegments && finalPrimitive.arcSegments.length > 0) {
-                console.log('[Core] Final merged primitive validation:');
-                console.log(`  - Point count: ${finalPrimitive.points.length}`);
-                console.log(`  - Arc segment count: ${finalPrimitive.arcSegments.length}`);
-                
-                finalPrimitive.arcSegments.forEach((seg, i) => {
-                    console.log(`  - Arc ${i}: ${seg.startIndex}->${seg.endIndex}, ` +
-                            `r=${seg.radius.toFixed(3)}, ` +
-                            `angles=${(seg.startAngle*180/Math.PI).toFixed(1)}° to ${(seg.endAngle*180/Math.PI).toFixed(1)}°, ` +
-                            `${seg.clockwise ? 'CW' : 'CCW'}`);
-                    
-                    // Validate indices
-                    if (seg.startIndex < 0 || seg.startIndex >= finalPrimitive.points.length) {
-                        console.error(`  - ERROR: Invalid startIndex ${seg.startIndex}`);
-                    }
-                    if (seg.endIndex < 0 || seg.endIndex >= finalPrimitive.points.length) {
-                        console.error(`  - ERROR: Invalid endIndex ${seg.endIndex}`);
-                    }
-                });
-            }
             return finalPrimitive;
         }
         
@@ -831,7 +979,8 @@
                             ...primitive.properties,
                             polarity: contour.isHole ? 'clear' : 'dark',
                             // Preserve curve metadata from contours
-                            curveIds: contour.curveIds || []
+                            curveIds: contour.curveIds || [],
+                            arcSegments: contour.arcSegments || []
                         });
                         // Transfer point-level curve metadata
                         contourPrimitive.points = contour.points; // Preserves curveId tags on points
@@ -898,15 +1047,70 @@
                 console.log(`[Core] Union of outers resulted in ${subjectGeometry.length} subject shape(s).`);
 
                 let finalPassGeometry;
-                if (polygonizedHoles.length > 0) {
-                    const clipGeometry = await this.geometryProcessor.unionGeometry(polygonizedHoles);
-                    console.log(`[Core] Union of holes resulted in ${clipGeometry.length} clip shape(s).`);
-                    console.log(`[Core] Performing DIFFERENCE operation...`);
-                    finalPassGeometry = await this.geometryProcessor.difference(subjectGeometry, clipGeometry);
+
+                // Check if we have a single, non-holed shape that was just analytically offset.
+                // The `offsetPathWithArcs` function guarantees the result will have `contours` and `arcSegments`.
+                const firstOuter = polygonizedOuters[0];
+                const isAnalytic = firstOuter &&
+                                   firstOuter.contours &&
+                                   firstOuter.contours[0]?.arcSegments?.length > 0;
+
+                // If it's just one analytic shape with no holes, we can skip the entire
+                // boolean/reconstruction pipeline, which would destroy the analytic data.
+                if (polygonizedOuters.length === 1 && polygonizedHoles.length === 0 && isAnalytic) {
+                    console.log(`[Core] Skipping boolean/reconstruction for single analytic path to preserve arcs.`);
+                    
+                    // We have our final geometry. We must assign properties and add it to passResults *here*, then skip the rest of the loop.
+                    
+                    finalPassGeometry = polygonizedOuters; // This is our analytic path
+                    
+                    // Map properties directly onto the analytic geometry
+                    const reconstructedGeometry = finalPassGeometry.map(p => {
+                        if (!p.properties) p.properties = {};
+                        p.properties.isOffset = true;
+                        p.properties.pass = passIndex + 1;
+                        p.properties.offsetDistance = distance;
+                        p.properties.offsetType = offsetType;
+                        return p;
+                    });
+
+                    // Add this pass to the results
+                    passResults.push({
+                        distance: distance,
+                        pass: passIndex + 1,
+                        offsetType: offsetType,
+                        primitives: reconstructedGeometry,
+                        metadata: {
+                            sourceCount: operation.primitives.length,
+                            offsetCount: offsetOuters.length + offsetHoles.length,
+                            unionCount: 0, // Skipped
+                            finalCount: reconstructedGeometry.length,
+                            generatedAt: Date.now(),
+                            toolDiameter: settings.tool?.diameter,
+                            analytic: true // Add a flag for debugging
+                        }
+                    });
+
+                    // Skip the rest of the loop for this pass
+                    continue;
+
                 } else {
-                    finalPassGeometry = subjectGeometry;
+                    // This is the original logic, which is correct for multiple shapes or shapes with holes.
+                    console.log(`[Core] Running boolean operations for complex geometry...`);
+                    const subjectGeometry = await this.geometryProcessor.unionGeometry(polygonizedOuters);
+                    console.log(`[Core] Union of outers resulted in ${subjectGeometry.length} subject shape(s).`);
+
+                    if (polygonizedHoles.length > 0) {
+                        const clipGeometry = await this.geometryProcessor.unionGeometry(polygonizedHoles);
+                        console.log(`[Core] Union of holes resulted in ${clipGeometry.length} clip shape(s).`);
+                        console.log(`[Core] Performing DIFFERENCE operation...`);
+                        finalPassGeometry = await this.geometryProcessor.difference(subjectGeometry, clipGeometry);
+                    } else {
+                        finalPassGeometry = subjectGeometry;
+                    }
                 }
                 
+                // This code is now ONLY reached by the 'else' block above.
                 console.log(`[Core] Boolean operations complete. Final geometry has ${finalPassGeometry.length} primitive(s).`);
 
                 console.log(`[Core] Running arc reconstruction...`);
