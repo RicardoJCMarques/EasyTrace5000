@@ -145,7 +145,8 @@
                 if (typeof GeometryOffsetter !== 'undefined') {
                     this.geometryOffsetter = new GeometryOffsetter({
                         precision: geomConfig.coordinatePrecision || 0.001,
-                        debug: debugConfig.enabled
+                        debug: debugConfig.enabled,
+                        miterLimit: geomConfig.offsetting?.miterLimit
                     });
                     
                     // Link processor for union operations
@@ -269,7 +270,7 @@
             return {
                 tool: defaultTool ? {
                     id: defaultTool.id,
-                    diameter: defaultTool.geometry?.diameter || defaultTool.diameter || 0.2,
+                    diameter: defaultTool.geometry?.diameter || defaultTool.diameter,
                     type: defaultTool.type
                 } : { ...operation.tool },
                 cutting: { ...operation.cutting },
@@ -972,7 +973,7 @@
 
                 } else if (primitive.contours && primitive.contours.length > 1) {
                     
-                    // This is a complex, pre-nested primitive (e.g., from a prior boolean op). We must un-pack it and trust the contour's .isHole flag.
+                    // This is a complex, pre-nested primitive (e.g., from a prior boolean op). Un-pack it and trust the contour's .isHole flag.
                     primitive.contours.forEach(contour => {
                         const contourPrimitive = this._createPathPrimitive(contour.points, {
                             ...primitive.properties,

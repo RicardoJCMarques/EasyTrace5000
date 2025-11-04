@@ -484,8 +484,7 @@
                 // Normal preview batching
                 const toolDiameter = layer.metadata?.toolDiameter || 
                                     primitive.properties?.toolDiameter ||
-                                    this.getToolDiameterForPrimitive(primitive) || 
-                                    0.2;
+                                    this.getToolDiameterForPrimitive(primitive);
                 
                 if (!batchesByTool.has(toolDiameter)) {
                     batchesByTool.set(toolDiameter, new Path2D());

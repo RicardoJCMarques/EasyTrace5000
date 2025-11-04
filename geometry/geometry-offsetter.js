@@ -28,6 +28,7 @@ class GeometryOffsetter {
     constructor(options = {}) {
         this.precision = options.precision || 0.001;
         this.debug = options.debug || false;
+        this.miterLimit = options.miterLimit;
         this.initialized = true;
         this.geometryProcessor = null;
     }
@@ -48,7 +49,7 @@ class GeometryOffsetter {
         if (isStroke) {
             const originalWidth = props.strokeWidth || 0;
             // totalWidth is the original trace width PLUS the isolation offset on both sides
-            // We use (distance * 2) directly, preserving the sign.
+            // Use (distance * 2) directly, preserving the sign.
             // +distance (isolation) will grow the width.
             // -distance (clear) will shrink the width.
             const totalWidth = originalWidth + (distance * 2);
@@ -189,8 +190,8 @@ class GeometryOffsetter {
     }
     
     /**
-     * - Internal offsets (distance < 0) are TRIMMED (mitered) to prevent self-intersection.
-     * - External offsets (distance > 0) are ROUNDED to preserve analytic curve data.
+     * - Internal offsets (distance < 0) are TRIMMED (mitered/beveled).
+     * - External offsets (distance > 0) are ROUNDED at convex corners and TRIMMED at reflex (concave) corners.
      */
     offsetPath(path, distance, options = {}) {
         if (!path.points || path.points.length < 2) {
@@ -210,7 +211,6 @@ class GeometryOffsetter {
         if (hasAnalyticArcs) {
             const arcCount = (path.properties.arcSegments?.length) || (path.contours && path.contours[0]?.arcSegments?.length) || path.arcSegments.length;
             console.log(`[Offsetter] Path has ${arcCount} arc segments, attempting analytic offset`);
-            // This function is in geometry-offsetter_r.js and is assumed to work
             return this.offsetPathWithArcs(path, distance, options);
         }
         
@@ -226,15 +226,13 @@ class GeometryOffsetter {
         if (n < 3) return null;
         
         // 3. Determine winding and normal direction
-        const isPathClockwise = GeometryUtils.isClockwise(polygonPoints); //
-        // normalDirection: -1 points "outward" (away from fill)
-        // normalDirection: +1 points "inward" (into fill)
+        const isPathClockwise = GeometryUtils.isClockwise(polygonPoints);
         let normalDirection = isInternal ? 1 : -1;
         if (isPathClockwise) {
             normalDirection *= -1;
         }
 
-        // 4. Create offset line segments
+        // 4. Create offset line segments (Same as before)
         const offsetSegments = [];
         for (let i = 0; i < n; i++) {
             const p1 = polygonPoints[i];
@@ -253,84 +251,56 @@ class GeometryOffsetter {
             });
         }
 
-        // 5. Process joints between segments
+        // 5. Process joints between segments (Refactored Loop)
         const finalPoints = [];
         const numSegs = offsetSegments.length;
         if (numSegs < 2) return null; // Need at least 2 segments to join
+
+        const miterLimit = (this.miterLimit) * offsetDist;
 
         for (let i = 0; i < numSegs; i++) {
             const seg1 = offsetSegments[i];
             const seg2 = offsetSegments[(i + 1) % numSegs];
             
-            // Add the start point of the first segment
+            // Add the start point of the first segment, once
             if (finalPoints.length === 0) {
                 finalPoints.push(seg1.p1);
             }
 
-            if (isInternal) {
-                // A. TRIM (Miter Joint) for ALL internal offsets
-                const intersection = this.lineLineIntersection( //
-                    seg1.p1, seg1.p2, // Line 1
-                    seg2.p1, seg2.p2  // Line 2
+            // Get original corner geometry
+            const curr = polygonPoints[(i + 1) % n];
+            const prev = polygonPoints[i];
+            const next = polygonPoints[(i + 2) % n];
+
+            const v1_vec = { x: curr.x - prev.x, y: curr.y - prev.y };
+            const v2_vec = { x: next.x - curr.x, y: next.y - curr.y };
+
+            // Calculate cross product to determine corner type
+            const crossProduct = (v1_vec.x * v2_vec.y) - (v1_vec.y * v2_vec.x);
+            const isReflexCorner = isPathClockwise ? (crossProduct > 0) : (crossProduct < 0);
+
+            // Determine joint type
+            const isMiterJoint = isInternal || isReflexCorner;
+
+            if (isMiterJoint) {
+                // A. MITER / BEVEL JOINT
+                // (Used for all internal corners and external reflex corners)(Can't handle global self-intersections with more than 1 mitter points)
+                const jointPoints = this._createMiterBevelJoint(
+                    seg1, seg2, curr, miterLimit
                 );
-                
-                if (intersection) {
-                    finalPoints.push(intersection);
-                } else {
-                    // Parallel lines, just add the segment's end point
-                    finalPoints.push(seg1.p2);
-                }
+                finalPoints.push(...jointPoints);
+
             } else {
-                // B. ROUNDED Joint for ALL external offsets
-                const curr = polygonPoints[(i + 1) % n];
-                const prev = polygonPoints[i];
-                const next = polygonPoints[(i + 2) % n];
-
-                const v1 = { x: curr.x - prev.x, y: curr.y - prev.y };
-                const v2 = { x: next.x - curr.x, y: next.y - curr.y };
-
-                // Add the end of the first segment
+                // B. ROUND JOINT
+                // (Used only for external convex corners)
+                // Add the end of the straight segment
                 finalPoints.push(seg1.p2);
-                
-                // Get normals
-                const len1 = Math.hypot(v1.x, v1.y);
-                const len2 = Math.hypot(v2.x, v2.y);
-                const n1 = { x: normalDirection * (-v1.y / len1), y: normalDirection * (v1.x / len1) };
-                const n2 = { x: normalDirection * (-v2.y / len2), y: normalDirection * (v2.x / len2) };
 
-                const angle1 = Math.atan2(n1.y, n1.x);
-                const angle2 = Math.atan2(n2.y, n2.x);
-                let angleDiff = angle2 - angle1;
-
-                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-
-                const jointIsClockwise = angleDiff < 0;
-
-                const jointCurveId = window.globalCurveRegistry.register({ //
-                    type: 'arc', center: { x: curr.x, y: curr.y }, radius: offsetDist,
-                    startAngle: angle1, endAngle: angle2, clockwise: jointIsClockwise,
-                    source: 'offset_joint', isOffsetDerived: true, offsetDistance: distance
-                });
-                
-                const fullCircleSegments = GeometryUtils.getOptimalSegments(offsetDist, 'circle'); //
-                const proportionalSegments = fullCircleSegments * (Math.abs(angleDiff) / (2 * Math.PI));
-                const arcSegments = Math.max(2, Math.ceil(proportionalSegments));
-                
-                // Generate arc points, skipping the first (which is seg1.p2)
-                for (let j = 1; j <= arcSegments; j++) {
-                    const t = j / arcSegments;
-                    const angle = angle1 + angleDiff * t;
-                    const point = {
-                        x: curr.x + offsetDist * Math.cos(angle), 
-                        y: curr.y + offsetDist * Math.sin(angle),
-                        curveId: jointCurveId, 
-                        segmentIndex: j, 
-                        totalSegments: arcSegments + 1, 
-                        t: t
-                    };
-                    finalPoints.push(point);
-                }
+                // Add the arc points for the joint
+                const arcPoints = this._createRoundJoint(
+                    curr, v1_vec, v2_vec, normalDirection, offsetDist, distance
+                );
+                finalPoints.push(...arcPoints);
             }
         }
         
@@ -339,7 +309,7 @@ class GeometryOffsetter {
             return null;
         }
         
-        // Close the final path
+        // 6. Close the final path (Same as before)
         const firstFinal = finalPoints[0];
         const lastFinal = finalPoints[finalPoints.length - 1];
         if (Math.hypot(firstFinal.x - lastFinal.x, firstFinal.y - lastFinal.y) > this.precision) {
@@ -351,6 +321,90 @@ class GeometryOffsetter {
             isOffset: true, offsetDistance: distance, offsetType: isInternal ? 'internal' : 'external',
             polygonized: true
         });
+    }
+
+    /**
+     * Calculates the points for a miter or bevel joint.
+     * @returns {Array<object>} An array containing 1 point (miter) or 2 points (bevel).
+     */
+    _createMiterBevelJoint(seg1, seg2, originalCorner, miterLimit) {
+        const intersection = this.lineLineIntersection(
+            seg1.p1, seg1.p2, // Line 1
+            seg2.p1, seg2.p2  // Line 2
+        );
+
+        if (intersection) {
+            // Check miter length
+            const miterLength = Math.hypot(intersection.x - originalCorner.x, intersection.y - originalCorner.y);
+
+            if (miterLength > miterLimit) {
+                // Miter limit exceeded. BEVEL the joint.
+                // Return the two endpoints of the parallel segments to create a flat cap.
+                return [seg1.p2, seg2.p1];
+            } else {
+                // Miter is within limit. Return the single intersection point.
+                return [intersection];
+            }
+        } else {
+            // Parallel lines (180 deg corner), just add the segment's end point.
+            // This will be joined to seg2.p1 by the next loop iteration.
+            return [seg1.p2];
+        }
+    }
+
+    /**
+     * Calculates the points for a round joint (external convex corner).
+     * @returns {Array<object>} An array containing the tessellated points for the arc.
+     */
+    _createRoundJoint(originalCorner, v1_vec, v2_vec, normalDirection, offsetDist, distance) {
+        // Get normals
+        const len1 = Math.hypot(v1_vec.x, v1_vec.y);
+        const len2 = Math.hypot(v2_vec.x, v2_vec.y);
+
+        if (len1 < this.precision || len2 < this.precision) {
+            return []; // Degenerate segment, add no arc points
+        }
+
+        const n1 = { x: normalDirection * (-v1_vec.y / len1), y: normalDirection * (v1_vec.x / len1) };
+        const n2 = { x: normalDirection * (-v2_vec.y / len2), y: normalDirection * (v2_vec.x / len2) };
+
+        const angle1 = Math.atan2(n1.y, n1.x);
+        const angle2 = Math.atan2(n2.y, n2.x);
+        let angleDiff = angle2 - angle1;
+
+        while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+        while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+        const jointIsClockwise = angleDiff < 0;
+
+        const jointCurveId = window.globalCurveRegistry.register({
+            type: 'arc', center: { x: originalCorner.x, y: originalCorner.y }, radius: offsetDist,
+            startAngle: angle1, endAngle: angle2, clockwise: jointIsClockwise,
+            source: 'offset_joint', isOffsetDerived: true, offsetDistance: distance
+        });
+        
+        const fullCircleSegments = GeometryUtils.getOptimalSegments(offsetDist, 'circle');
+        const proportionalSegments = fullCircleSegments * (Math.abs(angleDiff) / (2 * Math.PI));
+        const arcSegments = Math.max(2, Math.ceil(proportionalSegments));
+        
+        const arcPoints = [];
+        
+        // Generate arc points, skipping the first (which is seg1.p2)
+        for (let j = 1; j <= arcSegments; j++) {
+            const t = j / arcSegments;
+            const angle = angle1 + angleDiff * t;
+            const point = {
+                x: originalCorner.x + offsetDist * Math.cos(angle), 
+                y: originalCorner.y + offsetDist * Math.sin(angle),
+                curveId: jointCurveId, 
+                segmentIndex: j, 
+                totalSegments: arcSegments + 1, 
+                t: t
+            };
+            arcPoints.push(point);
+        }
+        
+        return arcPoints;
     }
 
     /**
@@ -585,7 +639,6 @@ class GeometryOffsetter {
         }
 
         // 1. Determine if the offset is internal (shrinking) or external (growing).
-        // A negative distance means the shape shrinks.
         const isInternal = distance < 0;
 
         // 2. Calculate the dimensions and position of the new, offset obround.
@@ -609,7 +662,6 @@ class GeometryOffsetter {
         }
 
         // 4. Create a new ObroundPrimitive using the calculated offset geometry.
-        // This leverages the existing robust logic for creating obround polygons and, critically, for registering their end-cap curves in the global registry.
         const offsetObroundPrimitive = new ObroundPrimitive(newPosition, newWidth, newHeight, {
             ...obround.properties
         });
@@ -623,7 +675,6 @@ class GeometryOffsetter {
         }
 
         // 6. Add the required offset metadata to the final PathPrimitive.
-        // This ensures the rest of the pipeline knows this is an offset-generated shape.
         offsetPath.properties = {
             ...offsetPath.properties,
             isOffset: true,
@@ -633,7 +684,6 @@ class GeometryOffsetter {
         };
         
         // 7. Post-process the newly registered curve IDs to mark them as offset-derived.
-        // This provides metadata for the arc reconstruction step.
         if (window.globalCurveRegistry && offsetPath.curveIds) {
             offsetPath.curveIds.forEach(id => {
                 const curve = window.globalCurveRegistry.getCurve(id);

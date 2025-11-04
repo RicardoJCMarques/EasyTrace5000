@@ -239,7 +239,7 @@
             // Milling previews use tool diameter stroke
             const toolDiameter = context.toolDiameter || 
                                 context.layer?.metadata?.toolDiameter || 
-                                primitive.properties?.toolDiameter || 0.2;
+                                primitive.properties?.toolDiameter;
             
             this._setStrokeState(color, toolDiameter);
             
