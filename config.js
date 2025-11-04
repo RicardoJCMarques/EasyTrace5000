@@ -379,6 +379,11 @@ window.PCBCAMConfig = {
             cutoutOnly: true, // Only apply to cutout operations
             warnOnFailure: true // Log a warning if merging fails
         },
+
+        simplification: { // For dense paths that need internal offsetting
+            enabled: true,
+            tolerance: 0.001 
+        },
         
         simplifyTolerance: 0.01,
         preserveArcs: true

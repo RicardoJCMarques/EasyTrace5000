@@ -112,21 +112,28 @@
                 if (i > 0 && linkType === 'rapid') { // Only check if we're not a staydown
                     const prevPlan = toolpathPlans[i - 1];
                     const prevMeta = prevPlan.metadata || {};
+
+                    // 1. Check if it's the same operation
                     const isSameOp = prevMeta.operationId === planMetadata.operationId;
-                    // Make sure cutDepth exists and is numeric before comparing
+
+                    // 2. Check if it's a deeper pass
                     const currentDepth = typeof planMetadata.cutDepth === 'number' ? planMetadata.cutDepth : 0;
                     const prevDepth = typeof prevMeta.cutDepth === 'number' ? prevMeta.cutDepth : 0;
                     const isDeeper = currentDepth < prevDepth;
-                    
+
+                    // 3. Check if it's at the same XY
                     const currentEntry = planMetadata.entryPoint || {x:0, y:0};
                     const prevExit = prevMeta.exitPoint || {x:0, y:0};
                     const isSameXY = Math.hypot(currentEntry.x - prevExit.x, currentEntry.y - prevExit.y) < 0.01;
                     
                     const isCutout = planMetadata.operationType === 'cutout';
-                    const sameClosedLoop = planMetadata.isClosedLoop; // prevMeta.isClosedLoop is implied
+                    const sameClosedLoop = planMetadata.isClosedLoop;
 
-                    if (isSameOp && isDeeper && (isSameXY || (isCutout && sameClosedLoop)) && !planMetadata.isPeckMark && !planMetadata.isDrillMilling) {
-                        isMultiDepthPlunge = true;
+                    // A multi-depth plunge is ONLY valid if it's the SAME operation AND deeper AND (at the same XY OR a closed cutout loop).
+                    if (isSameOp && isDeeper && !planMetadata.isPeckMark && !planMetadata.isDrillMilling) {
+                        if (isSameXY) {
+                             isMultiDepthPlunge = true;
+                        }
                     }
                 }
 
@@ -233,8 +240,7 @@
                     // 2. Next is deeper
                     // 3. Same XY position OR (for cutouts: same closed loop path)
                     // 4. Not a drill operation
-                    if (isSameOp && isDeeper && (isSameXY || (isCutout && sameClosedLoop)) && 
-                        !nextMeta.isPeckMark && !nextMeta.isDrillMilling) {
+                    if (isSameOp && isDeeper && isSameXY && !nextMeta.isPeckMark && !nextMeta.isDrillMilling) {
                         isNextMultiDepth = true;
                         
                         if (debugConfig.enabled) {
@@ -255,7 +261,7 @@
                     // No retract, Z stays at cutDepth for staydown or multi-depth
                     this.currentPosition.z = planMetadata.exitPoint.z;
                 }
-            } // End main loop
+            }
             
             // Final retract to safe Z
             const finalPlan = new ToolpathPlan('final');

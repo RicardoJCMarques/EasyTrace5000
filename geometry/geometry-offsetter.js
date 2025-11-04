@@ -221,6 +221,23 @@ class GeometryOffsetter {
         if (Math.hypot(first.x - last.x, first.y - last.y) < this.precision) {
             polygonPoints.pop(); // Remove duplicate closing point
         }
+
+        // De-noise the path before offsetting, ONLY for internal offsets.
+        const simplificationConfig = window.PCBCAMConfig?.geometry?.simplification;
+
+        if (isInternal && simplificationConfig?.enabled && polygonPoints.length > 10) {
+            // Read tolerance from the config file
+            const tolerance = simplificationConfig.tolerance || 0.001;
+            const sqTolerance = tolerance * tolerance;
+            
+            const originalCount = polygonPoints.length;
+            polygonPoints = this._simplifyDouglasPeucker(polygonPoints, sqTolerance);
+            const newCount = polygonPoints.length;
+
+            if (this.debug && originalCount > newCount) {
+                console.log(`[Offsetter] Simplified internal path from ${originalCount} to ${newCount} points.`);
+            }
+        }
         
         const n = polygonPoints.length;
         if (n < 3) return null;
@@ -279,12 +296,26 @@ class GeometryOffsetter {
             const crossProduct = (v1_vec.x * v2_vec.y) - (v1_vec.y * v2_vec.x);
             const isReflexCorner = isPathClockwise ? (crossProduct > 0) : (crossProduct < 0);
 
+            // Check for collinearity to handle tessellation noise
+            const len1 = Math.hypot(v1_vec.x, v1_vec.y);
+            const len2 = Math.hypot(v2_vec.x, v2_vec.y);
+            let dot = 0;
+
+            if (len1 > this.precision && len2 > this.precision) {
+                // Normalized dot product: 1 = 0°, 0 = 90°, -1 = 180°
+                dot = (v1_vec.x * v2_vec.x + v1_vec.y * v2_vec.y) / (len1 * len2);
+            }
+
+            // Segments are collinear (just noise) if dot is near 1 OR if segments are degenerate
+            const isCollinear = (dot > 0.995) || (len1 < this.precision) || (len2 < this.precision);
+
             // Determine joint type
-            const isMiterJoint = isInternal || isReflexCorner;
+            // Miter joint for internal offsets, reflex corners, OR collinear segments
+            const isMiterJoint = isInternal || isReflexCorner || isCollinear;
 
             if (isMiterJoint) {
                 // A. MITER / BEVEL JOINT
-                // (Used for all internal corners and external reflex corners)(Can't handle global self-intersections with more than 1 mitter points)
+                // (Used for all internal, reflex, and collinear corners)
                 const jointPoints = this._createMiterBevelJoint(
                     seg1, seg2, curr, miterLimit
                 );
@@ -292,7 +323,8 @@ class GeometryOffsetter {
 
             } else {
                 // B. ROUND JOINT
-                // (Used only for external convex corners)
+                // (Used *only* for external, convex, NON-collinear corners)
+                
                 // Add the end of the straight segment
                 finalPoints.push(seg1.p2);
 
@@ -703,6 +735,82 @@ class GeometryOffsetter {
         }
 
         return offsetPath;
+    }
+
+    /**
+     * Calculates the squared perpendicular distance from a point to a line segment.
+     */
+    _getSqDistToSegment(p, p1, p2) {
+        let x = p1.x, y = p1.y;
+        let dx = p2.x - x, dy = p2.y - y;
+
+        if (dx !== 0 || dy !== 0) {
+            const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
+            if (t > 1) {
+                x = p2.x; y = p2.y;
+            } else if (t > 0) {
+                x += dx * t; y += dy * t;
+            }
+        }
+
+        dx = p.x - x;
+        dy = p.y - y;
+        return dx * dx + dy * dy;
+    }
+
+    /**
+     * Simplifies a path using a non-recursive Douglas-Peucker algorithm.
+     * @param {Array<object>} points - The array of points to simplify.
+     * @param {number} sqTolerance - The squared simplification tolerance.
+     * @returns {Array<object>} The simplified array of points.
+     */
+    _simplifyDouglasPeucker(points, sqTolerance) {
+        if (points.length < 3) {
+            return points;
+        }
+
+        const len = points.length;
+        const markers = new Uint8Array(len); // Array to mark points to keep
+        markers[0] = 1;      // Always keep the first point
+        markers[len - 1] = 1; // Always keep the last point
+
+        const stack = [];
+        stack.push(0, len - 1); // Push the first and last indices
+
+        while (stack.length > 0) {
+            const last = stack.pop();
+            const first = stack.pop();
+
+            let maxSqDist = 0;
+            let index = first;
+
+            // Find the point farthest from the line segment (first, last)
+            for (let i = first + 1; i < last; i++) {
+                const sqDist = this._getSqDistToSegment(points[i], points[first], points[last]);
+                if (sqDist > maxSqDist) {
+                    index = i;
+                    maxSqDist = sqDist;
+                }
+            }
+
+            // If the max distance is greater than our tolerance, we need to keep this point
+            if (maxSqDist > sqTolerance) {
+                markers[index] = 1; // Mark the point
+                // Push the two new sub-segments onto the stack
+                if (index - first > 1) stack.push(first, index);
+                if (last - index > 1) stack.push(index, last);
+            }
+        }
+
+        // Build the new simplified path
+        const newPoints = [];
+        for (let i = 0; i < len; i++) {
+            if (markers[i]) {
+                newPoints.push(points[i]);
+            }
+        }
+
+        return newPoints;
     }
 }
 

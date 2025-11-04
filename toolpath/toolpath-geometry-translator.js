@@ -254,7 +254,7 @@
             const startX = center.x + radius;
             const startY = center.y;
             
-            plan.addLinear(startX, startY, depth, feedRate);
+            // plan.addLinear(startX, startY, depth, feedRate);
             plan.addArc(startX, startY, depth, -radius, 0, clockwise, feedRate);
         }
         
@@ -298,13 +298,13 @@
 
             // Add commands to plan
             if (clockwise) {
-                plan.addLinear(pA_x, pA_y, depth, feedRate);
+                // plan.addLinear(pA_x, pA_y, depth, feedRate);
                 plan.addLinear(pD_x, pD_y, depth, feedRate);
                 plan.addArc(pC_x, pC_y, depth, i2, j2, true, feedRate);
                 plan.addLinear(pB_x, pB_y, depth, feedRate);
                 plan.addArc(pA_x, pA_y, depth, i1, j1, true, feedRate);
             } else {
-                plan.addLinear(pA_x, pA_y, depth, feedRate);
+                // plan.addLinear(pA_x, pA_y, depth, feedRate);
                 plan.addArc(pB_x, pB_y, depth, i1, j1, false, feedRate);
                 plan.addLinear(pC_x, pC_y, depth, feedRate);
                 plan.addArc(pD_x, pD_y, depth, i2, j2, false, feedRate);
@@ -341,7 +341,7 @@
             const arcSegments = primitive.arcSegments || [];
             const processedArcs = new Set();
             
-            plan.addLinear(points[0].x, points[0].y, depth, feedRate);
+            // plan.addLinear(points[0].x, points[0].y, depth, feedRate);
             
             for (let i = 0; i < points.length - 1; i++) {
                 const arc = arcSegments.find(seg => 

@@ -345,7 +345,7 @@
             }
             
             return Array.from(groups.values()).sort((a, b) => 
-                (a[0].metadata.cutDepth || 0) - (b[0].metadata.cutDepth || 0)
+                (b[0].metadata.cutDepth || 0) - (a[0].metadata.cutDepth || 0)
             );
         }
         
@@ -758,33 +758,71 @@
                     z: cmd.z !== null && cmd.z !== undefined ? cmd.z : currentPos.z
                 };
 
-                // If it's not a linear move, just add it.
-                if (cmd.type !== 'LINEAR') {
+                // Check for ignorable, non-linear commands
+                let isIgnorableArc = false;
+                if (cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') {
+                    // Check the *arc length* of the arc (straight line from start to end)
+                    const arcLength = Math.hypot(cmdTargetPos.x - currentPos.x, cmdTargetPos.y - currentPos.y);
+                    
+                    // If the arc moves less than 0.01mm, it's an artifact.
+                    if (arcLength < 0.01) { 
+                        isIgnorableArc = true;
+                    }
+                }
+
+                // If it's a *significant* non-linear move, add it and continue.
+                if (cmd.type !== 'LINEAR' && !isIgnorableArc) {
                     simplified.push(cmd);
                     currentPos = cmdTargetPos; // Update position
                     i++;
                     continue; // Move to the next command
                 }
+                
+                // If it *is* LINEAR or an *ignorable arc*, process it as part of a linear sequence.
 
                 // The *true* start point of this sequence is the `currentPos` from before this command.
                 const sequenceStartPoint = { ...currentPos };
+                const linearSequenceCmds = [];
+                let sequenceEndPoint = cmdTargetPos; // End point of the *first* command
 
-                const linearSequenceCmds = [cmd];
-                let sequenceEndPoint = cmdTargetPos; // End point of the *first* linear command
-
-                // Greedily gather all subsequent linear commands
+                if (isIgnorableArc) {
+                    // Convert the ignorable arc to a LINEAR command so the simplifier can process it
+                    linearSequenceCmds.push(new MotionCommand('LINEAR', { x: cmd.x, y: cmd.y, z: cmd.z }, { feed: cmd.f }));
+                } else {
+                    linearSequenceCmds.push(cmd); // It's the first LINEAR cmd
+                }
+                
+                // Greedily gather all subsequent linear OR ignorable arc commands
                 let j = i + 1;
-                while (j < commands.length && commands[j].type === 'LINEAR') {
+                while (j < commands.length) {
                     const nextCmd = commands[j];
                     const nextCmdTargetPos = {
                         x: nextCmd.x !== null && nextCmd.x !== undefined ? nextCmd.x : sequenceEndPoint.x,
                         y: nextCmd.y !== null && nextCmd.y !== undefined ? nextCmd.y : sequenceEndPoint.y,
                         z: nextCmd.z !== null && nextCmd.z !== undefined ? nextCmd.z : sequenceEndPoint.z
                     };
+                    
+                    let isNextIgnorableArc = false;
+                    if (nextCmd.type === 'ARC_CW' || nextCmd.type === 'ARC_CCW') {
+                        const arcLength = Math.hypot(nextCmdTargetPos.x - sequenceEndPoint.x, nextCmdTargetPos.y - sequenceEndPoint.y);
+                        if (arcLength < 0.01) {
+                            isNextIgnorableArc = true;
+                        }
+                    }
 
-                    linearSequenceCmds.push(nextCmd);
-                    sequenceEndPoint = nextCmdTargetPos; // Update the end of the sequence
-                    j++;
+                    if (nextCmd.type === 'LINEAR' || isNextIgnorableArc) {
+                        // Add it to the sequence
+                        if (isNextIgnorableArc) {
+                            linearSequenceCmds.push(new MotionCommand('LINEAR', { x: nextCmd.x, y: nextCmd.y, z: nextCmd.z }, { feed: nextCmd.f }));
+                        } else {
+                            linearSequenceCmds.push(nextCmd);
+                        }
+                        sequenceEndPoint = nextCmdTargetPos; // Update the end of the sequence
+                        j++;
+                    } else {
+                        // It's a significant arc or other command, stop gathering.
+                        break;
+                    }
                 }
 
                 // Now we have a full sequence:
@@ -819,7 +857,6 @@
                 }
 
                 // Simplify this point sequence using a collinear check
-                // This is safer than DP as it only removes provably redundant points.
                 const simplifiedPoints = this.simplifyCollinearPoints(points);
 
                 // Rebuild command list from simplified points
@@ -847,17 +884,32 @@
 
             const simplified = [points[0]]; // Always keep the start point
 
+            // "Softer" (stricter) tolerance for short segments to preserve curves
+            const curveTolerance = (this.options.minSegmentLength / 100.0) || 0.0005; // e.g., 0.0005mm
+
+            // "Aggressive" (looser) tolerance for long segments to remove collinear points
+            const straightTolerance = (this.options.minSegmentLength / 10.0) || 0.005; // e.g., 0.005mm
+
+            // The segment length at which we switch from "curve" to "straight" logic.
+            // (e.g., 0.5mm)
+            const segmentThreshold = this.options.minSegmentLength * 10 || 0.5; 
+
             for (let i = 1; i < points.length - 1; i++) {
                 const p0 = simplified[simplified.length - 1]; // Last *kept* point
                 const p1 = points[i];
                 const p2 = points[i + 1];
 
-                // Use the perpendicular distance (which you already have) as the collinearity check.
-                const tolerance = (this.options.minSegmentLength / 10.0) || 0.001;
                 const dist = this.perpendicularDistance(p1, p0, p2);
+                
+                // Get the length of the segment leading *into* the point we are checking
+                const segmentLength = Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
 
-                if (dist >= tolerance) {
-                    simplified.push(p1); // Keep p1, it forms a corner
+                // Apply the correct tolerance
+                const effectiveTolerance = (segmentLength < segmentThreshold) ? curveTolerance : straightTolerance;
+                
+                // Keep the point if it deviates more than the *effective* tolerance
+                if (dist >= effectiveTolerance) {
+                    simplified.push(p1); 
                 }
                 // If collinear (dist < tolerance), p1 is dropped.
                 // The next check will be against (p0, p2, p3), which is correct.
