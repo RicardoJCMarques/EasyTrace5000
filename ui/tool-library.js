@@ -437,7 +437,6 @@
         }
     }
     
-    // Export
     window.ToolLibrary = ToolLibrary;
     
 })();

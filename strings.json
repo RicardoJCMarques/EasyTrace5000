@@ -1,6 +1,15 @@
 {
+  "_projectInfo": {
+    "file": "strings.json",
+    "description": "Language translations",
+    "author": "Eltryus - Ricardo Marques",
+    "see": "https://github.com/RicardoJCMarques/EasyTrace5000",
+    "license": "AGPL-3.0-or-later",
+    "copyright": "Copyright (C) 2025 Eltryus"
+  },
+
   "language": "en",
-  "version": "1.0",
+  "version": "0.1",
   "strings": {
     "app": {
       "title": "PCB CAM - Advanced Workspace",

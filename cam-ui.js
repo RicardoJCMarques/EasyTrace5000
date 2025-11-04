@@ -543,7 +543,6 @@
 
         try {
             // The SVGExporter will handle the download internally.
-            // This single call is all that's needed. The svgExporter will read the renderer's current layers (source, fused, etc.) and export them.
             this.svgExporter.exportSVG(); 
             this.updateStatus('SVG exported successfully', 'success');
         } catch (error) {

@@ -258,7 +258,6 @@
 
         /**
          * Calculates the total angular sweep of a set of points around a center.
-         * NOW INCLUDES THE CLOSING SEGMENT FOR CLOSED PATHS.
          * @param {Array<object>} points The points of the curve segment.
          * @param {object} center The center of the original curve.
          * @param {boolean} isClosed - Whether to include the sweep from the last point to the first.
@@ -302,7 +301,8 @@
         attemptFullCircleReconstruction(group, primitive) {
             const curveData = this.getCurve(group.curveId); //
             if (!curveData || curveData.type !== 'circle') { //
-                return null; //
+                console.log(`[ArcReconstructor] Failed curve data check for ID ${group.curveId}.`);
+                return null;
             }
 
             const totalSweep = this.calculateAngularSweep(group.points, curveData.center, primitive.closed);
@@ -315,7 +315,7 @@
                     return new CirclePrimitive(
                         curveData.center,
                         curveData.radius,
-                        { //
+                        {
                             ...primitive.properties,
                             reconstructed: true,
                             originalCurveId: group.curveId,

@@ -1,6 +1,6 @@
 /**
  * @file        cam-core.js
- * @description Core application logic
+ * @description Core application logic - updated for centralized tessellation
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -60,7 +60,7 @@
                     this.fileTypes[type] = {
                         extensions: op.extensions || [],
                         description: op.name || `Files for ${type} operation`,
-                        icon: op.icon || 'ðŸ“„',
+                        icon: op.icon || '📄',
                         color: op.color || '#888888'
                     };
                 }
@@ -121,10 +121,10 @@
             let allAvailable = true;
             requiredClasses.forEach(className => {
                 if (typeof window[className] === 'undefined') {
-                    console.error(`âŒ ${className} not available`);
+                    console.error(`❌ ${className} not available`);
                     allAvailable = false;
                 } else if (debugConfig.enabled) {
-                    console.log(`âœ… ${className} available`);
+                    console.log(`✓ ${className} available`);
                 }
             });
             
@@ -334,7 +334,6 @@
                         throw new Error('SVG parser not available');
                     }
                     const parser = new SVGParser({ debug: debugConfig.enabled });
-                    // The new SVGParser returns the same structure as GerberParser, so we can use its result directly.
                     parseResult = parser.parse(operation.file.content);
                 } else if (operation.type === 'drill') {
                     if (typeof ExcellonParser === 'undefined') {
@@ -355,7 +354,6 @@
                     return false;
                 }
                 
-                // The plotter now receives a consistent input format regardless of the source.
                 operation.parsed = parseResult;
                 
                 if (typeof ParserPlotter === 'undefined') {
@@ -366,7 +364,6 @@
                     markStrokes: true
                 });
                 
-                // The plotter expects the full parseResult object, which contains `layers` or `drillData`
                 const plotResult = plotter.plot(parseResult);
                 
                 if (!plotResult.success) {
@@ -375,6 +372,14 @@
                 }
                 
                 let primitives = plotResult.primitives;
+
+                //Debug check
+                const polarityCounts = primitives.reduce((acc, p) => {
+                    const polarity = p.properties?.polarity || 'dark';
+                    acc[polarity] = (acc[polarity] || 0) + 1;
+                    return acc;
+                }, {});
+                console.log(`[Core.parseOperation] Plotter returned ${primitives.length} primitives. Polarities:`, polarityCounts);
                 
                 if (operation.type === 'cutout') {
                     if (primitives.length > 1) {
@@ -388,7 +393,10 @@
                 
                 primitives = primitives.map(primitive => {
                     if (!primitive.properties) primitive.properties = {};
-                    primitive.properties.polarity = 'dark';
+                    // Respect the polarity from the plotter, only default to 'dark' if it's not already set.
+                    if (primitive.properties.polarity === undefined) {
+                        primitive.properties.polarity = 'dark';
+                    }
                     primitive.properties.operationType = operation.type;
                     primitive.properties.operationId = operation.id;
                     primitive.properties.layerType = operation.type === 'drill' ? 'drill' : operation.type;
@@ -404,8 +412,7 @@
                 this.updateStatistics();
                 operation.processed = true;
                 this.isToolpathCacheValid = false;
-
-               
+                
                 if (debugConfig.logging?.parseOperations) {
                     console.log(`Parsed ${operation.file.name}: ${operation.primitives.length} primitives`);
                 }
@@ -543,7 +550,7 @@
                 return `${p.x.toFixed(4)},${p.y.toFixed(4)}`;
             };
 
-            const graph = new Map(); // point key -> [{segmentIndex, direction, point}]
+            const graph = new Map();
             
             segments.forEach((seg, idx) => {
                 const endpoints = getEndpoints(seg);
@@ -581,7 +588,7 @@
         findClosedPath(graph, segments) {
             const pointKey = (p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`;
             
-            // Find starting point (any point with connections)
+            // Find starting point
             let startKey = null;
             for (const [key, connections] of graph.entries()) {
                 if (connections.length > 0) {
@@ -673,17 +680,14 @@
             const firstStart = this.getSegmentStart(firstSeg.segment, firstSeg.direction);
             finalPoints.push(firstStart);
 
-            // Determine path winding for validation
+            // Determine path winding
             const tempPoints = orderedSegments.map(seg => 
                 this.getSegmentStart(seg.segment, seg.direction)
             );
             const pathWinding = GeometryUtils.calculateWinding(tempPoints);
             const pathIsCCW = pathWinding > 0;
             
-            // FIX 2: Updated log message (no longer claiming to invert arcs)
-            console.log(`[Core] Path winding: ${pathIsCCW ? 'CCW' : 'CW'} (preserving original arc directions)`);
-            
-            console.log("[Core] Assembling closed path from ordered segments");
+            console.log(`[Core] Path winding: ${pathIsCCW ? 'CCW' : 'CW'} (preserving arc directions)`);
             
             for (let idx = 0; idx < orderedSegments.length; idx++) {
                 const {segment, direction} = orderedSegments[idx];
@@ -693,7 +697,7 @@
                     const arc = segment;
                     const nextPointIndex = currentPointIndex + 1;
                     
-                    // Handle segment reversal (swap endpoints and direction)
+                    // Handle segment reversal
                     let arcClockwise = arc.clockwise;
                     let arcStartAngle = arc.startAngle;
                     let arcEndAngle = arc.endAngle;
@@ -707,21 +711,19 @@
                         arcEndPoint = arc.startPoint;
                     }
                     
-                    // FIX 1: REMOVED the incorrect arc direction inversion block
-                    // The original Gerber data has correct arc directions
                     console.log(`[Core]   Arc ${idx}: ${arcClockwise ? 'CW' : 'CCW'} (direction=${direction})`);
                     
                     finalPoints.push(arcEndPoint);
                     
                     if (isFinite(arc.radius) && arc.radius > 0) {
-                        // Calculate sweep angle (original logic works correctly now)
+                        // Calculate sweep angle
                         let sweepAngle = arcEndAngle - arcStartAngle;
                         
                         // Normalize to smallest absolute angle
                         while (sweepAngle > Math.PI) sweepAngle -= 2 * Math.PI;
                         while (sweepAngle < -Math.PI) sweepAngle += 2 * Math.PI;
                         
-                        // Apply direction: CCW = positive, CW = negative
+                        // Apply direction
                         if (!arcClockwise && sweepAngle < 0) {
                             sweepAngle += 2 * Math.PI;
                         } else if (arcClockwise && sweepAngle > 0) {
@@ -736,7 +738,7 @@
                             startAngle: arcStartAngle,
                             endAngle: arcEndAngle,
                             clockwise: arcClockwise,
-                            sweepAngle: sweepAngle  // Store for SVG export
+                            sweepAngle: sweepAngle
                         });
                         
                         console.log(`[Core] Arc ${finalArcSegments.length - 1}: ${currentPointIndex}->${nextPointIndex}, r=${arc.radius.toFixed(3)}, sweep=${(sweepAngle * 180 / Math.PI).toFixed(1)}°, ${arcClockwise ? 'CW' : 'CCW'}`);
@@ -747,7 +749,6 @@
                     const points = direction === 'forward' ? 
                         segment.points.slice(1) : 
                         segment.points.slice(0, -1).reverse();
-                    console.log(`  Adding ${points.length} points:`, points.map(p => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`).join(' '));
                     finalPoints.push(...points);
                 }
             }
@@ -759,7 +760,7 @@
                         finalPoints[0].y - finalPoints[originalEndPointIndex].y) < precision) {
                 finalPoints.pop();
                 
-                // Adjust arc indices that referenced the removed point
+                // Adjust arc indices
                 finalArcSegments.forEach(seg => {
                     if (seg.endIndex === originalEndPointIndex) {
                         seg.endIndex = 0;
@@ -795,20 +796,6 @@
             
             const finalPrimitive = new PathPrimitive(finalPoints, finalProperties);
             
-            console.log('[Core] Final PathPrimitive structure:', {
-                type: finalPrimitive.type,
-                pointCount: finalPrimitive.points?.length,
-                arcSegmentsAtTop: finalPrimitive.arcSegments?.length || 0,
-                arcSegmentsInProperties: finalPrimitive.properties?.arcSegments?.length || 0,
-                arcSegmentsInContours: finalPrimitive.contours?.[0]?.arcSegments?.length || 0,
-                fullArcData: finalPrimitive.arcSegments,
-                properties: {
-                    isCutout: finalPrimitive.properties?.isCutout,
-                    closed: finalPrimitive.properties?.closed,
-                    hasContours: !!finalPrimitive.contours
-                }
-            });
-
             return finalPrimitive;
         }
         
@@ -940,10 +927,6 @@
             return this.operations.some(op => op.primitives && op.primitives.length > 0);
         }
         
-        // =====================================================================
-        // UNIFIED OFFSET PIPELINE: Bidirectional inflation with winding selection
-        // =====================================================================
-        
         // Calculate signed area of a polygon
         calculateSignedArea(points) {
             if (!points || points.length < 3) return 0;
@@ -973,17 +956,31 @@
             const holeContours = [];
             
             operation.primitives.forEach(primitive => {
-                if (primitive.contours && primitive.contours.length > 0) {
+                // Get the polarity from the primitive itself. This is what the plotter sets and parseOperation now correctly preserves.
+                const primitivePolarity = primitive.properties?.polarity || 'dark';
+
+                // Check if this is a simple, non-nested primitive.
+                // The constructor auto-creates a single contour.
+                if (primitive.contours && primitive.contours.length === 1) {
+                    
+                    // This is a simple primitive. Trust the PRIMITIVE's polarity, not the contour's default 'isHole: false' property.
+                    if (primitivePolarity === 'clear') {
+                        holeContours.push(primitive);
+                    } else {
+                        outerContours.push(primitive);
+                    }
+
+                } else if (primitive.contours && primitive.contours.length > 1) {
+                    
+                    // This is a complex, pre-nested primitive (e.g., from a prior boolean op). We must un-pack it and trust the contour's .isHole flag.
                     primitive.contours.forEach(contour => {
                         const contourPrimitive = this._createPathPrimitive(contour.points, {
                             ...primitive.properties,
-                            polarity: contour.isHole ? 'clear' : 'dark',
-                            // Preserve curve metadata from contours
-                            curveIds: contour.curveIds || [],
-                            arcSegments: contour.arcSegments || []
+                            polarity: contour.isHole ? 'clear' : 'dark', // Trust contour's property
+                            arcSegments: contour.arcSegments || [],
+                            curveIds: contour.curveIds || []
                         });
-                        // Transfer point-level curve metadata
-                        contourPrimitive.points = contour.points; // Preserves curveId tags on points
+                        contourPrimitive.points = contour.points;
                         
                         if (contour.isHole) {
                             holeContours.push(contourPrimitive);
@@ -991,8 +988,14 @@
                             outerContours.push(contourPrimitive);
                         }
                     });
+
                 } else {
-                    outerContours.push(primitive);
+                    // Fallback for primitives with no contours at all
+                    if (primitivePolarity === 'clear') {
+                        holeContours.push(primitive);
+                    } else {
+                        outerContours.push(primitive);
+                    }
                 }
             });
             
@@ -1011,12 +1014,11 @@
                 for (const primitive of outerContours) {
                     const role = primitive.properties?.role;
                     
-                    // Skip drill primitives - they're handled by generateDrillStrategy()
+                    // Skip drill primitives
                     if (role === 'drill_hole' || role === 'drill_slot') {
                         continue;
                     }
                     
-                    // Normal offset for isolation/clear/cutout
                     const result = await this.geometryOffsetter.offsetPrimitive(primitive, distance, settings);
                     if (result) {
                         Array.isArray(result) ? offsetOuters.push(...result) : offsetOuters.push(result);
@@ -1033,8 +1035,9 @@
                 
                 console.log(`[Core] Offset generated: ${offsetOuters.length} outer shapes, ${offsetHoles.length} hole shapes.`);
                 
-                const polygonizedOuters = offsetOuters.map(p => this.geometryProcessor.standardizePrimitive(p)).filter(Boolean);
-                const polygonizedHoles = offsetHoles.map(p => this.geometryProcessor.standardizePrimitive(p)).filter(Boolean);
+                // Use centralized tessellation for polygonization
+                const polygonizedOuters = offsetOuters.map(p => this.tessellateForProcessor(p)).filter(Boolean);
+                const polygonizedHoles = offsetHoles.map(p => this.tessellateForProcessor(p)).filter(Boolean);
 
                 console.log(`[Core] Polygonized to: ${polygonizedOuters.length} outer paths, ${polygonizedHoles.length} hole paths.`);
 
@@ -1048,23 +1051,17 @@
 
                 let finalPassGeometry;
 
-                // Check if we have a single, non-holed shape that was just analytically offset.
-                // The `offsetPathWithArcs` function guarantees the result will have `contours` and `arcSegments`.
+                // Check for single analytic shape
                 const firstOuter = polygonizedOuters[0];
                 const isAnalytic = firstOuter &&
                                    firstOuter.contours &&
                                    firstOuter.contours[0]?.arcSegments?.length > 0;
 
-                // If it's just one analytic shape with no holes, we can skip the entire
-                // boolean/reconstruction pipeline, which would destroy the analytic data.
                 if (polygonizedOuters.length === 1 && polygonizedHoles.length === 0 && isAnalytic) {
-                    console.log(`[Core] Skipping boolean/reconstruction for single analytic path to preserve arcs.`);
+                    console.log(`[Core] Skipping boolean/reconstruction for single analytic path.`);
                     
-                    // We have our final geometry. We must assign properties and add it to passResults *here*, then skip the rest of the loop.
+                    finalPassGeometry = polygonizedOuters;
                     
-                    finalPassGeometry = polygonizedOuters; // This is our analytic path
-                    
-                    // Map properties directly onto the analytic geometry
                     const reconstructedGeometry = finalPassGeometry.map(p => {
                         if (!p.properties) p.properties = {};
                         p.properties.isOffset = true;
@@ -1074,7 +1071,6 @@
                         return p;
                     });
 
-                    // Add this pass to the results
                     passResults.push({
                         distance: distance,
                         pass: passIndex + 1,
@@ -1083,19 +1079,17 @@
                         metadata: {
                             sourceCount: operation.primitives.length,
                             offsetCount: offsetOuters.length + offsetHoles.length,
-                            unionCount: 0, // Skipped
+                            unionCount: 0,
                             finalCount: reconstructedGeometry.length,
                             generatedAt: Date.now(),
                             toolDiameter: settings.tool?.diameter,
-                            analytic: true // Add a flag for debugging
+                            analytic: true
                         }
                     });
 
-                    // Skip the rest of the loop for this pass
                     continue;
 
                 } else {
-                    // This is the original logic, which is correct for multiple shapes or shapes with holes.
                     console.log(`[Core] Running boolean operations for complex geometry...`);
                     const subjectGeometry = await this.geometryProcessor.unionGeometry(polygonizedOuters);
                     console.log(`[Core] Union of outers resulted in ${subjectGeometry.length} subject shape(s).`);
@@ -1110,7 +1104,6 @@
                     }
                 }
                 
-                // This code is now ONLY reached by the 'else' block above.
                 console.log(`[Core] Boolean operations complete. Final geometry has ${finalPassGeometry.length} primitive(s).`);
 
                 console.log(`[Core] Running arc reconstruction...`);
@@ -1158,7 +1151,7 @@
                     passes: passResults.length,
                     settings: { ...settings },
                     metadata: {
-                       sourceCount: operation.primitives.length,
+                        sourceCount: operation.primitives.length,
                         totalPrimitives: allPassPrimitives.length,
                         passCount: passResults.length,
                         generatedAt: Date.now(),
@@ -1181,10 +1174,9 @@
             operation.offsets.forEach(offsetGroup => {
                 const oversizedMarks = offsetGroup.primitives.filter(p => p.properties?.oversized);
                 if (oversizedMarks.length > 0) {
-                    const warningMsg = `Warning: ${oversizedMarks.length} hole(s) have tool diameter larger than hole diameter. Check pad clearances.`;
+                    const warningMsg = `Warning: ${oversizedMarks.length} hole(s) have tool diameter larger than hole diameter.`;
                     console.warn(`[Core] ${warningMsg}`);
                     
-                    // Store warning in operation for UI display
                     if (!operation.warnings) operation.warnings = [];
                     operation.warnings.push({
                         type: 'oversized-drill',
@@ -1203,11 +1195,28 @@
             this.isToolpathCacheValid = false;
             return operation.offsets;
         }
+        
+        // Helper to tessellate primitives for processor
+        tessellateForProcessor(primitive) {
+            if (primitive.type === 'path') {
+                // If it's a path, check if it has analytic segments that the processor might not understand (e.g., from cutout merge)
+                if (primitive.arcSegments && primitive.arcSegments.length > 0) {
+                    // Re-tessellate the path using its own analytic data
+                    return primitive;
+                }
+                return primitive;
+            }
 
-        /**
-         * PART 1: The "Brain" - Decides what to do (pure logic, no side effects)
-         * @returns {object} { plan: Array, warnings: Array }
-         */
+            // Use GeometryUtils for all other analytic primitives
+            // This will return a new PathPrimitive
+            if (typeof GeometryUtils !== 'undefined' && GeometryUtils.primitiveToPath) {
+                return GeometryUtils.primitiveToPath(primitive);
+            }
+
+            console.warn(`[Core] Tessellation failed: GeometryUtils.primitiveToPath missing.`);
+            return null;
+        }
+
         _determineDrillStrategy(operation, settings) {
             const plan = [];
             const warnings = [];
@@ -1233,21 +1242,19 @@
                         const isOversized = comparison > precision;
                         const isUndersized = comparison < -precision;
                         
-                        // Oversized tool warning
                         if (isOversized) {
                             warnings.push({
                                 type: 'oversized-drill',
-                                message: `Hole at (${primitive.center.x.toFixed(1)}, ${primitive.center.y.toFixed(1)}): Tool (${(toolRadius * 2).toFixed(2)}mm) larger than hole (${holeDiameter.toFixed(2)}mm). Pad clearance may be compromised.`,
+                                message: `Hole at (${primitive.center.x.toFixed(1)}, ${primitive.center.y.toFixed(1)}): Tool (${(toolRadius * 2).toFixed(2)}mm) larger than hole (${holeDiameter.toFixed(2)}mm).`,
                                 severity: 'warning',
                                 recommendation: 'Select a smaller tool diameter'
                             });
                         }
                         
-                        // Undersized tool warning
                         if (isUndersized) {
                             warnings.push({
                                 type: 'undersized-drill',
-                                message: `Hole at (${primitive.center.x.toFixed(1)}, ${primitive.center.y.toFixed(1)}): Tool (${(toolRadius * 2).toFixed(2)}mm) too close to hole size (${holeDiameter.toFixed(2)}mm). Consider enabling milling mode or using a smaller tool.`,
+                                message: `Hole at (${primitive.center.x.toFixed(1)}, ${primitive.center.y.toFixed(1)}): Tool (${(toolRadius * 2).toFixed(2)}mm) too close to hole size (${holeDiameter.toFixed(2)}mm).`,
                                 severity: 'warning',
                                 recommendation: 'Leave milling mode enabled'
                             });
@@ -1270,17 +1277,15 @@
                     const slotLength = Math.hypot(slot.end.x - slot.start.x, slot.end.y - slot.start.y);
                     const toolDiameter = toolRadius * 2;
 
-                    // Can we mill this slot?
                     const canMill = settings.millHoles && comparison < -precision;
 
                     if (!canMill) {
-                        // Must use dual-peck
                         const proximityRisk = slotLength < toolDiameter;
                         
                         if (proximityRisk) {
                             warnings.push({
                                 type: 'slot-dual-drill',
-                                message: `Slot at (${slot.start.x.toFixed(1)}, ${slot.start.y.toFixed(1)}) to (${slot.end.x.toFixed(1)}, ${slot.end.y.toFixed(1)}): Too short for tool. Using dual-drill with 50% reduced plunge on second mark.`,
+                                message: `Slot at (${slot.start.x.toFixed(1)}, ${slot.start.y.toFixed(1)}) to (${slot.end.x.toFixed(1)}, ${slot.end.y.toFixed(1)}): Too short for tool. Using dual-drill with 50% reduced plunge.`,
                                 severity: 'error',
                                 recommendation: 'Reduce plunge rate by 50% to minimize drill bit bending'
                             });
@@ -1302,11 +1307,10 @@
                                 originalDiameter: slotDiameter,
                                 oversized: comparison > precision,
                                 undersized: comparison < -precision,
-                                reducedPlunge: proximityRisk  // Only second mark
+                                reducedPlunge: proximityRisk
                             }
                         );
                     } else {
-                        // Plan to mill
                         plan.push({
                             type: 'mill',
                             primitiveToOffset: primitive,
@@ -1319,22 +1323,12 @@
             return { plan, warnings };
         }
 
-        /**
-         * PART 2: The "Factory" - Creates geometry from plan
-         */
         async _generateDrillGeometryFromStrategy(plan, operation, settings) {
             const strategyPrimitives = [];
             
             // Calculate internal offset distances for milling
             const toolDiameter = settings.toolDiameter || settings.tool?.diameter || 0.8;
-            const stepOver = (settings.stepOver || 50) / 100;
-            const stepDistance = toolDiameter * (1 - stepOver);
-            const internalOffsets = [];
             
-            for (let i = 0; i < (settings.passes || 2); i++) {
-                internalOffsets.push(-(toolDiameter / 2 + i * stepDistance));
-            }
-
             for (const action of plan) {
                 if (action.type === 'peck') {
                     // Create peck mark circle
@@ -1361,7 +1355,6 @@
                     const pathRadius = holeRadius - toolRadius;
                     
                     if (pathRadius > 0.01) {
-                        // For circles, create circular path
                         if (source.type === 'circle') {
                             const millingPath = new CirclePrimitive(
                                 source.center,
@@ -1375,7 +1368,6 @@
                             );
                             strategyPrimitives.push(millingPath);
                         } 
-                        // For slots (obrounds), create offset obround
                         else if (source.type === 'obround') {
                             const newWidth = source.width - toolDiameter;
                             const newHeight = source.height - toolDiameter;
@@ -1406,10 +1398,6 @@
             return strategyPrimitives;
         }
 
-        /**
-         * PART 3: Public API - Orchestrator
-         * This is called by ui-property-inspector.js
-         */
         async generateDrillStrategy(operation, settings) {
             console.log(`[Core] === DRILL STRATEGY GENERATION ===`);
             console.log(`[Core] Mode: ${settings.millHoles ? 'milling' : 'pecking'}`);
@@ -1446,7 +1434,6 @@
             return operation.offsets;
         }
         
-        // Calculate offset distances with proper sign
         calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal = false) {
             const stepOver = stepOverPercent / 100;
             const stepDistance = toolDiameter * (1 - stepOver);
@@ -1462,7 +1449,6 @@
             return offsets;
         }
         
-        // Toolpath management
         async generateOperationToolpaths(operation) {
             if (!operation.primitives || operation.primitives.length === 0) {
                 return null;
@@ -1512,12 +1498,10 @@
             return finalToolpaths;
         }
         
-        // Fusion for visualization
         async fuseAllPrimitives(options = {}) {
             await this.ensureProcessorReady();
 
             console.log('[Core] fuseAllPrimitives() - Entered fuseAllPrimitives. Received options:', options);
-
             
             if (!this.geometryProcessor) {
                 throw new Error('Geometry processor not available');
@@ -1583,7 +1567,6 @@
             return stats;
         }
         
-        // Helper to create path primitive with getBounds
         _createPathPrimitive(points, properties) {
             if (typeof PathPrimitive !== 'undefined') {
                 return new PathPrimitive(points, properties);

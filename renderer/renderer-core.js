@@ -84,7 +84,7 @@
                 blackAndWhite: renderConfig.defaultOptions?.blackAndWhite || false,
                 debugPoints: renderConfig.defaultOptions?.debugPoints || false,
                 debugPaths: renderConfig.defaultOptions?.debugPaths || false,
-                theme: renderConfig.defaultOptions?.theme || 'dark',
+                theme: renderConfig.defaultOptions?.theme,
                 showStats: renderConfig.defaultOptions?.showStats || false,
                 showToolPreview: false
             };
@@ -108,7 +108,7 @@
             this.rendererType = 'canvas2d';
         }
         
-        // ==================== LAYER MANAGEMENT ====================
+        // Layer Management
         
         addLayer(name, primitives, options = {}) {
             this.layers.set(name, {
@@ -156,7 +156,7 @@
             return visible;
         }
         
-        // ==================== VIEW BOUNDS & CULLING ====================
+        // View bounds & Culling
         
         getViewBounds() {
             const topLeft = this.canvasToWorld(0, 0);
@@ -177,7 +177,7 @@
                      b2.maxY < b1.minY);
         }
         
-        // ==================== Level Of Detail & VISIBILITY ====================
+        // Level Of Detail & Visibility
         
         shouldRenderPrimitive(primitive, layerType) {
             if (primitive.properties?.isFused) {
@@ -216,7 +216,7 @@
             return true;
         }
         
-        // ==================== COORDINATE TRANSFORMS ====================
+        // Coordinate Transforms
         
         setupTransform() {
             this.ctx.save();
@@ -261,7 +261,7 @@
             return this.canvasToWorld(screenX, screenY);
         }
         
-        // ==================== BOUNDS CALCULATION ====================
+        // Bounds Calculations
         
         calculateLayerBounds(primitives) {
             if (!primitives || primitives.length === 0) {
@@ -354,7 +354,7 @@
             }
         }
         
-        // ==================== ZOOM & PAN ====================
+        // Zoom & Pan
         
         zoomFit(padding = 1.1) {
             if (!this.overallBounds) {
@@ -414,7 +414,7 @@
             this.viewOffset.y += dy;
         }
         
-        // ==================== CANVAS MANAGEMENT ====================
+        // Canvas Management
         
         resizeCanvas() {
             const container = this.canvas.parentElement;
@@ -435,13 +435,13 @@
             this.canvas.style.height = logicalHeight + 'px';
             
             // Clear canvas immediately
-            const theme = this.colors[this.options.theme] || this.colors.dark;
+            const theme = this.colors[this.options.theme];
             this.ctx.fillStyle = theme.canvas?.background || '#0f0f0f';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
         clearCanvas() {
-            const theme = this.colors[this.options.theme] || this.colors.dark;
+            const theme = this.colors[this.options.theme];
             const backgroundColor = theme.canvas?.background || '#0f0f0f';
             
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -449,7 +449,7 @@
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
         
-        // ==================== RENDERING UTILITIES ====================
+        // Rendering Utilities
         
         getWireframeStrokeWidth() {
             const baseWidth = canvasConfig.wireframe?.baseThickness || 0.08;
@@ -478,7 +478,7 @@
             this.coordinateSystem = coordinateSystem;
         }
         
-        // ==================== ORIGIN & ROTATION ====================
+        // Origin & Rotation
         
         setOriginPosition(x, y) {
             this.originPosition.x = x;
@@ -512,7 +512,7 @@
             this.ctx.translate(-center.x, -center.y);
         }
         
-        // ==================== COLOR & THEME ====================
+        // Color & Theme
         
         getLayerColorSettings(layer, theme) {
             if (layer.color) {
@@ -534,11 +534,11 @@
         }
         
         getBackgroundColor() {
-            const theme = this.colors[this.options.theme] || this.colors.dark;
+            const theme = this.colors[this.options.theme];
             return theme.canvas?.background || '#0f0f0f';
         }
         
-        // ==================== VIEW STATE ====================
+        // View State
         
         getViewState() {
             return {
@@ -574,7 +574,7 @@
             };
         }
         
-        // ==================== RENDER TIMING ====================
+        // Rendering Timing
         
         beginRender() {
             this.renderStats.primitives = 0;

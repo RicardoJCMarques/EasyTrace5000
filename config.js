@@ -368,7 +368,7 @@ window.PCBCAMConfig = {
             targetLength: 0.01,
             minCircle: 256,
             maxCircle: 2048,
-            minArc: 128,
+            minArc: 200,
             maxArc: 2048,
             obround: 128,
             adaptiveSegmentation: true

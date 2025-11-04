@@ -53,34 +53,188 @@
             // Round the ideal segment count to the NEAREST multiple of 8.
             let calculatedSegments = Math.round(desiredSegments / 8) * 8;
 
-            // Clamp the result within the adjusted boundaries. The final value
-            // will always be a multiple of 8 within the valid range.
+            // Clamp the result within the adjusted boundaries. The final value will always be a multiple of 8 within the valid range.
             const finalSegments = Math.max(min, Math.min(max, calculatedSegments));
 
             return finalSegments;
         },
         
-        // Optimal segment calculation
-        getOptimalSegments(radius, minSegments = 24, maxSegments = 256, targetLength = 0.05) {
-            // This function now uses the centralized logic with higher-resolution defaults.
-            const config = window.PCBCAMConfig?.geometry?.segments || {};
-            return this._calculateSegments(
-                radius, 
-                config.targetLength || targetLength, 
-                minSegments, 
-                maxSegments
+        // Tessellation helpers
+
+        tessellateCubicBezier(p0, p1, p2, p3) {
+            const a = [], t = 32; // 't' is segment count
+            // This loop starts at 0, so it *includes* the start point
+            for (let s = 0; s <= t; s++) {
+                const e = s / t, o = 1 - e;
+                a.push({
+                    x: o * o * o * p0.x + 3 * o * o * e * p1.x + 3 * o * e * e * p2.x + e * e * e * p3.x,
+                    y: o * o * o * p0.y + 3 * o * o * e * p1.y + 3 * o * e * e * p2.y + e * e * e * p3.y
+                })
+            }
+            return a;
+        },
+
+        tessellateQuadraticBezier(p0, p1, p2) {
+            const a = [], t = 32;
+            // This loop starts at 0, so it *includes* the start point
+            for (let s = 0; s <= t; s++) {
+                const e = s / t, o = 1 - e;
+                a.push({
+                    x: o * o * p0.x + 2 * o * e * p1.x + e * e * p2.x,
+                    y: o * o * p0.y + 2 * o * e * p1.y + e * e * p2.y
+                })
+            }
+            return a;
+        },
+
+        tessellateEllipticalArc(p1, p2, rx, ry, phi, fA, fS) {
+            // SVG arc-to-centerpoint conversion logic
+            const a = Math.sin(phi * Math.PI / 180), s = Math.cos(phi * Math.PI / 180), e = (p1.x - p2.x) / 2, o = (p1.y - p2.y) / 2, r = s * e + a * o, h = -a * e + s * o;
+            rx = Math.abs(rx); ry = Math.abs(ry);
+            let c = r * r / (rx * rx) + h * h / (ry * ry);
+            if (c > 1) { rx *= Math.sqrt(c); ry *= Math.sqrt(c) }
+            const l = (rx * rx * ry * ry - rx * rx * h * h - ry * ry * r * r) / (rx * rx * h * h + ry * ry * r * r), d = (fA === fS ? -1 : 1) * Math.sqrt(Math.max(0, l)), M = d * (rx * h / ry), g = d * (-ry * r / rx), x = s * M - a * g + (p1.x + p2.x) / 2, y = a * M + s * g + (p1.y + p2.y) / 2;
+            const I = (t, p) => { const i = t[0] * p[1] - t[1] * p[0] < 0 ? -1 : 1; return i * Math.acos((t[0] * p[0] + t[1] * p[1]) / (Math.sqrt(t[0] * t[0] + t[1] * t[1]) * Math.sqrt(p[0] * p[0] + p[1] * p[1]))) };
+            const u = I([1, 0], [(r - M) / rx, (h - g) / ry]);
+            let m = I([(r - M) / rx, (h - g) / ry], [(-r - M) / rx, (-h - g) / ry]);
+            0 === fS && m > 0 ? m -= 2 * Math.PI : 1 === fS && m < 0 && (m += 2 * Math.PI);
+
+            const targetLength = window.PCBCAMConfig?.geometry?.segments?.targetLength || 0.1;
+            const approxArcLength = Math.abs(m) * ((rx + ry) / 2);
+            const k = Math.max(8, Math.ceil(approxArcLength / targetLength));
+
+            const P = [];
+            // This loop starts at 0, so it *includes* the start point
+            for (let t = 0; t <= k; t++) { 
+                const i = u + m * t / k, e_cos = Math.cos(i), o_sin = Math.sin(i);
+                P.push({
+                    x: x + rx * (s * e_cos - a * o_sin),
+                    y: y + ry * (a * e_cos + s * o_sin)
+                })
+            }
+            return P;
+        },
+
+        // Primitive-to-Points Converters
+
+        circleToPoints(primitive, curveIds = []) {
+            const segments = this.getOptimalSegments(primitive.radius, 'circle');
+            const polygonPoints = [];
+
+            // A filled circle primitive should have one curveId
+            let curveId = curveIds.length > 0 ? curveIds[0] : null;
+
+            if (!curveId && window.globalCurveRegistry) {
+                // If this is an analytic primitive (e.g., flash), it won't have an ID yet.
+                // Register it now.
+                curveId = window.globalCurveRegistry.register({
+                    type: 'circle',
+                    center: primitive.center,
+                    radius: primitive.radius,
+                    clockwise: false, // Circles are always CCW by convention
+                    source: 'circle_primitive'
+                });
+                
+                // Ensure the primitive's own list is updated
+                if (curveIds.length === 0) {
+                    curveIds.push(curveId);
+                }
+            }
+
+            // Generate CCW for Y-Up
+            for (let i = 0; i < segments; i++) { // No need for <= segments, Clipper will close it
+                const angle = (i / segments) * 2 * Math.PI;
+                const point = {
+                    x: primitive.center.x + primitive.radius * Math.cos(angle),
+                    y: primitive.center.y + primitive.radius * Math.sin(angle)
+                };
+
+                if (curveId) {
+                    point.curveId = curveId;
+                    point.segmentIndex = i;
+                    point.totalSegments = segments;
+                    point.t = i / segments;
+                }
+
+                polygonPoints.push(point);
+            }
+            return polygonPoints;
+        },
+
+        rectangleToPoints(primitive) {
+            const { x, y } = primitive.position, w = primitive.width, h = primitive.height;
+            // CCW winding for Y-Up (assuming Y-Up)
+            const allPoints = [
+                { x: x, y: y },         // Bottom-left
+                { x: x + w, y: y },     // Bottom-right
+                { x: x + w, y: y + h }, // Top-right
+                { x: x, y: y + h },     // Top-left
+            ];
+            return allPoints;
+        },
+
+        arcToPoints(primitive) {
+            // Logic from ArcPrimitive.toPolygon, but just use interpolateArc
+            return this.interpolateArc(
+                primitive.startPoint,
+                primitive.endPoint,
+                primitive.center,
+                primitive.clockwise
             );
         },
-        
-        // Calculate segment count for radius
-        getSegmentCount(radius, type = 'circle', config = {}) {
-            // This function now also produces multiples of 8 by using the centralized logic.
-            const targetLength = config.targetLength || 0.1;
-            const typeKey = type.charAt(0).toUpperCase() + type.slice(1);
-            const min = config[`min${typeKey}`] || (type === 'circle' ? 16 : 8);
-            const max = config[`max${typeKey}`] || (type === 'circle' ? 128 : 64);
 
-            return this._calculateSegments(radius, targetLength, min, max);
+        bezierToPoints(primitive) {
+            // Logic from BezierPrimitive._tessellate
+            if (primitive.points.length === 4) {
+                return this.tessellateCubicBezier(...primitive.points);
+            } else if (primitive.points.length === 3) {
+                return this.tessellateQuadraticBezier(...primitive.points);
+            }
+            return [];
+        },
+
+        ellipticalArcToPoints(primitive) {
+            // Logic from EllipticalArcPrimitive._tessellate
+            return this.tessellateEllipticalArc(
+                primitive.startPoint,
+                primitive.endPoint,
+                primitive.rx,
+                primitive.ry,
+                primitive.phi,
+                primitive.fA,
+                primitive.fS
+            );
+        },
+
+        // Optimal segment calculation
+        getOptimalSegments(radius, type) {
+            const config = window.PCBCAMConfig?.geometry?.segments || {};
+            const finalTargetLength = config.targetLength || 0.01; // Use config target length
+
+            let finalMin, finalMax;
+
+            if (type === 'circle') {
+                finalMin = config.minCircle || 256; // Read from config
+                finalMax = config.maxCircle || 2048; // Read from config
+            } else if (type === 'arc') {
+                finalMin = config.minArc || 200; // Read from config
+                finalMax = config.maxArc || 2048; // Read from config
+            } else if (type === 'end_cap') {
+                // Use the original hard-coded values as a fallback
+                finalMin = config.minEndCap || 32; 
+                finalMax = config.maxEndCap || 256;
+            } else {
+                // Default fallback
+                finalMin = 32;
+                finalMax = 128;
+            }
+
+            return this._calculateSegments(
+                radius, 
+                finalTargetLength, 
+                finalMin,
+                finalMax
+            );
         },
         
         // Validate Clipper scale factor
@@ -107,7 +261,7 @@
             return this.calculateWinding(points) < 0;
         },
         
-        // Interpolate arc points
+        // Interpolate arc points - Is this necessary? Shouldn't it just be inside arcToPoints after the recent refactor?
         interpolateArc(start, end, center, clockwise, segments = null) {
             const radius = Math.sqrt(
                 Math.pow(start.x - center.x, 2) +
@@ -125,8 +279,8 @@
             }
             
             if (!segments) {
-                const config = window.PCBCAMConfig?.geometry?.segments || {};
-                segments = this.getSegmentCount(radius, 'arc', config);
+                // Use the new, centralized function
+                segments = this.getOptimalSegments(radius, 'arc');
             }
             
             const points = [];
@@ -142,47 +296,31 @@
         },
         
         // Convert obround to points
-        obroundToPoints(obround, segmentsPerArc = 16) {
-            const points = [];
+        obroundToPoints(obround) { // segmentsPerArc is unused, but we'll leave it
             const { x, y } = obround.position;
             const w = obround.width || 0;
             const h = obround.height || 0;
             const r = Math.min(w, h) / 2;
-            
+
             if (r <= 0) return [];
-            
-            // CLEANUP: Directly call getOptimalSegments. Redundant clamping is removed.
-            const segments = this.getOptimalSegments(r, 8, 32);
-            const halfSegments = Math.ceil(segments / 2);
-            
-            if (w > h) { // Horizontal
-                const c1x = x + r;
-                const c2x = x + w - r;
-                const cy = y + r;
-                
-                for (let i = 0; i <= halfSegments; i++) {
-                    const angle = Math.PI / 2 + (i / halfSegments) * Math.PI;
-                    points.push({ x: c1x + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
-                }
-                for (let i = 0; i <= halfSegments; i++) {
-                    const angle = -Math.PI / 2 + (i / halfSegments) * Math.PI;
-                    points.push({ x: c2x + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
-                }
+
+            const isHorizontal = w > h;
+            const strokeWidth = Math.min(w, h); // This is the diameter of the end-caps
+
+            let start, end;
+            if (isHorizontal) {
+                const centerY = y + h / 2; // Use center
+                start = { x: x + r, y: centerY };
+                end = { x: x + w - r, y: centerY };
             } else { // Vertical
-                const cx = x + r;
-                const c1y = y + r;
-                const c2y = y + h - r;
-                
-                for (let i = 0; i <= halfSegments; i++) {
-                    const angle = Math.PI + (i / halfSegments) * Math.PI;
-                    points.push({ x: cx + r * Math.cos(angle), y: c1y + r * Math.sin(angle) });
-                }
-                for (let i = 0; i <= halfSegments; i++) {
-                    const angle = (i / halfSegments) * Math.PI;
-                    points.push({ x: cx + r * Math.cos(angle), y: c2y + r * Math.sin(angle) });
-                }
+                const centerX = x + w / 2; // Use center
+                start = { x: centerX, y: y + r };
+                end = { x: centerX, y: y + h - r };
             }
-            
+
+            // Use lineToPolygon, which is already in this file and creates two tagged end-caps and two straight segments.
+            const points = this.lineToPolygon(start, end, strokeWidth);
+            // This function returns a complete, tagged polygon.
             return points;
         },
         
@@ -278,7 +416,7 @@
             
             // Zero-length line becomes circle with metadata
             if (len < this.PRECISION) {
-                const segments = 24;
+                const segments = this.getOptimalSegments(halfWidth, 'circle');
                 const points = [];
                 // Register circle end-cap with clockwise=false
                 const curveId = window.globalCurveRegistry?.register({
@@ -312,7 +450,7 @@
             const points = [];
             
             // Use consistent segment count based on radius - match circle segmentation
-            const capSegments = this.getOptimalSegments(halfWidth, 16, 64);
+            const capSegments = this.getOptimalSegments(halfWidth, 'end_cap');
             const halfSegments = Math.floor(capSegments / 2);
             
             // Register end-caps with explicit clockwise=false
@@ -425,7 +563,7 @@
 
             // Fallback to filled circle
             if (innerR < this.PRECISION) {
-                const circleSegments = this.getOptimalSegments(outerR, 16, 64);
+                const circleSegments = this.getOptimalSegments(outerR, 'circle');
                 const curveId = window.globalCurveRegistry?.register({
                     type: 'circle', center: { x: center.x, y: center.y }, radius: outerR,
                     clockwise: false, source: 'arc_fallback'
@@ -461,7 +599,7 @@
             });
 
             // Generate points and tag them
-            const arcSegments = this.getOptimalSegments(arc.radius, 16, 128);
+            const arcSegments = this.getOptimalSegments(arc.radius, 'arc');
 
             // Calculate angle span correctly based on clockwise flag
             let angleSpan = endRad - startRad;
@@ -597,7 +735,7 @@
         // Generate complete rounded cap with all boundary points tagged - END-CAPS ARE ALWAYS CCW
         generateCompleteRoundedCap(center, radialAngle, radius, clockwiseArc, isStart, curveId) {
             const points = [];
-            const segments = this.getOptimalSegments(radius, 16, 64);
+            const segments = this.getOptimalSegments(radius, 'end_cap');
             const halfSegments = Math.floor(segments / 2);
             
             const capStartAngle = radialAngle;
@@ -669,10 +807,69 @@
                 left: { x: p1.x + miterX, y: p1.y + miterY },
                 right: { x: p1.x - miterX, y: p1.y - miterY }
             };
+        },
+
+        /**
+         * Converts any analytic primitive into a PathPrimitive.
+         * This is the central tessellation point for the GeometryProcessor.
+         * @param {RenderPrimitive} primitive - The analytic primitive.
+         * @returns {PathPrimitive} A PathPrimitive with tessellated points.
+         */
+        primitiveToPath(primitive, curveIds = []) {
+            // If it's already a PathPrimitive, return it.
+            if (primitive.type === 'path' && primitive.points && primitive.points.length > 0) {
+                return primitive;
+            }
+
+            let points = [];
+            let originalType = primitive.type;
+            let properties = { ...primitive.properties };
+
+            switch (primitive.type) {
+                case 'circle':
+                    points = this.circleToPoints(primitive, curveIds);
+                    properties.originalCircle = { center: { ...primitive.center }, radius: primitive.radius };
+                    break;
+                case 'rectangle':
+                    points = this.rectangleToPoints(primitive);
+                    properties.originalRectangle = { position: { ...primitive.position }, width: primitive.width, height: primitive.height };
+                    break;
+                case 'obround':
+                    points = this.obroundToPoints(primitive);
+                    properties.originalObround = { position: { ...primitive.position }, width: primitive.width, height: primitive.height };
+                    break;
+                case 'arc':
+                    points = this.arcToPoints(primitive);
+                    // This is an open path, so set closed: false
+                    properties.closed = false; 
+                    break;
+                case 'elliptical_arc':
+                    points = this.ellipticalArcToPoints(primitive);
+                    properties.closed = false;
+                    break;
+                case 'bezier':
+                    points = this.bezierToPoints(primitive);
+                    properties.closed = false;
+                    break;
+                default:
+                    console.warn(`[GeoUtils] primitiveToPath: Unknown primitive type ${primitive.type}`);
+                    return null;
+            }
+
+            if (points.length === 0) {
+                return null;
+            }
+
+            if (typeof PathPrimitive !== 'undefined') {
+                return new PathPrimitive(points, {
+                    ...properties,
+                    originalType: originalType
+                });
+            }
+
         }
     };
     
-    // Export
     window.GeometryUtils = GeometryUtils;
     
 })();

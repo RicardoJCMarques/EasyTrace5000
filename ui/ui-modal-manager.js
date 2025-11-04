@@ -324,8 +324,7 @@
             
             this.populateToolpathModal();
             
-            // Show placeholder instead of calculating immediately
-            this.showPlaceholderPreview();
+            this.showPlaceholderPreview(); // Only shows tool reach simulated stroked paths.
             
             this.setupToolpathHandlers();
         }
@@ -492,7 +491,7 @@
                 return;
             }
             
-            // Gather options - FIX: Actually read the checkbox value
+            // Gather options
             const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
             const options = {
                 operationIds: selectedItemIds,

@@ -400,120 +400,37 @@
         
         // Standardize primitive to polygon with curve metadata
         standardizePrimitive(primitive, curveIds, options) {
-            // Provide default values for optional parameters
-            const localCurveIds = curveIds || [];
-            const localOptions = options || {};
 
-            let points = [];
-            let arcSegments = [];
-            
-            if (this.options.debug && localCurveIds.length > 0) {
-                this.debug(`Standardizing ${primitive.type} with curve IDs: [${localCurveIds.join(', ')}]`);
-            }
-            
+            // If it's already a path, just ensure properties and return.
             if (primitive.type === 'path') {
-                points = primitive.points;
-                if (primitive.arcSegments) {
-                    arcSegments = primitive.arcSegments;
-                }
-            } else if (primitive.type === 'circle') {
-                if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
-                    const pathPrimitive = primitive.toPolygon();
-                    
-                    if (this.options.debug && pathPrimitive.points) {
-                        const taggedCount = pathPrimitive.points.filter(p => p.curveId !== undefined).length;
-                        if (taggedCount > 0) {
-                            this.debug(`Circle converted with ${taggedCount}/${pathPrimitive.points.length} tagged points`);
-                        }
-                    }
-                    
-                    return pathPrimitive;
-                } else {
-                    const segments = GeometryUtils.getOptimalSegments(primitive.radius);
-                    for (let i = 0; i < segments; i++) {
-                        const angle = (i / segments) * 2 * Math.PI;
-                        const point = {
-                            x: primitive.center.x + primitive.radius * Math.cos(angle),
-                            y: primitive.center.y + primitive.radius * Math.sin(angle)
-                        };
-                        if (localCurveIds.length > 0) {
-                            point.curveId = localCurveIds[0];
-                            point.segmentIndex = i;
-                        }
-                        points.push(point);
-                    }
-                }
-            } else if (primitive.type === 'rectangle') {
-                const { x, y } = primitive.position;
-                const w = primitive.width || 0;
-                const h = primitive.height || 0;
-                points = [
-                    { x, y },
-                    { x: x + w, y },
-                    { x: x + w, y: y + h },
-                    { x, y: y + h }
-                ];
-            } else if (primitive.type === 'obround') {
-                if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
-                    const pathPrimitive = primitive.toPolygon();
-                    
-                    if (this.options.debug && pathPrimitive.points) {
-                        const taggedCount = pathPrimitive.points.filter(p => p.curveId !== undefined).length;
-                        if (taggedCount > 0) {
-                            this.debug(`Obround converted with ${taggedCount}/${pathPrimitive.points.length} tagged points`);
-                        }
-                    }
-                    
-                    return pathPrimitive;
-                } else {
-                    points = GeometryUtils.obroundToPoints(primitive);
-                }
-            } else if (primitive.type === 'arc') {
-                if (primitive.toPolygon && typeof primitive.toPolygon === 'function') {
-                    const pathPrimitive = primitive.toPolygon();
-                    
-                    if (this.options.debug && pathPrimitive.points) {
-                        const taggedCount = pathPrimitive.points.filter(p => p.curveId !== undefined).length;
-                        if (taggedCount > 0) {
-                            this.debug(`Arc converted with ${taggedCount}/${pathPrimitive.points.length} tagged points`);
-                        }
-                    }
-                    
-                    return pathPrimitive;
-                } else {
-                    points = GeometryUtils.interpolateArc(
-                        primitive.startPoint,
-                        primitive.endPoint,
-                        primitive.center,
-                        primitive.clockwise
-                    );
+                return primitive;
+            }
+
+            const localCurveIds = curveIds || [];
+
+            // For all other analytic primitives (circle, rect, arc, etc.), delegate to the central GeometryUtils function.
+            if (typeof GeometryUtils !== 'undefined' && GeometryUtils.primitiveToPath) {
+                const pathPrimitive = GeometryUtils.primitiveToPath(primitive, localCurveIds);
+
+                // Check if tessellation was successful
+                if (pathPrimitive) {
+                    // This is the fix for your typo: use localCurveIds
                     if (localCurveIds.length > 0) {
-                        points = points.map((p, i) => ({ 
-                            ...p, 
-                            curveId: localCurveIds[0],
-                            segmentIndex: i
-                        }));
+                        pathPrimitive.curveIds = localCurveIds;
                     }
+                    return pathPrimitive;
+                } else {
+                    // This is the new, more useful logging
+                    if (localCurveIds.length > 0) {
+                        console.warn(`[GeometryProcessor] standardizePrimitive: Tessellation failed for ${primitive.type} (ID: ${primitive.id}), but it HAD curve IDs: [${localCurveIds.join(',')}]`);
+                    } else if (this.options.debug) {
+                        console.warn(`[GeometryProcessor] standardizePrimitive: Tessellation failed or produced no points for ${primitive.type} (ID: ${primitive.id})`);
+                    }
+                    return null;
                 }
             }
-            
-            if (points.length >= 3) {
-                const pathPrimitive = this._createPathPrimitive(points, {
-                    ...primitive.properties,
-                    originalType: primitive.type
-                });
-                
-                if (arcSegments.length > 0) {
-                    pathPrimitive.arcSegments = arcSegments;
-                }
-                
-                if (localCurveIds.length > 0) {
-                    pathPrimitive.curveIds = localCurveIds;
-                }
-                
-                return pathPrimitive;
-            }
-            
+
+            console.error(`[GeometryProcessor] standardizePrimitive failed: GeometryUtils.primitiveToPath is missing.`);
             return null;
         }
         
@@ -524,26 +441,23 @@
 
             // 1. Separate primitives by polarity
             primitives.forEach(primitive => {
+                if (!primitive || !primitive.points || primitive.points.length < 3) {
+                     console.warn('[GeoProcessor._performFusion] Skipping invalid or empty primitive:', primitive);
+                    return;
+                }
+                
                 if (!primitive.properties) primitive.properties = {};
-                const polarity = primitive.properties?.polarity || 'dark';
-                if (!primitive.points || primitive.points.length < 3) {
-                    console.warn('[GeoProcessor._performFusion] Skipping primitive due to missing points:', primitive);
-                    return;
-                }
-                // Ensure properties are carried over AFTER standardization
-                const standardizedPrimitive = this.standardizePrimitive(primitive); // Ensure standardization happens consistently
-                if (!standardizedPrimitive) {
-                    console.warn('[GeoProcessor._performFusion] Standardization failed for primitive:', primitive);
-                    return;
-                }
-                // Use the polarity from the standardized primitive's properties
-                const finalPolarity = standardizedPrimitive.properties?.polarity || 'dark';
+                
+                const finalPolarity = primitive.properties?.polarity || 'dark';
                 if (finalPolarity === 'clear') {
-                    clearPrimitives.push(standardizedPrimitive);
+                    clearPrimitives.push(primitive);
                 } else {
-                    darkPrimitives.push(standardizedPrimitive);
+                    darkPrimitives.push(primitive);
                 }
             });
+
+            console.log(`[GeoProcessor._performFusion] Received ${primitives.length} total primitives. Separated into: ${darkPrimitives.length} dark (subjects) and ${clearPrimitives.length} clear (clips).`);
+
             this.debug(`_performFusion Input (Post-Standardization): ${darkPrimitives.length} dark, ${clearPrimitives.length} clear`);
 
 

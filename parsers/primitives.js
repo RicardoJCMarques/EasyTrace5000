@@ -1,6 +1,6 @@
 /**
  * @file        parsers/primitives.js
- * @description Defines geometric primitives (Path, Circle, Arc, Rectangle, Obround)
+ * @description Defines geometric primitive data structures
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -27,33 +27,24 @@
 (function() {
     'use strict';
     
-    // Get config reference
     const config = window.PCBCAMConfig || {};
     const geomConfig = config.geometry || {};
-    const segmentConfig = geomConfig.segments || {};
     
-    // Primitive ID counter for tracking
     let nextPrimitiveId = 1;
     
+    /**
+     * Base class for all geometric primitives data objects.
+     */
     class RenderPrimitive {
         constructor(type, properties = {}) {
             this.type = type;
             this.properties = properties;
             this.bounds = null;
-            
-            // Unique ID for primitive tracking
             this.id = `prim_${nextPrimitiveId++}`;
-            
-            // Preserve original geometric context
             this.geometricContext = {
                 originalType: type,
                 isAnalytic: false,
                 metadata: {}
-            };
-            
-            this.creationInfo = {
-                timestamp: Date.now(),
-                source: 'primitive-factory'
             };
         }
         
@@ -65,7 +56,6 @@
         }
         
         calculateBounds() {
-            // Override in subclasses
             this.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
         }
         
@@ -84,59 +74,41 @@
         getGeometricMetadata() {
             return this.geometricContext;
         }
-        
-        // Base method for curve metadata generation
-        generateCurveMetadata() {
-            // Override in subclasses that represent curves
-            return null;
-        }
     }
     
+    /**
+     * PathPrimitive - complex shape with optional analytic arcs
+     */
     class PathPrimitive extends RenderPrimitive {
         constructor(points, properties = {}) {
             super('path', properties);
             
-            this.points = points;
+            this.points = points || [];
             this.closed = properties.closed !== false;
             this.arcSegments = properties.arcSegments || [];
-
-            // Unified contours system
             this.contours = properties.contours || [];
             this.curveIds = properties.curveIds || [];
             
-            // Auto-generate simple contour if not provided
-            if (this.contours.length === 0 && this.points.length >= 3) {
+            // Auto-generate single contour if not provided
+            if (this.contours.length === 0 && this.points.length >= 2) {
                 this.contours = [{
                     points: this.points,
                     nestingLevel: 0,
-                    isHole: false,
+                    isHole: properties.isHole || false,
                     parentId: null,
-                    arcSegments: properties.arcSegments || []   // If contours are auto-generated, check properties for legacy arcSegments
+                    arcSegments: this.arcSegments
                 }];
             }
-
-            // PRIORITIZE contours for top-level arcSegments, or use properties, or default to empty
-            this.arcSegments = (this.contours[0]?.arcSegments) || (properties.arcSegments) || [];
             
-            // Update geometric context if this path contains arcs
+            // Ensure arcSegments at top level
+            if (!this.arcSegments && this.contours[0]?.arcSegments) {
+                this.arcSegments = this.contours[0].arcSegments;
+            }
+            
             if (this.arcSegments.length > 0) {
                 this.geometricContext.containsArcs = true;
                 this.geometricContext.arcData = this.arcSegments;
-            }
-            
-            // Validate arc segments
-            if (this.arcSegments.length > 0 && this.points.length > 0) {
-                this.arcSegments.forEach((seg, idx) => {
-                    if (seg.startIndex < 0 || seg.startIndex >= this.points.length) {
-                        console.error(`[PathPrimitive] Invalid startIndex ${seg.startIndex} in arc segment ${idx}`);
-                    }
-                    if (seg.endIndex < 0 || seg.endIndex >= this.points.length) {
-                        console.error(`[PathPrimitive] Invalid endIndex ${seg.endIndex} in arc segment ${idx}`);
-                    }
-                    if (!seg.center || !isFinite(seg.radius) || seg.radius <= 0) {
-                        console.error(`[PathPrimitive] Invalid arc geometry in segment ${idx}:`, seg);
-                    }
-                });
+                this.geometricContext.isAnalytic = true;
             }
         }
         
@@ -149,83 +121,51 @@
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
             
-            // Calculate bounds from points
-            this.points.forEach(point => {
-                if (point !== null && point !== undefined) {
-                    minX = Math.min(minX, point.x);
-                    minY = Math.min(minY, point.y);
-                    maxX = Math.max(maxX, point.x);
-                    maxY = Math.max(maxY, point.y);
-                }
-            });
-            
-            // Include holes in bounds SHOULDN'T THIS FUNCTION BE LOOKING AT .CONTOURS INSTEAD OF .HOLES??? These may be the last remnants of that system.
-            if (this.holes && this.holes.length > 0) {
-                this.holes.forEach(hole => {
-                    if (Array.isArray(hole)) {
-                        hole.forEach(point => {
-                            if (point !== null && point !== undefined) {
-                                minX = Math.min(minX, point.x);
-                                minY = Math.min(minY, point.y);
-                                maxX = Math.max(maxX, point.x);
-                                maxY = Math.max(maxY, point.y);
-                            }
-                        });
+            // Calculate bounds from all contours
+            this.contours.forEach(contour => {
+                contour.points.forEach(point => {
+                    if (point !== null && point !== undefined) {
+                        minX = Math.min(minX, point.x);
+                        minY = Math.min(minY, point.y);
+                        maxX = Math.max(maxX, point.x);
+                        maxY = Math.max(maxY, point.y);
                     }
                 });
-            }
-
-            // Expand bounds to include arc segments
+            });
+            
+            // Expand bounds for arc segments
             if (this.arcSegments && this.arcSegments.length > 0) {
                 this.arcSegments.forEach(seg => {
                     const { center, radius, startAngle, endAngle, clockwise } = seg;
-
-                    // We need to check if the arc crosses the 0, 90, 180, 270-degree axes
-                    // This logic is adapted from ArcPrimitive.getCardinalCrossings
-                    const normalize = angle => {
-                        while (angle < 0) angle += 2 * Math.PI;
-                        while (angle > 2 * Math.PI) angle -= 2 * Math.PI;
-                        return angle;
-                    };
-
-                    const start = normalize(startAngle);
-                    const end = normalize(endAngle);
-
-                    const checkCross = (angle) => {
+                    
+                    // Check if arc crosses cardinal directions
+                    const checkCrossing = (angle) => {
+                        const start = startAngle % (2 * Math.PI);
+                        const end = endAngle % (2 * Math.PI);
+                        
                         if (clockwise) {
-                            // Clockwise: startAngle > endAngle (e.g., PI to 0)
                             if (start > end) {
-                                return angle >= end && angle <= start;
-                            } else { // Wraps around (e.g., PI/2 to 3*PI/2)
-                                return angle >= end || angle <= start;
+                                return angle <= start && angle >= end;
+                            } else {
+                                return angle <= start || angle >= end;
                             }
                         } else {
-                            // Counter-clockwise: startAngle < endAngle (e.g., 0 to PI)
                             if (start < end) {
                                 return angle >= start && angle <= end;
-                            } else { // Wraps around (e.g., 3*PI/2 to PI/2)
+                            } else {
                                 return angle >= start || angle <= end;
                             }
                         }
                     };
-
-                    // Check cardinal axes
-                    if (checkCross(0)) {         // 0 rad (right)
-                        maxX = Math.max(maxX, center.x + radius);
-                    }
-                    if (checkCross(Math.PI / 2)) { // PI/2 rad (bottom in Y-down)
-                        maxY = Math.max(maxY, center.y + radius);
-                    }
-                    if (checkCross(Math.PI)) {     // PI rad (left)
-                        minX = Math.min(minX, center.x - radius);
-                    }
-                    if (checkCross(3 * Math.PI / 2)) { // 3*PI/2 rad (top in Y-down)
-                        minY = Math.min(minY, center.y - radius);
-                    }
+                    
+                    if (checkCrossing(0)) maxX = Math.max(maxX, center.x + radius);
+                    if (checkCrossing(Math.PI / 2)) maxY = Math.max(maxY, center.y + radius);
+                    if (checkCrossing(Math.PI)) minX = Math.min(minX, center.x - radius);
+                    if (checkCrossing(3 * Math.PI / 2)) minY = Math.min(minY, center.y - radius);
                 });
             }
             
-            // Expand bounds by stroke width if stroked
+            // Expand by stroke width if stroked
             if (this.properties.stroke && this.properties.strokeWidth) {
                 const halfStroke = this.properties.strokeWidth / 2;
                 minX -= halfStroke;
@@ -236,238 +176,85 @@
             
             this.bounds = { minX, minY, maxX, maxY };
         }
-        
-        addArcSegment(startIndex, endIndex, center, radius, startAngle, endAngle, clockwise) {
-            this.arcSegments.push({
-                startIndex,
-                endIndex,
-                center,
-                radius,
-                startAngle,
-                endAngle,
-                clockwise
-            });
-            this.geometricContext.containsArcs = true;
-        }
-        
-        // Generate metadata for arc segments
-        generateCurveMetadata() {
-            if (!this.arcSegments || this.arcSegments.length === 0) {
-                return null;
-            }
-            
-            return {
-                type: 'path_with_arcs',
-                segments: this.arcSegments.map(seg => ({
-                    type: 'arc',
-                    center: { ...seg.center },
-                    radius: seg.radius,
-                    startAngle: seg.startAngle,
-                    endAngle: seg.endAngle,
-                    clockwise: seg.clockwise,
-                    startIndex: seg.startIndex,
-                    endIndex: seg.endIndex
-                }))
-            };
-        }
     }
     
+    /**
+     * CirclePrimitive - analytic circle
+     */
     class CirclePrimitive extends RenderPrimitive {
         constructor(center, radius, properties = {}) {
             super('circle', properties);
             this.center = center;
             this.radius = radius;
             
-            // Mark as analytically offsettable
             this.geometricContext.isAnalytic = true;
-            this.geometricContext.metadata = {
-                center: { ...center },
-                radius: radius
+            this.geometricContext.metadata = { 
+                center: { ...center }, 
+                radius: radius 
             };
-            
-            // Register curve with correct winding
-            this.curveId = this.registerAsGlobalCurve();
-            if (this.curveId) {
-                this.curveIds = [this.curveId];
-            }
-        }
-        
-        registerAsGlobalCurve() {
-            if (!window.globalCurveRegistry) {
-                if (window.PCBCAMConfig?.debug?.enabled) {
-                    console.warn('[CirclePrimitive] Global curve registry not available at creation');
-                }
-                return null;
-            }
-            
-            // In screen coordinates (Y-down), 0→2π generates CW
-            // Register as such for accurate reconstruction
-            const curveId = window.globalCurveRegistry.register({
-                type: 'circle',
-                center: { ...this.center },
-                radius: this.radius,
-                primitiveId: this.id,
-                clockwise: true,  // 0→2π is CW in Y-down screen coords
-                source: 'primitive_circle'
-            });
-            
-            if (this.debug) {
-                console.log(`[CirclePrimitive] Registered circle ${this.id} as curve ${curveId} (CW in screen coords)`);
-            }
-            
-            return curveId;
         }
         
         calculateBounds() {
-            let effectiveRadius = this.radius;
+            let r = this.radius;
             if (this.properties.strokeWidth && this.properties.stroke) {
-                effectiveRadius += this.properties.strokeWidth / 2;
+                r += this.properties.strokeWidth / 2;
             }
-            
             this.bounds = {
-                minX: this.center.x - effectiveRadius,
-                minY: this.center.y - effectiveRadius,
-                maxX: this.center.x + effectiveRadius,
-                maxY: this.center.y + effectiveRadius
+                minX: this.center.x - r,
+                minY: this.center.y - r,
+                maxX: this.center.x + r,
+                maxY: this.center.y + r
             };
         }
         
-        getCenter() {
-            return { x: this.center.x, y: this.center.y };
-        }
-        
-        getOffsetGeometry(offsetDistance) {
-            return new CirclePrimitive(
-                this.center,
-                Math.max(0, this.radius + offsetDistance),
-                { ...this.properties }
-            );
-        }
-        
-        generateCurveMetadata() {
-            return {
-                type: 'circle',
-                center: { ...this.center },
-                radius: this.radius,
-                clockwise: true,
-                properties: {
-                    isComplete: true,
-                    startAngle: 0,
-                    endAngle: 2 * Math.PI
-                }
-            };
-        }
-        
-        toPolygon(minSegments = null, maxSegments = null, curveIds = null) {
-            const segmentConfig = window.PCBCAMConfig?.geometry?.segments || {};
-            minSegments = minSegments || segmentConfig.minCircle || 16;
-            maxSegments = maxSegments || segmentConfig.maxCircle || 128;
-            
-            const segments = GeometryOptimizer.getOptimalSegments(
-                this.radius, 
-                minSegments, 
-                maxSegments,
-                segmentConfig.targetLength || 0.1
-            );
-            
-            const polygonPoints = [];
-            const curveId = this.curveId || (curveIds && curveIds.length > 0 ? curveIds[0] : undefined);
-            
-            // Generate 0→2π (CW in screen coords Y-down)
-            for (let i = 0; i <= segments; i++) {
-                const normalizedIndex = i % segments;
-                const angle = (normalizedIndex / segments) * 2 * Math.PI;
-                const point = {
-                    x: this.center.x + this.radius * Math.cos(angle),
-                    y: this.center.y + this.radius * Math.sin(angle)
-                };
-                
-                if (curveId !== undefined) {
-                    point.curveId = curveId;
-                    point.segmentIndex = normalizedIndex;
-                    point.totalSegments = segments;
-                    point.t = normalizedIndex / segments;
-                    point.angle = angle;
-                }
-                
-                polygonPoints.push(point);
-            }
-            
-            const pathPrimitive = new PathPrimitive(polygonPoints, {
-                ...this.properties,
-                closed: true,
-                originalCircle: {
-                    center: { ...this.center },
-                    radius: this.radius
-                },
-                curveIds: [curveId].filter(id => id !== undefined),
-                originalPointCount: segments + 1,
-                hasCompleteMetadata: true
-            });
-            
-            return pathPrimitive;
+        getCenter() { 
+            return { ...this.center };
         }
     }
     
+    /**
+     * RectanglePrimitive - analytic rectangle
+     */
     class RectanglePrimitive extends RenderPrimitive {
         constructor(position, width, height, properties = {}) {
             super('rectangle', properties);
-            this.position = position;
+            this.position = position; // Bottom-left corner
             this.width = width;
             this.height = height;
             
-            // Rectangles can be offset analytically
             this.geometricContext.isAnalytic = true;
-            this.geometricContext.metadata = {
-                position: { ...position },
-                width: width,
-                height: height
+            this.geometricContext.metadata = { 
+                position: { ...position }, 
+                width, 
+                height 
             };
         }
         
         calculateBounds() {
-            let minX = this.position.x;
-            let minY = this.position.y;
-            let maxX = this.position.x + this.width;
-            let maxY = this.position.y + this.height;
+            let { x, y } = this.position;
+            let w = this.width;
+            let h = this.height;
             
             if (this.properties.strokeWidth && this.properties.stroke) {
                 const halfStroke = this.properties.strokeWidth / 2;
-                minX -= halfStroke;
-                minY -= halfStroke;
-                maxX += halfStroke;
-                maxY += halfStroke;
+                x -= halfStroke;
+                y -= halfStroke;
+                w += this.properties.strokeWidth;
+                h += this.properties.strokeWidth;
             }
             
-            this.bounds = { minX, minY, maxX, maxY };
-        }
-        
-        toPolygon() {
-            const points = [
-                { x: this.position.x, y: this.position.y },
-                { x: this.position.x + this.width, y: this.position.y },
-                { x: this.position.x + this.width, y: this.position.y + this.height },
-                { x: this.position.x, y: this.position.y + this.height },
-                { x: this.position.x, y: this.position.y } // Explicitly close
-            ];
-            
-            return new PathPrimitive(points, {
-                ...this.properties,
-                closed: true,
-                originalRectangle: {
-                    position: { ...this.position },
-                    width: this.width,
-                    height: this.height
-                }
-            });
-        }
-        
-        // Rectangles aren't curves
-        generateCurveMetadata() {
-            return null;
+            this.bounds = {
+                minX: x,
+                minY: y,
+                maxX: x + w,
+                maxY: y + h
+            };
         }
     }
     
+    /**
+     * ObroundPrimitive - analytic obround (slot)
+     */
     class ObroundPrimitive extends RenderPrimitive {
         constructor(position, width, height, properties = {}) {
             super('obround', properties);
@@ -475,255 +262,44 @@
             this.width = width;
             this.height = height;
             
-            // Check if this is actually a circle (equal dimensions)
             const tolerance = geomConfig.coordinatePrecision || 0.001;
             this.isCircular = Math.abs(width - height) < tolerance;
             
-            if (this.isCircular) {
-                // It's actually a circle - mark it as such
-                this.geometricContext.isAnalytic = true;
-                this.geometricContext.metadata = {
-                    position: { ...position },
-                    width: width,
-                    height: height,
-                    actualType: 'circle',
-                    radius: width / 2,
-                    center: {
-                        x: position.x + width / 2,
-                        y: position.y + height / 2
-                    }
-                };
-                
-                // Register as a single circle with direction, UNLESS it's a drill feature.
-                // Drill features do not need curve registration for offsets.
-                if (!properties.isDrillSlot && window.globalCurveRegistry) {
-                    this.curveId = window.globalCurveRegistry.register({
-                        type: 'circle',
-                        center: this.geometricContext.metadata.center,
-                        radius: this.geometricContext.metadata.radius,
-                        primitiveId: this.id,
-                        clockwise: false,  // Circles always CCW
-                        source: 'obround_circular'
-                    });
-                    this.curveIds = [this.curveId];
-                }
-            } else {
-                // True obround with semicircles
-                this.geometricContext.isAnalytic = true;
-                this.geometricContext.metadata = {
-                    position: { ...position },
-                    width: width,
-                    height: height,
-                    cornerRadius: Math.min(width, height) / 2
-                };
-                
-                // Register the semicircles as curves, UNLESS it's a drill feature.
-                if (!properties.isDrillSlot) {
-                    this.registerSemicircles();
-                }
-            }
-        }
-        
-        registerSemicircles() {
-            if (!window.globalCurveRegistry) {
-                return;
-            }
-            
-            const r = Math.min(this.width, this.height) / 2;
-            this.curveIds = [];
-            
-            // Store clockwise property for all semicircle registrations
-            // End-caps are always generated CCW
-            if (this.width > this.height) {
-                // Horizontal obround - two semicircles
-                const leftId = window.globalCurveRegistry.register({
-                    type: 'arc',
-                    center: { x: this.position.x + r, y: this.position.y + r },
-                    radius: r,
-                    startAngle: Math.PI / 2,
-                    endAngle: 3 * Math.PI / 2,
-                    clockwise: false,  // CCW semicircle
-                    primitiveId: this.id,
-                    source: 'obround_left'
-                });
-                
-                const rightId = window.globalCurveRegistry.register({
-                    type: 'arc',
-                    center: { x: this.position.x + this.width - r, y: this.position.y + r },
-                    radius: r,
-                    startAngle: -Math.PI / 2,
-                    endAngle: Math.PI / 2,
-                    clockwise: false,  // CCW semicircle
-                    primitiveId: this.id,
-                    source: 'obround_right'
-                });
-                
-                if (leftId) this.curveIds.push(leftId);
-                if (rightId) this.curveIds.push(rightId);
-            } else {
-                // Vertical obround - two semicircles
-                const topId = window.globalCurveRegistry.register({
-                    type: 'arc',
-                    center: { x: this.position.x + r, y: this.position.y + r },
-                    radius: r,
-                    startAngle: Math.PI,
-                    endAngle: 2 * Math.PI,
-                    clockwise: false,  // CCW semicircle
-                    primitiveId: this.id,
-                    source: 'obround_top'
-                });
-                
-                const bottomId = window.globalCurveRegistry.register({
-                    type: 'arc',
-                    center: { x: this.position.x + r, y: this.position.y + this.height - r },
-                    radius: r,
-                    startAngle: 0,
-                    endAngle: Math.PI,
-                    clockwise: false,  // CCW semicircle
-                    primitiveId: this.id,
-                    source: 'obround_bottom'
-                });
-                
-                if (topId) this.curveIds.push(topId);
-                if (bottomId) this.curveIds.push(bottomId);
-            }
-        }
-        
-        calculateBounds() {
-            let minX = this.position.x;
-            let minY = this.position.y;
-            let maxX = this.position.x + this.width;
-            let maxY = this.position.y + this.height;
-            
-            if (this.properties.strokeWidth && this.properties.stroke) {
-                const halfStroke = this.properties.strokeWidth / 2;
-                minX -= halfStroke;
-                minY -= halfStroke;
-                maxX += halfStroke;
-                maxY += halfStroke;
-            }
-            
-            this.bounds = { minX, minY, maxX, maxY };
-        }
-        
-        // Generate curve metadata for obround
-        generateCurveMetadata() {
-            if (this.isCircular) {
-                // Return circle metadata
-                return {
-                    type: 'circle',
-                    center: this.geometricContext.metadata.center,
-                    radius: this.geometricContext.metadata.radius,
-                    clockwise: false,  // Always CCW
-                    originalObround: true
-                };
-            }
-            
-            // Return obround metadata with curves
-            const r = Math.min(this.width, this.height) / 2;
-            const curves = [];
-            
-            if (this.width > this.height) {
-                // Horizontal obround - two semicircles (CCW)
-                curves.push({
-                    type: 'arc',
-                    center: { x: this.position.x + r, y: this.position.y + r },
-                    radius: r,
-                    startAngle: Math.PI / 2,
-                    endAngle: 3 * Math.PI / 2,
-                    clockwise: false
-                });
-                curves.push({
-                    type: 'arc',
-                    center: { x: this.position.x + this.width - r, y: this.position.y + r },
-                    radius: r,
-                    startAngle: -Math.PI / 2,
-                    endAngle: Math.PI / 2,
-                    clockwise: false
-                });
-            } else {
-                // Vertical obround - two semicircles (CCW)
-                curves.push({
-                    type: 'arc',
-                    center: { x: this.position.x + r, y: this.position.y + r },
-                    radius: r,
-                    startAngle: Math.PI,
-                    endAngle: 2 * Math.PI,
-                    clockwise: false
-                });
-                curves.push({
-                    type: 'arc',
-                    center: { x: this.position.x + r, y: this.position.y + this.height - r },
-                    radius: r,
-                    startAngle: 0,
-                    endAngle: Math.PI,
-                    clockwise: false
-                });
-            }
-            
-            return {
-                type: 'obround',
-                position: { ...this.position },
-                width: this.width,
-                height: this.height,
-                curves: curves
+            this.geometricContext.isAnalytic = true;
+            this.geometricContext.metadata = {
+                position: { ...position },
+                width,
+                height,
+                isCircular: this.isCircular,
+                cornerRadius: Math.min(width, height) / 2
             };
         }
         
-        toPolygon(segmentsPerArc = null, curveIds = null) {
-            // Handle circular case
-            if (this.isCircular) {
-                const center = {
-                    x: this.position.x + this.width / 2,
-                    y: this.position.y + this.height / 2
-                };
-                const radius = this.width / 2;
-                
-                // Create a circle primitive and convert it to polygon
-                const circlePrim = new CirclePrimitive(center, radius, this.properties);
-                return circlePrim.toPolygon();
+        calculateBounds() {
+            let { x, y } = this.position;
+            let w = this.width;
+            let h = this.height;
+            
+            if (this.properties.strokeWidth && this.properties.stroke) {
+                const halfStroke = this.properties.strokeWidth / 2;
+                x -= halfStroke;
+                y -= halfStroke;
+                w += this.properties.strokeWidth;
+                h += this.properties.strokeWidth;
             }
             
-            // Normal obround handling
-            const r = Math.min(this.width, this.height) / 2;
-            segmentsPerArc = segmentsPerArc || segmentConfig.obround || 16;
-            
-            // Use geometry utilities to create proper stroked path
-            const isHorizontal = this.width > this.height;
-            const strokeWidth = Math.min(this.width, this.height);
-            const strokeLength = Math.abs(this.width - this.height);
-            
-            let start, end;
-            if (isHorizontal) {
-                const centerY = this.position.y + this.height / 2;
-                start = { x: this.position.x + r, y: centerY };
-                end = { x: this.position.x + this.width - r, y: centerY };
-            } else {
-                const centerX = this.position.x + this.width / 2;
-                start = { x: centerX, y: this.position.y + r };
-                end = { x: centerX, y: this.position.y + this.height - r };
-            }
-            
-            // Use lineToPolygon for proper end-cap metadata
-            const points = GeometryUtils.lineToPolygon(start, end, strokeWidth);
-            
-            const pathPrimitive = new PathPrimitive(points, {
-                ...this.properties,
-                closed: true,
-                originalObround: {
-                    position: { ...this.position },
-                    width: this.width,
-                    height: this.height
-                },
-                curveIds: this.curveIds || [],
-                originalPointCount: points.length,
-                hasCompleteMetadata: true
-            });
-            
-            return pathPrimitive;
+            this.bounds = {
+                minX: x,
+                minY: y,
+                maxX: x + w,
+                maxY: y + h
+            };
         }
     }
     
+    /**
+     * ArcPrimitive - analytic circular arc
+     */
     class ArcPrimitive extends RenderPrimitive {
         constructor(center, radius, startAngle, endAngle, clockwise, properties = {}) {
             super('arc', properties);
@@ -733,17 +309,15 @@
             this.endAngle = endAngle;
             this.clockwise = clockwise;
             
-            // Arcs can be offset analytically
             this.geometricContext.isAnalytic = true;
             this.geometricContext.metadata = {
-                center: { ...center },
-                radius: radius,
-                startAngle: startAngle,
-                endAngle: endAngle,
-                clockwise: clockwise
+                center,
+                radius,
+                startAngle,
+                endAngle,
+                clockwise
             };
             
-            // Calculate start and end points
             this.startPoint = {
                 x: center.x + radius * Math.cos(startAngle),
                 y: center.y + radius * Math.sin(startAngle)
@@ -752,53 +326,6 @@
                 x: center.x + radius * Math.cos(endAngle),
                 y: center.y + radius * Math.sin(endAngle)
             };
-            
-            // Register this arc as a curve with direction
-            this.curveId = this.registerAsGlobalCurve();
-            if (this.curveId) {
-                this.curveIds = [this.curveId];
-            }
-        }
-
-        /**
-         * Returns a new ArcPrimitive representing the same arc traversed in the opposite direction.
-         * @returns {ArcPrimitive} A new, reversed ArcPrimitive.
-         */
-        reverse() {
-            // To reverse an arc, we swap the start and end angles and flip the clockwise flag.
-            // The properties are carried over.
-            const reversedProperties = { ...this.properties };
-            // We can add a property to track that this happened, for debugging.
-            reversedProperties.isReversed = true;
-
-            return new ArcPrimitive(
-                this.center,
-                this.radius,
-                this.endAngle,      // Swap start and end
-                this.startAngle,
-                !this.clockwise,    // Flip direction
-                reversedProperties
-            );
-        }
-        
-        registerAsGlobalCurve() {
-            if (!window.globalCurveRegistry) {
-                return null;
-            }
-            
-            // Store actual clockwise property
-            const curveId = window.globalCurveRegistry.register({
-                type: 'arc',
-                center: { ...this.center },
-                radius: this.radius,
-                startAngle: this.startAngle,
-                endAngle: this.endAngle,
-                clockwise: this.clockwise,  // Store actual direction
-                primitiveId: this.id,
-                source: 'primitive_arc'
-            });
-            
-            return curveId;
         }
         
         calculateBounds() {
@@ -808,269 +335,135 @@
             let maxY = Math.max(this.startPoint.y, this.endPoint.y);
             
             // Check if arc crosses cardinal directions
-            const crosses = this.getCardinalCrossings();
-            let effectiveRadius = this.radius;
-            
-            if (this.properties.strokeWidth && this.properties.stroke) {
-                effectiveRadius += this.properties.strokeWidth / 2;
-            }
-            
-            if (crosses.right) maxX = Math.max(maxX, this.center.x + effectiveRadius);
-            if (crosses.top) maxY = Math.max(maxY, this.center.y + effectiveRadius);
-            if (crosses.left) minX = Math.min(minX, this.center.x - effectiveRadius);
-            if (crosses.bottom) minY = Math.min(minY, this.center.y - effectiveRadius);
-            
-            this.bounds = { minX, minY, maxX, maxY };
-        }
-        
-        getCardinalCrossings() {
-            const normalize = angle => {
-                while (angle < 0) angle += 2 * Math.PI;
-                while (angle > 2 * Math.PI) angle -= 2 * Math.PI;
-                return angle;
-            };
-            
-            const start = normalize(this.startAngle);
-            const end = normalize(this.endAngle);
-            
-            const cardinals = {
-                right: 0,
-                top: Math.PI / 2,
-                left: Math.PI,
-                bottom: 3 * Math.PI / 2
-            };
-            
-            const crosses = {
-                right: false,
-                top: false,
-                left: false,
-                bottom: false
-            };
-            
-            for (const [dir, angle] of Object.entries(cardinals)) {
+            const checkCrossing = (angle) => {
+                const normalizedAngle = angle % (2 * Math.PI);
+                let start = this.startAngle % (2 * Math.PI);
+                let end = this.endAngle % (2 * Math.PI);
+                
+                if (start < 0) start += 2 * Math.PI;
+                if (end < 0) end += 2 * Math.PI;
+                
                 if (this.clockwise) {
                     if (start > end) {
-                        crosses[dir] = angle >= start || angle <= end;
+                        return normalizedAngle <= start && normalizedAngle >= end;
                     } else {
-                        crosses[dir] = angle >= start && angle <= end;
+                        return normalizedAngle <= start || normalizedAngle >= end;
                     }
                 } else {
                     if (start < end) {
-                        crosses[dir] = angle >= start && angle <= end;
+                        return normalizedAngle >= start && normalizedAngle <= end;
                     } else {
-                        crosses[dir] = angle <= start || angle >= end;
+                        return normalizedAngle >= start || normalizedAngle <= end;
                     }
                 }
+            };
+            
+            if (checkCrossing(0)) maxX = Math.max(maxX, this.center.x + this.radius);
+            if (checkCrossing(Math.PI / 2)) maxY = Math.max(maxY, this.center.y + this.radius);
+            if (checkCrossing(Math.PI)) minX = Math.min(minX, this.center.x - this.radius);
+            if (checkCrossing(3 * Math.PI / 2)) minY = Math.min(minY, this.center.y - this.radius);
+            
+            // Expand by stroke width if stroked
+            if (this.properties.stroke && this.properties.strokeWidth) {
+                const halfStroke = this.properties.strokeWidth / 2;
+                minX -= halfStroke;
+                minY -= halfStroke;
+                maxX += halfStroke;
+                maxY += halfStroke;
             }
             
-            return crosses;
+            this.bounds = { minX, minY, maxX, maxY };
         }
-        
-        getOffsetGeometry(offsetDistance) {
-            return new ArcPrimitive(
-                this.center,
-                Math.max(0, this.radius + offsetDistance),
-                this.startAngle,
-                this.endAngle,
-                this.clockwise,
-                { ...this.properties }
-            );
-        }
-        
-        // Generate curve metadata for arc
-        generateCurveMetadata() {
-            return {
-                type: 'arc',
-                center: { ...this.center },
-                radius: this.radius,
-                startAngle: this.startAngle,
-                endAngle: this.endAngle,
-                clockwise: this.clockwise,
-                startPoint: { ...this.startPoint },
-                endPoint: { ...this.endPoint }
+    }
+    
+    /**
+     * EllipticalArcPrimitive - analytic elliptical arc
+     */
+    class EllipticalArcPrimitive extends RenderPrimitive {
+        constructor(startPoint, endPoint, params, properties = {}) {
+            super('elliptical_arc', properties);
+            
+            this.startPoint = startPoint;
+            this.endPoint = endPoint;
+            this.rx = params.rx;
+            this.ry = params.ry;
+            this.phi = params.phi;
+            this.fA = params.fA === 1; // Large arc flag
+            this.fS = params.fS === 1; // Sweep flag
+            
+            this.geometricContext.isAnalytic = true;
+            this.geometricContext.metadata = {
+                ...params,
+                startPoint,
+                endPoint
             };
         }
         
-        toPolygon(minSegments = null, maxSegments = null, curveIds = null) {
-            minSegments = minSegments || segmentConfig.minArc || 8;
-            maxSegments = maxSegments || segmentConfig.maxArc || 64;
+        canOffsetAnalytically() {
+            return false; // Implement at another time
+        }
+        
+        calculateBounds() {
+            // Simple bounding box from endpoints
+            // More accurate bounds would require tessellation
+            const minX = Math.min(this.startPoint.x, this.endPoint.x);
+            const minY = Math.min(this.startPoint.y, this.endPoint.y);
+            const maxX = Math.max(this.startPoint.x, this.endPoint.x);
+            const maxY = Math.max(this.startPoint.y, this.endPoint.y);
             
-            let angleSpan = this.endAngle - this.startAngle;
-            if (this.clockwise) {
-                if (angleSpan > 0) angleSpan -= 2 * Math.PI;
-            } else {
-                if (angleSpan < 0) angleSpan += 2 * Math.PI;
-            }
+            // Expand by max radius as conservative estimate
+            const maxRadius = Math.max(this.rx, this.ry);
             
-            const arcLength = Math.abs(angleSpan) * this.radius;
-            const targetLength = segmentConfig.targetLength || 0.1;
-            const desiredSegments = Math.ceil(arcLength / targetLength);
-            const segments = Math.max(minSegments, Math.min(maxSegments, desiredSegments));
-            
-            const points = [];
-            // Use the arc's own registered curve ID
-            const curveId = this.curveId || (curveIds && curveIds.length > 0 ? curveIds[0] : undefined);
-            
-            // Generate points with full metadata
-            for (let i = 0; i <= segments; i++) {
-                const t = i / segments;
-                const angle = this.startAngle + angleSpan * t;
-                const point = {
-                    x: this.center.x + this.radius * Math.cos(angle),
-                    y: this.center.y + this.radius * Math.sin(angle)
-                };
-                
-                if (curveId !== undefined) {
-                    point.curveId = curveId;
-                    point.segmentIndex = i;
-                    point.totalSegments = segments + 1;
-                    point.t = t;
-                    point.angle = angle;
-                }
-                
-                points.push(point);
-            }
-            
-            const pathPrimitive = new PathPrimitive(points, {
-                ...this.properties,
-                closed: false,
-                arcSegments: [{
-                    startIndex: 0,
-                    endIndex: points.length - 1,
-                    center: this.center,
-                    radius: this.radius,
-                    startAngle: this.startAngle,
-                    endAngle: this.endAngle,
-                    clockwise: this.clockwise,
-                    curveId: curveId
-                }],
-                curveIds: [curveId].filter(id => id !== undefined),
-                originalPointCount: segments + 1,
-                hasCompleteMetadata: true
-            });
-            
-            return pathPrimitive;
+            this.bounds = {
+                minX: minX - maxRadius,
+                minY: minY - maxRadius,
+                maxX: maxX + maxRadius,
+                maxY: maxY + maxRadius
+            };
         }
     }
     
-    // Factory with config-based defaults
-    class PrimitiveFactory {
-        static createCircle(center, radius, properties = {}) {
-            return new CirclePrimitive(center, radius, properties);
+    /**
+     * BezierPrimitive - analytic Bezier curve
+     */
+    class BezierPrimitive extends RenderPrimitive {
+        constructor(points, properties = {}) {
+            super('bezier', properties);
+            this.points = points; // [p0, p1, p2] or [p0, p1, p2, p3]
+            
+            this.geometricContext.isAnalytic = true;
+            this.geometricContext.metadata = {
+                points: [...points],
+                degree: points.length - 1
+            };
         }
         
-        static createArc(center, radius, startAngle, endAngle, clockwise, properties = {}) {
-            return new ArcPrimitive(center, radius, startAngle, endAngle, clockwise, properties);
+        canOffsetAnalytically() {
+            return false; // Bezier curves can't be offset analytically yet
         }
         
-        static createStroke(start, end, width, properties = {}) {
-            const dx = end.x - start.x;
-            const dy = end.y - start.y;
-            const length = Math.sqrt(dx * dx + dy * dy);
+        calculateBounds() {
+            // Simple bounding box from control points
+            let minX = Infinity, minY = Infinity;
+            let maxX = -Infinity, maxY = -Infinity;
             
-            if (length < geomConfig.coordinatePrecision || 0.001) {
-                // Zero-length stroke becomes a circle
-                return new CirclePrimitive(start, width / 2, {
-                    ...properties,
-                    isStroke: true,
-                    originalWidth: width
-                });
-            }
-            
-            // For strokes, use GeometryUtils to create proper polygon with end-caps
-            const points = GeometryUtils.lineToPolygon(start, end, width);
-            
-            return new PathPrimitive(points, {
-                ...properties,
-                isStroke: true,
-                originalStroke: {
-                    start: { ...start },
-                    end: { ...end },
-                    width: width
-                },
-                closed: true,
-                hasCompleteMetadata: true
+            this.points.forEach(point => {
+                minX = Math.min(minX, point.x);
+                minY = Math.min(minY, point.y);
+                maxX = Math.max(maxX, point.x);
+                maxY = Math.max(maxY, point.y);
             });
-        }
-        
-        static createPolygon(center, diameter, sides, rotation = 0, properties = {}) {
-            const points = [];
-            const radius = diameter / 2;
             
-            for (let i = 0; i <= sides; i++) {
-                const angle = (i / sides) * 2 * Math.PI + rotation;
-                points.push({
-                    x: center.x + radius * Math.cos(angle),
-                    y: center.y + radius * Math.sin(angle)
-                });
+            // Expand by stroke width if stroked
+            if (this.properties.stroke && this.properties.strokeWidth) {
+                const halfStroke = this.properties.strokeWidth / 2;
+                minX -= halfStroke;
+                minY -= halfStroke;
+                maxX += halfStroke;
+                maxY += halfStroke;
             }
             
-            return new PathPrimitive(points, { 
-                ...properties, 
-                closed: true,
-                isPolygon: true,
-                originalPolygon: {
-                    center: { ...center },
-                    diameter: diameter,
-                    sides: sides,
-                    rotation: rotation
-                }
-            });
-        }
-    }
-    
-    // Geometry optimization utilities using config
-    class GeometryOptimizer {
-        static getOptimalSegments(radius, minSegments = null, maxSegments = null, targetSegmentLength = null) {
-            // Use config values if not specified
-            minSegments = minSegments || segmentConfig.minCircle || 8;
-            maxSegments = maxSegments || segmentConfig.maxCircle || 128;
-            targetSegmentLength = targetSegmentLength || segmentConfig.targetLength || 0.1;
-            
-            const circumference = 2 * Math.PI * radius;
-            const desiredSegments = Math.ceil(circumference / targetSegmentLength);
-            return Math.max(minSegments, Math.min(maxSegments, desiredSegments));
-        }
-        
-        static shouldPreserveAnalytic(primitive, offsetDistance) {
-            if (!geomConfig.preserveArcs) return false;
-            
-            // Keep circles and arcs analytic if they remain valid after offset
-            if (primitive.type === 'circle') {
-                return (primitive.radius + offsetDistance) > 0;
-            }
-            if (primitive.type === 'arc') {
-                return (primitive.radius + offsetDistance) > 0;
-            }
-            return false;
-        }
-        
-        static toOptimalPolygon(primitive) {
-            if (primitive.type === 'circle') {
-                const segments = this.getOptimalSegments(primitive.radius);
-                return primitive.toPolygon(
-                    Math.min(segmentConfig.minCircle || 16, segments), 
-                    segments
-                );
-            }
-            if (primitive.type === 'arc') {
-                const arcLength = Math.abs(primitive.endAngle - primitive.startAngle) * primitive.radius;
-                const targetLength = segmentConfig.targetLength || 0.1;
-                const segments = Math.ceil(arcLength / targetLength);
-                return primitive.toPolygon(
-                    Math.min(segmentConfig.minArc || 8, segments), 
-                    segments
-                );
-            }
-            if (primitive.type === 'rectangle') {
-                return primitive.toPolygon();
-            }
-            if (primitive.type === 'obround') {
-                const r = Math.min(primitive.width, primitive.height) / 2;
-                const segments = this.getOptimalSegments(r, 8, 32);
-                return primitive.toPolygon(segments);
-            }
-            return primitive;
+            this.bounds = { minX, minY, maxX, maxY };
         }
     }
     
@@ -1081,7 +474,7 @@
     window.RectanglePrimitive = RectanglePrimitive;
     window.ObroundPrimitive = ObroundPrimitive;
     window.ArcPrimitive = ArcPrimitive;
-    window.PrimitiveFactory = PrimitiveFactory;
-    window.GeometryOptimizer = GeometryOptimizer;
+    window.EllipticalArcPrimitive = EllipticalArcPrimitive;
+    window.BezierPrimitive = BezierPrimitive;
     
 })();

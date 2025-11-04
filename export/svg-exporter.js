@@ -315,7 +315,6 @@ Exported from the current canvas view.
             // Get the layer state flags
             const isPreprocessed = layer.isPreprocessed;
             const isFused = layer.isFused;
-            // ... other flags
 
             // Check for Preprocessed state
             if (isPreprocessed) {
@@ -372,9 +371,7 @@ Exported from the current canvas view.
             element.setAttribute('class', 'pcb-source-isolation');
         }
 
-        // ===================================================================
-        // ==================== GEOMETRY CONVERTERS ==========================
-        // ===================================================================
+        // GEOMETRY CONVERTERS
 
         _createCircleElement(primitive, config) {
             const precision = config.precision;
@@ -486,7 +483,7 @@ Exported from the current canvas view.
 
                 const endPointOfArc = points[arc.endIndex];
                 
-                // FIX 3: Use the pre-calculated sweep angle from the stitcher
+                // Use the pre-calculated sweep angle from the stitcher
                 let angleSpan = arc.sweepAngle;
                 
                 // Fallback if sweepAngle is missing (shouldn't happen with fixed stitcher)
@@ -497,14 +494,7 @@ Exported from the current canvas view.
                     if (!arc.clockwise && angleSpan < 0) angleSpan += 2 * Math.PI;
                 }
 
-                // Calculate flags
                 const largeArc = Math.abs(angleSpan) > Math.PI ? 1 : 0;
-                
-                // CORRECTED: SVG sweep-flag with Y-flip transform
-                // Your SVG has transform="scale(1,-1)" which inverts Y-axis
-                // This means our CW (in Y-down) becomes CCW (in Y-up after transform)
-                // SVG sweep-flag: 0=CCW, 1=CW (in the transformed coordinate system)
-                // Therefore: our_clockwise=true → transformed_CCW → SVG_sweep=0
                 const sweep = !arc.clockwise ? 1 : 0;  // Inverted mapping for Y-flip
 
                 pathParts.push(`A${p(arc.radius)},${p(arc.radius)} 0 ${largeArc} ${sweep} ${p(endPointOfArc.x)},${p(endPointOfArc.y)}`);
@@ -588,9 +578,7 @@ Exported from the current canvas view.
             return d;
         }
 
-        // ===================================================================
-        // ==================== SERIALIZE & DOWNLOAD =========================
-        // ===================================================================
+        // SERIALIZE & DOWNLOAD
         
         _serializeAndDownload(svg, filename) {
             const serializer = new XMLSerializer();

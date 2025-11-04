@@ -1,6 +1,15 @@
 {
-  "version": "1.0",
-  "lastModified": "2025-01-01",
+  "_projectInfo": {
+    "file": "tool-library.json",
+    "description": "EasyTrace5000 tool library",
+    "author": "Eltryus - Ricardo Marques",
+    "see": "https://github.com/RicardoJCMarques/EasyTrace5000",
+    "license": "AGPL-3.0-or-later",
+    "copyright": "Copyright (C) 2025 Eltryus"
+  },
+
+  "version": "0.1",
+  "lastModified": "2025-11-04",
   "tools": [
     {
       "id": "em_0.1mm_flat",

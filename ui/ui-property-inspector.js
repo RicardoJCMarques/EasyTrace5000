@@ -412,7 +412,7 @@
                 }
             });
             
-            // Mill holes toggle - special handling for drill operations
+            // Mill holes toggle - special handling for undersized drill operations
             const millCheck = container.querySelector('#prop-millHoles');
             if (millCheck) {
                 millCheck.addEventListener('change', async (e) => {

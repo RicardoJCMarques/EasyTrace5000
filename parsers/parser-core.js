@@ -236,17 +236,17 @@
             };
         }
         
-        // Delegate to GeometryUtils for winding
         calculateWinding(points) {
-            if (typeof GeometryUtils !== 'undefined') {
+            if (typeof GeometryUtils !== 'undefined' && GeometryUtils.calculateWinding) {
                 return GeometryUtils.calculateWinding(points);
             }
         }
-        
+
         isClockwise(points) {
-            if (typeof GeometryUtils !== 'undefined') {
+            if (typeof GeometryUtils !== 'undefined' && GeometryUtils.isClockwise) {
                 return GeometryUtils.isClockwise(points);
             }
+            return this.calculateWinding(points) < 0;
         }
         
         // Edge deduplication utilities
@@ -313,10 +313,9 @@
         
         // Delegate to GeometryUtils for arc interpolation
         interpolateArc(start, end, center, clockwise, segments = null) {
-            if (typeof GeometryUtils !== 'undefined') {
+            if (typeof GeometryUtils !== 'undefined' && GeometryUtils.interpolateArc) {
                 return GeometryUtils.interpolateArc(start, end, center, clockwise, segments);
             }
-
         }
         
         // Logging utilities

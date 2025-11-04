@@ -272,7 +272,7 @@
                 'preview': 'preview_'
             };
             
-            // First, update the visibility state of all layers without rendering
+            // Update the visibility state of all layers without rendering
             this.renderer.layers.forEach((layer, name) => {
                 for (const type in prefixMap) {
                     if (name.startsWith(prefixMap[type])) {
@@ -282,7 +282,7 @@
                 }
             });
 
-            // Now, trigger a single render with all changes applied
+            // Trigger a single render with all changes applied
             this.renderer.render();
             
             this.updateToggleButton();

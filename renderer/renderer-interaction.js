@@ -88,7 +88,7 @@
             this.canvas.removeEventListener('touchcancel', this.handleTouchEnd);
         }
         
-        // ==================== MOUSE EVENTS ====================
+        // Mouse Events
         
         _handleMouseDown(e) {
             if (e.button === 0) {
@@ -157,7 +157,7 @@
             return false;
         }
         
-        // ==================== TOUCH EVENTS ====================
+        // Touch Events
         
         _handleTouchStart(e) {
             e.preventDefault();
@@ -255,7 +255,7 @@
             }
         }
         
-        // ==================== UI UPDATES ====================
+        // UI Updates
         
         updateCoordinateDisplay() {
             const coordX = document.getElementById('coord-x');

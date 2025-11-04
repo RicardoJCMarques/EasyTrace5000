@@ -83,7 +83,7 @@
             this.core.clearLayers();
         }
         
-        // ==================== OPTIMIZED RENDERING ====================
+        // Rendering (Optimized)
         
         render() {
             if (this._renderQueued) return;
@@ -195,7 +195,7 @@
             this.core.endRender(startTime);
         }
         
-        // ==================== LAYER RENDERING WITH PROPER CONTEXT ====================
+        // Layer Rendering (With Proper Context)
         
         renderVisibleLayers() {
             // Separate layers by type for proper rendering order
@@ -258,7 +258,7 @@
             toolpathLayers.forEach(({ layer }) => this.renderLayer(layer));
         }
         
-        // ==================== LAYER RENDERING WITH CULLING AND CONTEXT ====================
+        // Layer Rendering (With Culling and Context)
         
         renderLayer(layer) {
             const theme = this.core.colors[this.options.theme];
@@ -305,7 +305,7 @@
                 
                 const primBounds = primitive.getBounds();
                 
-                // We only trust per-primitive culling if NOT rotated, because the simple primBounds AABB is incorrect when rotated.
+                // Only trust per-primitive culling if NOT rotated, because the simple primBounds AABB is incorrect when rotated.
                 if (!isRotated && !this.core.boundsIntersect(primBounds, vb)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
@@ -368,7 +368,7 @@
         }
 
         
-        // ==================== SPECIALIZED LAYER RENDERERS (WITH BATCHING) ====================
+        // Specialized Layer Batch Renderers
 
         renderOffsetLayer(layer) {
             const viewBounds = this.core.getViewBounds();
@@ -547,7 +547,7 @@
         }
 
         
-        // ==================== HELPER METHODS ====================
+        // Helper Methods
         
         getToolDiameterForPrimitive(primitive) {
             const opId = primitive.properties?.operationId;
@@ -631,7 +631,7 @@
             return false;
         }
         
-        // ==================== DEBUG OVERLAY ====================
+        // Debug Overlay
         
         renderDebugOverlay() {
             if (!this.debugPrimitivesScreen || this.debugPrimitivesScreen.length === 0) return;
@@ -646,7 +646,7 @@
             this.ctx.restore();
         }
         
-        // ==================== PUBLIC API ====================
+        // Public API
         
         zoomFit(padding) {
             this.core.calculateOverallBounds();

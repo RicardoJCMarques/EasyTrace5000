@@ -2,6 +2,7 @@
  * @file        toolpath/toolpath-optimizer.js
  * @description Optimizes pure geometry plans with geometric clustering
  * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
@@ -262,8 +263,7 @@
             }
 
             // 2. Verify actual closest distance is within margin
-            // This prevents connecting paths that have overlapping inflated boxes
-            // but are actually too far apart
+            // This prevents connecting paths that have overlapping inflated boxes but are actually too far apart
             const closestDist = this.findClosestDistanceBetweenPlans(planA, planB);
             return closestDist <= margin;
         }
@@ -390,7 +390,7 @@
                 
                 // Handle cluster run differently
                 if (options.isClusterRun) {
-                    // Store the link decision on the first plan of the chosen cluster ***
+                    // Store the link decision on the first plan of the chosen cluster
                     // This ensures the MachineProcessor knows to RAPID to this cluster.
                     if (chosen.plans && chosen.plans.length > 0) {
                         chosen.plans[0].metadata.optimization = {
@@ -473,7 +473,7 @@
                     planMetadata.entryPoint.y - fromPos.y
                 );
 
-                // --- Use calculated stepDistance + tolerance ---
+                // Use calculated stepDistance + tolerance
                 const toolDiameter = planMetadata.tool?.diameter || 1.0;
                 // Get stepOver from settings (use default from config if missing on plan)
                 const stepOverPercent = planMetadata.stepOver || (config.operations[planMetadata.operationType || 'isolation']?.defaultSettings?.stepOver) || 50;
@@ -484,10 +484,10 @@
                 const tolerance = 0.1 * toolDiameter; // e.g., 10% of tool diameter
                 const staydownThreshold = stepDistance + tolerance;
 
-                // if (this.options.debug) {
+                if (this.options.debug) {
                    console.log(`[DEBUG Staydown] Plan ${planMetadata.operationId} (Pass ${planMetadata.pass || 1}): ToolD=${toolDiameter.toFixed(3)}, StepOver=${stepOverPercent}%, StepDist=${stepDistance.toFixed(3)}, Threshold=${staydownThreshold.toFixed(3)}`);
                    console.log(`[DEBUG Staydown]   Original Entry Dist: ${originalEntryDist.toFixed(3)}`);
-                // }
+                }
 
                 // Option 1: Use original entry point if close enough (no rotation needed)
                 if (originalEntryDist <= staydownThreshold) {
@@ -531,7 +531,7 @@
                 // }
             }
 
-            // --- Default: Use Rapid Link ---
+            // Default: Use Rapid Link
             // Find closest point (again, or for the first time if staydown wasn't possible)
             // This allows rapid links to also benefit from entry point rotation if possible.
             const { point: bestRapidPoint, distance: closestRapidXYDist, commandIndex: rapidCommandIndex } =
@@ -539,10 +539,10 @@
 
             const rapidCost = this.calculateRapidCost(fromPos, bestRapidPoint, closestRapidXYDist);
 
-            // if (this.options.debug) {
+            if (this.options.debug) {
                 const reason = !allowStaydown ? "Not Allowed" : (planMetadata.isPeckMark || planMetadata.isDrillMilling) ? "Drill Op" : "Too Far";
                 console.log(`[DEBUG Staydown]   >> Using Rapid Link (${reason}). Cost: ${rapidCost.toFixed(1)}, Dist: ${closestRapidXYDist.toFixed(3)}, Index: ${rapidCommandIndex}`);
-            // }
+            }
 
             return {
                 cost: rapidCost,
@@ -572,7 +572,7 @@
         
         /**
          * Find closest point on a plan
-         * CRITICAL FIX: Check both isPeckMark AND isDrillMilling
+         * Check both isPeckMark AND isDrillMilling
          */
         findClosestPointOnPlan(fromPos, plan) {
             const meta = plan.metadata;
@@ -813,8 +813,7 @@
                         lastPushedPoint = tempPos;
                     } else if (points.length > 0) {
                         // This is a zero-length move or the duplicate first point.
-                        // Do not add the point, but *do* attach its command (e.g., feed rate)
-                        // to the *previous* point. This ensures the command isn't lost.
+                        // Do not add the point, but *do* attach its command (e.g., feed rate) to the *previous* point. This ensures the command isn't lost.
                         points[points.length - 1].cmd = linearCmd;
                     }
                 }
@@ -840,7 +839,6 @@
         
         /**
          * Simplifies a point sequence by removing collinear points.
-         * Preserves the first and last points.
          */
         simplifyCollinearPoints(points) {
             if (points.length <= 2) {
@@ -854,8 +852,7 @@
                 const p1 = points[i];
                 const p2 = points[i + 1];
 
-                // Use the perpendicular distance (which you already have)
-                // as the collinearity check.
+                // Use the perpendicular distance (which you already have) as the collinearity check.
                 const tolerance = (this.options.minSegmentLength / 10.0) || 0.001;
                 const dist = this.perpendicularDistance(p1, p0, p2);
 

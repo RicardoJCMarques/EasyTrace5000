@@ -293,9 +293,7 @@
         
             const tool = this.tools.get(this.currentTool);
         
-            // Use a more robust check for slots that is not dependent on coordinate order.
             if (line.includes('G85')) {
-                // This is a G85 slot command.
                 const slotMatch = line.match(/X([+-]?\d+\.?\d*)\s*Y([+-]?\d+\.?\d*)\s*G85\s*X([+-]?\d+\.?\d*)\s*Y([+-]?\d+\.?\d*)/);
         
                 if (slotMatch) {
@@ -335,7 +333,7 @@
                     this.errors.push(`Line ${lineNumber}: Malformed G85 slot command: "${line}"`);
                 }
             } else {
-                // This is a standard drill hit (KiCad format).
+                // This is a standard drill hit.
                 const coordinates = this.parseCoordinates(line, lineNumber);
                 if (!coordinates) {
                     // parseCoordinates will have already pushed an error if necessary.

@@ -125,7 +125,6 @@
                 this.boardBounds = { ...bounds };
                 
                 // Set rotation center to board center
-
                 if (this.currentRotation === 0 || !this.initialized) {
                     this.rotationCenter = {
                         x: bounds.centerX,

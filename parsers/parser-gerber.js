@@ -508,7 +508,7 @@
                 type: 'region',
                 points: [...this.state.regionPoints],
                 polarity: this.state.polarity,
-                contours: contours  // Use contours, not holes
+                contours: contours
             };
             
             this.layers.objects.push(region);

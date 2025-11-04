@@ -44,12 +44,12 @@
         }
 
         
-        // ==================== MAIN DISPATCHER ====================
+        // Main Dispatcher
         
         renderPrimitive(primitive, fillColor, strokeColor, isPreprocessed = false, context = {}) {
             const role = primitive.properties?.role;
 
-            // === ROLE-BASED DISPATCH ===
+            // Role-based Dispatcher
             if (role) {
                 switch (role) {
                     case 'drill_hole':
@@ -93,17 +93,15 @@
             this.renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed);
         }
         
-        // ==================== BATCHED RENDERING ====================
+        // Batched Rendering
         
         addPrimitiveToPath2D(primitive, path2d) {
             switch (primitive.type) {
                 case 'path':
-                    // This now handles simple paths AND complex paths with analytic arcs.
                     this.addPathToPath2D(primitive, path2d);
                     break;
                     
                 case 'circle':
-                    // Path2D.arc needs a starting point.
                     path2d.moveTo(primitive.center.x + primitive.radius, primitive.center.y);
                     path2d.arc(
                         primitive.center.x, 
@@ -128,7 +126,7 @@
                     break;
                     
                 case 'arc':
-                    // Note: A standalone ArcPrimitive is rare in offset layers, but we handle it.
+                    // Standalone ArcPrimitives are rare in offset layers, but this handles it.
                     path2d.arc(
                         primitive.center.x,
                         primitive.center.y,
@@ -158,7 +156,6 @@
                 return;
             }
 
-            // --- HYBRID PATH LOGIC ---
             // If we are here, it's a path with analytic arc data.
             const segments = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
             let currentIndex = 0;
@@ -218,7 +215,7 @@
             path2d.closePath();
         }
         
-        // ==================== SPECIALIZED RENDERERS ====================
+        // Specialized Renderers
 
         _setStrokeState(color, width) {
             this.ctx.strokeStyle = color;
@@ -387,11 +384,12 @@
             
             // Color priority: oversized > undersized > reducedPlunge > perfect fit
             let markColor = '#16d329ff'; // Green means tool diameter = drill hole size
-            if (oversized) markColor = '#ff0000';  // Red oversized warning (should be overwrite all others)
+            if (oversized) markColor = '#ff0000';  // Red oversized warning (should overwrite all others)
             else if (undersized) markColor = '#d2cb00ff';  // Yellow undersized warning
             else if (reducedPlunge) markColor = '#ff5e00ff';  // Dark orange reduced plunge rate warning
             
-            // === OFFSET STAGE: Outline + center (like source drill) ===
+            // Offset Stage: Outline + center (like source drill)
+
             if (!isPreview) {
                 // Just outline
                 this.ctx.strokeStyle = markColor;
@@ -419,7 +417,8 @@
                 return;
             }
             
-            // === PREVIEW STAGE: Filled circles ===
+            // Preview Stage: Filled circles
+
             // Semi-transparent fill
             this.ctx.fillStyle = markColor;
             this.ctx.beginPath();
@@ -503,11 +502,11 @@
             this.ctx.restore();
         }
         
-        // ==================== NORMAL RENDERING ====================
+        // Normal Rendering
         
         renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed) {
             const props = primitive.properties || {};
-            
+            // Should these be batched themselves?
             switch (primitive.type) {
                 case 'path':
                     this.renderPath(primitive, fillColor, strokeColor, isPreprocessed);
@@ -536,90 +535,90 @@
         }
         
         renderPath(primitive, fillColor, strokeColor, isPreprocessed) {
-        // If it's preprocessed, it should *always* fill.
-        const shouldFill = (primitive.properties?.fill !== false && !primitive.properties?.stroke) || isPreprocessed;
-        // If it's preprocessed, it should *never* stroke.
-        const shouldStroke = (primitive.properties?.stroke === true || primitive.properties?.isTrace) && !isPreprocessed;
-        const points = primitive.points;
+            // If it's preprocessed, it should *always* fill.
+            const shouldFill = (primitive.properties?.fill !== false && !primitive.properties?.stroke) || isPreprocessed;
+            // If it's preprocessed, it should *never* stroke.
+            const shouldStroke = (primitive.properties?.stroke === true || primitive.properties?.isTrace) && !isPreprocessed;
+            const points = primitive.points;
 
-        if (!points || points.length === 0) return;
+            if (!points || points.length === 0) return;
 
-        this.ctx.beginPath();
+            this.ctx.beginPath();
 
-        // Handle paths with arcs
-        if (primitive.arcSegments && primitive.arcSegments.length > 0) {
-            const sortedArcs = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
-            let currentIndex = 0;
+            // Handle paths with arcs
+            if (primitive.arcSegments && primitive.arcSegments.length > 0) {
+                const sortedArcs = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
+                let currentIndex = 0;
 
-            this.ctx.moveTo(points[0].x, points[0].y);
+                this.ctx.moveTo(points[0].x, points[0].y);
 
-            for (const arc of sortedArcs) {
-                // Draw lines up to the arc start
-                for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
-                    this.ctx.lineTo(points[i].x, points[i].y);
+                for (const arc of sortedArcs) {
+                    // Draw lines up to the arc start
+                    for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
+                        this.ctx.lineTo(points[i].x, points[i].y);
+                    }
+
+                    // Draw the arc
+                    this.ctx.arc(
+                        arc.center.x, arc.center.y, arc.radius,
+                        arc.startAngle, arc.endAngle, arc.clockwise
+                    );
+
+                    currentIndex = arc.endIndex;
                 }
 
-                // Draw the arc
-                this.ctx.arc(
-                    arc.center.x, arc.center.y, arc.radius,
-                    arc.startAngle, arc.endAngle, arc.clockwise
-                );
+                // Check if last arc wrapped to start (closes path)
+                const pathClosedByArc = (currentIndex === 0 && sortedArcs.length > 0);
 
-                currentIndex = arc.endIndex;
-            }
-
-            // Check if last arc wrapped to start (closes path)
-            const pathClosedByArc = (currentIndex === 0 && sortedArcs.length > 0);
-
-            // Draw remaining lines only if path not closed by arc
-            if (!pathClosedByArc) {
-                for (let i = currentIndex + 1; i < points.length; i++) {
-                    this.ctx.lineTo(points[i].x, points[i].y);
+                // Draw remaining lines only if path not closed by arc
+                if (!pathClosedByArc) {
+                    for (let i = currentIndex + 1; i < points.length; i++) {
+                        this.ctx.lineTo(points[i].x, points[i].y);
+                    }
                 }
+
+            } else {
+                // Simple path logic
+                points.forEach((p, i) => {
+                    if (i === 0) this.ctx.moveTo(p.x, p.y);
+                    else this.ctx.lineTo(p.x, p.y);
+                });
             }
 
-        } else {
-            // Simple path logic
-            points.forEach((p, i) => {
-                if (i === 0) this.ctx.moveTo(p.x, p.y);
-                else this.ctx.lineTo(p.x, p.y);
-            });
-        }
+            // Closing, Filling, Stroking
+            if (primitive.closed !== false) {
+                this.ctx.closePath();
+            }
 
-        // Closing, Filling, Stroking
-        if (primitive.closed !== false) {
-            this.ctx.closePath();
-        }
+            if (shouldFill) {
+                // Handle fill rules for complex shapes (like fused geometry)
+                const fillRule = (primitive.holes && primitive.holes.length > 0) || (primitive.contours && primitive.contours.length > 1) ? 'evenodd' : 'nonzero';
 
-        if (shouldFill) {
-            // Handle fill rules for complex shapes (like fused geometry)
-            const fillRule = (primitive.holes && primitive.holes.length > 0) || (primitive.contours && primitive.contours.length > 1) ? 'evenodd' : 'nonzero';
-
-            if (isPreprocessed) {
-                const polarity = primitive.properties?.polarity || 'dark';
-                if (polarity === 'clear') {
-                    // Draw "clear" primitives with the canvas background color
-                    this.ctx.fillStyle = this.core.getBackgroundColor();
+                if (isPreprocessed) {
+                    const polarity = primitive.properties?.polarity || 'dark';
+                    if (polarity === 'clear') {
+                        // Draw "clear" primitives with the canvas background color
+                        this.ctx.fillStyle = this.core.getBackgroundColor();
+                    } else {
+                        // Draw "dark" primitives with the normal layer color
+                        this.ctx.fillStyle = fillColor;
+                    }
                 } else {
-                    // Draw "dark" primitives with the normal layer color
+                    // Normal behavior
                     this.ctx.fillStyle = fillColor;
                 }
-            } else {
-                // Normal behavior
-                this.ctx.fillStyle = fillColor;
+
+                this.ctx.fill(fillRule);
             }
 
-            this.ctx.fill(fillRule);
+            if (shouldStroke) {
+                this.ctx.strokeStyle = strokeColor || fillColor;
+                this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.stroke();
+            }
         }
-
-        if (shouldStroke) {
-            this.ctx.strokeStyle = strokeColor || fillColor;
-            this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
-            this.ctx.lineCap = 'round';
-            this.ctx.lineJoin = 'round';
-            this.ctx.stroke();
-        }
-    }
         
         renderCircle(primitive, fillColor, strokeColor) {
             this.ctx.beginPath();
@@ -703,7 +702,7 @@
             }
         }
         
-        // ==================== WIREFRAME RENDERING ====================
+        // Wireframe Rendering
         
         renderWireframe(primitive) {
             const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
@@ -786,7 +785,7 @@
             this.ctx.stroke();
         }
         
-        // ==================== DEBUG RENDERING ====================
+        // Debug Rendering - Needs revisiting
         
         renderDebugInfo(primitive, options) {
             if (!primitive) return;

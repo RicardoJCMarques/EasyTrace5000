@@ -2,6 +2,7 @@
  * @file        toolpath/toolpath-primitives.js
  * @description Shared primitive classes for toolpath generation
  * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 

@@ -39,12 +39,12 @@
             this.canvas = core.canvas;
         }
         
-        // ==================== GRID ====================
+        // Grid
         
         renderGrid() {
             if (!this.core.options.showGrid) return;
             
-            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
+            const theme = this.core.colors[this.core.options.theme];
             const colors = theme.canvas;
             const gridSpacing = this.calculateGridSpacing();
             const viewBounds = this.core.getViewBounds();
@@ -77,12 +77,12 @@
             this.ctx.stroke();
         }
         
-        // ==================== ORIGIN ====================
+        // Origin
         
         renderOrigin() {
             if (!this.core.options.showOrigin) return;
             
-            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
+            const theme = this.core.colors[this.core.options.theme];
             const colors = theme.canvas;
             
             const markerSize = canvasConfig.originMarkerSize / this.core.viewScale || 10 / this.core.viewScale;
@@ -126,12 +126,12 @@
             this.ctx.fill();
         }
         
-        // ==================== BOUNDS ====================
+        // Bounds
         
         renderBounds() {
             if (!this.core.options.showBounds || !this.core.overallBounds) return;
             
-            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
+            const theme = this.core.colors[this.core.options.theme];
             const colors = theme.canvas;
             const bounds = this.core.overallBounds;
             
@@ -164,7 +164,7 @@
             this.ctx.stroke();
         }
         
-        // ==================== RULERS ====================
+        // Rulers
         
         renderRulers() {
             if (!this.core.options.showRulers) return;
@@ -284,7 +284,7 @@
             this.ctx.restore();
         }
         
-        // ==================== SCALE INDICATOR ====================
+        // Scale Indicator
         
         renderScaleIndicator() {
             if (!this.core.options.showRulers) return;
@@ -339,7 +339,7 @@
             this.ctx.restore();
         }
         
-        // ==================== STATISTICS ====================
+        // Statistics
         
         renderStats() {
             if (!this.core.options.showStats || !this.core.renderStats) return;
@@ -387,7 +387,7 @@
             this.ctx.restore();
         }
         
-        // ==================== HELPER METHODS ====================
+        // Helper Methods
         
         calculateGridSpacing() {
             const minPixelSize = gridConfig.minPixelSpacing || 40;
@@ -414,6 +414,5 @@
         }
     }
     
-    // Export
     window.OverlayRenderer = OverlayRenderer;
 })();

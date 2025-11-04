@@ -352,13 +352,13 @@
         initializeValidators() {
             return {
                 toolDiameter: (val) => val >= 0.01 && val <= 10,
-                passes: (val) => Number.isInteger(val) && val >= 1 && val <= 10,
+                passes: (val) => Number.isInteger(val) && val >= 1 && val <= 30,
                 stepOver: (val) => val >= 10 && val <= 100,
                 cutDepth: (val) => val <= 0 && val >= -10,
                 depthPerPass: (val) => val > 0 && val <= 5, // MUST BE POSITIVE
-                feedRate: (val) => val >= 1 && val <= 5000,
+                feedRate: (val) => val >= 1 && val <= 2000,
                 plungeRate: (val) => val >= 1 && val <= 1000,
-                spindleSpeed: (val) => val >= 100 && val <= 30000
+                spindleSpeed: (val) => val >= 100 && val <= 50000
             };
         }
         

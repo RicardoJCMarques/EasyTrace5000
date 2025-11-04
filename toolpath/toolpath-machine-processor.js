@@ -2,6 +2,7 @@
  * @file        toolpath/toolpath-machine-processor.js
  * @description Adds machine operations to pure geometry plans
  * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
@@ -37,7 +38,7 @@
         }
         
         /**
-         * Process toolpath plans and add machine moves - UNIFIED LOOP
+         * Process toolpath plans and add machine moves
          */
         processPlans(toolpathPlans, settings = {}) {
             if (!toolpathPlans || toolpathPlans.length === 0) {
@@ -69,7 +70,6 @@
             initPlan.addRapid(null, null, this.settings.safeZ); // Ensure starting at safe Z
             machineReadyPlans.push(initPlan);
             
-            // UNIFIED LOOP
             for (let i = 0; i < toolpathPlans.length; i++) {
                 const plan = toolpathPlans[i];
                 const planMetadata = plan.metadata || {}; // Ensure metadata exists
@@ -502,7 +502,7 @@
             const startCapCenter = obroundData.startCapCenter;
             const endCapCenter = obroundData.endCapCenter;
             
-            const requestedPitch = Math.abs(this.settings.depthPerPass || 0.5); // Using fallback, not connected to UI? depthPerPass doesn't exist in this.settings = {
+            const requestedPitch = Math.abs(this.settings.depthPerPass || 0.5); // Using fallback, not connected to UI? depthPerPass doesn't exist in this.settings
             const maxPitchForTool = toolDiameter * 0.5;
             const helixPitch = Math.min(requestedPitch, maxPitchForTool);
             const depthPerSemicircle = helixPitch * 0.5;
@@ -601,10 +601,9 @@
                 }
             }
             
-            // --- Final cleanup pass at full depth ---
+            // Final cleanup pass at full depth
             // The helix finished at (lastX, lastY) at finalDepth.
-            // We must now run the full perimeter starting from the closest
-            // "corner" of the obround path.
+            // We must now run the full perimeter starting from the closest "corner" of the obround path.
             
             // Recalculate obround key points from obroundData
             const startAngle1 = isHorizontal ? (Math.PI / 2) : Math.PI;

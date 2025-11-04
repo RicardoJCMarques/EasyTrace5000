@@ -2,6 +2,7 @@
  * @file        toolpath/toolpath-geometry-translator.js
  * @description Translates offset geometry into pure cutting path plans (no machine moves)
  * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
@@ -164,7 +165,6 @@
         
         /**
          * Analyze primitive to extract entry/exit points and metadata
-         * NOW INCLUDES DEPTH IN Z-AXIS AND OBROUND SUPPORT
          */
         analyzePrimitive(plan, primitive, depth) {
             const metadata = plan.metadata;
