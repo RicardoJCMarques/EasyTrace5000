@@ -1,0 +1,67 @@
+{
+  "_projectInfo": {
+    "file": "dark.json",
+    "description": "Dark Theme",
+    "author": "Eltryus - Ricardo Marques",
+    "see": "https://github.com/RicardoJCMarques/EasyTrace5000",
+    "license": "AGPL-3.0-or-later",
+    "copyright": "Copyright (C) 2025 Eltryus"
+  },
+
+  "version": "0.1",
+  "lastModified": "2025-11-06",
+  
+  "id": "dark",
+  "colors": {
+    "background": {
+      "primary": "#0f0f0f",
+      "secondary": "#1a1a1a",
+      "tertiary": "#242424",
+      "hover": "#2a2a2a",
+      "active": "#333333"
+    },
+    "text": {
+      "primary": "#e5e5e5",
+      "secondary": "#a0a0a0",
+      "disabled": "#606060",
+      "hint": "#666666"
+    },
+    "border": {
+      "primary": "#2a2a2a",
+      "secondary": "#3a3a3a",
+      "focus": "#4080ff"
+    },
+    "accent": {
+      "primary": "#3b82f6",
+      "hover": "#2563eb",
+      "active": "#1d4ed8"
+    },
+    "semantic": {
+      "success": "#22c55e",
+      "warning": "#f59e0b",
+      "error": "#ef4444",
+      "info": "#06b6d4"
+    },
+    "operations": {
+      "isolation": "#ff8844",
+      "drill": "#4488ff",
+      "clear": "#44ff88",
+      "cutout": "#ff00ff",
+      "toolpath": "#00ffff"
+    },
+    "canvas": {
+      "background": "#0f0f0f",
+      "grid": "#333333",
+      "origin": "#ffffff",
+      "originOutline": "#000000",
+      "bounds": "#ff0000",
+      "ruler": "#888888",
+      "rulerText": "#cccccc"
+    },
+    "debug": {
+      "hole": "#ff00ff",
+      "wireframe": "#00ff00",
+      "bounds": "#ff0000"
+    }
+  }
+}

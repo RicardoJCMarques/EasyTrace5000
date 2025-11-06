@@ -1,0 +1,673 @@
+/**
+ * @file        components.css
+ * @description Reusable UI components - buttons, inputs, modals, tooltips
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* ============================================================================
+   BUTTONS - Unified System
+   ============================================================================ */
+
+/* Base button - all buttons inherit from this */
+.btn {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--font-family);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
+    user-select: none;
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+}
+
+.btn:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Button Variants */
+.btn--primary {
+    background: var(--color-accent-primary);
+    color: white;
+}
+
+.btn--primary:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+}
+
+.btn--secondary {
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border-secondary);
+}
+
+.btn--secondary:hover:not(:disabled) {
+    border-color: var(--color-accent-primary);
+}
+
+/* Icon-only buttons */
+.btn--icon {
+    padding: var(--spacing-sm);
+    background: transparent;
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+}
+
+.btn--icon:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+    transform: none;
+}
+
+/* Toolbar buttons */
+.btn--toolbar {
+    min-width: 40px;
+    min-height: 40px;
+    padding: var(--spacing-xs);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-secondary);
+}
+
+.btn--toolbar:hover:not(:disabled) {
+    border-color: var(--color-accent-primary);
+}
+
+/* Compact size for dense layouts */
+.btn--compact {
+    min-width: var(--touch-target-compact);
+    min-height: var(--touch-target-compact);
+    padding: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+}
+
+/* Block button */
+.btn--block {
+    width: 100%;
+}
+
+/* Button icon sizing */
+.btn svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.btn--icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.btn--compact svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Menu button with dropdown */
+.btn--menu {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border-secondary);
+}
+
+.btn--menu:hover {
+    border-color: var(--color-accent-primary);
+}
+
+.btn--menu.active {
+    background: var(--color-bg-active);
+    border-color: var(--color-accent-primary);
+}
+
+/* ============================================================================
+   INPUTS & FORMS
+   ============================================================================ */
+
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+select,
+textarea {
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-secondary);
+    border-radius: var(--radius);
+    color: var(--color-text-primary);
+    font-family: var(--font-family);
+    font-size: var(--font-size-sm);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--color-border-focus);
+    box-shadow: 0 0 0 2px rgba(64, 128, 255, 0.1);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-disabled);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+input[readonly] {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-disabled);
+    cursor: not-allowed;
+}
+
+/* Input with unit suffix */
+.input-unit {
+    display: flex;
+    align-items: stretch;
+}
+
+.input-unit input {
+    border-radius: var(--radius) 0 0 var(--radius);
+    border-right: none;
+    flex: 1;
+}
+
+.input-unit .unit {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border-secondary);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+/* Checkbox & Radio */
+input[type="checkbox"],
+input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--color-accent-primary);
+}
+
+.checkbox-label,
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    cursor: pointer;
+    padding: var(--spacing-xs);
+    border-radius: var(--radius);
+    min-height: var(--touch-target-compact);
+}
+
+.checkbox-label:hover,
+.radio-label:hover {
+    background: var(--color-bg-hover);
+}
+
+/* Field Groups */
+.field-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.field-group label {
+    display: block;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.field-row {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+/* ============================================================================
+   TOOLTIPS
+   ============================================================================ */
+
+.tooltip {
+    position: absolute;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius);
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+    pointer-events: none;
+    z-index: var(--z-tooltip);
+    white-space: nowrap;
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    max-width: 300px;
+}
+
+.tooltip.visible {
+    opacity: 1;
+}
+
+.tooltip-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.tooltip-title {
+    font-weight: 600;
+    color: var(--color-accent-primary);
+    margin-bottom: var(--spacing-xs);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--color-border-primary);
+}
+
+.tooltip-text {
+    line-height: var(--line-height-base);
+    white-space: normal;
+}
+
+.tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+}
+
+.tooltip-label {
+    color: var(--color-text-secondary);
+}
+
+.tooltip-value {
+    color: var(--color-text-primary);
+    font-weight: 500;
+}
+
+/* Tooltip trigger icon */
+.tooltip-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-left: var(--spacing-xs);
+    border: 1px solid var(--color-text-secondary);
+    border-radius: 50%;
+    font-size: 9px;
+    font-weight: 600;
+    cursor: help;
+    opacity: 0.6;
+    user-select: none;
+}
+
+.tooltip-trigger:hover,
+.tooltip-trigger:focus {
+    opacity: 1;
+    border-color: var(--color-accent-primary);
+}
+
+/* ============================================================================
+   MODALS
+   ============================================================================ */
+
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: var(--z-modal);
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    min-width: 480px;
+    max-width: 90vw;
+    max-width: 800px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border-primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.modal-close {
+    font-size: 24px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
+}
+
+.modal-close:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+}
+
+.modal-body {
+    flex: 1;
+    padding: var(--spacing-lg);
+    overflow-y: auto;
+}
+
+.modal-footer {
+    display: flex;
+    gap: var(--spacing-sm);
+    justify-content: flex-end;
+    padding: var(--spacing-lg);
+    border-top: 1px solid var(--color-border-primary);
+}
+
+/* Modal variants */
+#welcome-modal .welcome-subtitle {
+    text-align: center;
+    margin-bottom: var(--spacing-lg);
+}
+
+#welcome-modal .welcome-upload-zones {
+    grid-template-columns: 1fr;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+#welcome-modal .welcome-example-zone {
+    text-align: center;
+}
+
+#welcome-modal .example-select {
+    width: 100%;
+    margin-bottom: var(--spacing-sm);
+}
+
+#welcome-modal .welcome-example-help {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-top: var(--spacing-sm);
+}
+
+#welcome-modal .welcome-footer {
+    justify-content: space-between;
+}
+
+#welcome-modal .welcome-checkbox-label {
+    font-size: var(--font-size-sm);
+}
+
+#welcome-modal .welcome-license-text {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-hint);
+}
+
+/* ============================================================================
+   DROPDOWNS
+   ============================================================================ */
+
+.dropdown {
+    position: relative;
+}
+
+.dropdown-content {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: var(--spacing-xs);
+    min-width: 200px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    display: none;
+    z-index: var(--z-dropdown);
+}
+
+.dropdown-content.show {
+    display: block;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: none;
+    border: none;
+    color: var(--color-text-primary);
+    font-size: var(--font-size-sm);
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    min-height: var(--touch-target-compact);
+}
+
+.menu-item:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+}
+
+.menu-item:disabled {
+    color: var(--color-text-disabled);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.menu-divider {
+    height: 1px;
+    background: var(--color-border-primary);
+    margin: var(--spacing-xs) 0;
+}
+
+/* ============================================================================
+   BADGES & INDICATORS
+   ============================================================================ */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--spacing-xs);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+}
+
+.badge--success {
+    background: var(--color-success);
+    color: white;
+}
+
+.badge--warning {
+    background: var(--color-warning);
+    color: white;
+}
+
+.badge--error {
+    background: var(--color-error);
+    color: white;
+}
+
+.badge--info {
+    background: var(--color-info);
+    color: white;
+}
+
+/* Warning icon */
+.warning-icon {
+    margin-left: var(--spacing-xs);
+    font-size: 12px;
+    cursor: help;
+    animation: pulse-warning 2s ease-in-out infinite;
+}
+
+@keyframes pulse-warning {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Unsaved indicator */
+.unsaved-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-warning);
+    display: inline-block;
+    margin-left: var(--spacing-xs);
+}
+
+/* ============================================================================
+   PROGRESS BARS
+   ============================================================================ */
+
+.progress {
+    display: block;
+    height: 4px;
+    background: var(--color-bg-primary);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    display: block;
+    height: 100%;
+    background: var(--color-accent-primary);
+}
+
+/* ============================================================================
+   LOADING SPINNER
+   ============================================================================ */
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--color-border-secondary);
+    border-top: 3px solid var(--color-accent-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   STATS & INFO DISPLAY
+   ============================================================================ */
+
+.stats-info {
+    background: var(--color-bg-primary);
+    border-radius: var(--radius);
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    font-family: var(--font-mono);
+    color: var(--color-text-secondary);
+}
+
+.stats-display {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-sm);
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--spacing-xs);
+}
+
+.stat-label {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.stat-value {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-primary);
+}
+
+/* ============================================================================
+   SEPARATORS
+   ============================================================================ */
+
+.separator {
+    width: 1px;
+    height: 24px;
+    background: var(--color-border-primary);
+    margin: 0 var(--spacing-sm);
+}
+
+.separator--horizontal {
+    width: 100%;
+    height: 1px;
+    margin: var(--spacing-md) 0;
+}

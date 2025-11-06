@@ -37,7 +37,6 @@
             
             this.treeManager = null;
             this.propertyInspector = null;
-            this.visibilityPanel = null;
             this.toolLibrary = null;
             this.statusManager = null;
             this.controls = null;
@@ -100,9 +99,6 @@
                     this.propertyInspector.init(this.toolLibrary, parameterManager);
                 }
                 
-                if (typeof VisibilityPanel !== 'undefined') {
-                    this.visibilityPanel = new VisibilityPanel(this);
-                }
                 
                 if (typeof StatusManager !== 'undefined') {
                     this.statusManager = new StatusManager(this);
@@ -113,10 +109,6 @@
                 if (typeof UIControls !== 'undefined') {
                     this.controls = new UIControls(this);
                     this.controls.init(this.renderer, this.coordinateSystem);
-                }
-                
-                if (this.visibilityPanel && this.renderer) {
-                    this.visibilityPanel.init(this.renderer);
                 }
                 
                 this.initializeTheme();
@@ -212,10 +204,6 @@
                 }
                 
                 this.addOffsetLayers();
-                
-                if (this.visibilityPanel) {
-                    this.visibilityPanel.onLayersChanged();
-                }
                 
                 this.renderer.render();
                 this.updateOriginDisplay();
@@ -375,13 +363,17 @@
                             const layerName = offset.combined ? 
                                 `offset_${operation.id}_combined` :
                                 `offset_${operation.id}_pass_${passIndex + 1}`;
+
+                            // Check if this operation *has* a preview.
+                            // If it does, the offsets should *always* be hidden.
+                            const hasPreview = operation.preview && operation.preview.ready;
                             
                             this.renderer.addLayer(
                                 layerName,
                                 offset.primitives,
                                 {
                                     type: 'offset',
-                                    visible: true,
+                                    visible: hasPreview ? false : this.renderer.options.showOffsets,
                                     color: color,
                                     operationId: operation.id,
                                     operationType: operation.type,
@@ -403,7 +395,7 @@
                         operation.preview.primitives,
                         {
                             type: 'preview',
-                            visible: true,
+                            visible: this.renderer.options.showPreviews,
                             color: '#0060ddff',
                             operationId: operation.id,
                             operationType: operation.type,
@@ -452,17 +444,7 @@
             if (toolpathStat) {
                 toolpathStat.textContent = stats.toolpaths;
             }
-            
-            const hasOperations = stats.operations > 0;
-            const generateBtn = document.getElementById('generate-toolpaths-btn');
-            if (generateBtn) {
-                generateBtn.disabled = !hasOperations;
-            }
-            
-            const exportBtn = document.getElementById('export-gcode-btn');
-            if (exportBtn) {
-                exportBtn.disabled = stats.toolpaths === 0;
-            }
+
         }
         
         toggleGrid() {

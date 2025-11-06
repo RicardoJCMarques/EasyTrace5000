@@ -1,0 +1,187 @@
+/**
+ * @file        theme.css
+ * @description Theme application layer - applies theme tokens as CSS variables
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+ /**
+ * This file provides fallback theme values.
+ * Actual theme colors are loaded from JSON files via theme-loader.js
+ */
+
+/* ============================================================================
+   ROOT THEME VARIABLES
+   These are set dynamically by theme-loader.js
+   Fallbacks provided here match the dark theme
+   ============================================================================ */
+
+:root {
+    /* Background Colors */
+    --color-bg-primary: #0f0f0f;
+    --color-bg-secondary: #1a1a1a;
+    --color-bg-tertiary: #242424;
+    --color-bg-hover: #2a2a2a;
+    --color-bg-active: #333333;
+    
+    /* Text Colors */
+    --color-text-primary: #e5e5e5;
+    --color-text-secondary: #a0a0a0;
+    --color-text-disabled: #606060;
+    --color-text-hint: #666666;
+    
+    /* Border Colors */
+    --color-border-primary: #2a2a2a;
+    --color-border-secondary: #3a3a3a;
+    --color-border-focus: #4080ff;
+    
+    /* Accent Colors */
+    --color-accent-primary: #3b82f6;
+    --color-accent-hover: #2563eb;
+    --color-accent-active: #1d4ed8;
+    
+    /* Semantic Colors */
+    --color-success: #22c55e;
+    --color-warning: #f59e0b;
+    --color-error: #ef4444;
+    --color-info: #06b6d4;
+    
+    /* Operation Colors */
+    --color-operation-isolation: #ff8844;
+    --color-operation-drill: #4488ff;
+    --color-operation-clear: #44ff88;
+    --color-operation-cutout: #ff00ff;
+    --color-operation-toolpath: #00ffff;
+    
+    /* Canvas Colors */
+    --color-canvas-bg: #0f0f0f;
+    --color-canvas-grid: #333333;
+    --color-canvas-origin: #ffffff;
+    --color-canvas-origin-outline: #000000;
+    --color-canvas-bounds: #ff0000;
+    --color-canvas-ruler: #888888;
+    --color-canvas-ruler-text: #cccccc;
+    
+    /* Debug Colors */
+    --color-debug-hole: #ff00ff;
+    --color-debug-wireframe: #00ff00;
+    --color-debug-bounds: #ff0000;
+}
+
+/* ============================================================================
+   THEME TOGGLE BUTTON
+   ============================================================================ */
+
+   /* Icon switching */
+.theme-toggle svg {
+    position: absolute;
+    width: 24x;
+    height: 24px;
+}
+
+/* Default (Dark Mode): Show SUN icon */
+.theme-toggle .sun-icon {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+}
+
+.theme-toggle .moon-icon {
+    opacity: 0;
+    transform: rotate(-180deg) scale(0.8);
+}
+
+/* Light theme active: Show MOON icon */
+[data-theme="light"] .theme-toggle .sun-icon {
+    opacity: 0;
+    transform: rotate(180deg) scale(0.8);
+}
+
+[data-theme="light"] .theme-toggle .moon-icon {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+}
+
+/* ============================================================================
+   THEME-AWARE ICON SYSTEM
+   All SVG icons automatically inherit theme colors via currentColor
+   ============================================================================ */
+
+.category-icon,
+.file-icon,
+.geometry-icon {
+    color: var(--color-text-secondary);
+}
+
+.category-icon svg,
+.file-icon svg,
+.geometry-icon svg {
+    color: inherit;
+}
+
+/* Operation-specific icon colors */
+[data-op-type="isolation"] .category-icon {
+    color: var(--color-operation-isolation);
+}
+
+[data-op-type="drill"] .category-icon {
+    color: var(--color-operation-drill);
+}
+
+[data-op-type="clear"] .category-icon {
+    color: var(--color-operation-clear);
+}
+
+[data-op-type="cutout"] .category-icon {
+    color: var(--color-operation-cutout);
+}
+
+/* ============================================================================
+   LIGHT THEME ADJUSTMENTS
+   Fine-tuning for light theme if needed
+   ============================================================================ */
+
+[data-theme="light"] .shadow-sm {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .shadow-md {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .shadow-lg {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+
+/* ============================================================================
+   THEME LOADING STATE
+   Prevent flash of unstyled content
+   ============================================================================ */
+
+/* Hide the body only if the html tag doesn't have a theme */
+html:not([data-theme]) body {
+    visibility: hidden;
+}
+
+/* Show the body once the html tag has a theme */
+html[data-theme] body {
+    visibility: visible;
+}

@@ -159,15 +159,26 @@
         // View bounds & Culling
         
         getViewBounds() {
-            const topLeft = this.canvasToWorld(0, 0);
-            const bottomRight = this.canvasToWorld(this.canvas.width, this.canvas.height);
+            // Get the 4 corners of the canvas in world space
+            const corners = [
+                this.canvasToWorld(0, 0),                       // Top-left
+                this.canvasToWorld(this.canvas.width, 0),       // Top-right
+                this.canvasToWorld(this.canvas.width, this.canvas.height), // Bottom-right
+                this.canvasToWorld(0, this.canvas.height)        // Bottom-left
+            ];
+
+            // Find the AABB that encloses those 4 world points
+            let minX = Infinity, minY = Infinity;
+            let maxX = -Infinity, maxY = -Infinity;
+
+            corners.forEach(corner => {
+                minX = Math.min(minX, corner.x);
+                minY = Math.min(minY, corner.y);
+                maxX = Math.max(maxX, corner.x);
+                maxY = Math.max(maxY, corner.y);
+            });
             
-            return {
-                minX: Math.min(topLeft.x, bottomRight.x),
-                maxX: Math.max(topLeft.x, bottomRight.x),
-                minY: Math.min(topLeft.y, bottomRight.y),
-                maxY: Math.max(topLeft.y, bottomRight.y)
-            };
+            return { minX, minY, maxX, maxY };
         }
         
         boundsIntersect(b1, b2) {

@@ -1,6 +1,6 @@
 /**
  * @file        cam-core.js
- * @description Core application logic - updated for centralized tessellation
+ * @description Core application logic
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later

@@ -65,7 +65,8 @@
             this.setupRotationControls();
             this.setupZoomControls();
             this.setupCollapsibleMenus();
-            this.setupMachineSettings(); // Moved from cam-ui.js
+            this.setupVizPanelButton();
+            this.setupMachineSettings();
 
             // Link coordinate system changes back to UI updates
             if (this.coordinateSystem) {
@@ -95,6 +96,8 @@
                 { id: 'show-pads', option: 'showPads', default: true, triggersRender: true },
                 { id: 'show-drills', option: 'showDrills', default: true, triggersRender: true },
                 { id: 'show-cutouts', option: 'showCutouts', default: true, triggersRender: true },
+                { id: 'show-offsets', option: 'showOffsets', default: true, triggersUpdate: true },
+                { id: 'show-previews', option: 'showPreviews', default: true, triggersUpdate: true },
                 // Advanced Group
                 { id: 'fuse-geometry', option: 'fuseGeometry', default: false, triggersUpdate: true }, // Triggers full update
                 { id: 'show-preprocessed', option: 'showPreprocessed', default: false, triggersUpdate: true }, // Triggers full update
@@ -112,9 +115,11 @@
                 }
 
                 // Initialize state from renderer options or defaults
-                element.checked = this.renderer.options[mapping.option] !== undefined
+                let initialState = this.renderer.options[mapping.option] !== undefined
                                   ? this.renderer.options[mapping.option]
                                   : mapping.default;
+                
+                this.renderer.options[mapping.option] = initialState;
 
                 // Attach listener
                 element.addEventListener('change', async (e) => {
@@ -464,26 +469,57 @@
         }
 
         setupCollapsibleMenus() {
-            const headers = document.querySelectorAll('.collapsible-header');
+            const headers = document.querySelectorAll('.section-header.collapsible');
             headers.forEach(header => {
                 const targetId = header.getAttribute('data-target');
                 const content = document.getElementById(targetId);
                 const indicator = header.querySelector('.collapse-indicator');
 
-                // Set initial indicator state
-                if (content && indicator) {
-                    indicator.textContent = content.classList.contains('collapsed') ? '▼' : '▲';
+                if (!content || !indicator) return;
+
+                // Set initial indicator state based on content's class
+                if (content.classList.contains('collapsed')) {
+                    indicator.classList.add('collapsed');
+                } else {
+                    indicator.classList.remove('collapsed');
                 }
 
                 // Add click listener
                 header.addEventListener('click', () => {
-                    if (content) {
-                        content.classList.toggle('collapsed');
-                        if (indicator) {
-                            indicator.textContent = content.classList.contains('collapsed') ? '▼' : '▲';
-                        }
-                    }
+                    content.classList.toggle('collapsed');
+                    // Toggle the indicator's class to match the content's state
+                    indicator.classList.toggle('collapsed');
                 });
+            });
+        }
+
+        setupVizPanelButton() {
+            const btn = document.getElementById('show-viz-panel-btn');
+            const panel = document.getElementById('viz-panel');
+
+            if (!btn || !panel) {
+                console.warn('[UIControls] Visualization panel button or panel not found');
+                return;
+            }
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // We toggle the 'collapsed' class, which is already in your HTML
+                panel.classList.toggle('collapsed'); 
+                btn.classList.toggle('active', !panel.classList.contains('collapsed'));
+            });
+
+            // Click outside to close (if it's open)
+            document.addEventListener('click', (e) => {
+                if (!panel.classList.contains('collapsed') && !panel.contains(e.target) && !btn.contains(e.target)) {
+                    panel.classList.add('collapsed');
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Prevent panel clicks from closing it
+            panel.addEventListener('click', (e) => {
+                e.stopPropagation();
             });
         }
 

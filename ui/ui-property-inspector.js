@@ -164,7 +164,7 @@
         
         createSection(title, fields) {
             const section = document.createElement('div');
-            section.className = 'param-section';
+            section.className = 'property-section';
             
             const h3 = document.createElement('h3');
             h3.textContent = title;
@@ -177,7 +177,7 @@
         
         createField(param, currentValue) {
             const field = document.createElement('div');
-            field.className = 'param-field';
+            field.className = 'property-field';
             field.dataset.param = param.name;
             
             // Handle conditionals
@@ -356,10 +356,11 @@
         
         createActionButton(text) {
             const wrapper = document.createElement('div');
-            wrapper.className = 'action-button';
+            wrapper.className = 'property-actions';
             
             const button = document.createElement('button');
-            button.className = 'btn-primary btn-block';
+            // These classes are from components.css (assumed) and look correct
+            button.className = 'btn btn--primary btn--block';
             button.id = 'action-button';
             button.textContent = text;
             
@@ -737,6 +738,7 @@
                 return;
             }
 
+            // 1. Create the preview object
             const firstOffset = operation.offsets[0];
             const toolDiameter = firstOffset.metadata?.toolDiameter;
 
@@ -747,7 +749,6 @@
             
             const allPrimitives = [];
             operation.offsets.forEach(offset => {
-                // Mark primitives as preview
                 offset.primitives.forEach(prim => {
                     if (!prim.properties) prim.properties = {};
                     prim.properties.isPreview = true;
@@ -762,10 +763,17 @@
                     generatedAt: Date.now(),
                     sourceOffsets: operation.offsets.length,
                     toolDiameter: toolDiameter
-                }
-                , ready: true
+                },
+                ready: true
             };
             
+            // 2. Set the *Preview* toggle ON
+            this.ui.renderer?.setOptions({ showPreviews: true });
+            const previewToggle = document.getElementById('show-previews');
+            if (previewToggle) previewToggle.checked = true;
+
+            // 3. Update the tree
+            // (The tree will now see 'operation.preview' is ready and hide the offset icons)
             if (this.ui.treeManager) {
                 const fileNode = Array.from(this.ui.treeManager.nodes.values())
                     .find(n => n.operation?.id === operation.id);
@@ -773,7 +781,9 @@
                     this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
                 }
             }
-            
+
+            // 4. Update the renderer
+            // (The renderer will now see 'operation.preview' is ready and hide the offset layers)
             await this.ui.updateRendererAsync();
             this.ui.statusManager?.showStatus('Preview generated', 'success');
         }

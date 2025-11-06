@@ -146,15 +146,16 @@
                 // Process any pending operations
                 await this.processPendingOperations();
                 
-                // Hide loading overlay
+                // Hide loading overlay and show UI
                 this.hideLoadingOverlay();
                 
-                // Check for first-time user
+               // Check for first-time user
                 const hideWelcome = localStorage.getItem('pcbcam-hide-welcome');
                 const hasVisited = localStorage.getItem('hasVisited');
                 
                 if (!hideWelcome && !hasVisited) {
-                    this.showWelcomeModal();
+                    // USE THE MODAL MANAGER
+                    this.modalManager.showModal('welcome', { examples: PCB_EXAMPLES });
                 } else {
                     // Ensure coordinate system is initialized
                     this.ensureCoordinateSystem();
@@ -208,7 +209,15 @@
                 overlay.style.opacity = '0';
                 setTimeout(() => {
                     overlay.style.display = 'none';
-                }, 300);
+
+                    // This function now also shows the main UI
+                    const toolbar = document.getElementById('cam-toolbar');
+                    const workspace = document.getElementById('cam-workspace');
+                    
+                    if (toolbar) toolbar.style.display = 'flex';
+                    if (workspace) workspace.style.display = 'grid';
+                    
+                }, 300); // 300ms matches your original opacity transition
             }
         }
         
@@ -239,7 +248,8 @@
             const addFilesBtn = document.getElementById('toolbar-add-files');
             if (addFilesBtn) {
                 addFilesBtn.addEventListener('click', () => {
-                    this.showFileModal();
+                    // USE THE MODAL MANAGER
+                    this.modalManager.showModal('file'); 
                     quickActionsBtn.classList.remove('active');
                     quickActionsMenu.classList.remove('show');
                 });
@@ -348,19 +358,18 @@
             // Theme toggle button
             const themeToggle = document.getElementById('theme-toggle');
             if (themeToggle) {
-                themeToggle.addEventListener('click', () => this.toggleTheme());
-            }
-        }
-        
-        toggleTheme() {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-            
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('pcbcam-theme', newTheme);
-            
-            if (this.ui?.renderer) {
-                this.ui.renderer.setOptions({ theme: newTheme });
+                themeToggle.addEventListener('click', async () => {
+                    if (window.ThemeLoader && window.ThemeLoader.isLoaded()) {
+                        await window.ThemeLoader.toggleTheme();
+                        
+                        // Update renderer if needed
+                        if (this.ui?.renderer) {
+                            const currentTheme = window.ThemeLoader.getCurrentTheme();
+                            this.ui.renderer.setOptions({ theme: currentTheme });
+                            this.ui.renderer.render();
+                        }
+                    }
+                });
             }
         }
         
@@ -371,222 +380,6 @@
                 if (this.ui?.renderer) {
                     this.ui.updateOriginDisplay();
                 }
-            }
-        }
-        
-        showWelcomeModal() {
-            // Use the UI's welcome modal method if it exists
-            if (this.ui?.showWelcomeModal) {
-                this.ui.showWelcomeModal();
-                return;
-            }
-            
-            // Otherwise, show it directly
-            const modal = document.getElementById('welcome-modal');
-            if (!modal) return;
-            
-            modal.classList.add('active');
-            
-            // Populate example dropdown
-            const select = document.getElementById('pcb-example-select');
-            if (select) {
-                select.innerHTML = '';
-                Object.entries(PCB_EXAMPLES).forEach(([key, example]) => {
-                    const option = document.createElement('option');
-                    option.value = key;
-                    option.textContent = example.name;
-                    if (key === 'xiao') option.selected = true;
-                    select.appendChild(option);
-                });
-            }
-            
-            const closeBtn = modal.querySelector('.modal-close');
-            const dontShowCheckbox = document.getElementById('dont-show-welcome');
-            
-            // Load example button
-            const loadExampleBtn = document.getElementById('load-example-btn');
-            if (loadExampleBtn) {
-                loadExampleBtn.onclick = async () => {
-                    const select = document.getElementById('pcb-example-select');
-                    if (select) {
-                        await this.loadExample(select.value);
-                    }
-                    if (dontShowCheckbox && dontShowCheckbox.checked) {
-                        localStorage.setItem('pcbcam-hide-welcome', 'true');
-                        localStorage.setItem('hasVisited', 'true');
-                    }
-                    this.closeModal(modal);
-                    this.ensureCoordinateSystem();
-                };
-            }
-            
-            // Upload files button
-            const openFilesBtn = document.getElementById('open-files-btn');
-            if (openFilesBtn) {
-                openFilesBtn.onclick = () => {
-                    if (dontShowCheckbox && dontShowCheckbox.checked) {
-                        localStorage.setItem('pcbcam-hide-welcome', 'true');
-                        localStorage.setItem('hasVisited', 'true');
-                    }
-                    this.closeModal(modal);
-                    this.ensureCoordinateSystem();
-                    this.showFileModal();
-                };
-            }
-            
-            // Start empty button
-            const startEmptyBtn = document.getElementById('start-empty-btn');
-            if (startEmptyBtn) {
-                startEmptyBtn.onclick = () => {
-                    if (dontShowCheckbox && dontShowCheckbox.checked) {
-                        localStorage.setItem('pcbcam-hide-welcome', 'true');
-                        localStorage.setItem('hasVisited', 'true');
-                    }
-                    this.closeModal(modal);
-                    this.ensureCoordinateSystem();
-                };
-            }
-            
-            // Close button
-            if (closeBtn) {
-                closeBtn.onclick = () => {
-                    if (dontShowCheckbox && dontShowCheckbox.checked) {
-                        localStorage.setItem('pcbcam-hide-welcome', 'true');
-                        localStorage.setItem('hasVisited', 'true');
-                    }
-                    this.closeModal(modal);
-                    this.ensureCoordinateSystem();
-                };
-            }
-        }
-        
-        showFileModal() {
-            const modal = document.getElementById('file-modal');
-            if (!modal) return;
-            
-            modal.classList.add('active');
-            
-            // Reset uploaded files
-            this.uploadedFiles = {
-                isolation: null,
-                drill: null,
-                clear: null,
-                cutout: null
-            };
-            
-            // Setup each drop zone
-            this.setupDropZone('isolation');
-            this.setupDropZone('drill');
-            this.setupDropZone('clear');
-            this.setupDropZone('cutout');
-            
-            // Process button
-            const processBtn = document.getElementById('process-files-btn');
-            if (processBtn) {
-                processBtn.disabled = true;
-                processBtn.onclick = async () => {
-                    await this.processUploadedFiles();
-                    this.closeModal(modal);
-                };
-            }
-            
-            // Cancel button
-            const cancelBtn = document.getElementById('cancel-files-btn');
-            if (cancelBtn) {
-                cancelBtn.onclick = () => {
-                    this.closeModal(modal);
-                    this.uploadedFiles = {};
-                };
-            }
-            
-            // Close button
-            const closeBtn = modal.querySelector('.modal-close');
-            if (closeBtn) {
-                closeBtn.onclick = () => {
-                    this.closeModal(modal);
-                    this.uploadedFiles = {};
-                };
-            }
-        }
-        
-        setupDropZone(opType) {
-            const dropZone = document.getElementById(`${opType}-drop-zone`);
-            const fileInput = document.getElementById(`${opType}-file`);
-            const status = document.getElementById(`${opType}-status`);
-            
-            if (!dropZone || !fileInput) return;
-            
-            // Click to browse
-            dropZone.addEventListener('click', () => {
-                fileInput.click();
-            });
-            
-            // File input change
-            fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    this.handleFileForOperation(file, opType);
-                }
-            });
-            
-            // Drag events
-            dropZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                dropZone.classList.add('dragging');
-            });
-            
-            dropZone.addEventListener('dragleave', () => {
-                dropZone.classList.remove('dragging');
-            });
-            
-            dropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropZone.classList.remove('dragging');
-                
-                const files = Array.from(e.dataTransfer.files);
-                if (files.length > 0) {
-                    this.handleFileForOperation(files[0], opType);
-                }
-            });
-            
-            // Clear status
-            if (status) {
-                status.textContent = '';
-                status.className = 'zone-status';
-            }
-        }
-        
-        handleFileForOperation(file, opType) {
-            // Validate file type
-            const validation = this.core?.validateFileType(file.name, opType);
-            if (validation && !validation.valid) {
-                const status = document.getElementById(`${opType}-status`);
-                if (status) {
-                    status.textContent = validation.message;
-                    status.className = 'zone-status error';
-                }
-                return;
-            }
-            
-            // Store file
-            this.uploadedFiles[opType] = file;
-            
-            // Update status
-            const status = document.getElementById(`${opType}-status`);
-            if (status) {
-                status.textContent = `✓ ${file.name}`;
-                status.className = 'zone-status success';
-            }
-            
-            // Update process button
-            this.updateProcessButton();
-        }
-        
-        updateProcessButton() {
-            const processBtn = document.getElementById('process-files-btn');
-            if (processBtn) {
-                const hasFiles = Object.values(this.uploadedFiles).some(f => f !== null);
-                processBtn.disabled = !hasFiles;
             }
         }
         
@@ -885,12 +678,6 @@
                 this.ui.removeOperation(selectedOp.id);
             }
         }
-        
-        closeModal(modal) {
-            if (modal) {
-                modal.classList.remove('active');
-            }
-        }
 
         async orchestrateToolpaths(options) {
             if (!options || !options.operationIds || !this.core || !this.gcodeGenerator) {
@@ -1168,22 +955,9 @@
         
         return true;
     }
-    
-    // Start when ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', startApplication);
-    } else {
-        // DOM already loaded
-        startApplication();
-    }
-    
-    // Fallback initialization
-    setTimeout(() => {
-        if (!controller) {
-            console.log('Attempting delayed initialization...');
-            startApplication();
-        }
-    }, timingConfig.autoSaveInterval || 2000);
+
+    // Expose startApplication to the global scope so index.html can call it
+    window.startApplication = startApplication;
     
     // Public API functions
     window.showPCBStats = function() {

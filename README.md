@@ -2,140 +2,247 @@
 
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg) ![Status: Active](https://img.shields.io/badge/status-active-success.svg) ![Tech: VanillaJS](https://img.shields.io/badge/tech-Vanilla_JS-yellow.svg) ![Tech: WebAssembly](https://img.shields.io/badge/tech-WebAssembly-blueviolet.svg)
 
-An open-source, browser based CAM tool for generating G-code from PCB manufacturing files. Featuring an interactive WebGL renderer and a high-performance Clipper2 based geometry engine.
+An open-source, browser-based CAM tool for generating G-code from PCB manufacturing files. Featuring an interactive 2D Canvas renderer, high-performance Clipper2 geometry engine with a custom arc-reconstruction system and intelligent toolpath optimization.
 
 ![I'll add screenshots when GUI is ready](https://placehold.co/800x420?text=EasyTrace5000\nScreenshot\nPlaceholder)
 
 ## Key Features
 
-* **Multi-Operation Support:** Process files for Isolation, Drilling, Copper Clearing, and Board Cutouts.
-* **Stage-Based Workflow:** A clear, step-by-step process for each operation:
-    1. **Source:** Load and view the original geometry.
-    2. **Offset:** Generate offset paths based on tool parameters.
-    3. **Preview:** Visualize a tool reach simulation before generating G-code.
-* **Advanced Geometry Processing:**
-    * **Efficient boolean pipeline:** Boolean operations handled by the Clipper2 library (WASM).
-    * **Unified Offset Pipeline:** Simplified offset pipeline that generates external and internal multi-pass isolation and clearing paths.
-    * **Custom Arc Reconstruction:** Reconstructs true arcs (`G2`/`G3`) from segmented Clipper2 data for efficient G-code and machine motion.
-* **Interactive 2D Renderer:**
-    * High-performance WebGL-based renderer for smooth panning and zooming.
-    * Layer visibility controls, wireframe mode, and measurement grids.
-* **Flexible Tool Management:** A configurable tool library allows defining and selecting tools for different operations.
-* **Detailed Parameter Control:** Fine-tune every aspect of the job, including cut depth, step-over, feed rates, and multi-pass settings.
+* **Multi-Operation Workflow**
+   A non-destructive workflow for common PCB CAM tasks:
+   * **Isolation Routing:** Multi-pass trace isolation.
+   * **Drilling:** Smart peck-or-mill strategy selection.
+   * **Copper Clearing:** Internal pocketing for large copper areas.
+   * **Board Cutouts:** Path generation with optional tab placement.
 
-## Tech Stack
+* **1. Advanced Geometry Engine (Source -> Offset)**
+   The first stage converts source files into offset *geometry*.
+   * **Analytic Parsing:** Reads Gerber, Excellon, and full SVG paths (including arcs and Béziers) into their native shapes.
+   * **Clipper2 Engine:** Uses a WebAssembly-based Clipper2 library for high-performance, robust boolean operations (union, difference).
+   * **Arc Reconstruction:** Reconstructs true arcs (G2/G3) from polygonized post Clipper2 data.
+   * **Unified Offset Pipeline:** A single pipeline handles both external (isolation) and internal (clearing) multi-pass offsets.
+   * **Smart Drill Strategy:** Analyzes drill hole size against tool diameter and generates the required "*offset*" object (either `peck_mark` or `drill_milling_path`).
+
+* **2. Intelligent Toolpath Pipeline (Offset -> G-code)**
+   The final export stage converts geometry into optimized machine motion.
+   * **Geometry Translation:** Translates offset geometry objects into organized toolpath plans
+   * **Machine Processing:** Injects all necessary machine-specific commands:
+      * Adds rapids, plunges, and retracts to safe/travel Z-heights.
+      * Detects multi-depth passes on the same path to only perform a quick Z-plunge.
+      * Manages complex hole/slot entries logic (helix vs plunge)
+      * Handles Z-lifts for board tabs during cutout operations.
+   * **Toolpath Optimization:** Optionally restructures the toolpath plan object to maximize efficiency:
+      * **Staydown Clustering:** Geometrically analyzes paths and groups nearby cuts to minimize Z-axis retractions.
+      * **Path Ordering:** Applies a nearest-neighbor algorithm to sort clusters to reduce rapid travel time.
+
+
+* **3. Multi-Stage Canvas Renderer**
+   * **Hardware Accelerated:** Provides smooth panning and zooming.
+   * **Multi-Stage Visualization:** Clearly and distinctly renders **Source** (Gerber/SVG), **Offset** (generated paths), and **Preview** (tool-reach simulation) layers.
+   * **Smart Drill Rendering:** Visually distinguishes source drill holes, offset-stage peck marks, and final preview simulations with clear, color-coded warnings for oversized tools.
+
+# Tech Stack
 
 * **Frontend:** Vanilla JavaScript (ES6+), HTML5, CSS3
-* **Geometry Engine:** [Clipper2](https://github.com/AngusJohnson/Clipper2) via [WebAssembly](https://github.com/ErikSom/Clipper2-WASM/) for high-performance polygon operations.
-* **Rendering:** Custom WebGL-based 2D layer renderer. (Possible 3d g-code viewer, one day)
-* **File Parsing:** Custom parsers for Gerber (RS-274X) and Excellon formats. SVG comming Soon™ (No Béziers in the near future).
+* **Geometry Engine:** [Clipper2](https://github.com/AngusJohnson/Clipper2) via [WebAssembly](https://github.com/ErikSom/Clipper2-WASM/)
+* **Rendering:** Custom 2D Canvas-based layer renderer with an overlay system for grids, rulers, and origin points.
+* **File Parsing:** Native parsers for Gerber (RS-274X), Excellon, and SVG formats.
+* **Toolpath Generation:** A three-stage pipeline (Translate, Optimize, Process) to convert geometry into machine-ready plans.
 
 ## File Compatibility
 
-* **KiCAD**
-* **EasyEDA**
-* **TDB**
+The application has been developer and tested with files generated from **KiCAD** and **EasyEDA**.
+
+* **Gerber:** `.gbr`, `.ger`, `.gtl`, `.gbl`, `.gts`, `.gbs`, `.gko`, `.gm1`
+* **Excellon:** `.drl`, `.xln`, `.txt`, `.drill`, `.exc`
+* **SVG**
+
+Note: The parser understands all svg data including complex Bézier curves and creates the corresponding Cubic or Quadratic primitives. Bézier primitives are then tessellated by the plotter into line segments, as the geometry engine does not support analytic Bézier offsetting yet.
 
 ## Usage
 
-1.  **Load Files:** Use the "Add Files" buttons in the "Operations" panel or the drop-down areas from Actions -> Add Files to load your Gerber and Excellon files into the desired operation.
-3.  **Configure Parameters:** Click on a file in the tree view to select it. Parameters will appear in the right sidebar.
-4.  **Generate Offsets:** Edit X&Y parameters and click the action button ("Generate Offsets")
-5.  **Generate Preview:** Edit Z parameters and click the action button ("Generate Preview")
-6.  **Generate G-Code:** Edit machine parameters and click the action button ("Export G-Code")
+### Quick Start
+1. **Load Files:** Drag-and-drop or use "Add Files" button for each operation type
+2. **Configure Tool:** Select tool from library or define custom diameter
+3. **Generate Offsets:** Set passes, stepover, and click "Generate Offsets"
+4. **Preview Toolpath:** Configure depths, feeds, and click "Generate Preview"
+5. **Export G-code:** Open Operations Manager, arrange sequence, and export
 
-Note: While the UI allows defining multiple tools, automatic tool-changing G-code (M6) is not yet implemented. You can export operations that use the same tool into a single file.
+## The Three-Stage Workflow
+
+The application guides the user through a clear, non-destructive process. Each stage builds on the last, and its visibility can be toggled in the renderer.
+
+### Stage 1: Source (Load Geometry)
+* **Action:** Add Gerber, Excellon, or SVG files.
+* **Result:** The original source geometry is parsed, analyzed, and displayed in the renderer.
+* **You See:** The original trace paths, pads, regions and drill holes.
+
+### Stage 2: Offset (Generate Geometry)
+* **Action:** Configure parameters (tool, depth, stepover) and click **"Generate Offsets"** (or "Generate Drill Strategy").
+* **Result:** The core runs the **Geometry Engine**.
+   * For **Milling** operations, this creates new `offset` primitives using virtually lossless pipelines.
+   * For **Drilling** operations, this runs the `_determineDrillStrategy` logic, creating `peck_mark` or `drill_milling_path` primitives based on tool/hole size.
+* **You See:** New objects appear in the tree ("Pass 1", "Peck Marks") and are rendered as thin outlines. Drill markings are color coded for cutting tool diameter vs hole size.
+
+### Stage 3: Preview (Simulate Tool Reach)
+* **Action:** Click **"Generate Preview"**.
+* **Result:** This is a lightweight, *visual-aid* step. It creates `preview` primitives using the `offset` objects but stroked with the tool's diameter.
+* **You See:** New objects in the tree and the thin offset lines are replaced by a thick, simulated toolpath, showing you exactly what material will be removed.
+
+---
+
+## G-code Generation & Optimization
+
+The final step is handled in the **Toolpath Manager** modal, which is opened from the "Preview" stage or the main toolbar *after* machine parameters have been set.
+
+This modal is where the *full toolpath pipeline* is executed:
+
+1.  **Arrange & Select:** You can drag-and-drop operations to change their cutting order and check/uncheck which ones to include in the final export.
+2.  **Optimize:** You can check the **"Optimize Paths"** box.
+3.  **Generate:** Clicking **"Calculate Preview"** or **"Export G-code"** runs the complete pipeline:
+      * **Translate:** Offset geometry is converted to `ToolpathPlan` objects.
+      * **Optimize (if checked):** `ToolpathOptimizer` re-configures the plans.
+      * **Process:** `MachineProcessor` injects rapids, plunges, pecks, helices, and tab-lifts.
+      * **Export:** `GCodeGenerator` follows post-processor instructions to convert the machine-ready plan into g-code.
 
 ## Project Structure
 
-The project follows a modular structure. The loading order in `index.html` reflects dependency hierarchy.
-
 ```
 /
-├── index.html                          # Main application entry point
-├── cam.css                             # All application styles
-├── config.js                           # Default values, configurations, small aux methods
+├── index.html                          # Main application entry
+│
+├── config.js                           # Configuration and defaults
 │
 ├── cam-core.js                         # Core application logic
-├── cam-ui.js                           # Main UI controller, orchestrates UI components
-├── cam-controller.js                   # Initializes and connects core and UI
+├── cam-ui.js                           # UI controller
+├── cam-controller.js                   # Initialization and connection
 │
-├── coortinate/
-│   └── coordinate-system.js            # Manages coordinate translations / rotations
+├── css/
+│   ├── base.css                        # Foundation styles (reset, variables, etc)
+│   ├── canvas.css                      # Canvas-specific rendering styles
+│   ├── components.css                  # Reusable UI components (buttons, inputs, etc)
+│   ├── layout.css                      # Layout structure (grid, toolbar, etc)
+│   └── theme.css                       # Theme system fallback
+│
+├── themes/
+│   ├── theme-loader.js                 # Theme loading and switching utility
+│   ├── light.json                      # Light Theme
+│   └── dark.json                       # Dark Theme
+│
+├── coordinate/
+│   └── coordinate-system.js            # Coordinate transformations
 │
 ├── ui/
-│   ├── ui-tree-manager.js              # Manages the operations tree view (left sidebar)
-│   ├── ui-property-inspector.js        # Manages the properties panel (right sidebar)
-│   ├── ui-controls.js                  # Manages the user interactivity
-│   ├── ui-status-manager.js            # Manages the status bar
-│   ├── ui-tooltip.js                   # Manages all UI tooltips
-│   ├── ui-parameter-manager.js         # Manages parameter strings and validation
-│   ├── ui-tool-library.js              # Manages tool definitions and tool selection functionality
-│   └── ui-visibility-panel.js          # Manages advanced visibility toggles
+│   ├── ui-tree-manager.js              # Operations tree (left sidebar)
+│   ├── ui-property-inspector.js        # Properties panel (right sidebar)
+│   ├── ui-controls.js                  # User interaction handlers
+│   ├── ui-status-manager.js            # Status bar
+│   ├── ui-tooltip.js                   # Tooltip system
+│   ├── ui-parameter-manager.js         # Parameter validation
+│   ├── ui-modal-manager.js             # Modal boxes
+│   └── ui-tool-library.js              # Tool definitions
 │
 ├── geometry/
 │   ├── clipper2z.js                    # Clipper2 WASM factory
-│   ├── clipper2z.wasm                  # Clipper2 WASM library
-│   ├── geometry-clipper-wrapper.js     # Clipper2 intermediary wrapper
-│   ├── geometry-processor.js           # Processes geometric boolean operations
-│   ├── geometry-arc-reconstructor.js   # Custom system to recover arcs after Clipper2 booleans
-│   ├── geometry-curve-registry.js      # Manages the Curve Registry for arc-reconstruction
-│   ├── geometry-offsetter.js           # Handles geometry offsetting
-│   └── geometry-utils.js               # Contains general auxiliary functions
+│   ├── clipper2z.wasm                  # Clipper2 WASM binary
+│   ├── geometry-clipper-wrapper.js     # Clipper2 interface
+│   ├── geometry-processor.js           # Boolean operations
+│   ├── geometry-arc-reconstructor.js   # Custom Clipper2 arc recovery
+│   ├── geometry-curve-registry.js      # Curve metadata tracking
+│   ├── geometry-offsetter.js           # Path offsetting
+│   └── geometry-utils.js               # Utility functions
 │
 ├── parsers/
-│   ├── parser-core.js                  # Manages the parsing system
-│   ├── parser-gerber.js                # Gerber parsing module (RS-274X)
-│   ├── parser-excellon.js              # Excellon parsing module (drill)
-│   ├── parser-svg.js                   # SVG parsing module (Needs more testing. No Bézier offsets)
-│   ├── parser-plotter.js               # Converts parsed data into geometric primitives
-│   └── primitives.js                   # Defines geometric primitives (Path, Circle, etc)
+│   ├── parser-core.js                  # Base parser orchestration
+│   ├── parser-gerber.js                # Gerber RS-274X parser
+│   ├── parser-excellon.js              # Excellon drill parser
+│   ├── parser-svg.js                   # SVG parser
+│   ├── parser-plotter.js               # Geometry converter
+│   └── primitives.js                   # Geometric primitives
 │
 ├── renderer/
-│   ├── renderer-core.js                # Coordinates canvas, view and layer states
-│   ├── renderer-interaction.js         # Manages canvas user interactions
-│   ├── renderer-layer.js               # Manages layers
-│   ├── renderer-overlay.js             # Handles grid, rulers, origin, scale indicator, etc
-│   └── renderer-primitives.js          # Dedicated geometry object renderer
+│   ├── renderer-core.js                # 2D Canvas renderer
+│   ├── renderer-interaction.js         # Pan/zoom/measure
+│   ├── renderer-layer.js               # Layer management
+│   ├── renderer-overlay.js             # Grid/rulers/origin
+│   └── renderer-primitives.js          # Geometry rendering
 │
-├── examples/
-│   ├── example1/
-│   │   ├── isolation.gbr
-│   │   ├── clear.gbr
-│   │   ├── cutout.gbr
-│   │   └── drill.drl
-│   └── LineTest.svg                    # CNC/Cutting tool precision test geometry
+├── toolpath/
+│   ├── toolpath-primitives.js          # Toolpath data structures
+│   ├── toolpath-geometry-translator.js # Offset to cutting paths
+│   ├── toolpath-machine-processor.js   # Machine motion injection
+│   └── toolpath-optimizer.js           # Path ordering/optimization
 │
 ├── export/
-│    ├── exporter-g-code                # Logic for exporting g-code following set parameters
-│    └── exporter-svg.js                # Logic for exporting the current view as an SVG
+│   ├── gcode-generator.js              # G-code generation
+│   ├── svg-exporter.js                 # SVG export
+│   └── processors/                     # Post-processor modules
+│       ├── base-processor.js
+│       └── grbl-processor.js
 │
-└── clipper2/                           # Clipper2 WASM syntax test page
-
+├── examples/
+│   ├── example1/                       # Sample PCB files
+│   └── LineTest.svg                    # Precision test pattern
+│
+└── clipper2/                           # Clipper2 test page
 ```
 
 ## Running Locally
 
-1. Clone the repository: git clone [https://github.com/RicardoJCMarques/Eltryus_CAM.git](https://github.com/RicardoJCMarques/Eltryus_CAM.git)
-2. This project has no build step. We recommend using VS Code with the [Five Server](https://github.com/yandeu/five-server-vscode) extension for live-reloading.
-3. Right-click index.html and select "Open with Five Server". Your browser should open a tab to the application (http://127.0.0.1:5500/).
-4.  It's possible to create a fiveserver.config.js file for custom Fiver Server setups.
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/RicardoJCMarques/Eltryus_CAM.git
+   ```
 
-## Testing
+2. No build step required - pure client-side application
+
+3. Recommended: Use VS Code with [Five Server](https://github.com/yandeu/five-server-vscode) extension
+   - Right-click `index.html` → "Open with Five Server"
+   - Browser should open at `http://127.0.0.1:5500/`
+
+4. Optional: Create `fiveserver.config.js` for custom server configuration
+
+## Testing & Debugging
+
 ```javascript
-// Browser console
-window.pcbcam.getStats()                // Show pipeline stats
-window.enablePCBDebug()                 // Enable debug logging
+// Browser console commands
+window.pcbcam.getStats()                // Display pipeline statistics
+window.enablePCBDebug()                 // Enable verbose logging
 window.getReconstructionRegistry()      // Inspect arc metadata
 ```
 
-## Next Steps
+## Known Issues & Limitations
 
-- Make the page usable in smaller and <sub>smaller</sub> screens.
-- Simplified pipelines for laser engraving isolation.
-- Tool changing support.
-- Tool library and config (themes, etc) import
-- Bezier primitives and arc fitting based reconstruction support.
+**Current Limitations:**
+* **Bézier Offsetting:** While Bézier curves from SVGs *are* parsed analytically, they are tessellated (converted to line segments) by the plotter before offsetting. True analytic offsetting of Béziers is not yet supported.
+* **Tool Changes:** The application does not currently generate tool change commands (M6). Operations using different tools must be exported as separate G-code files.
+* **Performance:** Very large or complex boards (>200mm) with high segmentation may experience UI slowdown during boolean operations, as they run on the main thread.
+* **UI:** Small screen/mobile support is incomplete.
+
+**Known Bugs:**
+* **Hole Rendering:** Parsed objects with holes (likely from an svg) are processed correctly by the geometry engine, but may not render correctly in the 2D canvas (e.g., holes may appear as regular filled polygon).
+* **Peck Marks Post-Preview:** After Preview geometry is rendered, peck marks are stuck as filled *preview* circle primitives.
+* **Offsetting of corners:** Depending on distance between an internal corner (concave) and external corner (convex) the analytic offsetting engine may cause artifacts between the external rounded joint's arc and the internal side path.
+
+## Roadmap
+
+**Near-Term (v1.1):**
+- Responsive design for smaller screens
+- Undo/redo system
+- Tool library import/export
+- Theme customization
+
+**Mid-Term (v1.2):**
+- 3D G-code preview/simulation
+- Laser engraving mode (simplified isolation)
+- Automatic tool change (M6) support
+- Advanced optimization (genetic algorithm)
+
+**Long-Term (v2.0):**
+- Bézier curve native offsetting
+- Multi-sided PCB support
+- Web worker threading for heavy operations
+- Cloud project storage
 
 ## ❤️ Support the Project
 

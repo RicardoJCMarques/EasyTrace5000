@@ -40,7 +40,9 @@
 
         parse(content) {
             try {
-                this.debug('Starting SVG parse (Analytic-based)');
+                if (this.debug) {
+                    console.log('Starting SVG parse (Analytic-based)');
+                }
                 this.reset();
 
                 const parser = new DOMParser();
@@ -277,18 +279,21 @@
             
             const validSubpaths = subpaths.filter(segments => segments.length > 0);
 
-            console.log(`[SVGParser._createPolarityRegions] Received ${subpaths.length} subpaths. Found ${validSubpaths.length} valid subpaths to plot.`);
+            if (this.debug) {
+                console.log(`[SVGParser._createPolarityRegions] Received ${subpaths.length} subpaths. Found ${validSubpaths.length} valid subpaths to plot.`);
+            }
             
             if (validSubpaths.length === 0) {
                 return;
             }
 
-            this.debug(`[SVGParser._createPolarityRegions] Bundling ${validSubpaths.length} subpaths into one 'region' object.`);
-            validSubpaths.forEach((subpath, index) => {
-                // A subpath is an array of segment objects (move, line, arc, etc.)
-                this.debug(`  - Subpath ${index}: ${subpath.length} segments.`);
-            });
-
+            if (this.debug) {
+                console.log(`[SVGParser._createPolarityRegions] Bundling ${validSubpaths.length} subpaths into one 'region' object.`);
+                validSubpaths.forEach((subpath, index) => {
+                    // A subpath is an array of segment objects (move, line, arc, etc.)
+                    console.log(`  - Subpath ${index}: ${subpath.length} segments.`);
+                });
+            }
             // Create a single 'region' object. The plotter will be responsible for tessellating, nesting, and splitting this into multiple primitives if needed.
             
             this.layers.objects.push({

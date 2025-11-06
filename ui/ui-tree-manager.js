@@ -40,19 +40,15 @@
             this.expandedCategories = new Set(['isolation', 'drill', 'clear', 'cutout']);
             
             this.nextNodeId = 1;
-            
-            this.handleCategoryClick = this._handleCategoryClick.bind(this);
-            this.handleFileClick = this._handleFileClick.bind(this);
-            this.handleGeometryClick = this._handleGeometryClick.bind(this);
-            
+
             this.initialized = false;
         }
-        
+
         init() {
             if (this.initialized) return;
-            
+
             this.setupCategories();
-            
+
             const collapseAllBtn = document.getElementById('collapse-all-btn');
             if (collapseAllBtn) {
                 collapseAllBtn.addEventListener('click', () => this.collapseAll());
@@ -62,23 +58,9 @@
             if (expandAllBtn) {
                 expandAllBtn.addEventListener('click', () => this.expandAll());
             }
-            
-            const vizPanelHeader = document.getElementById('viz-panel-header');
-            if (vizPanelHeader) {
-                vizPanelHeader.addEventListener('click', () => {
-                    const panel = document.getElementById('viz-panel');
-                    const indicator = vizPanelHeader.querySelector('.collapse-indicator');
-                    if (panel) {
-                        panel.classList.toggle('collapsed');
-                        if (indicator) {
-                            indicator.textContent = panel.classList.contains('collapsed') ? '▲' : '▼';
-                        }
-                    }
-                });
-            }
-            
+
             this.initialized = true;
-            
+
             if (debugConfig.enabled) {
                 console.log('TreeManager initialized');
             }
@@ -270,7 +252,7 @@
                 if (operation.offsets[0]?.combined) {
                     // Single combined offset node
                     const passes = operation.offsets[0].passes || operation.offsets.length;
-                    const label = `Offsets (combined, ${passes} passes)`;
+                    const label = `Offsets`;
                     this.addGeometryNode(fileId, 'offsets_combined', label, 
                         operation.offsets[0].primitives?.length || 0, {
                         offset: operation.offsets[0].distance.toFixed(2),
@@ -345,7 +327,9 @@
             iconEl.textContent = icons[baseType] || '📊';
             
             if (baseType === 'offset' || baseType === 'offsets_combined') {
-                nodeElement.style.setProperty('--accent-color', '#ff0000');
+                nodeElement.dataset.opType = 'toolpath';
+            } else if (baseType === 'preview') {
+                nodeElement.dataset.opType = 'clear';
             }
             
             labelEl.textContent = label;
@@ -372,8 +356,43 @@
             if (visBtn) {
                 visBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    this.toggleGeometryVisibility(geometryId, geometryType);
+                    this.toggleGeometryVisibility(fileId, geometryId, geometryType);
                 });
+
+                // Set initial button state
+                const operationId = fileData.operation.id;
+                let layerName;
+
+                // Determine the exact layer name
+                if (geometryType === 'offsets_combined') {
+                    layerName = `offset_${operationId}_combined`;
+                } else if (geometryType.startsWith('offset_')) {
+                    const passIndex = parseInt(geometryType.split('_')[1]);
+                    layerName = `offset_${operationId}_pass_${passIndex + 1}`;
+                } else if (geometryType === 'preview') {
+                    layerName = `preview_${operationId}`;
+                }
+
+                let isVisible = false;
+                if (layerName && this.ui.renderer) {
+                    if (geometryType.startsWith('offset')) {
+                        // Check if the operation *has* a preview.
+                        const hasPreview = fileData.operation.preview && fileData.operation.preview.ready;
+                        // Be visible *only if* there is no preview AND the global toggle is on.
+                        isVisible = !hasPreview && this.ui.renderer.options.showOffsets;
+                        
+                    } else if (geometryType === 'preview') {
+                        // Preview visibility is just the global toggle.
+                        isVisible = this.ui.renderer.options.showPreviews;
+                    } else {
+                        // Fallback for other types (like toolpaths)
+                        const layer = this.ui.renderer.layers.get(layerName);
+                        if (layer) isVisible = layer.visible;
+                    }
+                }
+                
+                // Set the .is-hidden class based on the *correct* visibility
+                visBtn.classList.toggle('is-hidden', !isVisible);
             }
 
             const nodeContent = nodeElement.querySelector('.geometry-node-content');
@@ -498,18 +517,47 @@
             this.ui.renderer.render();
         }
         
-        toggleGeometryVisibility(geometryId, geometryType) {
-            const layerPrefix = geometryType.startsWith('toolpath') ? 'toolpath' : 
-                              geometryType.startsWith('offset') ? 'offset' : geometryType;
-            
-            if (this.ui.renderer) {
-                const layers = this.ui.renderer.layers;
-                layers.forEach((layer, name) => {
-                    if (name.startsWith(layerPrefix)) {
-                        layer.visible = !layer.visible;
-                    }
-                });
+        toggleGeometryVisibility(fileId, geometryId, geometryType) {
+            const fileData = this.nodes.get(fileId);
+            if (!fileData || !this.ui.renderer) return;
+
+            const operationId = fileData.operation.id;
+            let layerName;
+
+            // Construct the exact layer name based on the logic in cam-ui.js
+            if (geometryType === 'offsets_combined') {
+                layerName = `offset_${operationId}_combined`;
+            } else if (geometryType.startsWith('offset_')) {
+                const passIndex = parseInt(geometryType.split('_')[1]);
+                layerName = `offset_${operationId}_pass_${passIndex + 1}`;
+            } else if (geometryType === 'preview') {
+                layerName = `preview_${operationId}`;
+            } else if (geometryType.startsWith('toolpath_')) {
+                const passIndex = parseInt(geometryType.split('_')[1]);
+                layerName = `toolpath_${operationId}_pass_${passIndex + 1}`; // Future-proofing
+            }
+
+            if (!layerName) {
+                console.warn(`[TreeManager] Could not determine layer name for ${geometryType}`);
+                return;
+            }
+
+            // Find the specific layer
+            const layer = this.ui.renderer.layers.get(layerName);
+            const visBtn = document.querySelector(`.geometry-node[data-geometry-id="${geometryId}"] .visibility-btn`);
+
+            if (layer) {
+                // Toggle only that layer
+                layer.visible = !layer.visible;
                 this.ui.renderer.render();
+                
+                // Update the button's appearance
+                if (visBtn) {
+                    // Toggle the .is-hidden class *opposite* to the layer's visibility
+                    visBtn.classList.toggle('is-hidden', !layer.visible);
+                }
+            } else {
+                console.warn(`[TreeManager] Could not find layer to toggle: ${layerName}`);
             }
         }
         
@@ -564,44 +612,7 @@
                 }
             });
         }
-        
-        _handleCategoryClick(e) {
-            const category = e.currentTarget.closest('.operation-category');
-            if (!category) return;
-            
-            const opType = category.dataset.opType;
-            this.toggleCategory(opType);
-        }
-        
-        _handleFileClick(e) {
-            const fileNode = e.currentTarget.closest('.file-node');
-            if (!fileNode) return;
-            
-            const fileId = fileNode.dataset.fileId;
-            const operationId = fileNode.dataset.operationId;
-            
-            const operation = this.core.operations.find(op => op.id === operationId);
-            if (operation) {
-                this.selectFile(fileId, operation);
-            }
-        }
-        
-        _handleGeometryClick(e) {
-            const geometryNode = e.currentTarget.closest('.geometry-node');
-            if (!geometryNode) return;
-            
-            const geometryId = geometryNode.dataset.geometryId;
-            const geometryType = geometryNode.dataset.geometryType;
-            
-            const fileNode = geometryNode.closest('.file-node');
-            if (fileNode) {
-                const operationId = fileNode.dataset.operationId;
-                const operation = this.core.operations.find(op => op.id === operationId);
-                if (operation) {
-                    this.selectGeometry(geometryId, operation, geometryType);
-                }
-            }
-        }
+
     }
     
     window.TreeManager = TreeManager;

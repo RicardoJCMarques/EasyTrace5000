@@ -64,22 +64,28 @@
         
         parse(content) {
             try {
-                this.debug('Starting Gerber parse');
+                if (this.debug) {
+                    console.log('Starting Gerber parse');
+                }
                 
                 // Reset state
                 this.reset();
                 
                 // Phase 1: Tokenize into commands
                 const commands = this.tokenize(content);
-                this.debug(`Tokenized ${commands.length} commands`);
-                
+                if (this.debug) {
+                    console.log(`Tokenized ${commands.length} commands`);
+                }
+
                 // Phase 2: Execute commands sequentially
                 this.executeCommands(commands);
                 
                 // Phase 3: Finalize
                 this.finalizeParse();
                 
-                this.debug(`Parse complete: ${this.layers.objects.length} objects created`);
+                if (this.debug) {
+                    console.log(`Parse complete: ${this.layers.objects.length} objects created`);
+                }
                 this.logStatistics();
                 
                 return {
@@ -356,18 +362,24 @@
                 case 'SET_FORMAT':
                     this.state.format.integer = command.params.xInteger;
                     this.state.format.decimal = command.params.xDecimal;
-                    this.debug(`Format set to ${this.state.format.integer}.${this.state.format.decimal}`);
+                    if (this.debug) {
+                        console.log(`Format set to ${this.state.format.integer}.${this.state.format.decimal}`);
+                    }
                     break;
                     
                 case 'SET_UNITS':
                     this.state.units = command.params.units;
                     this.layers.units = this.state.units;
-                    this.debug(`Units set to ${this.state.units}`);
+                    if (this.debug) {
+                        console.log(`Units set to ${this.state.units}`);
+                    }
                     break;
                     
                 case 'SET_POLARITY':
                     this.state.polarity = command.params.polarity;
-                    this.debug(`Polarity set to ${this.state.polarity}`);
+                    if (this.debug) {
+                        console.log(`Polarity set to ${this.state.polarity}`);
+                    }
                     break;
                     
                 case 'SET_INTERPOLATION':
@@ -416,7 +428,8 @@
 
                     if (isZeroLengthDraw) {
                         // This is effectively a flash, not a trace.
-                        this.debug(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
+                        console.log(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
+
                         this.createFlash(drawPos);
                         this.state.position = drawPos;
                         break; // Exit the case here
@@ -455,7 +468,9 @@
                     break;
                     
                 case 'EOF':
-                    this.debug('End of file');
+                    if (this.debug) {
+                        console.log('End of file');
+                    }
                     break;
             }
         }
@@ -513,7 +528,9 @@
             
             this.layers.objects.push(region);
             this.stats.objectsCreated++;
-            this.debug(`Created region with ${region.points.length} points`);
+            if (this.debug) {
+                console.log(`Created region with ${region.points.length} points`);
+            }
         }
         
         createTrace(start, end, arcData = null) {
@@ -542,7 +559,9 @@
             if (arcData && (this.state.interpolation === 'cw_arc' || this.state.interpolation === 'ccw_arc')) {
                 trace.arc = arcData;
                 trace.clockwise = this.state.interpolation === 'cw_arc';
-                this.debug(`Created arc trace with offsets i=${arcData.i}, j=${arcData.j}`);
+                if (this.debug) {
+                    console.log(`Created arc trace with offsets i=${arcData.i}, j=${arcData.j}`);
+                }
             }
             
             this.layers.objects.push(trace);

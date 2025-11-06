@@ -55,7 +55,9 @@
         
         parse(content) {
             try {
-                this.debug('Excellon parse (strict)');
+                if (this.debug) {
+                    console.log('Excellon parse (strict)');
+                }
                 this.reset();
                 
                 const lines = content
@@ -72,7 +74,9 @@
                         return true;
                     });
                 
-                this.debug(`Processing ${lines.length} lines`);
+                if (this.debug) {
+                    console.log(`Processing ${lines.length} lines`);
+                }
                 
                 lines.forEach((line, index) => {
                     this.processLine(line, index + 1);
@@ -81,7 +85,9 @@
                 
                 this.finalizeParse();
                 
-                this.debug(`Complete: ${this.drillData.holes.length} holes, ${this.tools.size} tools`);
+                if (this.debug) {
+                    console.log(`Complete: ${this.drillData.holes.length} holes, ${this.tools.size} tools`);
+                }
                 this.logStatistics();
                 
                 return {
@@ -148,14 +154,18 @@
                     const decDigits = parseInt(match[2]);
                     this.options.format = { integer: intDigits, decimal: decDigits };
                     this.drillData.format = this.options.format;
-                    this.debug(`Format: ${intDigits}.${decDigits} (from FILE_FORMAT comment)`);
+                    if (this.debug) {
+                        console.log(`Format: ${intDigits}.${decDigits} (from FILE_FORMAT comment)`);
+                    }
                 }
                 return;
             }
             
             if (line === 'M48') {
                 this.inHeader = true;
-                this.debug('Header start');
+                if (this.debug) {
+                    console.log('Header start');
+                }
                 return;
             }
             
@@ -163,27 +173,35 @@
                 if (!this.headerEnded) {
                     this.inHeader = !this.inHeader;
                     if (!this.inHeader) this.headerEnded = true;
-                    this.debug(`Header ${this.headerEnded ? 'end' : 'start'}`);
+                    if (this.debug) {
+                        console.log(`Header ${this.headerEnded ? 'end' : 'start'}`);
+                    }
                 }
                 return;
             }
             
             if (line === 'M30' || line === 'M00') {
-                this.debug('EOF');
+                if (this.debug) {
+                    console.log('EOF');
+                }
                 return;
             }
             
             if (line === 'METRIC' || line === 'M71') {
                 this.options.units = 'mm';
                 this.drillData.units = 'mm';
-                this.debug('Units: mm');
+                if (this.debug) {
+                    console.log('Units: mm');
+                }
                 return;
             }
             
             if (line === 'INCH' || line === 'M72') {
                 this.options.units = 'inch';
                 this.drillData.units = 'inch';
-                this.debug('Units: inch');
+                if (this.debug) {
+                    console.log('Units: inch');
+                }
                 return;
             }
             
@@ -224,7 +242,9 @@
                     this.warnings.push(`Line ${lineNumber}: Unknown FMAT ${code}`);
                 }
                 this.drillData.format = this.options.format;
-                this.debug(`Format: ${this.options.format.integer}.${this.options.format.decimal}`);
+                if (this.debug) {
+                    console.log(`Format: ${this.options.format.integer}.${this.options.format.decimal}`);
+                }
             }
         }
         
@@ -257,7 +277,9 @@
             
             this.tools.set(toolKey, tool);
             this.drillData.tools.push(tool);
-            this.debug(`Tool ${toolKey}: ⌀${displayDiameter.toFixed(3)}mm`);
+            if (this.debug) {
+                console.log(`Tool ${toolKey}: ⌀${displayDiameter.toFixed(3)}mm`);
+            }
         }
         
         selectTool(line, lineNumber) {
@@ -267,7 +289,9 @@
             const number = parseInt(match[1]);
             
             if (number === 0) {
-                this.debug('T0: Deselect');
+                if (this.debug) {
+                    console.log('T0: Deselect');
+                }
                 this.currentTool = null;
                 return;
             }
@@ -282,7 +306,9 @@
             
             this.currentTool = toolKey;
             const tool = this.tools.get(toolKey);
-            this.debug(`Select ${toolKey}: ⌀${tool.diameter.toFixed(3)}mm`);
+            if (this.debug) {
+                console.log(`Select ${toolKey}: ⌀${tool.diameter.toFixed(3)}mm`);
+            }
         }
         
         parseDrillOperation(line, lineNumber) {

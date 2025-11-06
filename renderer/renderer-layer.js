@@ -305,8 +305,7 @@
                 
                 const primBounds = primitive.getBounds();
                 
-                // Only trust per-primitive culling if NOT rotated, because the simple primBounds AABB is incorrect when rotated.
-                if (!isRotated && !this.core.boundsIntersect(primBounds, vb)) {
+                if (!this.core.boundsIntersect(primBounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }

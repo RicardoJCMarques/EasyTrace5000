@@ -154,8 +154,15 @@
             const openFilesBtn = document.getElementById('open-files-btn');
             if (openFilesBtn) {
                 openFilesBtn.onclick = () => {
-                    this.handleWelcomeClose();
-                    this.showModal('file');
+                    // Don't close the welcome modal, just show 'file' on top of it. showModal() will handle the stack.
+                    this.showModal('file'); 
+                    
+                    // We still want to handle the "don't show again" checkbox
+                    const dontShowCheckbox = document.getElementById('dont-show-welcome');
+                    if (dontShowCheckbox?.checked) {
+                        localStorage.setItem('pcbcam-hide-welcome', 'true');
+                        localStorage.setItem('hasVisited', 'true');
+                    }
                 };
             }
             
@@ -209,14 +216,15 @@
                 processBtn.disabled = true;
                 processBtn.onclick = async () => {
                     await this.controller.processUploadedFiles();
-                    this.closeModal();
+                    this.modalStack = []; // Clear the modal stack completely
+                    this.closeModal();    // Now this will close the file modal and not reopen the welcome modal
                 };
             }
             
-            // Cancel button
-            const cancelBtn = document.getElementById('cancel-files-btn');
-            if (cancelBtn) {
-                cancelBtn.onclick = () => {
+            // Back button
+            const backBtn = document.getElementById('back-files-btn');
+            if (backBtn) {
+                backBtn.onclick = () => {
                     this.closeModal();
                     this.controller.uploadedFiles = {};
                 };
@@ -330,8 +338,11 @@
         }
         
         populateToolpathModal() {
-            const list = document.getElementById('gcode-operation-list');
-            if (!list) return;
+            const list = document.getElementById('gcode-operation-order');
+            if (!list) {
+                console.error('ModalManager: #gcode-operation-order list not found!');
+                return;
+            }
             
             list.innerHTML = '';
             
@@ -340,8 +351,15 @@
                 list.appendChild(item);
             }
             
-            // Make list sortable
+            // Make the correct list sortable
             this.makeSortable(list);
+
+            // Clear the *other* list (gcode-operation-list) in case it had old content
+            const checklist = document.getElementById('gcode-operation-list');
+            if (checklist) {
+                checklist.innerHTML = ''; // This list is not used by this function
+            }
+
             // Initialize checkbox state from config
             const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
             if (optimizeCheckbox && config.gcode) {
@@ -352,35 +370,49 @@
         
         createOperationItem(operation) {
             const item = document.createElement('div');
-            item.className = 'operation-item';
+            item.className = 'file-node-content'; // Was 'operation-item'
+            item.style.marginBottom = 'var(--spacing-xs)';
+            item.style.cursor = 'grab'; // Cue for dragging
             item.dataset.operationId = operation.id;
             
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = true;
             checkbox.id = `op-check-${operation.id}`;
-            
+            checkbox.style.margin = '0 var(--spacing-sm) 0 0'; // Add some spacing
+
+            const dragHandle = document.createElement('span');
+            dragHandle.className = 'tree-expand-icon'; // Was 'drag-handle'
+            dragHandle.innerHTML = '☰';
+            dragHandle.style.cursor = 'grab';
+            dragHandle.style.marginRight = 'var(--spacing-sm)';
+
             const label = document.createElement('label');
             label.htmlFor = checkbox.id;
+            label.className = 'file-label'; // Was part of the item
             label.textContent = `${operation.type}: ${operation.file.name}`;
-            
-            const dragHandle = document.createElement('span');
-            dragHandle.className = 'drag-handle';
-            dragHandle.innerHTML = '☰';
-            
+            label.style.cursor = 'grab';
+            label.style.flex = '1'; // Ensure it takes up space
+
+            // Clear default field children and rebuild
+            item.innerHTML = ''; 
             item.appendChild(dragHandle);
             item.appendChild(checkbox);
             item.appendChild(label);
             
             // Show key parameters
             const params = document.createElement('div');
-            params.className = 'operation-params';
-            params.style.fontSize = '11px';
-            params.style.color = '#999';
+            params.className = 'geometry-info'; // Was 'operation-params'
+            params.style.fontSize = 'var(--font-size-xs)';
+            params.style.color = 'var(--color-text-hint)';
+            params.style.fontFamily = 'var(--font-mono)';
+
+            const tool = operation.settings.tool?.diameter || operation.settings.toolDiameter || 0;
+            const depth = operation.settings.cutDepth || 0;
+            const feed = operation.settings.feedRate || 0;
+            
             params.innerHTML = `
-                Tool: ${operation.settings.tool?.diameter || 0}mm | 
-                Depth: ${operation.settings.cutDepth || 0}mm | 
-                Feed: ${operation.settings.feedRate || 0}mm/min
+                T: ${tool}mm | Z: ${depth}mm | F: ${feed}
             `;
             item.appendChild(params);
             
@@ -389,24 +421,29 @@
         
         makeSortable(container) {
             let draggedItem = null;
-            
+
             container.addEventListener('dragstart', (e) => {
-                if (e.target.classList.contains('operation-item')) {
-                    draggedItem = e.target;
-                    e.target.classList.add('dragging');
+                // Check if the target or its parent is the draggable item
+                const targetItem = e.target.closest('.file-node-content');
+                if (targetItem && container.contains(targetItem)) {
+                    draggedItem = targetItem;
+                    draggedItem.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
                 }
             });
-            
-            container.addEventListener('dragend', (e) => {
-                if (e.target.classList.contains('operation-item')) {
-                    e.target.classList.remove('dragging');
+
+            container.addEventListener('dragend', () => {
+                if (draggedItem) {
+                    draggedItem.classList.remove('dragging');
                     draggedItem = null;
-                    this.updatePreview();
+                    // No need to call updatePreview() on drag end, the order is read when "Calculate" is clicked.
                 }
             });
-            
+
             container.addEventListener('dragover', (e) => {
                 e.preventDefault();
+                if (!draggedItem) return;
+                
                 const afterElement = this.getDragAfterElement(container, e.clientY);
                 if (afterElement == null) {
                     container.appendChild(draggedItem);
@@ -414,15 +451,15 @@
                     container.insertBefore(draggedItem, afterElement);
                 }
             });
-            
+
             // Make items draggable
-            container.querySelectorAll('.operation-item').forEach(item => {
+            container.querySelectorAll('.file-node-content').forEach(item => {
                 item.draggable = true;
             });
         }
         
         getDragAfterElement(container, y) {
-            const draggableElements = [...container.querySelectorAll('.operation-item:not(.dragging)')];
+            const draggableElements = [...container.querySelectorAll('.file-node-content:not(.dragging)')];
             
             return draggableElements.reduce((closest, child) => {
                 const box = child.getBoundingClientRect();
@@ -436,112 +473,100 @@
             }, { offset: Number.NEGATIVE_INFINITY }).element;
         }
         
-        async calculateToolpaths() {
-            // Validate operations have offsets
-            const readyOps = this.selectedOperations.filter(op => op.offsets && op.offsets.length > 0);
-            
-            if (readyOps.length === 0) {
-                this.showPlaceholderPreview();
-                this.ui?.statusManager?.showStatus('No operations have offset geometry. Generate previews first.', 'warning');
-                return;
-            }
-
-            // Clear cached plans to force recalculation
-            this.toolpathPlans.clear();
-            
-            // Store that we have calculated (even if it's just metadata preparation)
-            for (const op of readyOps) {
-                this.toolpathPlans.set(op.id, { ready: true });
-            }
-            
-            // Update preview to generate actual G-code
-            this.updatePreview();
-        }
-        
-        async updatePreview() {
-            const list = document.getElementById('gcode-operation-list');
-            if (!list) return;
-            
-            const selectedItemIds = [];
-            list.querySelectorAll('.operation-item').forEach(item => {
-                const checkbox = item.querySelector('input[type="checkbox"]');
-                if (checkbox?.checked) {
-                    selectedItemIds.push(item.dataset.operationId);
-                }
-            });
-            
-            if (selectedItemIds.length === 0) {
-                this.showPlaceholderPreview();
-                return;
-            }
-            
-            // Validate operations have offsets
-            const selectedOps = selectedItemIds
-                .map(id => this.selectedOperations.find(o => o.id === id))
-                .filter(Boolean);
-            
-            const opsWithoutOffsets = selectedOps.filter(op => !op.offsets || op.offsets.length === 0);
-            if (opsWithoutOffsets.length > 0) {
-                this.showPlaceholderPreview();
-                const names = opsWithoutOffsets.map(o => o.file.name).join(', ');
-                this.ui?.statusManager?.showStatus(
-                    `Operations missing offset geometry: ${names}`, 
-                    'warning'
-                );
-                return;
-            }
-            
-            // Gather options
-            const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
-            const options = {
-                operationIds: selectedItemIds,
-                operations: this.selectedOperations,
-                
-                // Machine settings
-                safeZ: 5.0,
-                travelZ: 2.0,
-                plungeRate: 50,
-                rapidFeedRate: 1000,
-                
-                // G-code settings
-                postProcessor: document.getElementById('gcode-post-processor')?.value || 'grbl',
-                includeComments: document.getElementById('gcode-include-comments')?.checked !== false,
-                singleFile: document.getElementById('gcode-single-file')?.checked !== false,
-                toolChanges: document.getElementById('gcode-tool-changes')?.checked || false,
-                
-                // FIX: Read actual checkbox state
-                optimize: optimizeCheckbox ? optimizeCheckbox.checked : false
-            };
+        async runToolpathOrchestration(btn) {
+            // 1. Show loading state
+            const originalText = btn.textContent;
+            btn.textContent = 'Calculating...';
+            btn.disabled = true;
 
             try {
-                const result = await this.controller.orchestrateToolpaths(options);
-                
-                if (!result || !result.gcode) {
+                // 2. Find the correct list and items
+                const list = document.getElementById('gcode-operation-order');
+                if (!list) {
+                    console.error("Could not find list 'gcode-operation-order'");
                     this.showPlaceholderPreview();
                     return;
                 }
 
-                // Update UI
+                const selectedItemIds = [];
+                list.querySelectorAll('.file-node-content').forEach(item => {
+                    const checkbox = item.querySelector('input[type="checkbox"]');
+                    if (checkbox?.checked) {
+                        selectedItemIds.push(item.dataset.operationId);
+                    }
+                });
+
+                if (selectedItemIds.length === 0) {
+                    this.showPlaceholderPreview();
+                    this.ui?.statusManager?.showStatus('No operations selected', 'info');
+                    return;
+                }
+
+                // 3. Validate operations
+                const selectedOps = selectedItemIds
+                    .map(id => this.selectedOperations.find(o => o.id === id))
+                    .filter(Boolean);
+
+                const opsWithoutPreview = selectedOps.filter(op => !op.preview || !op.preview.ready);
+                if (opsWithoutPreview.length > 0) {
+                    this.showPlaceholderPreview();
+                    const names = opsWithoutPreview.map(o => o.file.name).join(', ');
+                    this.ui?.statusManager?.showStatus(
+                        `Operations missing Preview: ${names}. Please generate previews first.`,
+                        'warning'
+                    );
+                    return;
+                }
+
+                // 4. Gather options
+                const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
+                const options = {
+                    operationIds: selectedItemIds,
+                    operations: this.selectedOperations,
+                    safeZ: this.controller.core?.getSetting('machine', 'safeZ') || 5.0,
+                    travelZ: this.controller.core?.getSetting('machine', 'travelZ') || 2.0,
+                    rapidFeedRate: this.controller.core?.getSetting('machine', 'rapidFeed') || 1000,
+                    postProcessor: document.getElementById('gcode-post-processor')?.value || 'grbl',
+                    includeComments: document.getElementById('gcode-include-comments')?.checked !== false,
+                    singleFile: document.getElementById('gcode-single-file')?.checked !== false,
+                    toolChanges: document.getElementById('gcode-tool-changes')?.checked || false,
+                    optimize: optimizeCheckbox ? optimizeCheckbox.checked : false
+                };
+
+                // 5. Run orchestration
+                const result = await this.controller.orchestrateToolpaths(options);
+
+                if (!result || !result.gcode) {
+                    this.showPlaceholderPreview();
+                    this.ui?.statusManager?.showStatus('Calculation returned no G-code', 'warning');
+                    return;
+                }
+
+                // 6. Display results
                 const previewText = document.getElementById('gcode-preview-text');
                 if (previewText) previewText.value = result.gcode;
-                
+
                 const lineCount = document.getElementById('gcode-line-count');
                 if (lineCount) lineCount.textContent = result.lineCount;
-                
-                const planCountEl = document.getElementById('gcode-op-count'); 
+
+                const planCountEl = document.getElementById('gcode-op-count');
                 if (planCountEl) planCountEl.textContent = result.planCount;
-                
+
                 const estTimeEl = document.getElementById('gcode-est-time');
                 if (estTimeEl) {
                     const minutes = Math.floor(result.estimatedTime / 60);
                     const seconds = Math.floor(result.estimatedTime % 60);
                     estTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
                 }
-                
+
             } catch (error) {
                 console.error('[ModalManager] Orchestration failed:', error);
                 this.showPlaceholderPreview();
                 this.ui?.statusManager?.showStatus(`Failed: ${error.message}`, 'error');
+            } finally {
+                // 7. Restore button
+                btn.textContent = originalText;
+                btn.disabled = false;
             }
         }
         
@@ -613,15 +638,10 @@
             // Calculate button
             const calculateBtn = document.getElementById('gcode-calculate-btn');
             if (calculateBtn) {
-                calculateBtn.onclick = async () => {
-                    await this.calculateToolpaths();
+                calculateBtn.onclick = () => {
+                    // Pass the button itself so we can disable it
+                    this.runToolpathOrchestration(calculateBtn);
                 };
-            }
-            
-            // Update preview button
-            const previewBtn = document.getElementById('gcode-preview-btn');
-            if (previewBtn) {
-                previewBtn.onclick = () => this.updatePreview();
             }
             
             // Export button
@@ -636,21 +656,7 @@
                 closeBtn.onclick = () => this.closeModal();
             }
             
-            // Update on checkbox change
-            const list = document.getElementById('gcode-operation-list');
-            if (list) {
-                list.addEventListener('change', () => this.updatePreview());
-            }
-            
-            // Update on options change
-            [
-                'gcode-single-file', 
-                'gcode-include-comments', 
-                'gcode-tool-changes'
-            ].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('change', () => this.updatePreview());
-            });
+            // No need for other listeners, calculation is now explicit
         }
         
         exportGCode() {

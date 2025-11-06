@@ -132,7 +132,9 @@
             
             if (Math.abs(coordinates.x - xRounded) > precision * 0.1 || 
                 Math.abs(coordinates.y - yRounded) > precision * 0.1) {
-                this.debug(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
+                if (this.debug) {
+                    console.log(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
+                }
             }
             
             return true;
@@ -298,14 +300,18 @@
                 
                 if (edgeMap.has(edgeKey) || edgeMap.has(reverseKey)) {
                     removedCount++;
-                    this.debug(`Removed duplicate trace: (${obj.start.x.toFixed(3)}, ${obj.start.y.toFixed(3)}) to (${obj.end.x.toFixed(3)}, ${obj.end.y.toFixed(3)})`);
+                    if (this.debug) {
+                        console.log(`Removed duplicate trace: (${obj.start.x.toFixed(3)}, ${obj.start.y.toFixed(3)}) to (${obj.end.x.toFixed(3)}, ${obj.end.y.toFixed(3)})`);
+                    }
                 } else {
                     kept.push(obj);
                 }
             });
             
             if (removedCount > 0) {
-                this.debug(`Removed ${removedCount} duplicate traces`);
+                if (this.debug) {
+                    console.log(`Removed ${removedCount} duplicate traces`);
+                }
             }
             
             return kept;

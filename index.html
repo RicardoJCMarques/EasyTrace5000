@@ -1,7 +1,7 @@
 <!--
 /**
  * @file        index.html
- * @description EasyTrace5000 entry point - Extended for toolpath/G-code systems
+ * @description EasyTrace5000 entry point
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -32,21 +32,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EasyTrace5000 - Advanced Workspace</title>
-    <link rel="stylesheet" href="cam.css">
+    
+    <!-- Modular CSS Architecture -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/canvas.css">
+    <link rel="stylesheet" href="css/theme.css">
 </head>
 <body>
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading-overlay">
-        <div class="loading-spinner"></div>
+        <div class="loading-spinner spinner"></div>
         <div id="loading-text">Loading EasyTrace5000...</div>
         <div id="loading-progress" class="loading-progress">0%</div>
     </div>
 
     <!-- Top Toolbar -->
-    <header class="cam-toolbar" id="cam-toolbar">
+    <header class="cam-toolbar toolbar" id="cam-toolbar">
         <div class="toolbar-section toolbar-left">
-            <div class="dropdown-menu">
-                <button class="btn-menu" id="quick-actions-btn">
+            <div class="dropdown-menu dropdown">
+                <button class="btn-menu btn" id="quick-actions-btn">
                     <svg width="20" height="20" viewBox="0 0 20 20">
                         <rect x="2" y="4" width="16" height="2" fill="currentColor"/>
                         <rect x="2" y="9" width="16" height="2" fill="currentColor"/>
@@ -74,27 +80,27 @@
         </div>
 
         <div class="toolbar-section toolbar-right">
-            <button class="btn-tool" id="zoom-fit-btn" title="Fit to View">
+            <button class="btn-tool btn" id="zoom-fit-btn" title="Fit to View" aria-label="Fit to View">
                 <svg width="20" height="20" viewBox="0 0 20 20">
                     <rect x="3" y="3" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
                     <circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
                 </svg>
             </button>
-            <button class="btn-tool" id="zoom-in-btn" title="Zoom In">
+            <button class="btn-tool btn" id="zoom-in-btn" title="Zoom In" aria-label="Zoom In">
                 <svg width="20" height="20" viewBox="0 0 20 20">
                     <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
                     <path d="M12.5 12.5l5 5M5 8h6M8 5v6" stroke="currentColor" stroke-width="2"/>
                 </svg>
             </button>
-            <button class="btn-tool" id="zoom-out-btn" title="Zoom Out">
+            <button class="btn-tool btn" id="zoom-out-btn" title="Zoom Out" aria-label="Zoom Out">
                 <svg width="20" height="20" viewBox="0 0 20 20">
                     <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
                     <path d="M12.5 12.5l5 5M5 8h6" stroke="currentColor" stroke-width="2"/>
                 </svg>
             </button>
-            <div class="toolbar-separator"></div>
-            <button class="btn-icon theme-toggle" id="theme-toggle" title="Toggle Theme">
-                <svg class="sun-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <div class="toolbar-separator separator"></div>
+            <button class="btn btn-icon theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="5"></circle>
                     <line x1="12" y1="1" x2="12" y2="3"></line>
                     <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -105,7 +111,7 @@
                     <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
                     <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
                 </svg>
-                <svg class="moon-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                 </svg>
             </button>
@@ -113,19 +119,19 @@
     </header>
 
     <!-- Main CAM Workspace -->
-    <div class="cam-workspace" id="cam-workspace">
+    <div class="cam-workspace workspace" id="cam-workspace">
         <!-- Left Sidebar -->
         <aside class="sidebar sidebar-left" id="sidebar-left">
             <div class="sidebar-section browser-section">
                 <header class="section-header">
                     <h2>Operations</h2>
                     <div class="section-actions">
-                        <button class="btn-icon" id="collapse-all-btn" title="Collapse All">
+                        <button class="btn-icon btn btn--icon btn--compact" id="collapse-all-btn" title="Collapse All" aria-label="Collapse All">
                             <svg width="16" height="16" viewBox="0 0 16 16">
                                 <path d="M2 8h12M8 2v12" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </button>
-                        <button class="btn-icon" id="expand-all-btn" title="Expand All">
+                        <button class="btn-icon btn btn--icon btn--compact" id="expand-all-btn" title="Expand All" aria-label="Expand All">
                             <svg width="16" height="16" viewBox="0 0 16 16">
                                 <rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"/>
                             </svg>
@@ -136,9 +142,15 @@
                     <div class="operation-category" data-op-type="isolation">
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
-                            <span class="category-icon">🎯</span>
+                            <span class="category-icon">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <circle cx="10" cy="10" r="8"/>
+                                    <circle cx="10" cy="10" r="5"/>
+                                    <circle cx="10" cy="10" r="2"/>
+                                </svg>
+                            </span>
                             <span class="category-label">Isolation Routing</span>
-                            <button class="btn-icon btn-tiny add-file-btn" data-op-type="isolation" title="Add File">
+                            <button class="btn-icon btn-tiny add-file-btn btn btn--icon btn--compact" data-op-type="isolation" title="Add File" aria-label="Add Isolation File">
                                 <svg width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
                                 </svg>
@@ -149,9 +161,15 @@
                     <div class="operation-category" data-op-type="drill">
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
-                            <span class="category-icon">🔧</span>
+                            <span class="category-icon">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <circle cx="10" cy="10" r="6"/>
+                                    <line x1="10" y1="4" x2="10" y2="16"/>
+                                    <line x1="4" y1="10" x2="16" y2="10"/>
+                                </svg>
+                            </span>
                             <span class="category-label">Drilling</span>
-                            <button class="btn-icon btn-tiny add-file-btn" data-op-type="drill" title="Add File">
+                            <button class="btn-icon btn-tiny add-file-btn btn btn--icon btn--compact" data-op-type="drill" title="Add File" aria-label="Add Drill File">
                                 <svg width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
                                 </svg>
@@ -162,9 +180,14 @@
                     <div class="operation-category" data-op-type="clear">
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
-                            <span class="category-icon">🔄</span>
+                            <span class="category-icon">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M14 8 A6 6 0 1 1 6 8"/>
+                                    <polyline points="14,4 14,8 10,8"/>
+                                </svg>
+                            </span>
                             <span class="category-label">Copper Clearing</span>
-                            <button class="btn-icon btn-tiny add-file-btn" data-op-type="clear" title="Add File">
+                            <button class="btn-icon btn-tiny add-file-btn btn btn--icon btn--compact" data-op-type="clear" title="Add File" aria-label="Add Clear File">
                                 <svg width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
                                 </svg>
@@ -175,9 +198,16 @@
                     <div class="operation-category" data-op-type="cutout">
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
-                            <span class="category-icon">✂️</span>
+                            <span class="category-icon">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <circle cx="6" cy="6" r="3"/>
+                                    <circle cx="6" cy="16" r="3"/>
+                                    <line x1="9" y1="8" x2="20" y2="2"/>
+                                    <line x1="9" y1="14" x2="20" y2="20"/>
+                                </svg>
+                            </span>
                             <span class="category-label">Board Cutout</span>
-                            <button class="btn-icon btn-tiny add-file-btn" data-op-type="cutout" title="Add File">
+                            <button class="btn-icon btn-tiny add-file-btn btn btn--icon btn--compact" data-op-type="cutout" title="Add File" aria-label="Add Cutout File">
                                 <svg width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
                                 </svg>
@@ -195,7 +225,7 @@
                 <canvas id="preview-canvas"></canvas>
                 
                 <div id="canvas-loading-overlay" class="canvas-loading-overlay hidden">
-                    <div class="loading-spinner"></div>
+                    <div class="loading-spinner spinner"></div>
                     <div id="canvas-loading-message" class="loading-message"></div>
                 </div>
 
@@ -210,46 +240,48 @@
         <!-- Right Sidebar -->
         <aside class="sidebar sidebar-right" id="sidebar-right">
             <div class="sidebar-section coordinate-section">
-                <header class="section-header collapsible-header" data-target="coordinate-controls">
+                <header class="section-header collapsible-header collapsible" data-target="coordinate-controls">
                     <h2>Origin & Rotation</h2>
-                    <span class="collapse-indicator">▼</span>
+                    <span class="collapse-indicator collapsed">▼</span>
                 </header>
                 <div class="section-content collapsed" id="coordinate-controls">
-                    <div class="property-field">
-                        <label>Board Size</label>
-                        <span id="board-size" class="info-text">Not loaded</span>
-                    </div>
-                    <div class="property-field">
-                        <label>Origin Offset</label>
-                        <div class="input-row">
-                            <div class="input-with-unit">
-                                <input type="number" id="x-offset" value="0" step="0.1">
-                                <span class="unit">X mm</span>
-                            </div>
-                            <div class="input-with-unit">
-                                <input type="number" id="y-offset" value="0" step="0.1">
-                                <span class="unit">Y mm</span>
+                    
+                    <div class="origin-section">
+                        <div class="property-field">
+                            <label>Board Size</label>
+                            <span id="board-size">Not loaded</span>
+                        </div>
+                        <div class="property-field">
+                            <label>Origin Offset</label>
+                            <div class="input-row">
+                                <div class="input-with-unit">
+                                    <input type="number" id="x-offset" value="0" step="0.1">
+                                    <span class="unit">X mm</span>
+                                </div>
+                                <div class="input-with-unit">
+                                    <input type="number" id="y-offset" value="0" step="0.1">
+                                    <span class="unit">Y mm</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="button-row">
-                        <button class="btn btn-sm" id="center-origin-btn">Center</button>
-                        <button class="btn btn-sm" id="bottom-left-origin-btn">Bottom-Left</button>
-                    </div>
-                    <div class="button-row">
-                        <button class="btn btn-sm" id="apply-set-origin-btn">Apply Origin</button>
-                        <button class="btn btn-sm" id="reset-origin-btn">Reset Unsaved Changes</button>
-                    </div>
-                    <div class="property-field">
-                        <label>Board Rotation</label>
-                        <div class="input-with-unit">
-                            <input type="number" id="rotation-angle" value="0" step="5">
-                            <span class="unit">degrees</span>
+                        <div class="origin-buttons"> <button class="btn btn-sm btn--compact btn--secondary" id="center-origin-btn">Center</button>
+                            <button class="btn btn-sm btn--compact btn--secondary" id="bottom-left-origin-btn">Bottom-Left</button>
+                        </div>
+                        <div class="origin-buttons"> <button class="btn btn-sm btn--compact btn--primary" id="apply-set-origin-btn">Apply Origin</button>
+                            <button class="btn btn-sm btn--compact btn--secondary" id="reset-origin-btn">Reset Unsaved Changes</button>
                         </div>
                     </div>
-                    <div class="button-row">
-                        <button class="btn btn-sm" id="apply-rotation-btn">Apply Rotation</button>
-                        <button class="btn btn-sm" id="reset-rotation-btn">Reset Rotation</button>
+                    
+                    <div class="property-section"> <div class="property-field">
+                            <label>Board Rotation</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="rotation-angle" value="0" step="5">
+                                <span class="unit">degrees</span>
+                            </div>
+                        </div>
+                        <div class="origin-buttons"> <button class="btn btn-sm btn--compact btn--primary" id="apply-rotation-btn">Apply Rotation</button>
+                            <button class="btn btn-sm btn--compact btn--secondary" id="reset-rotation-btn">Reset Rotation</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -265,116 +297,116 @@
         </aside>
     </div>
 
-    <!-- Floating Visualization Panel -->
-    <div class="viz-panel collapsed" id="viz-panel">
-        <header class="section-header" id="viz-panel-header">
-            <h2>Visualization</h2>
-            <span class="collapse-indicator">▲</span>
-        </header>
-        <div class="section-content" id="viz-controls">
-            <div class="control-group">
-                <h3>Display</h3>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-grid" checked>
-                    <span>Grid</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-wireframe">
-                    <span>Wireframe</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-bounds">
-                    <span>Board Bounds</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-rulers" checked>
-                    <span>Rulers</span>
-                </label>
-            </div>
-
-            <div class="control-group">
-                <h3>Layers</h3>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-regions" checked>
-                    <span>Regions</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-traces" checked>
-                    <span>Traces</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-pads" checked>
-                    <span>Pads</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-drills" checked>
-                    <span>Drills</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-cutouts" checked>
-                    <span>Cutouts</span>
-                </label>
-            </div>
-
-            <div class="control-group">
-                <h3>Advanced</h3>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="fuse-geometry">
-                    <span>Fusion Mode</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="show-preprocessed">
-                    <span>Preprocessed</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="enable-arc-reconstruction">
-                    <span>Arc Reconstruction</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="debug-points">
-                    <span>Debug Points</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="debug-paths">
-                    <span>Debug Paths</span>
-                </label>
-                <label class="checkbox-control">
-                    <input type="checkbox" id="black-and-white">
-                    <span>B&W Mode</span>
-                </label>
-            </div>
-
-            <div id="arc-reconstruction-stats" class="stats-info hidden"></div>
-        </div>
-    </div>
-
     <!-- Status Bar -->
     <footer class="status-bar" id="status-bar">
         <div class="status-left">
-            <span class="status-text" id="status-text">Ready</span>
-        </div>
-        <div class="status-center">
-            <button class="visibility-toggle-btn" id="visibility-toggle-btn" title="Layer Visibility">
+            <button class="btn btn--icon" id="show-viz-panel-btn" title="Visualization Settings" aria-label="Visualization Settings">
                 <svg width="16" height="16" viewBox="0 0 20 20">
-                    <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z" stroke="currentColor" fill="none"/>
-                    <circle cx="10" cy="10" r="3" stroke="currentColor" fill="none"/>
+                    <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z" stroke="currentColor" fill="none" stroke-width="1.5"/>
+                    <circle cx="10" cy="10" r="3" stroke="currentColor" fill="none" stroke-width="1.5"/>
                 </svg>
-                <span class="visibility-menu" id="visibility-menu">
-                    <label><input type="checkbox" id="vis-source" checked> Source</label>
-                    <label><input type="checkbox" id="vis-fused" checked> Fused</label>
-                    <label><input type="checkbox" id="vis-toolpath"> Toolpaths</label>
-                    <label><input type="checkbox" id="vis-preview"> Preview</label>
-                </span>
             </button>
-            <span class="status-progress hidden" id="status-progress">
+
+            <div class="viz-panel collapsed" id="viz-panel">
+                <header class="section-header" id="viz-panel-header">
+                    <h2>Visualization</h2>
+                    <span class="collapse-indicator">▲</span>
+                </header>
+                <div class="section-content" id="viz-controls">
+                    <div class="control-group">
+                        <h3>Display</h3>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-grid" checked>
+                            <span>Grid</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-wireframe">
+                            <span>Wireframe</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-bounds">
+                            <span>Board Bounds</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-rulers" checked>
+                            <span>Rulers</span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <h3>Layers</h3>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-regions" checked>
+                            <span>Regions</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-traces" checked>
+                            <span>Traces</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-pads" checked>
+                            <span>Pads</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-drills" checked>
+                            <span>Drills</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-cutouts" checked>
+                            <span>Cutouts</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-offsets" checked>
+                            <span>Offsets</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-previews" checked>
+                            <span>Previews</span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <h3>Advanced</h3>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="fuse-geometry">
+                            <span>Fusion Mode</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="show-preprocessed">
+                            <span>Preprocessed</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="enable-arc-reconstruction">
+                            <span>Arc Reconstruction</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="debug-points">
+                            <span>Debug Points</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="debug-paths">
+                            <span>Debug Paths</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="black-and-white">
+                            <span>B&W Mode</span>
+                        </label>
+                    </div>
+                    <div id="arc-reconstruction-stats" class="stats-info hidden"></div>
+                </div>
+            </div>
+            </div>
+        <div class="status-center">
+            <span class="status-text" id="status-text">Ready</span>
+            <span class="status-progress progress hidden" id="status-progress">
                 <span class="progress-bar" id="progress-bar"></span>
             </span>
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
                 <span>AGPLv3 Licensed</span> | 
-                <a href="https://github.com/RicardoJCMarques/Eltryus_CAM/LICENSE" target="_blank" title="View License">License</a> |
-                <a href="https://github.com/RicardoJCMarques/Eltryus_CAM" target="_blank" title="Documentation">GitHub</a> |
+                <a href="/LICENSE" target="_blank" title="View License">License</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Documentation">GitHub</a> |
                 <a href="https://ko-fi.com/eltryus" target="_blank" title="Support the Project">Support Development</a>
             </div>
         </div>
@@ -389,13 +421,13 @@
                 <span class="file-label"></span>
                 <span class="unsaved-indicator hidden" title="Unsaved changes">●</span>
                 <div class="node-actions">
-                    <button class="btn-icon btn-tiny settings-btn" title="Settings">
+                    <button class="btn-icon btn-tiny settings-btn btn btn--icon btn--compact" title="Settings" aria-label="Settings">
                         <svg width="12" height="12" viewBox="0 0 20 20">
                             <circle cx="10" cy="10" r="2" stroke="currentColor" fill="none"/>
                             <path d="M10 2v2m0 12v2m6-8h2M2 10h2" stroke="currentColor"/>
                         </svg>
                     </button>
-                    <button class="btn-icon btn-tiny delete-btn" title="Delete">
+                    <button class="btn-icon btn-tiny delete-btn btn btn--icon btn--compact" title="Delete" aria-label="Delete">
                         <svg width="12" height="12" viewBox="0 0 20 20">
                             <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
                             <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="2"/>
@@ -413,13 +445,18 @@
                 <span class="geometry-icon"></span>
                 <span class="geometry-label"></span>
                 <span class="geometry-info"></span>
-                <button class="btn-icon btn-tiny visibility-btn" title="Toggle Visibility">
-                    <svg width="12" height="12" viewBox="0 0 20 20">
-                        <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z" stroke="currentColor" fill="none"/>
-                        <circle cx="10" cy="10" r="3" stroke="currentColor" fill="none"/>
+                <button class="btn-icon btn-tiny visibility-btn btn btn--icon btn--compact" title="Toggle Visibility" aria-label="Toggle Visibility">
+                    <svg class="icon-eye" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z"/>
+                        <circle cx="10" cy="10" r="3"/>
+                    </svg>
+                    <svg class="icon-eye-slash" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z"/>
+                        <circle cx="10" cy="10" r="3"/>
+                        <line x1="3" y1="17" x2="17" y2="3" stroke-width="2"/>
                     </svg>
                 </button>
-                <button class="btn-icon btn-tiny delete-geometry-btn" title="Delete Geometry">
+                <button class="btn-icon btn-tiny delete-geometry-btn btn btn--icon btn--compact" title="Delete Geometry" aria-label="Delete Geometry">
                     <svg width="12" height="12" viewBox="0 0 20 20">
                         <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
                         <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="2"/>
@@ -431,54 +468,54 @@
 
     <!-- Welcome Modal -->
     <div id="welcome-modal" class="modal">
-        <div class="modal-content modal-welcome">
+        <div class="modal-content modal--upload">
             <div class="modal-header">
                 <h2>Welcome to EasyTrace5000</h2>
                 <button class="modal-close" id="welcome-close">×</button>
             </div>
             <div class="modal-body">
-                <p class="welcome-intro">Advanced isolation routing workspace for PCB manufacturing</p>
-                <div class="welcome-options">
+                <p class="welcome-subtitle">Advanced isolation routing for PCB manufacturing</p>
+                
+                <div class="upload-zones welcome-upload-zones">
                     
-                    <div class="welcome-option">
+                    <div class="upload-zone welcome-example-zone">
                         <select id="pcb-example-select" class="example-select">
                             <option value="example1">Example 1</option>
                         </select>
-                        <p>Select an example geometry to explore functionality.</p>
-                        <button class="btn btn-primary btn-block" id="load-example-btn">
+                        <button class="btn btn-primary btn--primary btn--block" id="load-example-btn">
                             <span>📦</span> Load Example Project
                         </button>
+                        <p class="welcome-example-help">
+                            Select an example to explore functionality.
+                        </p>
                     </div>
                     
-                    <div class="welcome-option">
-                        <button class="btn btn-secondary btn-block" id="open-files-btn">
+                    <div class="origin-buttons">
+                        <button class="btn btn-secondary btn--secondary" id="open-files-btn">
                             <span>📂</span> Open Files
                         </button>
-                        <p>Load your Gerber, Excellon, or SVG files</p>
-                    </div>
-                    
-                    <div class="welcome-option">
-                        <button class="btn btn-secondary btn-block" id="start-empty-btn">
+                        <button class="btn btn-secondary btn--secondary" id="start-empty-btn">
                             <span>📋</span> Start Empty
                         </button>
-                        <p>Begin with a blank workspace</p>
                     </div>
                 </div>
-                
-                <div class="welcome-footer">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="dont-show-welcome">
-                        <span>Don't show this again</span>
-                    </label>
-                    <p class="">AGPLv3 Licensed</p>
-                </div>
+
+            </div>
+            <div class="modal-footer welcome-footer">
+                <label class="checkbox-label welcome-checkbox-label">
+                    <input type="checkbox" id="dont-show-welcome">
+                    <span>Don't show this again</span>
+                </label>
+                <p class="welcome-license-text">
+                    AGPLv3 Licensed
+                </p>
             </div>
         </div>
     </div>
 
     <!-- Multi-Zone File Upload Modal -->
     <div id="file-modal" class="modal">
-        <div class="modal-content modal-upload">
+        <div class="modal-content modal--upload">
             <div class="modal-header">
                 <h2>Add PCB Files</h2>
                 <button class="modal-close" id="file-modal-close">×</button>
@@ -557,9 +594,9 @@
                         <div class="zone-status" id="cutout-status"></div>
                     </div>
                 </div>
-                <div class="modal-actions">
-                    <button class="btn btn-primary" id="process-files-btn" disabled>Process Files</button>
-                    <button class="btn btn-secondary" id="cancel-files-btn">Cancel</button>
+                <div class="modal-footer">
+                    <button class="btn btn-primary btn--primary" id="process-files-btn" disabled>Process Files</button>
+                    <button class="btn btn-secondary btn--secondary" id="back-files-btn">Back</button>
                 </div>
             </div>
         </div>
@@ -567,7 +604,7 @@
 
     <!-- Toolpath Management & G-code Export Modal -->
     <div id="gcode-export-modal" class="modal">
-        <div class="modal-content modal-gcode">
+        <div class="modal-content modal--gcode">
             <div class="modal-header">
                 <h2>Toolpath Manager & Export</h2>
                 <button class="modal-close" id="gcode-modal-close">×</button>
@@ -586,7 +623,7 @@
                     </div>
 
                     <h3>Post-Processor Settings</h3>
-                    <div class="property-field">
+                    <div class="property-field field-group">
                         <label>Post-Processor</label>
                         <select id="gcode-post-processor">
                             <option value="grbl" selected>GRBL</option>
@@ -597,35 +634,35 @@
                     </div>
 
                     <h3>Output Options</h3>
-                    <div class="property-field">
+                    <div class="property-field field-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="gcode-single-file" checked>
                             <span>Export as single file</span>
                         </label>
                     </div>
                     
-                    <div class="property-field">
+                    <div class="property-field field-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="gcode-include-comments" checked>
                             <span>Include operation comments</span>
                         </label>
                     </div>
 
-                    <div class="property-field">
+                    <div class="property-field field-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="gcode-tool-changes" disabled>
                             <span>Insert tool change commands</span>
                         </label>
                     </div>
 
-                    <div class="property-field">
+                    <div class="property-field field-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="gcode-optimize-paths">
                             <span>Optimize toolpaths (Experimental)</span>
                         </label>
                     </div>
 
-                    <div class="property-field">
+                    <div class="property-field field-group">
                         <label>Output Filename</label>
                         <input type="text" id="gcode-filename" value="pcb-output.nc" placeholder="output.nc">
                     </div>
@@ -643,16 +680,18 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="gcode-cancel-btn">Cancel</button>
-                <button class="btn btn-secondary" id="gcode-calculate-btn">Calculate Toolpaths</button>
-                <button class="btn btn-secondary" id="gcode-preview-btn">Update Preview</button>
-                <button class="btn btn-primary" id="gcode-export-btn">Export G-code</button>
+                <button class="btn btn-secondary btn--secondary" id="gcode-cancel-btn">Cancel</button>
+                <button class="btn btn-secondary btn--secondary" id="gcode-calculate-btn">Calculate Toolpaths</button>
+                <button class="btn btn-primary btn--primary" id="gcode-export-btn">Export G-code</button>
             </div>
         </div>
     </div>
 
     <input type="file" id="file-input-hidden" class="hidden" multiple>
 
+    <!-- Theme Loader (must load before other scripts) -->
+    <script src="themes/theme-loader.js"></script>
+    
     <!-- Scripts -->
     <script src="config.js"></script>
     <script>
@@ -693,7 +732,6 @@
             'ui/ui-parameter-manager.js',
             'ui/ui-tree-manager.js',
             'ui/ui-property-inspector.js',
-            'ui/ui-visibility-panel.js',
             'ui/ui-status-manager.js',
             'ui/ui-controls.js',
             'ui/ui-modal-manager.js',
@@ -726,7 +764,7 @@
                 script.src = src;
                 script.async = false;
                 script.onload = () => {
-                    console.log(`✔ Loaded: ${src}`);
+                    console.log(`✓ Loaded: ${src}`);
                     loadedCount++;
                     updateLoadingProgress();
                     resolve();
@@ -759,11 +797,14 @@
                 } else {
                     textElement.textContent = `Ready (${loadTime}ms)`;
                 }
-                setTimeout(() => {
-                    document.getElementById('loading-overlay').style.display = 'none';
-                    document.getElementById('cam-toolbar').style.display = 'flex';
-                    document.getElementById('cam-workspace').style.display = 'grid';
-                }, 500);
+
+                // All scripts are loaded, now start the application controller
+                if (typeof window.startApplication === 'function') {
+                    window.startApplication();
+                } else {
+                    console.error('Fatal: startApplication() not found after script load.');
+                    textElement.textContent = 'Fatal Error: Failed to start application.';
+                }
             }
         }
 
