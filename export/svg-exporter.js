@@ -86,16 +86,14 @@ Exported from the current canvas view.
             const exportConfig = { ...this.options, ...options };
             const filename = exportConfig.filename || 'pcb-export.svg';
 
-            if (debugConfig.logging?.fileOperations) {
-                console.log(`Exporting current canvas view to SVG: ${filename}`);
-            }
+            this.debug(`Exporting current canvas view to SVG: ${filename}`);
 
             // 1. Calculate bounds from all visible layers
             this.core.calculateOverallBounds();
             const bounds = this.core.bounds;
 
             if (!bounds || !isFinite(bounds.width) || !isFinite(bounds.height)) {
-                console.warn('No visible content to export.');
+                console.warn('[SVGExporter] No visible content to export.');
                 if (window.pcbcam && window.pcbcam.ui) {
                     window.pcbcam.ui.updateStatus('No content to export', 'warning');
                 }
@@ -162,12 +160,14 @@ Exported from the current canvas view.
             const style = document.createElementNS(this.svgNS, 'style');
             style.setAttribute('type', 'text/css');
 
-            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
-            const colors = theme.layers;
-            const isWireframe = this.core.options.showWireframe;
-            const wireframeColor = theme.debug?.wireframe;
+            const colors = this.core.colors.operations; 
+            const canvasColors = this.core.colors.canvas;
+            const debugColors = this.core.colors.debug;
             
-            console.log(`[SVGExporter._createDefs] Generating styles. isWireframe = ${isWireframe}`);
+            const isWireframe = this.core.options.showWireframe;
+            const wireframeColor = (debugColors && debugColors.wireframe) ? debugColors.wireframe : '#00ff00';
+            
+            this.debug(`Generating styles. isWireframe = ${isWireframe}`);
             
             const wireframeStroke = `fill: none; stroke: ${wireframeColor}; stroke-width: 0.05;`;
             
@@ -195,12 +195,14 @@ Exported from the current canvas view.
             } else {
                 // SOLID FILL MODE
                 const solidFill = 'stroke: none;';
+                const bgColor = (canvasColors && canvasColors.background) ? canvasColors.background : '#0f0f0f';
+                
                 css = `
                     .pcb-source-isolation { fill: ${colors.isolation}; ${solidFill} }
                     .pcb-source-drill { fill: ${colors.drill}; ${solidFill} }
                     .pcb-fused { fill: ${colors.fused || colors.isolation}; ${solidFill} fill-rule: evenodd; }
                     .pcb-preprocessed-dark { fill: ${colors.isolation}; ${solidFill} }
-                    .pcb-preprocessed-clear { fill: ${theme.canvas.background}; ${solidFill} }
+                    .pcb-preprocessed-clear { fill: ${bgColor}; ${solidFill} }
                     .pcb-trace { ${traceStyles} }
                     .pcb-cutout { ${cutoutStyles} }
                     .pcb-offset { fill: none; stroke-linecap: round; line-join: round; }
@@ -294,7 +296,7 @@ Exported from the current canvas view.
                     element = this._createPathElement(primitive, config);
                     break;
                 default:
-                    console.warn(`Unknown primitive type for SVG export: ${primitive.type}`);
+                    console.warn(`[SVGExporter] Unknown primitive type for SVG export: ${primitive.type}`);
                     return null;
             }
 
@@ -607,6 +609,16 @@ Exported from the current canvas view.
             document.body.removeChild(link);
             
             setTimeout(() => URL.revokeObjectURL(url), 100);
+        }
+
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[SVGExporter] ${message}`, data);
+                } else {
+                    console.log(`[SVGExporter] ${message}`);
+                }
+            }
         }
     }
     

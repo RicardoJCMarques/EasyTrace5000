@@ -1,6 +1,6 @@
 /**
  * @file        ui/ui-modal-manager.js
- * @description Unified modal management for all modals
+ * @description Unified modal management
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -29,6 +29,10 @@
     
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
+    const uiConfig = config.ui || {};
+    const textConfig = uiConfig.text || {};
+    const iconConfig = uiConfig.icons || {};
+    const storageKeys = config.storageKeys || {};
     
     class ModalManager {
         constructor(controller) {
@@ -74,7 +78,7 @@
         showPlaceholderPreview() {
             const previewText = document.getElementById('gcode-preview-text');
             if (previewText) {
-                previewText.value = '; Click "Calculate Preview" to generate G-code preview\n; or "Export G-code" to proceed directly to export';
+                previewText.value = textConfig.gcodePlaceholder;
             }
             
             // Reset stats
@@ -89,7 +93,7 @@
         showModal(modalName, options = {}) {
             const modal = this.modals[modalName];
             if (!modal) {
-                console.error(`Modal '${modalName}' not found`);
+                console.error(`[UI-ModalManager] Modal - '${modalName}' - not found`);
                 return;
             }
             
@@ -159,9 +163,9 @@
                     
                     // We still want to handle the "don't show again" checkbox
                     const dontShowCheckbox = document.getElementById('dont-show-welcome');
+                    const key = storageKeys.hideWelcome || 'pcbcam-hide-welcome';
                     if (dontShowCheckbox?.checked) {
-                        localStorage.setItem('pcbcam-hide-welcome', 'true');
-                        localStorage.setItem('hasVisited', 'true');
+                        localStorage.setItem(key, 'true');
                     }
                 };
             }
@@ -186,9 +190,9 @@
         
         handleWelcomeClose() {
             const dontShowCheckbox = document.getElementById('dont-show-welcome');
+            const key = storageKeys.hideWelcome || 'pcbcam-hide-welcome';
             if (dontShowCheckbox?.checked) {
-                localStorage.setItem('pcbcam-hide-welcome', 'true');
-                localStorage.setItem('hasVisited', 'true');
+                localStorage.setItem(key, 'true');
             }
             this.closeModal();
             if (this.controller.ensureCoordinateSystem) {
@@ -316,7 +320,7 @@
         
         // Toolpath modal handler
         showToolpathModal(operations, highlightOperationId = null) {
-            console.log(`[ModalManager] Opening toolpath manager with ${operations.length} operation(s)`);
+            this.debug(`Opening toolpath manager with ${operations.length} operation(s)`);
             
             // Store operations
             this.selectedOperations = operations;
@@ -340,7 +344,7 @@
         populateToolpathModal() {
             const list = document.getElementById('gcode-operation-order');
             if (!list) {
-                console.error('ModalManager: #gcode-operation-order list not found!');
+                console.error('[UI-ModalManager] #gcode-operation-order list not found!');
                 return;
             }
             
@@ -383,7 +387,7 @@
 
             const dragHandle = document.createElement('span');
             dragHandle.className = 'tree-expand-icon'; // Was 'drag-handle'
-            dragHandle.innerHTML = '☰';
+            dragHandle.innerHTML = iconConfig.modalDragHandle;
             dragHandle.style.cursor = 'grab';
             dragHandle.style.marginRight = 'var(--spacing-sm)';
 
@@ -407,9 +411,9 @@
             params.style.color = 'var(--color-text-hint)';
             params.style.fontFamily = 'var(--font-mono)';
 
-            const tool = operation.settings.tool?.diameter || operation.settings.toolDiameter || 0;
-            const depth = operation.settings.cutDepth || 0;
-            const feed = operation.settings.feedRate || 0;
+            const tool = operation.settings.tool?.diameter;
+            const depth = operation.settings.cutDepth;
+            const feed = operation.settings.feedRate;
             
             params.innerHTML = `
                 T: ${tool}mm | Z: ${depth}mm | F: ${feed}
@@ -436,7 +440,6 @@
                 if (draggedItem) {
                     draggedItem.classList.remove('dragging');
                     draggedItem = null;
-                    // No need to call updatePreview() on drag end, the order is read when "Calculate" is clicked.
                 }
             });
 
@@ -483,7 +486,7 @@
                 // 2. Find the correct list and items
                 const list = document.getElementById('gcode-operation-order');
                 if (!list) {
-                    console.error("Could not find list 'gcode-operation-order'");
+                    console.error("[UI-ModalManager] Could not find list 'gcode-operation-order'");
                     this.showPlaceholderPreview();
                     return;
                 }
@@ -523,13 +526,13 @@
                 const options = {
                     operationIds: selectedItemIds,
                     operations: this.selectedOperations,
-                    safeZ: this.controller.core?.getSetting('machine', 'safeZ') || 5.0,
-                    travelZ: this.controller.core?.getSetting('machine', 'travelZ') || 2.0,
-                    rapidFeedRate: this.controller.core?.getSetting('machine', 'rapidFeed') || 1000,
-                    postProcessor: document.getElementById('gcode-post-processor')?.value || 'grbl',
-                    includeComments: document.getElementById('gcode-include-comments')?.checked !== false,
-                    singleFile: document.getElementById('gcode-single-file')?.checked !== false,
-                    toolChanges: document.getElementById('gcode-tool-changes')?.checked || false,
+                    safeZ: this.controller.core?.getSetting('machine', 'safeZ'), // Read from core
+                    travelZ: this.controller.core?.getSetting('machine', 'travelZ'), // Read from core
+                    rapidFeedRate: this.controller.core?.getSetting('machine', 'rapidFeed'), // Read from core
+                    postProcessor: document.getElementById('gcode-post-processor')?.value,
+                    includeComments: document.getElementById('gcode-include-comments')?.checked,
+                    singleFile: document.getElementById('gcode-single-file')?.checked,
+                    toolChanges: document.getElementById('gcode-tool-changes')?.checked,
                     optimize: optimizeCheckbox ? optimizeCheckbox.checked : false
                 };
 
@@ -558,9 +561,14 @@
                     const seconds = Math.floor(result.estimatedTime % 60);
                     estTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
                 }
+                
+                const distanceEl = document.getElementById('gcode-distance');
+                if (distanceEl) {
+                    distanceEl.textContent = `${result.totalDistance.toFixed(1)}mm`;
+                }
 
             } catch (error) {
-                console.error('[ModalManager] Orchestration failed:', error);
+                console.error('[UI-ModalManager] Orchestration failed:', error);
                 this.showPlaceholderPreview();
                 this.ui?.statusManager?.showStatus(`Failed: ${error.message}`, 'error');
             } finally {
@@ -568,64 +576,6 @@
                 btn.textContent = originalText;
                 btn.disabled = false;
             }
-        }
-        
-        estimateTime(plans) {
-            let totalTime = 0;
-            let lastPos = { x: 0, y: 0, z: 0 }; // Track position
-            const rapidFeed = this.controller.core?.getSetting('machine', 'rapidFeed') || 1000;
-
-            for (const plan of plans) {
-                if (!plan.commands) continue;
-                
-                for (const cmd of plan.commands) {
-                    let dist = 0;
-                    let feed = 100;
-                    let nextPos = { ...lastPos };
-                    
-                    if (cmd.x !== null) nextPos.x = cmd.x;
-                    if (cmd.y !== null) nextPos.y = cmd.y;
-                    if (cmd.z !== null) nextPos.z = cmd.z;
-
-                    if (cmd.type === 'RAPID' || cmd.type === 'RETRACT') {
-                        dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y, nextPos.z - lastPos.z);
-                        feed = rapidFeed;
-                    } 
-                    else if (cmd.type === 'LINEAR' || cmd.type === 'PLUNGE') {
-                        dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y, nextPos.z - lastPos.z);
-                        feed = cmd.f || 100;
-                    } 
-                    else if (cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') {
-                        // Approximate arc distance using radius
-                        const radius = Math.hypot(cmd.i, cmd.j);
-                        if (radius > 0) {
-                            // Calculate angle
-                            const v1 = { x: -cmd.i, y: -cmd.j };
-                            const v2 = { x: nextPos.x - (lastPos.x + cmd.i), y: nextPos.y - (lastPos.y + cmd.j) };
-                            const angle = Math.acos((v1.x * v2.x + v1.y * v2.y) / (radius * radius));
-                            dist = radius * angle;
-                            // If dist is NaN (e.g., full circle), approximate
-                            if (isNaN(dist) || dist === 0) {
-                                dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y);
-                            }
-                        } else {
-                            dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y);
-                        }
-                        feed = cmd.f || 100;
-                    }
-                    else if (cmd.type === 'DWELL') {
-                        totalTime += cmd.dwell || 0; // Add dwell time directly
-                    }
-
-                    if (feed > 0 && dist > 0) {
-                        totalTime += (dist / feed) * 60; // Time in seconds
-                    }
-                    
-                    lastPos = nextPos; // Update position
-                }
-            }
-            
-            return totalTime;
         }
         
         setupToolpathHandlers() {
@@ -639,7 +589,6 @@
             const calculateBtn = document.getElementById('gcode-calculate-btn');
             if (calculateBtn) {
                 calculateBtn.onclick = () => {
-                    // Pass the button itself so we can disable it
                     this.runToolpathOrchestration(calculateBtn);
                 };
             }
@@ -655,16 +604,14 @@
             if (closeBtn) {
                 closeBtn.onclick = () => this.closeModal();
             }
-            
-            // No need for other listeners, calculation is now explicit
         }
         
         exportGCode() {
             const previewText = document.getElementById('gcode-preview-text');
-            const filename = document.getElementById('gcode-filename')?.value || 'output.nc';
+            const filename = document.getElementById('gcode-filename')?.value || textConfig.gcodeDefaultFilename || 'output.nc';
             
-            if (!previewText || !previewText.value) {
-                alert('No G-code to export');
+            if (!previewText || !previewText.value || previewText.value.startsWith(';')) {
+                alert(textConfig.gcodeNoExportAlert);
                 return;
             }
             
@@ -748,8 +695,17 @@
             
             return modal;
         }
+
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[UI-ModalManager] ${message}`, data);
+                } else {
+                    console.log(`[UI-ModalManager] ${message}`);
+                }
+            }
+        }
     }
     
     window.ModalManager = ModalManager;
-    
 })();

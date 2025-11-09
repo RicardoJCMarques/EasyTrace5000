@@ -26,11 +26,15 @@
 
 (function() {
     'use strict';
+
+    const config = window.PCBCAMConfig || {};
+    const debugConfig = config.debug || {};
     
     class ClipperWrapper {
         constructor(options = {}) {
-            this.scale = options.scale || 10000;
-            this.debug = options.debug || false;
+            this.options = {
+                scale: options.scale || 10000,
+            };
             
             this.clipper2 = null;
             this.initialized = false;
@@ -89,8 +93,8 @@
                 testPoint.delete();
                 
                 this.initialized = true;
-                this.log(`Clipper2 initialized (Z support: ${this.supportsZ})`);
-                this.log(`Metadata packing: ${24}-bit curveId, ${31}-bit segmentIndex, 1-bit clockwise, ${8}-bit reserved`);
+                this.debug(`Clipper2 initialized (Z support: ${this.supportsZ})`);
+                this.debug(`Metadata packing: ${24}-bit curveId, ${31}-bit segmentIndex, 1-bit clockwise, ${8}-bit reserved`);
                 return true;
                 
             } catch (error) {
@@ -113,8 +117,8 @@
             try {
                 // Add points to path with proper scaling
                 points.forEach(p => {
-                    const x = BigInt(Math.round(p.x * this.scale));
-                    const y = BigInt(Math.round(p.y * this.scale));
+                    const x = BigInt(Math.round(p.x * this.options.scale));
+                    const y = BigInt(Math.round(p.y * this.options.scale));
                     const point = new Point64(x, y, BigInt(0));
                     path.push_back(point);
                     point.delete();
@@ -126,7 +130,7 @@
                 // Convert BigInt to number and unscale
                 // The area is in scaled units squared, so divide by scale²
                 const scaledArea = Number(area);
-                const actualArea = scaledArea / (this.scale * this.scale);
+                const actualArea = scaledArea / (this.options.scale * this.options.scale);
                 
                 return actualArea;
                 
@@ -278,7 +282,7 @@
                 const success = clipper.ExecutePoly(ClipType.Union, fr, solution);
                 
                 if (!success) {
-                    this.log('Union operation failed');
+                    this.debug('Union operation failed');
                     return [];
                 }
                 
@@ -340,7 +344,7 @@
                 const success = clipper.ExecutePoly(ClipType.Difference, fr, solution);
                 
                 if (!success) {
-                    this.log('Difference operation failed');
+                    this.debug('Difference operation failed');
                     return [];
                 }
                 
@@ -374,8 +378,8 @@
                 
                 // Add points with metadata packing
                 points.forEach((p, index) => {
-                    const x = BigInt(Math.round(p.x * this.scale));
-                    const y = BigInt(Math.round(p.y * this.scale));
+                    const x = BigInt(Math.round(p.x * this.options.scale));
+                    const y = BigInt(Math.round(p.y * this.options.scale));
                     
                     // Pack metadata into Z coordinate
                     let z = BigInt(0);
@@ -392,7 +396,7 @@
                             metadataPointCount++;
                             
                             // Capture first tagged point for debug
-                            if (!debugSample && this.debug) {
+                            if (!debugSample && debugConfig.enabled) {
                                 debugSample = {
                                     index,
                                     curveId: p.curveId,
@@ -420,10 +424,10 @@
                     point.delete();
                 });
                 
-                if (this.debug && metadataPointCount > 0) {
-                    this.log(`Packed metadata for ${metadataPointCount}/${points.length} points`);
+                if (metadataPointCount > 0) {
+                    this.debug(`Packed metadata for ${metadataPointCount}/${points.length} points`);
                     if (debugSample) {
-                        this.log(`Sample: Point ${debugSample.index} - curveId=${debugSample.curveId}, segmentIndex=${debugSample.segmentIndex}, clockwise=${debugSample.clockwise}, Z=0x${debugSample.packedZ}`);
+                        this.debug(`Sample: Point ${debugSample.index} - ...`);
                     }
                 }
                 
@@ -471,8 +475,8 @@
                 for (let j = 0; j < rootPoly.size(); j++) {
                     const pt = rootPoly.get(j);
                     const point = {
-                        x: Number(pt.x) / this.scale,
-                        y: Number(pt.y) / this.scale
+                        x: Number(pt.x) / this.options.scale,
+                        y: Number(pt.y) / this.options.scale
                     };
                     
                     if (this.supportsZ && pt.z !== undefined) {
@@ -504,8 +508,8 @@
                     for (let k = 0; k < poly.size(); k++) {
                         const pt = poly.get(k);
                         const point = {
-                            x: Number(pt.x) / this.scale,
-                            y: Number(pt.y) / this.scale
+                            x: Number(pt.x) / this.options.scale,
+                            y: Number(pt.y) / this.options.scale
                         };
                         
                         // Extract metadata for ALL contours
@@ -572,12 +576,12 @@
                 primitives.push(primitive);
             }
             
-            if (this.debug && primitives.length > 0) {
+            if (debugConfig.enabled && primitives.length > 0) {
                 const totalContours = primitives.reduce((sum, p) => sum + (p.contours?.length || 0), 0);
                 const maxDepth = Math.max(...primitives.flatMap(p => 
                     (p.contours || []).map(c => c.nestingLevel)
                 ));
-                console.log(`[Clipper] Extracted ${primitives.length} primitives, ${totalContours} contours, max depth: ${maxDepth}`);
+                console.log(`[ClipperWrapper] Extracted ${primitives.length} primitives, ${totalContours} contours, max depth: ${maxDepth}`);
             }
             
             return primitives;
@@ -658,8 +662,8 @@
         }
         
         // Debug logging
-        log(message, data = null) {
-            if (this.debug) {
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
                 if (data) {
                     console.log(`[ClipperWrapper] ${message}`, data);
                 } else {
@@ -673,7 +677,7 @@
             return {
                 initialized: this.initialized,
                 supportsZ: this.supportsZ,
-                scale: this.scale,
+                scale: this.options.scale,
                 metadataPacking: {
                     curveIdBits: Number(this.metadataPacking.curveIdBits),
                     segmentIndexBits: Number(this.metadataPacking.segmentIndexBits),
@@ -713,7 +717,5 @@
         }
     }
     
-    // Export
     window.ClipperWrapper = ClipperWrapper;
-    
 })();

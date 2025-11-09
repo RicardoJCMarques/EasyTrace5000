@@ -38,7 +38,7 @@
     class ParserPlotter {
         constructor(options = {}) {
             this.options = {
-                debug: options.debug !== undefined ? options.debug : debugConfig.enabled,
+                debug: options.debug || false,
                 markStrokes: options.markStrokes || false,
                 ...options
             };
@@ -55,9 +55,7 @@
         }
         
         plotGerberData(gerberData) {
-            if (this.debug) {
-                    console.log('Starting Gerber plotting (Analytic)')
-            }
+            this.debug('Starting Gerber plotting')
             this.reset();
             
             this.apertures = new Map();
@@ -96,9 +94,7 @@
         }
         
         plotExcellonData(excellonData) {
-            if (this.debug) {
-                    console.log('Starting Excellon plotting');
-            }
+            this.debug('Starting Excellon plotting');
             this.reset();
             
             const drillData = excellonData.drillData;
@@ -192,9 +188,7 @@
             const analyticSubpaths = region.analyticSubpaths;
 
             // This log is critical. If you see "1" for a shape that should be an outer, the logic inside will handle it. If you see "2" for an "O", it will also handle it.
-            if (this.debug) {
-                console.log(`[Plotter.plotRegion] Received region with ${analyticSubpaths ? analyticSubpaths.length : 0} analytic subpaths.`);
-            }
+            this.debug(`Received region with ${analyticSubpaths ? analyticSubpaths.length : 0} analytic subpaths.`);
 
             // Fallback for simple Gerber regions (no analytic data)
             if (!analyticSubpaths || analyticSubpaths.length === 0) {
@@ -210,9 +204,7 @@
                     const isCW = GeometryUtils.isClockwise(region.points);
                     if (!isCW) { // Gerbers regions should be dark (outer) = CW
                         region.points.reverse();
-                        if (this.debug) {
-                            console.log(`[Plotter] Normalized Gerber fallback region to CW.`);
-                        }
+                        this.debug(`Normalized Gerber fallback region to CW.`);
                     }
 
                     const primitive = new PathPrimitive(region.points, {
@@ -225,9 +217,7 @@
                     this.creationStats.regionsCreated++;
                     return primitive; // Return single primitive
                 }
-                if (this.debug) {
-                    console.log('Region object has no points or analytic subpaths', region);
-                }
+                this.debug('Region object has no points or analytic subpaths', region);
                 return null;
             }
 
@@ -342,21 +332,15 @@
                         // If it's supposed to be dark (outer), but it's CCW. Fix it.
                         points.reverse();
                         isCW = true; // Update state
-                        if (this.debug) {
-                            console.log(`[Plotter] Normalizing standalone path to CW (dark).`);
-                        }
+                        this.debug(`Normalizing standalone path to CW (dark).`);
                     } else if (finalPolarity === 'clear' && isCW) {
                         // If it's supposed to be clear (hole), but it's CW. Fix it.
                         points.reverse();
                         isCW = false; // Update state
-                        if (this.debug) {
-                            console.log(`[Plotter] Normalizing hole path to CCW (clear).`);
-                        }
+                        this.debug(`Normalizing hole path to CCW (clear).`);
                     }
 
-                    if (this.debug) {
-                    console.log(`[Plotter.plotRegion] Processed subpath #${subpathIndex} (of ${analyticSubpaths.length}): ${points.length} pts. Winding: ${isCW ? 'CW' : 'CCW'}. Polarity set to: ${finalPolarity}. Set as: ${isHole ? 'HOLE' : 'OUTER'}`);
-                    }
+                    this.debug(`Processed subpath #${subpathIndex} (of ${analyticSubpaths.length}): ${points.length} pts. Winding: ${isCW ? 'CW' : 'CCW'}. Polarity set to: ${finalPolarity}. Set as: ${isHole ? 'HOLE' : 'OUTER'}`);
 
                     // Create a new primitive for THIS subpath
                     primitives.push(new PathPrimitive(points, {
@@ -398,23 +382,17 @@
             const interp = trace.interpolation;
 
             if (interp === 'bezier_cubic') {
-                if (this.debug) {
-                    console.log('Creating BezierPrimitive (Cubic)');
-                }
+                this.debug('Creating BezierPrimitive (Cubic)');
                 this.creationStats.tracesCreated++;
                 return new BezierPrimitive(trace.points, properties);
 
             } else if (interp === 'bezier_quad') {
-                if (this.debug) {
-                    console.log('Creating BezierPrimitive (Quad)');
-                }
+                this.debug('Creating BezierPrimitive (Quad)');
                 this.creationStats.tracesCreated++;
                 return new BezierPrimitive(trace.points, properties);
 
             } else if (interp === 'elliptical_arc') {
-                if (this.debug) {
-                    console.log('Creating EllipticalArcPrimitive');
-                }
+                this.debug('Creating EllipticalArcPrimitive');
                 this.creationStats.tracesCreated++;
                 this.creationStats.arcTraces++;
                 return new EllipticalArcPrimitive(
@@ -495,9 +473,7 @@
                     const tolerance = geomConfig.coordinatePrecision || 0.001;
                     if (Math.abs(flash.width - flash.height) < tolerance) {
                         // It's a circle. Create a CirclePrimitive instead.
-                        if (this.debug) {
-                            console.log(`[Plotter] Converted round obround (aperture ${flash.aperture}) to CirclePrimitive.`);
-                        }
+                        this.debug(`Converted round obround (aperture ${flash.aperture}) to CirclePrimitive.`);
                         // Update shape property for clarity downstream
                         properties.shape = 'circle'; 
                         primitive = new CirclePrimitive(
@@ -644,7 +620,7 @@
         }
         
         debug(message, data = null) {
-            if (this.debug) {
+            if (debugConfig.enabled) {
                 if (data) {
                     console.log(`[Plotter] ${message}`, data);
                 } else {

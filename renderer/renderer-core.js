@@ -29,7 +29,6 @@
     
     const config = window.PCBCAMConfig || {};
     const renderConfig = config.rendering || {};
-    const themeConfig = renderConfig.themes || {};
     const canvasConfig = renderConfig.canvas || {};
     const debugConfig = config.debug || {};
     
@@ -37,14 +36,17 @@
         constructor(canvas) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d', { 
-                alpha: false,
-                desynchronized: true
+                alpha: config.renderer?.context?.alpha || false,
+                desynchronized: config.renderer?.context?.desynchronized || true
             });
             
             if (!this.ctx) {
                 throw new Error('Could not get 2D context from canvas');
             }
             
+            const rendererConfig = config.renderer || {};
+            const zoomConfig = rendererConfig.zoom || {};
+
             // View state
             this.viewOffset = { x: 0, y: 0 };
             this.viewScale = canvasConfig.defaultZoom || 10;
@@ -90,7 +92,16 @@
             };
             
             // Color schemes
-            this.colors = themeConfig;
+            this.colors = {}; // Initialize empty
+            this._updateThemeColors(); // Populate from CSS
+            
+            // Listen for theme changes from theme-loader.js
+            window.addEventListener('themechange', () => {
+                this._updateThemeColors();
+                // We don't have a render() method here, but we can set a flag
+                this.renderStats.lastSignificantChange = 'theme-changed';
+                // The main LayerRenderer will call render() and see this change
+            });
             
             // Statistics
             this.renderStats = {
@@ -220,7 +231,8 @@
             const screenWidth = (bounds.maxX - bounds.minX) * this.viewScale;
             const screenHeight = (bounds.maxY - bounds.minY) * this.viewScale;
             
-            if (screenWidth < 0.5 && screenHeight < 0.5) {
+            const lodThreshold = config.renderer?.lodThreshold || 0.5;
+            if (screenWidth < lodThreshold && screenHeight < lodThreshold) {
                 return false;
             }
             
@@ -286,8 +298,8 @@
             primitives.forEach((primitive, index) => {
                 try {
                     if (typeof primitive.getBounds !== 'function') {
-                        if (debugConfig.validation?.warnOnInvalidData) {
-                            console.warn(`Primitive ${index} missing getBounds()`);
+                        if (debugConfig.enabled) {
+                            console.warn(`[RendererCore] Primitive ${index} missing getBounds()`);
                         }
                         return;
                     }
@@ -296,8 +308,8 @@
                     
                     if (!bounds || !isFinite(bounds.minX) || !isFinite(bounds.minY) ||
                         !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
-                        if (debugConfig.validation?.warnOnInvalidData) {
-                            console.warn(`Primitive ${index} invalid bounds:`, bounds);
+                        if (debugConfig.enabled) {
+                            console.warn(`[RendererCore] Primitive ${index} invalid bounds:`, bounds);
                         }
                         return;
                     }
@@ -309,8 +321,8 @@
                     validCount++;
                     
                 } catch (error) {
-                    if (debugConfig.validation?.warnOnInvalidData) {
-                        console.warn(`Primitive ${index} bounds calculation failed:`, error);
+                    if (debugConfig.enabled) {
+                        console.warn(`[RendererCore] Primitive ${index} bounds calculation failed:`, error);
                     }
                 }
             });
@@ -367,7 +379,9 @@
         
         // Zoom & Pan
         
-        zoomFit(padding = 1.1) {
+        zoomFit(padding) {
+            const fitPadding = padding || (config.renderer?.zoom?.fitPadding) || 1.1;
+
             if (!this.overallBounds) {
                 this.viewScale = 10;
                 this.viewOffset = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
@@ -380,9 +394,9 @@
             
             let scale;
             if (boundsAspect > canvasAspect) {
-                scale = this.canvas.width / (bounds.width * padding);
+                scale = this.canvas.width / (bounds.width * fitPadding);
             } else {
-                scale = this.canvas.height / (bounds.height * padding);
+                scale = this.canvas.height / (bounds.height * fitPadding);
             }
             
             this.viewScale = Math.max(0.1, scale);
@@ -392,13 +406,13 @@
             };
         }
         
-        zoomIn(factor = 1.2) {
+        zoomIn(factor = (config.renderer?.zoom?.factor || 1.2)) {
             const centerX = this.canvas.width / 2;
             const centerY = this.canvas.height / 2;
             this.zoomToPoint(centerX, centerY, factor);
         }
         
-        zoomOut(factor = 1.2) {
+        zoomOut(factor = (config.renderer?.zoom?.factor || 1.2)) {
             const centerX = this.canvas.width / 2;
             const centerY = this.canvas.height / 2;
             this.zoomToPoint(centerX, centerY, 1 / factor);
@@ -410,7 +424,10 @@
             
             // Apply zoom
             this.viewScale *= factor;
-            this.viewScale = Math.max(0.01, Math.min(1000, this.viewScale));
+            
+            const minZoom = config.renderer?.zoom?.min || 0.01;
+            const maxZoom = config.renderer?.zoom?.max || 1000;
+            this.viewScale = Math.max(minZoom, Math.min(maxZoom, this.viewScale));
             
             // Get world position at cursor after zoom
             const worldAfter = this.canvasToWorld(canvasX, canvasY);
@@ -446,14 +463,12 @@
             this.canvas.style.height = logicalHeight + 'px';
             
             // Clear canvas immediately
-            const theme = this.colors[this.options.theme];
-            this.ctx.fillStyle = theme.canvas?.background || '#0f0f0f';
+            this.ctx.fillStyle = this.colors.canvas?.background || '#0f0f0f';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
         clearCanvas() {
-            const theme = this.colors[this.options.theme];
-            const backgroundColor = theme.canvas?.background || '#0f0f0f';
+            const backgroundColor = this.colors.canvas?.background || '#0f0f0f';
             
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.ctx.fillStyle = backgroundColor;
@@ -524,29 +539,100 @@
         }
         
         // Color & Theme
-        
-        getLayerColorSettings(layer, theme) {
-            if (layer.color) {
-                return layer.color;
-            }
-            
-            const colors = theme.layers || {};
-            switch (layer.type) {
-                case 'isolation': return colors.isolation;
-                case 'clear': return colors.clear;
-                case 'drill': return colors.drill;
-                case 'cutout': return colors.cutout;
-                case 'offset': return '#ff0000';
-                case 'preview': return '#00ffff';
-                case 'toolpath': return colors.toolpath;
-                case 'fused': return colors.fused;
-                default: return colors.copper;
-            }
+
+        _updateThemeColors() {
+            const rootStyle = getComputedStyle(document.documentElement);
+            // Helper to read CSS var and remove extra quotes/spaces
+            const read = (varName) => rootStyle.getPropertyValue(varName).trim();
+
+            this.colors = {
+                operations: {
+                    isolation: read('--color-operation-isolation'),
+                    drill: read('--color-operation-drill'),
+                    clear: read('--color-operation-clear'),
+                    cutout: read('--color-operation-cutout'),
+                    toolpath: read('--color-operation-toolpath')
+                },
+                canvas: {
+                    background: read('--color-canvas-bg'),
+                    grid: read('--color-canvas-grid'),
+                    origin: read('--color-canvas-origin'),
+                    originOutline: read('--color-canvas-origin-outline'),
+                    bounds: read('--color-canvas-bounds'),
+                    ruler: read('--color-canvas-ruler'),
+                    rulerText: read('--color-canvas-ruler-text')
+                },
+                geometry: {
+                    offset: {
+                        external: read('--color-geometry-offset-external'),
+                        internal: read('--color-geometry-offset-internal'),
+                        on: read('--color-geometry-offset-on')
+                    },
+                    preview: read('--color-geometry-preview')
+                },
+
+                primitives: {
+                    offsetInternal: read('--color-primitive-offset-internal'),
+                    offsetExternal: read('--color-primitive-offset-external'),
+                    peckMarkGood: read('--color-primitive-peck-good'),
+                    peckMarkWarn: read('--color-primitive-peck-warn'),
+                    peckMarkError: read('--color-primitive-peck-error'),
+                    peckMarkSlow: read('--color-primitive-peck-slow'),
+                    reconstructed: read('--color-primitive-reconstructed'),
+                    reconstructedPath: read('--color-primitive-reconstructed-path'),
+                    debugLabel: read('--color-primitive-debug-label'),
+                    debugLabelStroke: read('--color-primitive-debug-label-stroke')
+                },
+                debug: {
+                    wireframe: read('--color-debug-wireframe'),
+                    bounds: read('--color-debug-bounds'),
+                    hole: read('--color-debug-hole')
+                }
+            };
+
+            // Maintain 'layers' alias for backward compatibility
+            this.colors.layers = this.colors.operations;
+            // Add a fused alias
+            this.colors.layers.fused = this.colors.operations.isolation;
         }
         
-        getBackgroundColor() {
-            const theme = this.colors[this.options.theme];
-            return theme.canvas?.background || '#0f0f0f';
+        getLayerColorSettings(layer) {
+            // We use this.colors which is loaded from live CSS variables.
+            const colors = this.colors; 
+
+            if (layer.color) {
+                // Respect an explicit color if 'cam-ui.js' set one (which it no longer does)
+                return layer.color;
+            }
+
+            // 'layers' is an alias for 'operations'
+            const opColors = colors.layers || {}; 
+            
+            switch (layer.type) {
+                case 'isolation': return opColors.isolation;
+                case 'clear':     return opColors.clear;
+                case 'drill':     return opColors.drill;
+                case 'cutout':    return opColors.cutout;
+                case 'toolpath':  return opColors.toolpath;
+                case 'fused':     return opColors.fused || opColors.isolation; // Fallback to isolation
+                
+                case 'offset':
+                    // This logic was moved from cam-ui.js
+                    if (colors.geometry && colors.geometry.offset) {
+                        switch (layer.offsetType) { 
+                            case 'external': return colors.geometry.offset.external;
+                            case 'internal': return colors.geometry.offset.internal;
+                            case 'on':       return colors.geometry.offset.on;
+                        }
+                    }
+                    return '#FF0000'; // Fallback for offset
+                    
+                case 'preview':
+                    return (colors.geometry && colors.geometry.preview) ? colors.geometry.preview : '#00FFFF';
+                
+                default: 
+                    return opColors.copper || opColors.isolation; // default
+            }
         }
         
         // View State
@@ -602,7 +688,7 @@
             this.renderStats.lastRenderTime = Date.now();
             
             if (this.renderStats.lastSignificantChange && debugConfig.enabled) {
-                console.log(`Rendered ${this.renderStats.renderedPrimitives} primitives in ${this.renderStats.renderTime.toFixed(1)}ms (${this.renderStats.lastSignificantChange})`);
+                console.log(`[RendererCore] Rendered ${this.renderStats.renderedPrimitives} primitives in ${this.renderStats.renderTime.toFixed(1)}ms (${this.renderStats.lastSignificantChange})`);
                 this.renderStats.lastSignificantChange = null;
             }
         }

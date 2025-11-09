@@ -32,6 +32,7 @@
     const messagesConfig = config.ui?.messages || {};
     const uiConfig = config.ui || {};
     const timingConfig = uiConfig.timing || {};
+    const storageKeys = config.storageKeys || {};
     const opsConfig = config.operations || {};
     
     // PCB Example definitions
@@ -91,7 +92,7 @@
         }
         
         async initialize() {
-            console.log('🚀 PCB CAM Advanced Workspace v2.0 initializing...');
+            console.log('EasyTrace5000 Workspace initializing...');
             
             try {
                 // Initialize core with skip init flag to control WASM loading
@@ -129,7 +130,7 @@
                 this.initState.wasmReady = wasmReady;
                 
                 if (!wasmReady) {
-                    console.warn('⚠️ WASM modules failed to load - running in fallback mode');
+                    console.warn('WASM modules failed to load - running in fallback mode');
                     this.ui?.updateStatus(messagesConfig.warning || 'Warning: Clipper2 failed to load - fusion disabled', 'warning');
                 }
                 
@@ -150,10 +151,10 @@
                 this.hideLoadingOverlay();
                 
                // Check for first-time user
-                const hideWelcome = localStorage.getItem('pcbcam-hide-welcome');
-                const hasVisited = localStorage.getItem('hasVisited');
+                const key = storageKeys.hideWelcome;
+                const hideWelcome = localStorage.getItem(key);
                 
-                if (!hideWelcome && !hasVisited) {
+                if (!hideWelcome) {
                     // USE THE MODAL MANAGER
                     this.modalManager.showModal('welcome', { examples: PCB_EXAMPLES });
                 } else {
@@ -163,13 +164,13 @@
                 
                 this.initState.fullyReady = true;
                 
-                console.log('✅ PCB CAM ready');
+                console.log('PCB CAM ready');
                 
                 // Update status
-                this.ui?.updateStatus(messagesConfig.ready || 'Ready - Advanced workspace loaded', 'success');
+                this.ui?.updateStatus(messagesConfig.ready);
                 
             } catch (error) {
-                console.error('❌ Initialization failed:', error);
+                console.error('Initialization failed:', error);
                 this.initState.error = error.message;
                 this.ui?.updateStatus('Initialization failed: ' + error.message, 'error');
                 this.hideLoadingOverlay();
@@ -183,22 +184,18 @@
                     return false;
                 }
                 
-                if (debugConfig.logging?.wasmOperations) {
-                    console.log('⏳ Loading Clipper2 WASM modules...');
-                }
+                this.debug('Loading Clipper2 WASM modules...');
                 
                 const result = await this.core.initializeProcessors();
                 
                 if (result) {
-                    if (debugConfig.enabled) {
-                        console.log('✅ Clipper2 WASM modules loaded successfully');
-                    }
+                    console.log('Clipper2 WASM modules loaded successfully');
                 }
                 
                 return result;
                 
             } catch (error) {
-                console.error('❌ WASM initialization error:', error);
+                console.error('WASM initialization error:', error);
                 return false;
             }
         }
@@ -207,6 +204,7 @@
             const overlay = document.getElementById('loading-overlay');
             if (overlay) {
                 overlay.style.opacity = '0';
+                const duration = timingConfig.modalAnimationDuration;
                 setTimeout(() => {
                     overlay.style.display = 'none';
 
@@ -217,7 +215,7 @@
                     if (toolbar) toolbar.style.display = 'flex';
                     if (workspace) workspace.style.display = 'grid';
                     
-                }, 300); // 300ms matches your original opacity transition
+                }, duration);
             }
         }
         
@@ -636,7 +634,7 @@
             }
             
             if (this.pendingOperations.length > 0 && !this.initState.fullyReady) {
-                this.ui?.updateStatus('Files queued - waiting for initialization...', 'info');
+                this.ui?.updateStatus(messagesConfig.loading);
             }
         }
         
@@ -653,9 +651,7 @@
         async processPendingOperations() {
             if (this.pendingOperations.length === 0) return;
             
-            if (debugConfig.logging?.fileOperations) {
-                console.log(`Processing ${this.pendingOperations.length} pending files...`);
-            }
+            this.debug(`Processing ${this.pendingOperations.length} pending files...`);
             
             for (let op of this.pendingOperations) {
                 await this.processFile(op.file, op.opType);
@@ -710,7 +706,7 @@
             const drillOps = selectedOps.filter(op => op.type === 'drill');
 
             // STAGE 2a: Translate MILLING ops
-            console.log(`[Controller] Stage 2a: Translating ${millingOps.length} milling operations...`);
+            this.debug(`Stage 2a: Translating ${millingOps.length} milling operations...`);
             const pureMillingPlans = [];
             for (const op of millingOps) {
                 if (!op.offsets || op.offsets.length === 0) {
@@ -720,10 +716,10 @@
                 const opPlans = await this.geometryTranslator.translateOperation(op);
                 pureMillingPlans.push(...opPlans);
             }
-            console.log(`[Controller] Stage 2a: ${pureMillingPlans.length} pure milling plans`);
+            this.debug(`Stage 2a: ${pureMillingPlans.length} pure milling plans`);
 
             // STAGE 2b: Translate DRILL ops
-            console.log(`[Controller] Stage 2b: Translating ${drillOps.length} drill operations...`);
+            this.debug(`Stage 2b: Translating ${drillOps.length} drill operations...`);
             const pureDrillPlans = [];
             for (const op of drillOps) {
                 if (!op.offsets || op.offsets.length === 0) {
@@ -733,7 +729,7 @@
                 const opPlans = await this.geometryTranslator.translateOperation(op);
                 pureDrillPlans.push(...opPlans);
             }
-            console.log(`[Controller] Stage 2b: ${pureDrillPlans.length} pure drill plans`);
+            this.debug(`Stage 2b: ${pureDrillPlans.length} pure drill plans`);
 
             
             // STAGE 3: Optimize geometry (optional)
@@ -741,7 +737,7 @@
             let optimizedDrillPlans = pureDrillPlans;
 
             if (options.optimize === true) {
-                console.log('[Controller] Stage 3: Optimizing with clustering...');
+                this.debug('Stage 3: Optimizing with clustering...');
                 
                 // STAGE 3a: Optimize MILLING plans
                 // (This runs with Z-grouping, clustering, etc.)
@@ -752,7 +748,7 @@
                 optimizedDrillPlans = this.toolpathOptimizer.optimize(pureDrillPlans);
 
                 const stats = this.toolpathOptimizer.getStats();
-                console.log(`[Controller] Optimization complete:`, {
+                this.debug(`Optimization complete:`, {
                     pointsRemoved: stats.pointsRemoved,
                     travelSaved: `${stats.travelSavedPercent}% (${stats.travelDistanceSaved.toFixed(1)}mm)`,
                     time: `${stats.optimizationTime.toFixed(1)}ms`
@@ -764,7 +760,7 @@
             const plansToProcess = [...optimizedMillingPlans, ...optimizedDrillPlans];
 
             // STAGE 4: Add machine moves
-            console.log('[Controller] Stage 4: Adding machine operations...');
+            this.debug('Stage 4: Adding machine operations...');
 
             const machineSettings = {
                 safeZ: options.safeZ || this.core.settings.machine.safeZ || 5.0,
@@ -776,10 +772,10 @@
             
             // Processor now takes ToolpathPlan[] directly
             const machineReadyPlans = this.machineProcessor.processPlans(plansToProcess, machineSettings);
-            console.log(`[Controller] Stage 3: ${machineReadyPlans.length} machine-ready plans`);
+            this.debug(`Stage 4: ${machineReadyPlans.length} machine-ready plans`);
 
             // STAGE 5: Generate G-code
-            console.log('[Controller] Stage 5: Generating G-code...');
+            this.debug('Stage 5: Generating G-code...');
             const genOptions = {
                 postProcessor: options.postProcessor || 'grbl',
                 includeComments: options.includeComments !== false,
@@ -790,17 +786,16 @@
             
             const gcode = this.gcodeGenerator.generate(machineReadyPlans, genOptions);
 
-            // STAGE 6: Estimate time
-            let estimatedTime = 0;
-            if (this.machineProcessor) {
-                estimatedTime = this.machineProcessor.estimateMachineTime(machineReadyPlans);
-            }
+            // STAGE 6: Estimate time AND distance
+            this.debug('[Stage 6: Estimating time and distance...');
+            const { estimatedTime, totalDistance } = this.machineProcessor.calculatePathMetrics(machineReadyPlans);
 
             return {
                 gcode: gcode,
                 lineCount: gcode.split('\n').length,
                 planCount: machineReadyPlans.length,
-                estimatedTime: estimatedTime
+                estimatedTime: estimatedTime,
+                totalDistance: totalDistance
             };
         }
         
@@ -870,21 +865,25 @@
                 }
             };
         }
-        
+
         // Debug utilities
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[Controller] ${message}`, data);
+                } else {
+                    console.log(`[Controller] ${message}`);
+                }
+            }
+        }
+
         enableDebug() {
             debugConfig.enabled = true;
-            if (this.core?.geometryProcessor) {
-                this.core.geometryProcessor.options.debug = true;
-            }
             console.log('Debug mode enabled');
         }
         
         disableDebug() {
             debugConfig.enabled = false;
-            if (this.core?.geometryProcessor) {
-                this.core.geometryProcessor.options.debug = false;
-            }
             console.log('Debug mode disabled');
         }
         
@@ -913,7 +912,7 @@
             'LayerRenderer'
         ];
         
-        // Check for optional UI components (may not exist in basic mode)
+        // Check for optional UI components (may not exist in basic mode) They are all required now though, Review this check system.
         const optionalClasses = [
             'TreeManager',
             'PropertyInspector',
@@ -938,8 +937,8 @@
         }
         
         // Check optional classes
-        if (debugConfig.enabled) {
-            console.log('Checking optional classes:');
+        if (this.debugEnabled) { 
+            console.log('[Controller] Checking optional classes:');
             optionalClasses.forEach(cls => {
                 const available = typeof window[cls] !== 'undefined';
                 console.log(`  ${available ? '✓' : '○'} ${cls}`);
@@ -951,7 +950,6 @@
         
         // Expose to global scope for debugging
         window.pcbcam = controller;
-        window.cam = controller; // Also expose as 'cam' for compatibility
         
         return true;
     }
@@ -971,26 +969,18 @@
     window.showCamStats = window.showPCBStats; // Alias for compatibility
     
     window.enablePCBDebug = function() {
-        if (controller) {
-            controller.enableDebug();
-        } else {
-            debugConfig.enabled = true;
-        }
+        debugConfig.enabled = true;
+        console.log('Debug mode enabled');
     };
     
     window.disablePCBDebug = function() {
-        if (controller) {
-            controller.disableDebug();
-        } else {
-            debugConfig.enabled = false;
-        }
+        debugConfig.enabled = false;
+        console.log('Debug mode disabled');
     };
     
     // Global function for HTML compatibility
     window.addFile = function(type) {
-        if (debugConfig.logging?.fileOperations) {
-            console.log(`🎯 addFile('${type}') called`);
-        }
+        this.debug(`🎯 addFile('${type}') called`);
         
         if (controller?.ui) {
             // Try to use the UI's file input trigger if available
@@ -1038,7 +1028,7 @@
         }
         const registry = controller.core.geometryProcessor.arcReconstructor?.exportRegistry?.();
         if (registry) {
-            console.log(`Arc Reconstructor Registry (${registry.length} curves):`);
+            this.debug(`Arc Reconstructor Registry (${registry.length} curves):`);
             console.table(registry);
         }
         return registry;

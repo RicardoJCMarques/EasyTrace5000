@@ -1,12 +1,12 @@
 /**
  * @file        ui/ui-status-manager.js
- * @description Manages the status bar
+ * @description Manages the status bar and log panel
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
-/*
+ /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
  * Copyright (C) 2025 Eltryus
  *
@@ -28,6 +28,11 @@
     'use strict';
     
     const config = window.PCBCAMConfig || {};
+    const uiConfig = config.ui || {};
+    const timingConfig = uiConfig.timing || {};
+    const textConfig = uiConfig.text || {};
+    const messagesConfig = uiConfig.messages || {};
+    const debugConfig = config.debug || {};
     
     class StatusManager {
         constructor(ui) {
@@ -35,13 +40,150 @@
             this.currentStatus = null;
             this.statusTimeout = null;
             this.progressVisible = false;
+
+            this.logHistory = [];
+            this.isExpanded = false;
+            this.showDebugMessages = config.rendering?.defaultOptions?.showDebugInLog || false;
+            
+            this.footerBar = document.getElementById('footer-bar'); // The whole footer
+            this.statusBar = document.getElementById('status-bar'); // The clickable center part
+            this.logPanel = document.getElementById('status-log-panel');
+            this.logHistoryContainer = document.getElementById('status-log-history');
+
+            this.init();
+        }
+
+        init() {
+            if (!this.statusBar || !this.logHistoryContainer || !this.footerBar) {
+                console.error('[StatusManager] Failed to find required log elements.');
+                return;
+            }
+
+            // Add click listener to toggle the log
+            this.statusBar.addEventListener('click', () => {
+                this.toggleLog();
+            });
+
+            // Add listener for the debug toggle
+            const debugToggle = document.getElementById('debug-log-toggle');
+            if (debugToggle) {
+                // Set initial state from config
+                debugToggle.checked = this.showDebugMessages;
+                // Add listener
+                debugToggle.addEventListener('change', (e) => {
+                    this.setDebugVisibility(e.target.checked);
+                });
+            }
+
+            // Add initial hint message to the log
+            this.addLogEntry(messagesConfig.logHint, 'info');
+        }
+
+        /**
+         * New function to update debug visibility
+         */
+        setDebugVisibility(isVisible) {
+            this.showDebugMessages = isVisible;
+            // Re-render the log with/without debug messages
+            if (this.isExpanded) {
+                this._renderLog();
+            }
+        }
+
+        toggleLog() {
+            this.isExpanded = !this.isExpanded;
+            // Toggle classes on the new elements
+            if (this.footerBar) {
+                this.footerBar.classList.toggle('is-expanded', this.isExpanded);
+            }
+            if (this.logPanel) {
+                this.logPanel.classList.toggle('is-expanded', this.isExpanded);
+            }
+            
+            if (this.isExpanded) {
+                this._renderLog(); // Render the log content when it's opened
+            }
+        }
+
+        /**
+         * Adds an entry to the log history array and updates the UI if open.
+         */
+        addLogEntry(message, type = 'normal') {
+            const isDebug = type === 'debug';
+
+            // If this is a debug message AND the global debug flag is off, skip it.
+            if (isDebug && !debugConfig.enabled) {
+                return;
+            }
+
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = {
+                timestamp,
+                message,
+                type
+            };
+            
+            this.logHistory.push(logEntry);
+            
+            // Keep log from getting too big
+            if (this.logHistory.length > 500) {
+                this.logHistory.shift();
+            }
+
+            // If the log is open, append the new message
+            if (this.isExpanded && this.logHistoryContainer) {
+                this._appendLogEntry(logEntry);
+            }
+        }
+
+        /**
+         * Renders the *entire* log history to the DOM.
+         */
+        _renderLog() {
+            if (!this.logHistoryContainer) return;
+
+            // Filter log based on debug setting
+            const showThisDebugMessage = debugConfig.enabled || this.showDebugMessages;
+            const entriesToRender = this.logHistory.filter(entry => {
+                return entry.type !== 'debug' || showThisDebugMessage;
+            });
+
+            const fragment = document.createDocumentFragment();
+            for (const entry of entriesToRender) {
+                fragment.appendChild(this._createLogElement(entry));
+            }
+            
+            this.logHistoryContainer.innerHTML = ''; // Clear old content
+            this.logHistoryContainer.appendChild(fragment);
+            this.logHistoryContainer.scrollTop = this.logHistoryContainer.scrollHeight;
+        }
+
+        /**
+         * Appends a *single* new entry to the DOM.
+         */
+        _appendLogEntry(logEntry) {
+            if (!this.logHistoryContainer) return;
+            const shouldScroll = this.logHistoryContainer.scrollTop + this.logHistoryContainer.clientHeight >= this.logHistoryContainer.scrollHeight - 20;
+            this.logHistoryContainer.appendChild(this._createLogElement(logEntry));
+            if (shouldScroll) {
+                this.logHistoryContainer.scrollTop = this.logHistoryContainer.scrollHeight;
+            }
+        }
+
+        /**
+         * Creates a single log entry DOM element
+         */
+        _createLogElement(logEntry) {
+            const p = document.createElement('p');
+            p.className = `log-entry ${logEntry.type}`;
+            p.textContent = `[${logEntry.timestamp}] ${logEntry.message}`;
+            return p;
         }
         
         updateStatus(message = null, type = 'normal') {
             const statusText = document.getElementById('status-text');
             if (!statusText) return;
             
-            // Clear any existing timeout
             if (this.statusTimeout) {
                 clearTimeout(this.statusTimeout);
                 this.statusTimeout = null;
@@ -51,30 +193,36 @@
                 statusText.textContent = message;
                 statusText.className = `status-text ${type}`;
                 this.currentStatus = { message, type };
+
+                this.addLogEntry(message, type);
                 
-                // Auto-clear success/info messages after delay
                 if (type === 'success' || type === 'info') {
+                    const duration = timingConfig.statusMessageDuration;
                     this.statusTimeout = setTimeout(() => {
                         this.updateStatus(); // Reset to default
-                    }, 5000);
+                    }, duration);
                 }
             } else {
                 // Reset to default status
                 const hasOps = this.ui.core.hasValidOperations();
+                let defaultMessage = textConfig.statusDefault;
                 if (hasOps) {
                     const stats = this.ui.core.getStats();
-                    statusText.textContent = `Ready: ${stats.operations} operations, ${stats.totalPrimitives} primitives`;
-                    statusText.className = 'status-text';
-                } else {
-                    statusText.textContent = 'Ready - Add PCB files to begin';
-                    statusText.className = 'status-text';
+                    defaultMessage = textConfig.statusReady(stats.operations, stats.totalPrimitives);
                 }
+                
+                statusText.textContent = defaultMessage;
+                statusText.className = 'status-text';
                 this.currentStatus = null;
             }
         }
         
         showStatus(message, type = 'normal') {
             this.updateStatus(message, type);
+        }
+
+        debug(message) {
+            this.addLogEntry(message, 'debug');
         }
         
         showProgress(percent) {
@@ -103,7 +251,6 @@
             }
         }
         
-        // Helper for long operations with progress
         async withProgress(message, asyncFn) {
             this.updateStatus(message, 'info');
             this.showProgress(0);
@@ -114,16 +261,15 @@
                 });
                 
                 this.hideProgress();
-                this.updateStatus('Operation completed', 'success');
+                this.updateStatus(messagesConfig.success, 'success');
                 return result;
             } catch (error) {
                 this.hideProgress();
-                this.updateStatus('Operation failed: ' + error.message, 'error');
+                this.updateStatus(`${messagesConfig.error}: ${error.message}`, 'error');
                 throw error;
             }
         }
     }
     
     window.StatusManager = StatusManager;
-    
 })();

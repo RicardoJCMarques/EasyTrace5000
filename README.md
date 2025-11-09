@@ -207,13 +207,14 @@ This modal is where the *full toolpath pipeline* is executed:
 ```javascript
 // Browser console commands
 window.pcbcam.getStats()                // Display pipeline statistics
-window.enablePCBDebug()                 // Enable verbose logging
+window.enablePCBDebug()                 // Enable verbose logging // Integrated into the UI
 window.getReconstructionRegistry()      // Inspect arc metadata
 ```
 
 ## Known Issues & Limitations
 
 **Current Limitations:**
+* **Metric Units:** Milimeters only. System is technically unit agnostic but it's base 10. A new module that manages unit states and conversions must be made from scratch.
 * **Bézier Offsetting:** While Bézier curves from SVGs *are* parsed analytically, they are tessellated (converted to line segments) by the plotter before offsetting. True analytic offsetting of Béziers is not yet supported.
 * **Tool Changes:** The application does not currently generate tool change commands (M6). Operations using different tools must be exported as separate G-code files.
 * **Performance:** Very large or complex boards (>200mm) with high segmentation may experience UI slowdown during boolean operations, as they run on the main thread.
@@ -226,22 +227,14 @@ window.getReconstructionRegistry()      // Inspect arc metadata
 
 ## Roadmap
 
-**Near-Term (v1.1):**
 - Responsive design for smaller screens
-- Undo/redo system
 - Tool library import/export
-- Theme customization
-
-**Mid-Term (v1.2):**
+- Theme import/export
 - 3D G-code preview/simulation
-- Laser engraving mode (simplified isolation)
+- Laser files (isolation, soldermasks, etc)
 - Automatic tool change (M6) support
-- Advanced optimization (genetic algorithm)
-
-**Long-Term (v2.0):**
-- Bézier curve native offsetting
+- Improved toolpath optimization
 - Multi-sided PCB support
-- Web worker threading for heavy operations
 - Cloud project storage
 
 ## ❤️ Support the Project

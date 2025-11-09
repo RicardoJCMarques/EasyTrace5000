@@ -40,9 +40,7 @@
 
         parse(content) {
             try {
-                if (this.debug) {
-                    console.log('Starting SVG parse (Analytic-based)');
-                }
+                this.debug('Starting SVG parse (Analytic-based)');
                 this.reset();
 
                 const parser = new DOMParser();
@@ -126,7 +124,7 @@
 
         /**
          * Processes a stroked shape, creating analytic 'trace' objects for the ParserPlotter.
-         * This function now correctly handles all analytic segment types.
+         * This function correctly handles all analytic segment types.
          */
         _processStrokedShape(geometry, transform, strokeWidth) {
             const transformed = this._applyTransformToGeometry(geometry, transform);
@@ -161,7 +159,8 @@
 
                     if (seg.type === 'line') {
                         // Check for zero-length
-                        if (Math.hypot(seg.p1.x - seg.p0.x, seg.p1.y - seg.p0.y) < 1e-6) continue;
+                        const zeroTolerance = geomConfig.svgZeroLengthTolerance || 1e-6;
+                        if (Math.hypot(seg.p1.x - seg.p0.x, seg.p1.y - seg.p0.y) < zeroTolerance) continue;
                         
                         this.layers.objects.push({
                             type: 'trace',
@@ -279,19 +278,17 @@
             
             const validSubpaths = subpaths.filter(segments => segments.length > 0);
 
-            if (this.debug) {
-                console.log(`[SVGParser._createPolarityRegions] Received ${subpaths.length} subpaths. Found ${validSubpaths.length} valid subpaths to plot.`);
-            }
+            this.debug(`Received ${subpaths.length} subpaths. Found ${validSubpaths.length} valid subpaths to plot.`);
             
             if (validSubpaths.length === 0) {
                 return;
             }
 
             if (this.debug) {
-                console.log(`[SVGParser._createPolarityRegions] Bundling ${validSubpaths.length} subpaths into one 'region' object.`);
+                this.debug(`Bundling ${validSubpaths.length} subpaths into one 'region' object.`);
                 validSubpaths.forEach((subpath, index) => {
                     // A subpath is an array of segment objects (move, line, arc, etc.)
-                    console.log(`  - Subpath ${index}: ${subpath.length} segments.`);
+                    this.debug(`  - Subpath ${index}: ${subpath.length} segments.`);
                 });
             }
             // Create a single 'region' object. The plotter will be responsible for tessellating, nesting, and splitting this into multiple primitives if needed.
@@ -302,9 +299,7 @@
                 analyticSubpaths: validSubpaths // Pass the raw analytic data
             });
 
-            if (this.debug) {
-                console.log(`[SVG Parser] Passing ${validSubpaths.length} analytic subpaths to plotter.`);
-            }
+            this.debug(`Passing ${validSubpaths.length} analytic subpaths to plotter.`);
             this.stats.objectsCreated++;
         }
 
@@ -628,9 +623,10 @@
         }
 
         _pointsMatch(p1, p2, tolerance = 1e-2) {
+            const matchTolerance = tolerance || geomConfig.svgPointMatchTolerance || 1e-2;
             if (!p1 || !p2) return false;
-            return Math.abs(p1.x - p2.x) < tolerance && 
-                Math.abs(p1.y - p2.y) < tolerance;
+            return Math.abs(p1.x - p2.x) < matchTolerance && 
+                Math.abs(p1.y - p2.y) < matchTolerance;
         }
 
         _applyTransformToPoint(p, m) {
@@ -690,8 +686,7 @@
 
     /**
      * This class is responsible for parsing the 'd' attribute of an SVG <path>
-     * It correctly generates an array of analytic segment objects, each
-     * containing its correct start point (p0).
+     * It correctly generates an array of analytic segment objects, each containing its correct start point (p0).
      */
     class PathDataParser {
         constructor(d, options = {}) {

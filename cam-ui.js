@@ -30,11 +30,13 @@
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
     const opsConfig = config.operations || {};
+    const storageKeys = config.storageKeys || {};
+    const textConfig = config.ui?.text || {};
     
     class PCBCamUI {
         constructor(core) {
             this.core = core;
-            
+
             this.treeManager = null;
             this.propertyInspector = null;
             this.toolLibrary = null;
@@ -115,9 +117,7 @@
                 
                 this.updateStatus('Ready - Add PCB files to begin');
                 
-                if (debugConfig.enabled) {
-                    console.log('PCBCamUI initialized');
-                }
+                this.debug('PCBCamUI initialized');
                 
                 return true;
                 
@@ -176,7 +176,8 @@
         }
         
         initializeTheme() {
-            const savedTheme = localStorage.getItem('pcbcam-theme') || (config.ui && config.ui.theme)
+            const key = storageKeys.theme;
+            const savedTheme = localStorage.getItem(key);
             document.documentElement.setAttribute('data-theme', savedTheme);
             
             if (this.renderer) {
@@ -227,7 +228,7 @@
                 enableArcReconstruction: this.viewState.enableArcReconstruction
             };
 
-            console.log('[UI] performFusion() - Starting performFusion. Options:', fusionOptions);
+            this.debug('performFusion() - Starting performFusion. Options:', fusionOptions);
             
             try {
                 const fused = await this.core.fuseAllPrimitives(fusionOptions);
@@ -337,12 +338,6 @@
         
         addOffsetLayers() {
             this.core.operations.forEach(operation => {
-                // Color based on offset TYPE, not operation type
-                const passColors = {
-                    'external': ['#a60000ff'],  // Red for external (isolation)
-                    'internal': ['#00a600ff'],   // Green for internal (clear)
-                    'on': ['#bcbc02ff']   // Yellow for on (clear)
-                };
                 
                 if (operation.offsets && operation.offsets.length > 0) {
                     operation.offsets.forEach((offset, passIndex) => {
@@ -350,15 +345,12 @@
                             // Use offset.offsetType instead of operation.type
                             let offsetType;
                             if (offset.distance > 0) {
-                            offsetType = 'external';
+                                offsetType = 'external';
                             } else if (offset.distance < 0) {
-                            offsetType = 'internal';
+                                offsetType = 'internal';
                             } else {
-                            offsetType = 'on';
+                                offsetType = 'on';
                             }
-                            const colorArray = passColors[offsetType] || ['#888888ff'];
-                            const colorIndex = Math.min(passIndex, colorArray.length - 1);
-                            const color = colorArray[colorIndex];
                             
                             const layerName = offset.combined ? 
                                 `offset_${operation.id}_combined` :
@@ -374,7 +366,6 @@
                                 {
                                     type: 'offset',
                                     visible: hasPreview ? false : this.renderer.options.showOffsets,
-                                    color: color,
                                     operationId: operation.id,
                                     operationType: operation.type,
                                     offsetType: offsetType,
@@ -396,7 +387,6 @@
                         {
                             type: 'preview',
                             visible: this.renderer.options.showPreviews,
-                            color: '#0060ddff',
                             operationId: operation.id,
                             operationType: operation.type,
                             isPreview: true,
@@ -558,7 +548,7 @@
             } else {
                 const statusText = document.getElementById('status-text');
                 if (statusText) {
-                    statusText.textContent = message;
+                    statusText.textContent = message || textConfig.statusDefault;
                     statusText.className = 'status-text ' + type;
                 }
             }
@@ -582,6 +572,16 @@
                 fileInput.click();
             } else {
                 console.warn('No file input element found');
+            }
+        }
+
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[UI] ${message}`, data);
+                } else {
+                    console.log(`[UI] ${message}`);
+                }
             }
         }
     }

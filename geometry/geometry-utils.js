@@ -26,21 +26,25 @@
 
 (function() {
     'use strict';
+
+    const config = window.PCBCAMConfig || {};
+    const geomConfig = config.geometry || {};
     
     const GeometryUtils = {
         // Coordinate precision threshold
-        PRECISION: 0.001,
+        PRECISION: geomConfig.coordinatePrecision || 0.001,
         
         _calculateSegments(radius, targetLength, minSegments, maxSegments) {
             // For zero/negative radius, return the minimum valid count.
             if (radius <= 0) {
-                // Ensure the minimum is at least 8 and a multiple of 8.
-                return Math.max(8, Math.ceil(minSegments / 8) * 8);
+                const minSeg = geomConfig.segments?.defaultMinSegments || 8;
+                return Math.max(minSeg, Math.ceil(minSegments / minSeg) * minSeg);
             }
 
             // Adjust boundaries to be multiples of 8, ensuring a valid range.
-            const min = Math.max(8, Math.ceil(minSegments / 8) * 8);
-            const max = Math.floor(maxSegments / 8) * 8;
+            const minSeg = geomConfig.segments?.defaultMinSegments || 8;
+            const min = Math.max(minSeg, Math.ceil(minSegments / minSeg) * minSeg);
+            const max = Math.floor(maxSegments / minSeg) * minSeg;
 
             // If adjusted boundaries are invalid (e.g., min > max), return the minimum.
             if (min > max) {
@@ -51,7 +55,7 @@
             const desiredSegments = circumference / targetLength;
 
             // Round the ideal segment count to the NEAREST multiple of 8.
-            let calculatedSegments = Math.round(desiredSegments / 8) * 8;
+            let calculatedSegments = Math.round(desiredSegments / minSeg) * minSeg;
 
             // Clamp the result within the adjusted boundaries. The final value will always be a multiple of 8 within the valid range.
             const finalSegments = Math.max(min, Math.min(max, calculatedSegments));
@@ -62,7 +66,7 @@
         // Tessellation helpers
 
         tessellateCubicBezier(p0, p1, p2, p3) {
-            const a = [], t = 32; // 't' is segment count
+            const a = [], t = geomConfig.tessellation?.bezierSegments || 32; // 't' is segment count
             // This loop starts at 0, so it *includes* the start point
             for (let s = 0; s <= t; s++) {
                 const e = s / t, o = 1 - e;
@@ -75,7 +79,7 @@
         },
 
         tessellateQuadraticBezier(p0, p1, p2) {
-            const a = [], t = 32;
+            const a = [], t = geomConfig.tessellation?.bezierSegments || 32
             // This loop starts at 0, so it *includes* the start point
             for (let s = 0; s <= t; s++) {
                 const e = s / t, o = 1 - e;
@@ -101,7 +105,8 @@
 
             const targetLength = window.PCBCAMConfig?.geometry?.segments?.targetLength || 0.1;
             const approxArcLength = Math.abs(m) * ((rx + ry) / 2);
-            const k = Math.max(8, Math.ceil(approxArcLength / targetLength));
+            const minSegs = geomConfig.tessellation?.minEllipticalSegments || 8;
+            const k = Math.max(minSegs, Math.ceil(approxArcLength / targetLength));
 
             const P = [];
             // This loop starts at 0, so it *includes* the start point
@@ -225,8 +230,8 @@
                 finalMax = config.maxEndCap || 256;
             } else {
                 // Default fallback
-                finalMin = 32;
-                finalMax = 128;
+                finalMin = config.defaultFallbackSegments?.min || 32;
+                finalMax = config.defaultFallbackSegments?.max || 128;
             }
 
             return this._calculateSegments(
@@ -238,8 +243,11 @@
         },
         
         // Validate Clipper scale factor
-        validateScale(scale, min = 1000, max = 1000000) {
-            return Math.max(min, Math.min(max, scale || 10000));
+        validateScale(scale, min, max) {
+            const minScale = min ?? geomConfig.clipper?.minScale ?? 1000;
+            const maxScale = max ?? geomConfig.clipper?.maxScale ?? 1000000;
+            const defaultScale = geomConfig.clipperScale || 10000;
+            return Math.max(minScale, Math.min(maxScale, scale || defaultScale));
         },
         
         // Calculate winding (signed area)
@@ -658,7 +666,7 @@
             // Final check for duplicate closing point
             const first = points[0];
             const last = points[points.length - 1];
-            if (Math.hypot(first.x - last.x, first.y - last.y) < this.PRECISION * 0.1) {
+            if (Math.hypot(first.x - last.x, first.y - last.y) < this.PRECISION) {
                 points.pop();
                 console.log("[GeoUtils] arcToPolygon removed duplicate closing point.");
             } else {
@@ -793,7 +801,8 @@
             const miterY = (n1y + n2y) / 2;
             
             const miterLen = Math.sqrt(miterX * miterX + miterY * miterY);
-            const maxMiter = halfWidth * 2;
+            const miterLimit = geomConfig.offsetting?.miterLimit || 2.0;
+            const maxMiter = halfWidth * miterLimit;
             
             if (miterLen > maxMiter) {
                 const scale = maxMiter / miterLen;

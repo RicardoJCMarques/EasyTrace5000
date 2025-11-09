@@ -56,7 +56,7 @@
                 return loaded;
                 
             } catch (error) {
-                console.error('Failed to initialize tool library:', error);
+                console.error('[ToolLibrary] Failed to initialize tool library:', error);
                 this.loadError = error.message;
                 
                 // Load minimal defaults as fallback
@@ -79,14 +79,14 @@
                 if (this.validateTool(tool)) {
                     this.addTool(tool);
                 } else {
-                    console.warn(`Invalid tool skipped: ${tool.id || 'unknown'}`);
+                    console.warn(`[ToolLibrary] Invalid tool skipped: ${tool.id || 'unknown'}`);
                 }
             });
             
             this.isLoaded = true;
             
             if (debugConfig.enabled) {
-                console.log(`ToolLibrary loaded ${this.tools.length} tools from config`);
+                console.log(`[ToolLibrary] Loaded ${this.tools.length} tools from config`);
                 this.logToolStats();
             }
         }
@@ -117,14 +117,12 @@
                 
                 this.isLoaded = true;
                 
-                if (debugConfig.enabled) {
-                    console.log(`ToolLibrary loaded ${this.tools.length} tools from ${url}`);
-                }
+                this.debug(`Loaded ${this.tools.length} tools from ${url}`);
                 
                 return true;
                 
             } catch (error) {
-                console.error('Failed to load tools from file:', error);
+                console.error('[ToolLibrary] Failed to load tools from file:', error);
                 this.loadError = error.message;
                 return false;
             }
@@ -183,7 +181,7 @@
             defaults.forEach(tool => this.addTool(tool));
             
             this.isLoaded = true;
-            console.warn('Using default tools due to loading failure');
+            console.warn('[ToolLibrary] Using default tools due to loading failure');
         }
         
         addTool(tool) {
@@ -213,7 +211,7 @@
             for (const field of required) {
                 if (!tool[field]) {
                     if (debugConfig.enabled) {
-                        console.warn(`Tool validation failed: missing '${field}'`, tool);
+                        console.warn(`[ToolLibrary] Tool validation failed: missing '${field}'`, tool);
                     }
                     return false;
                 }
@@ -222,7 +220,7 @@
             // Required geometry fields
             if (!tool.geometry.diameter) {
                 if (debugConfig.enabled) {
-                    console.warn('Tool validation failed: missing geometry.diameter', tool);
+                    console.warn('[ToolLibrary] Tool validation failed: missing geometry.diameter', tool);
                 }
                 return false;
             }
@@ -232,7 +230,7 @@
             for (const field of cuttingRequired) {
                 if (tool.cutting[field] === undefined) {
                     if (debugConfig.enabled) {
-                        console.warn(`Tool validation failed: missing cutting.${field}`, tool);
+                        console.warn(`[ToolLibrary] Tool validation failed: missing cutting.${field}`, tool);
                     }
                     return false;
                 }
@@ -414,15 +412,27 @@
         }
         
         // Debug helpers
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[ToolLibrary] ${message}`, data);
+                } else {
+                    console.log(`[ToolLibrary] ${message}`);
+                }
+            }
+        }
+
         logToolStats() {
-            console.log('Tool Library Statistics:');
-            console.log(`  Total tools: ${this.tools.length}`);
-            console.log(`  Tool types: ${Array.from(this.toolsByType.keys()).join(', ')}`);
-            console.log(`  Operations covered: ${Array.from(this.toolsByOperation.keys()).join(', ')}`);
-            
-            this.toolsByType.forEach((tools, type) => {
-                console.log(`  ${type}: ${tools.length} tools`);
-            });
+            if (debugConfig.enabled) {
+                console.log('Tool Library Statistics:');
+                console.log(`  Total tools: ${this.tools.length}`);
+                console.log(`  Tool types: ${Array.from(this.toolsByType.keys()).join(', ')}`);
+                console.log(`  Operations covered: ${Array.from(this.toolsByOperation.keys()).join(', ')}`);
+                
+                this.toolsByType.forEach((tools, type) => {
+                    console.log(`  ${type}: ${tools.length} tools`);
+                });
+            }
         }
         
         getStats() {

@@ -35,7 +35,7 @@
     class CoordinateSystemManager {
         constructor(options = {}) {
             this.options = {
-                debug: options.debug !== undefined ? options.debug : debugConfig.enabled,
+                debug: options.debug || false,
                 ...options
             };
             

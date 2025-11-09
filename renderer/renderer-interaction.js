@@ -29,6 +29,7 @@
     
     const config = window.PCBCAMConfig || {};
     const canvasConfig = config.rendering?.canvas || {};
+    const interactionConfig = config.renderer?.interaction || {};
     
     class InteractionHandler {
         constructor(core, renderer) {
@@ -94,7 +95,7 @@
             if (e.button === 0) {
                 this.isDragging = true;
                 this.lastMousePos = { x: e.clientX, y: e.clientY };
-                this.canvas.style.cursor = 'grabbing';
+                this.canvas.style.cursor = interactionConfig.cursorGrabbing || 'grabbing';
             } else if (e.button === 2) {
                 this.isRightDragging = true;
                 this.lastMousePos = { x: e.clientX, y: e.clientY };
@@ -130,7 +131,7 @@
             this.isDragging = false;
             this.isRightDragging = false;
             this.lastMousePos = null;
-            this.canvas.style.cursor = 'grab';
+            this.canvas.style.cursor = interactionConfig.cursorGrab || 'grab';
         }
         
         _handleWheel(e) {
@@ -264,14 +265,16 @@
             // Re-calculate world position from stored screen position
             const worldPos = this.core.screenToWorld(this.lastScreenPos.x, this.lastScreenPos.y);
             
-            if (coordX) coordX.textContent = worldPos.x.toFixed(2);
-            if (coordY) coordY.textContent = worldPos.y.toFixed(2);
+            const precision = interactionConfig.coordPrecision || 2;
+            if (coordX) coordX.textContent = worldPos.x.toFixed(precision);
+            if (coordY) coordY.textContent = worldPos.y.toFixed(precision);
         }
         
         updateZoomDisplay() {
             const zoomLevel = document.getElementById('zoom-level');
             if (zoomLevel) {
-                const zoomPercent = (this.core.viewScale * 10).toFixed(0);
+                const precision = interactionConfig.zoomPrecision || 0;
+                const zoomPercent = (this.core.viewScale * 10).toFixed(precision);
                 zoomLevel.textContent = zoomPercent + '%';
             }
         }

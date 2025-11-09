@@ -98,7 +98,7 @@
     border: 1px solid var(--color-border-primary);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 .sidebar-left {
@@ -164,7 +164,6 @@
 
 .section-content {
     flex: 1;
-    overflow-y: auto;
     padding: var(--spacing-md);
 }
 
@@ -173,10 +172,10 @@
 }
 
 /* ============================================================================
-   STATUS BAR
+   FOOTER & STATUS BAR
    ============================================================================ */
 
-.status-bar {
+.footer-bar {
     position: fixed;
     bottom: 0;
     left: 0;
@@ -185,77 +184,114 @@
     background: var(--color-bg-tertiary);
     border-top: 1px solid var(--color-border-primary);
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: var(--sidebar-left-width) 1fr auto;
     align-items: center;
-    padding: 0 var(--spacing-lg);
     font-size: var(--font-size-sm);
-    z-index: var(--z-sticky);
+    z-index: var(--z-sticky); /* Ensures footer is on top */
 }
 
+/* Left-aligned content in the left grid cell */
 .status-left {
     display: flex;
     align-items: center;
-    position: relative;
+    padding-left: var(--spacing-lg);
+    position: relative; /* For the viz-panel */
+    height: 100%;
 }
 
-.viz-panel {
-    position: absolute;
-    bottom: calc(100% + var(--spacing-sm)); /* Position above the status bar */
-    left: 0;
-    min-width: 260px;
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border-primary);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-lg);
-    z-index: var(--z-dropdown);
-    transition: opacity var(--transition-fast), transform var(--transition-fast);
-    transform-origin: bottom left;
-}
-
-.viz-panel.collapsed {
-    display: none; /* This is the rule that makes the button work */
-}
-
-.viz-panel .section-header .collapse-indicator {
-    display: none;
-}
-
-.viz-panel .section-content {
-    max-height: 360px; /* Keep max-height for scrolling */
-    overflow-y: auto;
-    padding: var(--spacing-md);
-}
-
-.status-text {
-    color: var(--color-text-secondary);
-}
-
-.status-text.success {
-    color: var(--color-success);
-}
-
-.status-text.warning {
-    color: var(--color-warning);
-}
-
-.status-text.error {
-    color: var(--color-error);
-}
-
-.status-text.info {
-    color: var(--color-info);
-}
-
-.status-center {
-    min-width: 200px;
-    text-align: left;
-}
-
+/* Right-aligned content in the right grid cell */
 .status-right {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--spacing-md);
+    padding-right: var(--spacing-lg);
+    height: 100%;
+}
+
+/* Clickable status bar in the center grid cell */
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 0 var(--spacing-md);
+    height: 100%;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative; /* For progress bar */
+}
+
+.status-bar:hover {
+    background: var(--color-bg-hover);
+}
+
+/* Clickable icon for the log toggle */
+.log-toggle-icon {
+    font-size: 10px;
+    color: var(--color-text-secondary);
+    transform: rotate(180deg); /* Start pointing up */
+}
+
+.status-text {
+    flex: 1; /* Takes up remaining space */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--color-text-secondary);
+}
+
+/* Status colors (Unchanged) */
+.status-text.success { color: var(--color-success); }
+.status-text.warning { color: var(--color-warning); }
+.status-text.error { color: var(--color-error); }
+.status-text.info { color: var(--color-info); }
+
+/* Progress bar (Unchanged) */
+.status-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+}
+
+/* Log Panel */
+.status-log-panel {
+    position: fixed;
+    bottom: var(--status-bar-height); /* Sits right on top of the footer */
+    
+    /* Aligns to the canvas area */
+    left: var(--sidebar-left-width);
+    right: var(--sidebar-right-width);
+    
+    height: 0; /* Hidden by default */
+    background: var(--color-bg-primary); /* Darker background for contrast */
+    border-top: 1px solid var(--color-border-primary);
+    border-left: 1px solid var(--color-border-primary);
+    border-right: 1px solid var(--color-border-primary);
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
+    z-index: var(--z-dropdown); /* Sits just below the footer */
+}
+
+.status-log-history {
+    padding: var(--spacing-md);
+    height: 100%;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    word-break: break-word;
+}
+
+/* This is the "expanded" state */
+.footer-bar.is-expanded .log-toggle-icon {
+    transform: rotate(0deg); /* Point down */
+}
+.status-log-panel.is-expanded {
+    height: 200px; /* New expanded height */
+    opacity: 1;
+    visibility: visible;
 }
 
 .status-info {
@@ -280,6 +316,34 @@
 .license-info a:hover {
     color: var(--color-accent-primary);
     text-decoration: underline;
+}
+
+/* --- Viz Panel --- */
+.viz-panel {
+    position: absolute;
+    bottom: calc(100% + var(--spacing-sm)); /* Position above the status bar */
+    left: 0;
+    min-width: 260px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    z-index: var(--z-dropdown);
+    transform-origin: bottom left;
+}
+
+.viz-panel.collapsed {
+    display: none;
+}
+
+.viz-panel .section-header .collapse-indicator {
+    display: none;
+}
+
+.viz-panel .section-content {
+    max-height: 360px;
+    overflow-y: auto;
+    padding: var(--spacing-md);
 }
 
 /* ============================================================================
@@ -485,7 +549,6 @@
 }
 
 .property-form {
-    overflow-y: auto;
     padding: var(--spacing-lg);
 }
 
@@ -524,8 +587,6 @@
 }
 
 .property-actions {
-    position: sticky;
-    bottom: 0;
     background: var(--color-bg-secondary);
     padding: var(--spacing-md) 0 0 0;
     margin-top: var(--spacing-lg);

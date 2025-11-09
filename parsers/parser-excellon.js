@@ -1,6 +1,6 @@
 /**
  * @file        parser/parser-excellon.js
- * @description Excellon parsing module -
+ * @description Excellon parsing module
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -55,9 +55,7 @@
         
         parse(content) {
             try {
-                if (this.debug) {
-                    console.log('Excellon parse (strict)');
-                }
+                this.debug('Excellon parse (strict)');
                 this.reset();
                 
                 const lines = content
@@ -74,9 +72,7 @@
                         return true;
                     });
                 
-                if (this.debug) {
-                    console.log(`Processing ${lines.length} lines`);
-                }
+                this.debug(`Processing ${lines.length} lines`);
                 
                 lines.forEach((line, index) => {
                     this.processLine(line, index + 1);
@@ -85,9 +81,7 @@
                 
                 this.finalizeParse();
                 
-                if (this.debug) {
-                    console.log(`Complete: ${this.drillData.holes.length} holes, ${this.tools.size} tools`);
-                }
+                this.debug(`Complete: ${this.drillData.holes.length} holes, ${this.tools.size} tools`);
                 this.logStatistics();
                 
                 return {
@@ -154,18 +148,14 @@
                     const decDigits = parseInt(match[2]);
                     this.options.format = { integer: intDigits, decimal: decDigits };
                     this.drillData.format = this.options.format;
-                    if (this.debug) {
-                        console.log(`Format: ${intDigits}.${decDigits} (from FILE_FORMAT comment)`);
-                    }
+                    this.debug(`Format: ${intDigits}.${decDigits} (from FILE_FORMAT comment)`);
                 }
                 return;
             }
             
             if (line === 'M48') {
                 this.inHeader = true;
-                if (this.debug) {
-                    console.log('Header start');
-                }
+                this.debug('Header start');
                 return;
             }
             
@@ -173,35 +163,27 @@
                 if (!this.headerEnded) {
                     this.inHeader = !this.inHeader;
                     if (!this.inHeader) this.headerEnded = true;
-                    if (this.debug) {
-                        console.log(`Header ${this.headerEnded ? 'end' : 'start'}`);
-                    }
+                    this.debug(`Header ${this.headerEnded ? 'end' : 'start'}`);
                 }
                 return;
             }
             
             if (line === 'M30' || line === 'M00') {
-                if (this.debug) {
-                    console.log('EOF');
-                }
+                this.debug('End of file');
                 return;
             }
             
             if (line === 'METRIC' || line === 'M71') {
                 this.options.units = 'mm';
                 this.drillData.units = 'mm';
-                if (this.debug) {
-                    console.log('Units: mm');
-                }
+                this.debug('Units: mm');
                 return;
             }
             
             if (line === 'INCH' || line === 'M72') {
                 this.options.units = 'inch';
                 this.drillData.units = 'inch';
-                if (this.debug) {
-                    console.log('Units: inch');
-                }
+                this.debug('Units: inch');
                 return;
             }
             
@@ -242,9 +224,7 @@
                     this.warnings.push(`Line ${lineNumber}: Unknown FMAT ${code}`);
                 }
                 this.drillData.format = this.options.format;
-                if (this.debug) {
-                    console.log(`Format: ${this.options.format.integer}.${this.options.format.decimal}`);
-                }
+                this.debug(`Format: ${this.options.format.integer}.${this.options.format.decimal}`);
             }
         }
         
@@ -256,7 +236,8 @@
             }
             
             const number = parseInt(match[1]);
-            const toolKey = `T${number.toString().padStart(2, '0')}`;
+            const toolKeyPadding = formatConfig.toolKeyPadding || 2;
+            const toolKey = `T${number.toString().padStart(toolKeyPadding, '0')}`;
             let diameter = parseFloat(match[2]);
             
             if (!isFinite(diameter) || diameter <= 0) {
@@ -277,9 +258,7 @@
             
             this.tools.set(toolKey, tool);
             this.drillData.tools.push(tool);
-            if (this.debug) {
-                console.log(`Tool ${toolKey}: ⌀${displayDiameter.toFixed(3)}mm`);
-            }
+            this.debug(`Tool ${toolKey}: ⌀${displayDiameter.toFixed(3)}mm`);
         }
         
         selectTool(line, lineNumber) {
@@ -289,14 +268,13 @@
             const number = parseInt(match[1]);
             
             if (number === 0) {
-                if (this.debug) {
-                    console.log('T0: Deselect');
-                }
+                this.debug('T0: Deselect');
                 this.currentTool = null;
                 return;
             }
             
-            const toolKey = `T${number.toString().padStart(2, '0')}`;
+            const toolKeyPadding = formatConfig.toolKeyPadding || 2;
+            const toolKey = `T${number.toString().padStart(toolKeyPadding, '0')}`;
             
             if (!this.tools.has(toolKey)) {
                 this.errors.push(`Line ${lineNumber}: Tool ${toolKey} undefined`);
@@ -306,9 +284,7 @@
             
             this.currentTool = toolKey;
             const tool = this.tools.get(toolKey);
-            if (this.debug) {
-                console.log(`Select ${toolKey}: ⌀${tool.diameter.toFixed(3)}mm`);
-            }
+            this.debug(`Select ${toolKey}: ⌀${tool.diameter.toFixed(3)}mm`);
         }
         
         parseDrillOperation(line, lineNumber) {

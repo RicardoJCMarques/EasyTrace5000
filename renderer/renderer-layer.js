@@ -28,7 +28,7 @@
     'use strict';
     
     const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
+    const primitivesConfig = config.renderer?.primitives || {};
     
     class LayerRenderer {
         constructor(canvasId, core) {
@@ -261,11 +261,11 @@
         // Layer Rendering (With Culling and Context)
         
         renderLayer(layer) {
-            const theme = this.core.colors[this.options.theme];
-            let fillColor = this.core.getLayerColorSettings(layer, theme);
+            let fillColor = this.core.getLayerColorSettings(layer);
             
             if (this.options.blackAndWhite) {
-                fillColor = theme.canvas.background === '#0f0f0f' ? '#ffffff' : '#000000';
+                const isDarkTheme = (this.core.colors.canvas?.background || '#0f0f0f') === '#0f0f0f';
+                fillColor = isDarkTheme ? '#ffffff' : '#000000';
             }
 
             const viewBounds = this.core.getViewBounds();
@@ -380,7 +380,7 @@
                 return;
             }
 
-            const offsetColor = layer.color || '#ff0000';
+            const offsetColor = this.core.getLayerColorSettings(layer);
             
             // Separate peck marks from normal geometry
             const peckMarks = [];
@@ -419,7 +419,7 @@
                 });
                 
                 this.ctx.strokeStyle = offsetColor;
-                this.ctx.lineWidth = 2 / this.core.viewScale;
+                this.ctx.lineWidth = (primitivesConfig.offsetStrokeWidth || 2) / this.core.viewScale;
                 this.ctx.setLineDash([]);
                 this.ctx.stroke(layerBatch);
                 this.core.renderStats.drawCalls++;
@@ -453,7 +453,8 @@
             
             // Drill operations get distinct color
             const isDrill = layer.operationType === 'drill' || layer.metadata?.isDrillPreview;
-            const previewColor = layer.color;
+
+            const previewColor = this.core.getLayerColorSettings(layer);
             
             // Separate peck marks from normal geometry
             const peckMarks = [];
@@ -519,7 +520,6 @@
         }
 
         renderWireframeLayer(layer) {
-            const theme = this.core.colors[this.options.theme];
             const viewBounds = this.core.getViewBounds();
             const wireframeBatch = new Path2D();
 
@@ -536,7 +536,7 @@
             });
 
             // Perform a single stroke operation for the entire layer
-            this.ctx.strokeStyle = theme.debug?.wireframe || '#00ff00';
+            this.ctx.strokeStyle = this.core.colors.debug?.wireframe || '#00ff00';
             this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
             this.ctx.fillStyle = 'transparent'; // Ensure no fill
             this.ctx.setLineDash([]);
@@ -741,10 +741,6 @@
                 if (state.scale !== undefined) this.core.viewScale = state.scale;
             }
             this.render();
-        }
-        
-        getBackgroundColor() {
-            return this.core.getBackgroundColor?.() || '#0f0f0f';
         }
         
         destroy() {

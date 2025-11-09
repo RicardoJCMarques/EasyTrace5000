@@ -28,6 +28,7 @@
     'use strict';
     
     const config = window.PCBCAMConfig || {};
+    const geomConfig = config.geometry || {};
     const formatConfig = config.formats?.gerber || {};
     
     class GerberParser extends ParserCore {
@@ -64,28 +65,21 @@
         
         parse(content) {
             try {
-                if (this.debug) {
-                    console.log('Starting Gerber parse');
-                }
+                this.debug('Starting Gerber parse');
                 
                 // Reset state
                 this.reset();
                 
                 // Phase 1: Tokenize into commands
                 const commands = this.tokenize(content);
-                if (this.debug) {
-                    console.log(`Tokenized ${commands.length} commands`);
-                }
+                this.debug(`Tokenized ${commands.length} commands`);
 
                 // Phase 2: Execute commands sequentially
                 this.executeCommands(commands);
                 
                 // Phase 3: Finalize
                 this.finalizeParse();
-                
-                if (this.debug) {
-                    console.log(`Parse complete: ${this.layers.objects.length} objects created`);
-                }
+                this.debug(`Parse complete: ${this.layers.objects.length} objects created`);
                 this.logStatistics();
                 
                 return {
@@ -362,24 +356,18 @@
                 case 'SET_FORMAT':
                     this.state.format.integer = command.params.xInteger;
                     this.state.format.decimal = command.params.xDecimal;
-                    if (this.debug) {
-                        console.log(`Format set to ${this.state.format.integer}.${this.state.format.decimal}`);
-                    }
+                    this.debug(`Format set to ${this.state.format.integer}.${this.state.format.decimal}`);
                     break;
                     
                 case 'SET_UNITS':
                     this.state.units = command.params.units;
                     this.layers.units = this.state.units;
-                    if (this.debug) {
-                        console.log(`Units set to ${this.state.units}`);
-                    }
+                    this.debug(`Units set to ${this.state.units}`);
                     break;
                     
                 case 'SET_POLARITY':
                     this.state.polarity = command.params.polarity;
-                    if (this.debug) {
-                        console.log(`Polarity set to ${this.state.polarity}`);
-                    }
+                    this.debug(`Polarity set to ${this.state.polarity}`);
                     break;
                     
                 case 'SET_INTERPOLATION':
@@ -422,13 +410,13 @@
                     
                     // Check for a zero-length draw, which indicates a "painted" pad.
                     // If start and end positions are the same, treat it as a flash.
-                    const precision = 0.0001; // A small tolerance for floating point comparison
+                    const precision = geomConfig.zeroLengthTolerance || 0.0001;
                     const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
                                              Math.abs(this.state.position.y - drawPos.y) < precision;
 
                     if (isZeroLengthDraw) {
                         // This is effectively a flash, not a trace.
-                        console.log(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
+                        this.debug(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
 
                         this.createFlash(drawPos);
                         this.state.position = drawPos;
@@ -468,9 +456,7 @@
                     break;
                     
                 case 'EOF':
-                    if (this.debug) {
-                        console.log('End of file');
-                    }
+                    this.debug('End of file');
                     break;
             }
         }
@@ -528,9 +514,7 @@
             
             this.layers.objects.push(region);
             this.stats.objectsCreated++;
-            if (this.debug) {
-                console.log(`Created region with ${region.points.length} points`);
-            }
+            this.debug(`Created region with ${region.points.length} points`);
         }
         
         createTrace(start, end, arcData = null) {
@@ -559,9 +543,7 @@
             if (arcData && (this.state.interpolation === 'cw_arc' || this.state.interpolation === 'ccw_arc')) {
                 trace.arc = arcData;
                 trace.clockwise = this.state.interpolation === 'cw_arc';
-                if (this.debug) {
-                    console.log(`Created arc trace with offsets i=${arcData.i}, j=${arcData.j}`);
-                }
+                this.debug(`Created arc trace with offsets i=${arcData.i}, j=${arcData.j}`);
             }
             
             this.layers.objects.push(trace);

@@ -58,6 +58,37 @@
       "ruler": "#000000",
       "rulerText": "#929292"
     },
+    "geometry": {
+      "source": {
+        "isolation": "#ff8844",
+        "drill": "#4488ff",
+        "clear": "#44ff88",
+        "cutout": "#666666"
+      },
+      "offset": {
+        "external": "#a60000",
+        "internal": "#00a600",
+        "on": "#bcbc02"
+      },
+      "preview": "#0060dd",
+      "toolpath": "#00ffff",
+      "selection": "#00ffff"
+    },
+    
+    "primitives": {
+      "offsetInternal": "#00aa00",
+      "offsetExternal": "#ff0000",
+      "peckMarkGood": "#16d329ff",
+      "peckMarkWarn": "#d2cb00ff",
+      "peckMarkError": "#ff0000",
+      "peckMarkSlow": "#ff5e00ff",
+      "reconstructed": "#00ffff",
+      "reconstructedPath": "#ffff00",
+      "debugContourColors": ["#00ff00", "#ff0000", "#0000ff", "#ffff00", "#ff00ff", "#00ffff"],
+      "debugCurveColors": ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff"],
+      "debugLabel": "#FFFFFF",
+      "debugLabelStroke": "#000000"
+    },
     "debug": {
       "hole": "#ff00ff",
       "wireframe": "#00aa00",

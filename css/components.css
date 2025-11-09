@@ -656,6 +656,32 @@ input[type="radio"] {
 }
 
 /* ============================================================================
+   STATUS LOG
+   ============================================================================ */
+.status-log-history .log-entry {
+    padding: 2px 0;
+    white-space: pre-wrap; /* Preserve line breaks */
+    user-select: text; /* Make it selectable */
+}
+
+.status-log-history .log-entry.success {
+    color: var(--color-success);
+}
+.status-log-history .log-entry.warning {
+    color: var(--color-warning);
+}
+.status-log-history .log-entry.error {
+    color: var(--color-error);
+}
+.status-log-history .log-entry.info {
+    color: var(--color-info);
+}
+.status-log-history .log-entry.debug {
+    color: var(--color-text-hint);
+    opacity: 0.7;
+}
+
+/* ============================================================================
    SEPARATORS
    ============================================================================ */
 

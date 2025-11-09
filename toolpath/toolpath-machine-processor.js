@@ -950,11 +950,14 @@
         }
         
         /**
-         * Estimate machine time
+         * Estimates machine time and calculates total distance for a set of plans
          */
-        estimateMachineTime(plans) {
+        calculatePathMetrics(plans) {
             let totalTime = 0;
-            let lastPos = { x: 0, y: 0, z: 0 };
+            let totalDistance = 0;
+            let lastPos = { x: 0, y: 0, z: this.settings.safeZ }; // Start at safeZ
+            
+            const rapidFeed = this.settings.rapidFeedRate;
             
             for (const plan of plans) {
                 for (const cmd of plan.commands) {
@@ -966,14 +969,18 @@
                     const dist = Math.hypot(nextPos.x - lastPos.x, nextPos.y - lastPos.y, nextPos.z - lastPos.z);
                     
                     let feed = 100;
+                    
                     if (cmd.type === 'RAPID' || cmd.type === 'RETRACT') {
-                        feed = 1000;
+                        feed = rapidFeed;
                     } else if (cmd.f) {
                         feed = cmd.f;
                     }
                     
-                    if (dist > 0 && feed > 0) {
-                        totalTime += (dist / feed) * 60;
+                    if (dist > 0) {
+                        totalDistance += dist; // Add to total distance
+                        if (feed > 0) {
+                            totalTime += (dist / feed) * 60; // Time in seconds
+                        }
                     }
                     
                     if (cmd.type === 'DWELL') {
@@ -984,7 +991,7 @@
                 }
             }
             
-            return totalTime;
+            return { estimatedTime: totalTime, totalDistance: totalDistance };
         }
     }
     

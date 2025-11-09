@@ -26,16 +26,22 @@
 
 (function() {
     'use strict';
+
+    const config = window.PCBCAMConfig || {};
+    const geomConfig = config.geometry || {};
+    const debugConfig = config.debug || {};
     
     class ArcReconstructor {
         constructor(options = {}) {
-            this.debug = options.debug || false;
-            this.scale = options.scale || 10000;
+            this.options = {
+                scale: options.scale || 10000 // Unnused?
+            };
             
             // Simplified thresholds
-            this.minArcPoints = 2;  // Allow 2-point arcs
-            this.maxGapPoints = 1;  // Maximum untagged points between tagged sequences
-            this.minCirclePoints = 4; // Reduced: small circles may have fewer points
+            const arcConfig = geomConfig.arcReconstruction || {};
+            this.minArcPoints = arcConfig.minArcPoints || 2;
+            this.maxGapPoints = arcConfig.maxGapPoints || 1; // Maximum untagged points between tagged sequences
+            this.minCirclePoints = arcConfig.minCirclePoints || 4; // Reduced: small circles may have fewer points
             
             // Use global registry
             this.registry = window.globalCurveRegistry;
@@ -78,9 +84,7 @@
                 groupsFound: 0,
                 wrappedGroups: 0
             };
-            if (this.debug) {
-                console.log('[ArcReconstructor] Stats reset');
-            }
+            this.debug('Stats reset');
         }
         
         // Get curve by ID from global registry
@@ -90,22 +94,18 @@
         
         // Main reconstruction method - process fused primitives
         processForReconstruction(primitives) {
-            console.log(`[ArcReconstructor] processForReconstruction() called with ${primitives ? primitives.length : 0} primitives.`);
+            this.debug(`processForReconstruction() called with ${primitives ? primitives.length : 0} primitives.`);
             
             if (!primitives || primitives.length === 0) return primitives;
             
-            if (this.debug) {
-                console.log(`[ArcReconstructor] Processing ${primitives.length} fused primitives`);
-            }
+            this.debug(`Processing ${primitives.length} fused primitives`);
             
             const reconstructed = [];
             
             for (const primitive of primitives) {
                 // Check if this is a composite primitive with contours
                 if (primitive.type === 'path' && primitive.contours && primitive.contours.length > 0) {
-                    if (this.debug) {
-                        console.log(`[ArcReconstructor] Unpacking composite primitive with ${primitive.contours.length} contours`);
-                    }
+                    this.debug(`Unpacking composite primitive with ${primitive.contours.length} contours`);
                     
                     // Process each contour as a separate primitive
                     for (const contour of primitive.contours) {
@@ -168,7 +168,7 @@
                 }
             }
             
-            if (this.debug) {
+            if (debugConfig.enabled) {
                 const holes = reconstructed.filter(p => p.properties?.isHole).length;
                 console.log(`[ArcReconstructor] Results: ${primitives.length} → ${reconstructed.length} primitives (${holes} holes)`);
                 console.log(`[ArcReconstructor] Full circles: ${this.stats.fullCircles}, Partial arcs: ${this.stats.partialArcs}`);
@@ -301,7 +301,7 @@
         attemptFullCircleReconstruction(group, primitive) {
             const curveData = this.getCurve(group.curveId); //
             if (!curveData || curveData.type !== 'circle') { //
-                console.log(`[ArcReconstructor] Failed curve data check for ID ${group.curveId}.`);
+                console.warn(`[ArcReconstructor] Failed curve data check for ID ${group.curveId}.`);
                 return null;
             }
 
@@ -450,14 +450,14 @@
 
             // 4. Perform validation check
             const newPointCount = finalPoints.length;
-            if (this.debug && detectedArcSegments.length > 0) {
+            if (debugConfig.enabled && detectedArcSegments.length > 0) {
                 // It can be equal if only 2 points were replaced by 2 points
                 if (newPointCount >= originalPointCount) {
-                    console.warn(`[ArcReconstructor VALIDATION] Point count not reduced or increased: ${originalPointCount} -> ${newPointCount}. This is acceptable if arcs had few segments.`, {
+                    console.warn(`[ArcReconstructor] Point count not reduced or increased: ${originalPointCount} -> ${newPointCount}. This is acceptable if arcs had few segments.`, {
                         primitive: primitive
                     });
                 } else {
-                    console.log(`[ArcReconstructor VALIDATION PASS] Point count reduced: ${originalPointCount} -> ${newPointCount}`);
+                    this.debug(`Point count reduced: ${originalPointCount} -> ${newPointCount}`);
                 }
             }
         
@@ -562,8 +562,8 @@
                 if (sweepAngle < 0) sweepAngle += 2 * Math.PI;
             }
             
-            if (this.debug && curveData.clockwise !== actuallyClockwise) {
-                console.log(`[ArcReconstructor] Corrected: ${curveData.clockwise ? 'CW' : 'CCW'} → ${actuallyClockwise ? 'CW' : 'CCW'}`);
+            if (curveData.clockwise !== actuallyClockwise) {
+                this.debug(`Corrected: ${curveData.clockwise ? 'CW' : 'CCW'} → ${actuallyClockwise ? 'CW' : 'CCW'}`);
             }
             
             return {
@@ -575,8 +575,18 @@
                 clockwise: actuallyClockwise
             };
         }
+
+                
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[ArcReconstructor] ${message}`, data);
+                } else {
+                    console.log(`[ArcReconstructor] ${message}`);
+                }
+            }
+        }
         
-        // Get statistics
         getStats() {
             const globalStats = this.registry.getStats ? this.registry.getStats() : {};
             const successRate = this.stats.registered > 0 ? 
@@ -592,7 +602,5 @@
         }
     }
     
-    // Export
     window.ArcReconstructor = ArcReconstructor;
-    
 })();

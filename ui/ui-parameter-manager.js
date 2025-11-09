@@ -1,6 +1,6 @@
 /**
  * @file        ui/ui-parameter-manager.js
- * @description Enhanced parameter management with state storage and validation
+ * @description Parameter input management and validation
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -29,6 +29,9 @@
     
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
+    const uiConfig = config.ui || {};
+    const validationRules = uiConfig.validation || {};
+    const paramOptions = uiConfig.parameterOptions || {};
     
     class ParameterManager {
         constructor() {
@@ -43,7 +46,6 @@
             this.currentOperationId = null;
             this.currentStage = null;
             
-            // Validation rules
             this.validators = this.initializeValidators();
             
             // Change listeners
@@ -52,177 +54,105 @@
         
         initializeDefinitions() {
             return {
-                // Tool parameters
+                // STAGE 1: GEOMETRY
                 tool: {
                     type: 'select',
                     label: 'Tool',
-                    stage: 'source',
+                    stage: 'geometry',
                     category: 'tool'
                 },
                 toolDiameter: {
                     type: 'number',
                     label: 'Tool Diameter',
                     unit: 'mm',
-                    min: 0.01,
-                    max: 10,
-                    step: 0.001,
-                    stage: 'source',
+                    ...validationRules.toolDiameter,
+                    stage: 'geometry',
                     category: 'tool'
                 },
-                
-                // Offset generation
                 passes: {
                     type: 'number',
                     label: 'Number of Passes',
-                    min: 1,
-                    max: 10,
-                    step: 1,
-                    stage: 'source',
+                    ...validationRules.passes,
+                    stage: 'geometry',
                     category: 'offset'
                 },
                 stepOver: {
                     type: 'number',
                     label: 'Step Over',
                     unit: '%',
-                    min: 10,
-                    max: 100,
-                    step: 5,
-                    stage: 'source',
+                    ...validationRules.stepOver,
+                    stage: 'geometry',
                     category: 'offset'
                 },
                 combineOffsets: {
                     type: 'checkbox',
                     label: 'Combine Passes',
                     default: true,
-                    stage: 'source',
+                    stage: 'geometry',
                     category: 'offset'
                 },
-                
-                // Z-axis parameters
+                millHoles: {
+                    type: 'checkbox',
+                    label: 'Mill Holes',
+                    default: true,
+                    stage: 'geometry',
+                    category: 'drill',
+                    operationType: 'drill'
+                },
+                cutSide: {
+                    type: 'select',
+                    label: 'Cut Side',
+                    options: paramOptions.cutSide,
+                    default: 'outside',
+                    stage: 'geometry',
+                    category: 'cutout',
+                    operationType: 'cutout'
+                },
+
+                // STAGE 2: STRATEGY
                 cutDepth: {
                     type: 'number',
                     label: 'Cut Depth',
                     unit: 'mm',
-                    min: -10,
-                    max: 0,
-                    step: 0.001,
-                    stage: 'offset',
+                    ...validationRules.cutDepth,
+                    stage: 'strategy',
                     category: 'depth'
                 },
                 depthPerPass: {
                     type: 'number',
                     label: 'Depth per Pass',
                     unit: 'mm',
-                    min: 0.001,
-                    max: 5,
-                    step: 0.001,
-                    stage: 'offset',
+                    ...validationRules.depthPerPass,
+                    stage: 'strategy',
                     category: 'depth',
                     conditional: 'multiDepth'
                 },
                 multiDepth: {
                     type: 'checkbox',
                     label: 'Multi-depth Cutting',
-                    default: true, // connect to config.js in the future.
-                    stage: 'offset',
+                    default: true,
+                    stage: 'strategy',
                     category: 'depth'
                 },
-                travelZ: {
-                    type: 'number',
-                    label: 'Travel Z',
-                    unit: 'mm',
-                    min: 0,
-                    max: 50,
-                    step: 0.1,
-                    stage: 'offset',
-                    category: 'depth'
-                },
-                safeZ: {
-                    type: 'number',
-                    label: 'Safe Z',
-                    unit: 'mm',
-                    min: 0,
-                    max: 50,
-                    step: 0.1,
-                    stage: 'offset',
-                    category: 'depth'
-                },
-                
-                // Feed and speed
-                feedRate: {
-                    type: 'number',
-                    label: 'Feed Rate',
-                    unit: 'mm/min',
-                    min: 1,
-                    max: 5000,
-                    step: 10,
-                    stage: 'offset',
-                    category: 'feeds'
-                },
-                plungeRate: {
-                    type: 'number',
-                    label: 'Plunge Rate',
-                    unit: 'mm/min',
-                    min: 1,
-                    max: 1000,
-                    step: 5,
-                    stage: 'offset',
-                    category: 'feeds'
-                },
-                spindleSpeed: {
-                    type: 'number',
-                    label: 'Spindle Speed',
-                    unit: 'RPM',
-                    min: 100,
-                    max: 30000,
-                    step: 100,
-                    stage: 'offset',
-                    category: 'feeds'
-                },
-                
-                // Strategy
                 direction: {
                     type: 'select',
                     label: 'Cut Direction',
-                    options: [
-                        { value: 'climb', label: 'Climb' },
-                        { value: 'conventional', label: 'Conventional' }
-                    ],
-                    stage: 'offset',
+                    options: paramOptions.direction,
+                    stage: 'strategy',
                     category: 'strategy'
                 },
                 entryType: {
                     type: 'select',
                     label: 'Entry Type',
-                    options: [
-                        { value: 'plunge', label: 'Plunge' },
-                        { value: 'ramp', label: 'Ramp' },
-                        { value: 'helix', label: 'Helix' }
-                    ],
-                    stage: 'offset',
+                    options: paramOptions.entryType,
+                    stage: 'strategy',
                     category: 'strategy'
-                },
-                
-                // Drilling specific
-                millHoles: {
-                    type: 'checkbox',
-                    label: 'Mill Holes',
-                    default: true,
-                    stage: 'source',
-                    category: 'drill',
-                    operationType: 'drill'
                 },
                 cannedCycle: {
                     type: 'select',
                     label: 'Canned Cycle',
-                    options: [
-                        { value: 'none', label: 'None (G0 + G1)' },
-                        { value: 'G81', label: 'G81 - Simple Drill' },
-                        { value: 'G82', label: 'G82 - Dwell' },
-                        { value: 'G83', label: 'G83 - Peck' },
-                        { value: 'G73', label: 'G73 - Peck (Stepped)' }
-                    ],
-                    stage: 'source',
+                    options: paramOptions.cannedCycle,
+                    stage: 'strategy',
                     category: 'drill',
                     operationType: 'drill',
                     conditional: '!millHoles'
@@ -231,10 +161,8 @@
                     type: 'number',
                     label: 'Peck Depth',
                     unit: 'mm',
-                    min: 0,
-                    max: 5,
-                    step: 0.01,
-                    stage: 'source',
+                    ...validationRules.peckDepth,
+                    stage: 'strategy',
                     category: 'drill',
                     operationType: 'drill'
                 },
@@ -242,10 +170,8 @@
                     type: 'number',
                     label: 'Dwell Time',
                     unit: 's',
-                    min: 0,
-                    max: 10,
-                    step: 0.1,
-                    stage: 'source',
+                    ...validationRules.dwellTime,
+                    stage: 'strategy',
                     category: 'drill',
                     operationType: 'drill'
                 },
@@ -253,35 +179,16 @@
                     type: 'number',
                     label: 'Retract Height',
                     unit: 'mm',
-                    min: 0,
-                    max: 10,
-                    step: 0.01,
-                    stage: 'source',
+                    ...validationRules.retractHeight,
+                    stage: 'strategy',
                     category: 'drill',
                     operationType: 'drill'
-                },
-                
-                // Cutout specific
-                cutSide: {
-                    type: 'select',
-                    label: 'Cut Side',
-                    options: [
-                        { value: 'outside', label: 'Outside' },
-                        { value: 'inside', label: 'Inside' },
-                        { value: 'on', label: 'On Line' }
-                    ],
-                    default: 'outside',
-                    stage: 'source',
-                    category: 'cutout',
-                    operationType: 'cutout'
                 },
                 tabs: {
                     type: 'number',
                     label: 'Number of Tabs',
-                    min: 0,
-                    max: 12,
-                    step: 1,
-                    stage: 'offset',
+                    ...validationRules.tabs,
+                    stage: 'strategy',
                     category: 'cutout',
                     operationType: 'cutout'
                 },
@@ -289,10 +196,8 @@
                     type: 'number',
                     label: 'Tab Width',
                     unit: 'mm',
-                    min: 0.5,
-                    max: 10,
-                    step: 0.1,
-                    stage: 'offset',
+                    ...validationRules.tabWidth,
+                    stage: 'strategy',
                     category: 'cutout',
                     operationType: 'cutout'
                 },
@@ -300,75 +205,86 @@
                     type: 'number',
                     label: 'Tab Height',
                     unit: 'mm',
-                    min: 0.1,
-                    max: 5,
-                    step: 0.1,
-                    stage: 'offset',
+                    ...validationRules.tabHeight,
+                    stage: 'strategy', // 
                     category: 'cutout',
                     operationType: 'cutout'
                 },
-                
-                // Machine config
-                postProcessor: {
-                    type: 'select',
-                    label: 'Post Processor',
-                    options: [
-                        { value: 'grbl', label: 'GRBL' },
-                        { value: 'marlin', label: 'Marlin' },
-                        { value: 'linuxcnc', label: 'LinuxCNC' },
-                        { value: 'mach3', label: 'Mach3' }
-                    ],
-                    stage: 'preview',
-                    category: 'machine'
+
+                // STAGE 3: MACHINE
+                feedRate: {
+                    type: 'number',
+                    label: 'Feed Rate',
+                    unit: 'mm/min',
+                    ...validationRules.feedRate,
+                    stage: 'machine',
+                    category: 'feeds'
                 },
-                workOffset: {
-                    type: 'select',
-                    label: 'Work Offset',
-                    options: [
-                        { value: 'G54', label: 'G54' },
-                        { value: 'G55', label: 'G55' },
-                        { value: 'G56', label: 'G56' }
-                    ],
-                    stage: 'preview',
-                    category: 'machine'
+                plungeRate: {
+                    type: 'number',
+                    label: 'Plunge Rate',
+                    unit: 'mm/min',
+                    ...validationRules.plungeRate,
+                    stage: 'machine',
+                    category: 'feeds'
+                },
+                spindleSpeed: {
+                    type: 'number',
+                    label: 'Spindle Speed',
+                    unit: 'RPM',
+                    ...validationRules.spindleSpeed,
+                    stage: 'machine',
+                    category: 'feeds'
                 },
                 startCode: {
                     type: 'textarea',
                     label: 'Start G-code',
                     rows: 4,
-                    stage: 'preview',
-                    category: 'machine'
+                    stage: 'machine',
+                    category: 'gcode'
                 },
                 endCode: {
                     type: 'textarea',
                     label: 'End G-code',
                     rows: 3,
-                    stage: 'preview',
-                    category: 'machine'
-                }
+                    stage: 'machine',
+                    category: 'gcode'
+                },
             };
         }
-        
+
         initializeValidators() {
-            return {
-                toolDiameter: (val) => val >= 0.01 && val <= 10,
-                passes: (val) => Number.isInteger(val) && val >= 1 && val <= 30,
-                stepOver: (val) => val >= 10 && val <= 100,
-                cutDepth: (val) => val <= 0 && val >= -10,
-                depthPerPass: (val) => val > 0 && val <= 5, // MUST BE POSITIVE
-                feedRate: (val) => val >= 1 && val <= 2000,
-                plungeRate: (val) => val >= 1 && val <= 1000,
-                spindleSpeed: (val) => val >= 100 && val <= 50000
-            };
+            // Dynamically build validator based on the definitions, which are based on the config.
+            // This is the SINGLE source of truth for validation logic.
+            const validators = {};
+            for (const [name, def] of Object.entries(this.parameterDefinitions)) {
+                if (def.type === 'number') {
+                    // Create a validation function for this number
+                    validators[name] = (val) => {
+                        const num = parseFloat(val);
+                        if (isNaN(num)) return { success: false, error: `${def.label} must be a number` };
+                        
+                        if (def.min !== undefined && num < def.min) {
+                            return { success: false, error: `${def.label} must be at least ${def.min}`, correctedValue: def.min };
+                        }
+                        if (def.max !== undefined && num > def.max) {
+                            return { success: false, error: `${def.label} must be no more than ${def.max}`, correctedValue: def.max };
+                        }
+                        return { success: true, value: num };
+                    };
+                }
+                // Add more validators for 'select', 'checkbox' etc. if needed
+            }
+            return validators;
         }
         
         // Get or create state for an operation
         getOperationState(operationId) {
             if (!this.operationStates.has(operationId)) {
                 this.operationStates.set(operationId, {
-                    source: {},
-                    offset: {},
-                    preview: {}
+                    geometry: {},
+                    strategy: {},
+                    machine: {}
                 });
             }
             return this.operationStates.get(operationId);
@@ -380,49 +296,54 @@
             return state[stage] || {};
         }
         
-        // Set a single parameter
         setParameter(operationId, stage, name, value) {
             const state = this.getOperationState(operationId);
             if (!state[stage]) state[stage] = {};
             
             // Validate if validator exists
             if (this.validators[name]) {
-                if (!this.validators[name](value)) {
-                    console.warn(`Invalid value for ${name}: ${value}`);
-                    return false;
+                const result = this.validators[name](value);
+
+                if (!result.success) {
+                    this.debug(`Invalid value for ${name}: ${value}. ${result.error}`);
+                    // If validation failed but provided a corrected value (clamping), we'll set that corrected value.
+                    if (result.correctedValue !== undefined) {
+                        state[stage][name] = result.correctedValue;
+                        this.markDirty(operationId, stage);
+                        this.notifyChange(operationId, stage, name, result.correctedValue);
+                        // Return the error AND the value it was changed to
+                        return { success: false, error: result.error, correctedValue: result.correctedValue };
+                    }
+                    // If no corrected value, just return the failure
+                    return { success: false, error: result.error, correctedValue: state[stage][name] }; // Return old value
                 }
+                
+                // Validation succeeded, update the value
+                value = result.value;
             }
             
+            // Non-validated type (e.g., checkbox, select) or valid number
             state[stage][name] = value;
+            this.markDirty(operationId, stage);
+            this.notifyChange(operationId, stage, name, value);
             
-            // Mark as dirty
+            return { success: true, value: value };
+        }
+        
+        markDirty(operationId, stage) {
             if (!this.dirtyFlags.has(operationId)) {
                 this.dirtyFlags.set(operationId, new Set());
             }
             this.dirtyFlags.get(operationId).add(stage);
-            
-            // Notify listeners
-            this.notifyChange(operationId, stage, name, value);
-            
-            return true;
         }
-        
-        // Set multiple parameters
+
+        // Set multiple parameters (less used by UI, more by loading logic)
         setParameters(operationId, stage, params) {
             const state = this.getOperationState(operationId);
             if (!state[stage]) state[stage] = {};
             
-            Object.assign(state[stage], params);
-            
-            // Mark as dirty
-            if (!this.dirtyFlags.has(operationId)) {
-                this.dirtyFlags.set(operationId, new Set());
-            }
-            this.dirtyFlags.get(operationId).add(stage);
-            
-            // Notify listeners
             for (const [name, value] of Object.entries(params)) {
-                this.notifyChange(operationId, stage, name, value);
+                this.setParameter(operationId, stage, name, value);
             }
         }
         
@@ -430,9 +351,9 @@
         getAllParameters(operationId) {
             const state = this.getOperationState(operationId);
             return {
-                ...state.source,
-                ...state.offset,
-                ...state.preview
+                ...state.geometry,
+                ...state.strategy,
+                ...state.machine
             };
         }
         
@@ -447,9 +368,7 @@
             // Clear dirty flag
             this.dirtyFlags.delete(operation.id);
             
-            if (debugConfig.enabled) {
-                console.log(`[ParameterManager] Committed ${Object.keys(params).length} parameters to operation ${operation.id}`);
-            }
+            this.debug(`Committed ${Object.keys(params).length} parameters to operation ${operation.id}`);
         }
         
         // Load parameters from operation
@@ -465,7 +384,6 @@
             for (const [name, def] of Object.entries(this.parameterDefinitions)) {
                 if (!def.stage) continue; // Not a parameter with a stage
 
-                // Find the value: 1. op.settings, 2. op.settings.tool, 3. definition.default, 4. config default
                 let value;
 
                 // 1. Check for flat param in opSettings
@@ -480,20 +398,20 @@
                     value = opSettings.tool.diameter;
                 }
 
-                // 3. Check definition default
+                // 3. Check definition default (e.g., `default: true` for a checkbox)
                 if (value === undefined) {
                     value = def.default;
                 }
                 
-                // 4. Check config default
+                // 4. Check config default (e.g., default passes for "isolation")
                 if (value === undefined) {
                     value = defaults[name];
                 }
                 
                 // If a value was found, set it in the manager's state
                 if (value !== undefined) {
-                    if (!state[def.stage]) state[def.stage] = {};
-                    state[def.stage][name] = value;
+                    // Use the setParameter logic to validate/clamp on load
+                    this.setParameter(operation.id, def.stage, name, value);
                 }
             }
             
@@ -523,18 +441,21 @@
             return params;
         }
         
-        // Validate all parameters for an operation
+        // Validate all parameters for an operation (used before a big action)
         validateOperation(operationId) {
             const params = this.getAllParameters(operationId);
             const errors = [];
             
             for (const [name, value] of Object.entries(params)) {
-                if (this.validators[name] && !this.validators[name](value)) {
-                    errors.push({
-                        parameter: name,
-                        value: value,
-                        message: `Invalid value for ${name}`
-                    });
+                if (this.validators[name]) {
+                    const result = this.validators[name](value);
+                    if (!result.success) {
+                        errors.push({
+                            parameter: name,
+                            value: value,
+                            message: result.error || `Invalid value for ${name}`
+                        });
+                    }
                 }
             }
             
@@ -552,20 +473,20 @@
             const enableMultiDepth = (operationType === 'drill' || operationType === 'cutout');
             
             return {
-                passes: opConfig.defaultSettings?.passes || 1,
-                stepOver: opConfig.defaultSettings?.stepOver || 50,
-                cutDepth: opConfig.cutting?.cutDepth || -0.05,
-                depthPerPass: opConfig.cutting?.passDepth || 0.05,
+                passes: opConfig.defaultSettings?.passes,
+                stepOver: opConfig.defaultSettings?.stepOver,
+                cutDepth: opConfig.cutting?.cutDepth,
+                depthPerPass: opConfig.cutting?.passDepth,
                 multiDepth: enableMultiDepth,
-                feedRate: opConfig.cutting?.cutFeed || 150,
-                plungeRate: opConfig.cutting?.plungeFeed || 50,
-                spindleSpeed: opConfig.cutting?.spindleSpeed || 12000,
-                direction: opConfig.defaultSettings?.direction || 'climb',
-                entryType: opConfig.defaultSettings?.entryType || 'plunge',
-                travelZ: config.machine?.heights?.travelZ || 2.0,
-                safeZ: config.machine?.heights?.safeZ || 5.0,
-                postProcessor: config.gcode?.postProcessor || 'grbl',
-                workOffset: 'G54'
+                feedRate: opConfig.cutting?.cutFeed,
+                plungeRate: opConfig.cutting?.plungeFeed,
+                spindleSpeed: opConfig.cutting?.spindleSpeed,
+                direction: opConfig.defaultSettings?.direction,
+                entryType: opConfig.defaultSettings?.entryType,
+                travelZ: config.machine?.heights?.travelZ,
+                safeZ: config.machine?.heights?.safeZ,
+                postProcessor: config.gcode?.postProcessor,
+                workOffset: paramOptions.workOffset?.[0]?.value // 'G54'
             };
         }
         
@@ -607,6 +528,16 @@
         clearOperation(operationId) {
             this.operationStates.delete(operationId);
             this.dirtyFlags.delete(operationId);
+        }
+
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[ParamManager] ${message}`, data);
+                } else {
+                    console.log(`[ParamManager] ${message}`);
+                }
+            }
         }
     }
     

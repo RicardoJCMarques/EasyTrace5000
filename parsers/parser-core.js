@@ -36,7 +36,6 @@
     class ParserCore {
         constructor(options = {}) {
             this.options = {
-                debug: options.debug !== undefined ? options.debug : debugConfig.enabled,
                 units: 'mm',
                 format: { integer: 3, decimal: 3 },
                 ...options
@@ -132,9 +131,7 @@
             
             if (Math.abs(coordinates.x - xRounded) > precision * 0.1 || 
                 Math.abs(coordinates.y - yRounded) > precision * 0.1) {
-                if (this.debug) {
-                    console.log(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
-                }
+                this.debug(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
             }
             
             return true;
@@ -252,11 +249,12 @@
         }
         
         // Edge deduplication utilities
-        createEdgeKey(p1, p2, precision = 3) {
-            const x1 = p1.x.toFixed(precision);
-            const y1 = p1.y.toFixed(precision);
-            const x2 = p2.x.toFixed(precision);
-            const y2 = p2.y.toFixed(precision);
+        createEdgeKey(p1, p2) {
+            const keyPrecision = geomConfig.edgeKeyPrecision || 3;
+            const x1 = p1.x.toFixed(keyPrecision);
+            const y1 = p1.y.toFixed(keyPrecision);
+            const x2 = p2.x.toFixed(keyPrecision);
+            const y2 = p2.y.toFixed(keyPrecision);
             return `${x1},${y1}-${x2},${y2}`;
         }
         
@@ -300,18 +298,15 @@
                 
                 if (edgeMap.has(edgeKey) || edgeMap.has(reverseKey)) {
                     removedCount++;
-                    if (this.debug) {
-                        console.log(`Removed duplicate trace: (${obj.start.x.toFixed(3)}, ${obj.start.y.toFixed(3)}) to (${obj.end.x.toFixed(3)}, ${obj.end.y.toFixed(3)})`);
-                    }
+                    this.debug(`Removed duplicate trace: (${obj.start.x.toFixed(3)}, ${obj.start.y.toFixed(3)}) to (${obj.end.x.toFixed(3)}, ${obj.end.y.toFixed(3)})`);
                 } else {
                     kept.push(obj);
                 }
             });
             
             if (removedCount > 0) {
-                if (this.debug) {
-                    console.log(`Removed ${removedCount} duplicate traces`);
-                }
+                this.debug(`Removed ${removedCount} duplicate traces`);
+
             }
             
             return kept;
@@ -326,7 +321,7 @@
         
         // Logging utilities
         debug(message, data = null) {
-            if (this.options.debug) {
+            if (debugConfig.enabled) {
                 if (data) {
                     console.log(`[Parser] ${message}`, data);
                 } else {
@@ -336,7 +331,7 @@
         }
         
         logStatistics() {
-            if (!this.options.debug) return;
+            if (!debugConfig.enabled) return;
             
             this.debug('Parse Statistics:');
             this.debug(`  Lines processed: ${this.stats.linesProcessed}`);
@@ -352,7 +347,5 @@
         }
     }
     
-    // Export
     window.ParserCore = ParserCore;
-    
 })();

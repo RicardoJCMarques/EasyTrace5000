@@ -30,6 +30,7 @@
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
     const uiConfig = config.ui || {};
+    const renderDefaults = config.rendering?.defaultOptions || {};
     
     class UIControls {
         constructor(ui) {
@@ -38,7 +39,7 @@
             this.coordinateSystem = null;
             
             // Arc reconstruction state
-            this.arcReconstructionEnabled = false;
+            this.arcReconstructionEnabled = renderDefaults.enableArcReconstruction || false;
             
             // Control groups
             this.debugControls = [];
@@ -57,7 +58,7 @@
             this.renderer = renderer;
             this.coordinateSystem = coordinateSystem;
 
-            console.log("[UIControls] Initializing controls...");
+            this.debug("Initializing controls...");
 
             // Directly call setup methods to attach listeners
             this.setupVisualizationToggles(); // Centralized toggle setup
@@ -75,56 +76,84 @@
                 });
             }
 
-            console.log("[UIControls] Controls initialized.");
+            this.debug("Controls initialized.");
             return true;
         }
 
         setupVisualizationToggles() {
-             if (!this.renderer) return;
+            if (!this.renderer) return;
 
-             console.log("[UIControls] Setting up visualization toggles...");
+            this.debug("Setting up visualization toggles...");
 
             const toggleMappings = [
                 // Display Group
-                { id: 'show-grid', option: 'showGrid', default: true, triggersRender: true },
-                { id: 'show-wireframe', option: 'showWireframe', default: false, triggersRender: true },
-                { id: 'show-bounds', option: 'showBounds', default: false, triggersRender: true },
-                { id: 'show-rulers', option: 'showRulers', default: true, triggersRender: true },
+                { id: 'show-grid', option: 'showGrid', default: renderDefaults.showGrid, triggersRender: true },
+                { id: 'show-wireframe', option: 'showWireframe', default: renderDefaults.showWireframe, triggersRender: true },
+                { id: 'show-bounds', option: 'showBounds', default: renderDefaults.showBounds, triggersRender: true },
+                { id: 'show-rulers', option: 'showRulers', default: renderDefaults.showRulers, triggersRender: true },
                 // Layers Group
-                { id: 'show-regions', option: 'showRegions', default: true, triggersRender: true },
-                { id: 'show-traces', option: 'showTraces', default: true, triggersRender: true },
-                { id: 'show-pads', option: 'showPads', default: true, triggersRender: true },
-                { id: 'show-drills', option: 'showDrills', default: true, triggersRender: true },
-                { id: 'show-cutouts', option: 'showCutouts', default: true, triggersRender: true },
-                { id: 'show-offsets', option: 'showOffsets', default: true, triggersUpdate: true },
-                { id: 'show-previews', option: 'showPreviews', default: true, triggersUpdate: true },
+                { id: 'show-regions', option: 'showRegions', default: renderDefaults.showRegions, triggersRender: true },
+                { id: 'show-traces', option: 'showTraces', default: renderDefaults.showTraces, triggersRender: true },
+                { id: 'show-pads', option: 'showPads', default: renderDefaults.showPads, triggersRender: true },
+                { id: 'show-drills', option: 'showDrills', default: renderDefaults.showDrills, triggersRender: true },
+                { id: 'show-cutouts', option: 'showCutouts', default: renderDefaults.showCutouts, triggersRender: true },
+                { id: 'show-offsets', option: 'showOffsets', default: renderDefaults.showOffsets, triggersUpdate: true },
+                { id: 'show-previews', option: 'showPreviews', default: renderDefaults.showPreviews, triggersUpdate: true },
                 // Advanced Group
-                { id: 'fuse-geometry', option: 'fuseGeometry', default: false, triggersUpdate: true }, // Triggers full update
-                { id: 'show-preprocessed', option: 'showPreprocessed', default: false, triggersUpdate: true }, // Triggers full update
-                { id: 'enable-arc-reconstruction', option: 'enableArcReconstruction', default: false, triggersUpdate: true }, // Triggers full update
-                { id: 'debug-points', option: 'debugPoints', default: false, triggersRender: true }, // Simple render
-                { id: 'debug-paths', option: 'debugPaths', default: false, triggersRender: true }, // Simple render
-                { id: 'black-and-white', option: 'blackAndWhite', default: false, triggersRender: true }
+                { id: 'fuse-geometry', option: 'fuseGeometry', default: renderDefaults.fuseGeometry, triggersUpdate: true }, // Triggers full update
+                { id: 'show-preprocessed', option: 'showPreprocessed', default: renderDefaults.showPreprocessed, triggersUpdate: true }, // Triggers full update
+                { id: 'enable-arc-reconstruction', option: 'enableArcReconstruction', default: renderDefaults.enableArcReconstruction, triggersUpdate: true }, // Triggers full update
+                { id: 'debug-points', option: 'debugPoints', default: renderDefaults.debugPoints, triggersRender: true }, // Simple render
+                { id: 'debug-paths', option: 'debugPaths', default: renderDefaults.debugPaths, triggersRender: true }, // Simple render
+                { id: 'black-and-white', option: 'blackAndWhite', default: renderDefaults.blackAndWhite, triggersRender: true },
+                // Log Group
+                { id: 'debug-log-toggle', option: 'showDebugInLog', default: renderDefaults.showDebugInLog, triggersRender: false }
             ];
 
             toggleMappings.forEach(mapping => {
                 const element = document.getElementById(mapping.id);
                 if (!element) {
-                     console.warn(`[UIControls] Toggle element not found: #${mapping.id}`);
+                    console.warn(`[UIControls] Toggle element not found: #${mapping.id}`);
                     return;
                 }
 
-                // Initialize state from renderer options or defaults
-                let initialState = this.renderer.options[mapping.option] !== undefined
-                                  ? this.renderer.options[mapping.option]
-                                  : mapping.default;
+                // Determine initial state from the correct config source
+                let initialState;
+                if (mapping.option === 'showDebugInLog') {
+                    // This toggle reads the *global* debug flag
+                    initialState = debugConfig.enabled || false;
+                } else {
+                    // All other toggles read from the renderer's state
+                    initialState = this.renderer.options[mapping.option] !== undefined
+                                ? this.renderer.options[mapping.option]
+                                : mapping.default;
+                }
                 
-                this.renderer.options[mapping.option] = initialState;
+                // Set the element's checked state
+                element.checked = initialState;
+                
+                // Also set the renderer's option (for non-debug toggles)
+                if (mapping.option !== 'showDebugInLog') {
+                    this.renderer.options[mapping.option] = initialState;
+                }
 
                 // Attach listener
                 element.addEventListener('change', async (e) => {
-                     console.log(`[UIControls] Toggle changed: ${mapping.option} = ${e.target.checked}`);
+                    this.debug(`Toggle changed: ${mapping.option} = ${e.target.checked}`);
                     const isChecked = e.target.checked;
+                    
+                    // Handle the debug log toggle *first* and then *return*.
+                    if (mapping.option === 'showDebugInLog') {
+                        // This toggle *controls* the global debug flag
+                        if (window.PCBCAMConfig) {
+                            window.PCBCAMConfig.debug.enabled = isChecked;
+                        }
+                        // Manually tell the status manager to update its log view
+                        if (this.ui.statusManager) {
+                            this.ui.statusManager.setDebugVisibility(isChecked);
+                        }
+                        return; // This toggle doesn't trigger a render or update
+                    }
 
                     // Special handling for dependent toggles
                     if (mapping.id === 'enable-arc-reconstruction' && isChecked && !this.renderer.options.fuseGeometry) {
@@ -145,34 +174,33 @@
                     // Update internal state if necessary (used by other logic)
                     if (mapping.option === 'enableArcReconstruction') {
                         this.arcReconstructionEnabled = isChecked;
-                         this.ui.viewState.enableArcReconstruction = isChecked; // Keep UI state synced
+                        this.ui.viewState.enableArcReconstruction = isChecked; // Keep UI state synced
                         this.updateArcReconstructionStats(); // Update stats display
                     }
                      if (mapping.option === 'fuseGeometry') {
-                          this.ui.viewState.fuseGeometry = isChecked; // Keep UI state synced
-                         if (!isChecked) this.resetFusionStates(); // Reset dependents if fusion is turned off
+                        this.ui.viewState.fuseGeometry = isChecked; // Keep UI state synced
+                        if (!isChecked) this.resetFusionStates(); // Reset dependents if fusion is turned off
                     }
-                     if (mapping.option === 'showPreprocessed') {
-                          this.ui.viewState.showPreprocessed = isChecked; // Keep UI state synced
+                    if (mapping.option === 'showPreprocessed') {
+                        this.ui.viewState.showPreprocessed = isChecked; // Keep UI state synced
                     }
-
 
                     // Trigger appropriate update
                     if (mapping.triggersUpdate) {
-                         console.log(`[UIControls] Triggering full UI update for ${mapping.option}`);
+                        this.debug(`Triggering full UI update for ${mapping.option}`);
                         if (mapping.option === 'enableArcReconstruction' || mapping.option === 'fuseGeometry') {
-                             if (this.ui.core.geometryProcessor) {
-                                  this.ui.core.geometryProcessor.clearCachedStates(); // Clear cache on fusion/arc changes
-                             }
+                            if (this.ui.core.geometryProcessor) {
+                                this.ui.core.geometryProcessor.clearCachedStates(); // Clear cache on fusion/arc changes
+                            }
                         }
                         await this.ui.updateRendererAsync(); // Full update involves re-processing geometry
                     } else if (mapping.triggersRender) {
-                         console.log(`[UIControls] Triggering simple render for ${mapping.option}`);
+                        this.debug(`Triggering simple render for ${mapping.option}`);
                         this.renderer.render(); // Simple render just redraws
                     }
                 });
             });
-             console.log("[UIControls] Visualization toggles setup complete.");
+            this.debug("Visualization toggles setup complete.");
         }
         
         setupOffsetControls() {
@@ -347,8 +375,9 @@
                 this.inputTracking.isUpdating = true;
                 
                 const offset = this.coordinateSystem.getOffsetFromSaved();
-                const newXValue = offset.x.toFixed(1);
-                const newYValue = offset.y.toFixed(1);
+                const precision = config.gcode?.precision?.coordinates || 3;
+                const newXValue = offset.x.toFixed(precision);
+                const newYValue = offset.y.toFixed(precision);
                 
                 xInput.value = newXValue;
                 yInput.value = newYValue;
@@ -394,15 +423,18 @@
             if (result.success) {
                 this.inputTracking.isUpdating = true;
                 
+                const precision = config.gcode?.precision?.coordinates || 3;
+                const zeroValue = (0).toFixed(precision);
+
                 const xInput = document.getElementById('x-offset');
                 const yInput = document.getElementById('y-offset');
                 if (xInput) {
-                    xInput.value = '0';
-                    this.inputTracking.lastXValue = '0';
+                    xInput.value = zeroValue;
+                    this.inputTracking.lastXValue = zeroValue;
                 }
                 if (yInput) {
-                    yInput.value = '0';
-                    this.inputTracking.lastYValue = '0';
+                    yInput.value = zeroValue;
+                    this.inputTracking.lastYValue = zeroValue;
                 }
                 
                 this.inputTracking.isUpdating = false;
@@ -493,6 +525,34 @@
             });
         }
 
+        /**
+         * Finds and collapses all collapsible sections in the right sidebar.
+         * This is called by the TreeManager to ensure the PropertyInspector is visible when a new item is selected.
+         */
+        collapseRightSidebar() {
+            this.debug('Collapsing right sidebar sections...');
+            const rightSidebar = document.getElementById('sidebar-right');
+            if (!rightSidebar) return;
+
+            // Find all collapsible content panels *within the right sidebar*
+            const sections = rightSidebar.querySelectorAll('.section-content.collapsible');
+            
+            // This is safer than querying the headers, as it finds the content directly
+            sections.forEach(content => {
+                // Find the corresponding header and indicator
+                const header = content.previousElementSibling;
+                const indicator = header?.querySelector('.collapse-indicator');
+
+                // Add the 'collapsed' class to hide the content
+                content.classList.add('collapsed');
+                
+                // Also update the '▼' indicator
+                if (indicator) {
+                    indicator.classList.add('collapsed');
+                }
+            });
+        }
+
         setupVizPanelButton() {
             const btn = document.getElementById('show-viz-panel-btn');
             const panel = document.getElementById('viz-panel');
@@ -526,27 +586,36 @@
         setupMachineSettings() {
             const thicknessInput = document.getElementById('pcb-thickness');
             if (thicknessInput) {
+                thicknessInput.value = config.machine?.pcb?.thickness;
                 thicknessInput.addEventListener('change', (e) => {
                     this.ui.core.updateSettings('pcb', { thickness: parseFloat(e.target.value) });
+                    this.ui.parameterManager.updateDefault('pcbThickness', parseFloat(e.target.value));
                 });
             }
             
             const safeZInput = document.getElementById('safe-z');
             if (safeZInput) {
+                safeZInput.value = config.machine?.heights?.safeZ;
                 safeZInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { safeZ: parseFloat(e.target.value) });
+                    const val = parseFloat(e.target.value);
+                    this.ui.core.updateSettings('machine', { safeZ: val });
+                    this.parameterManager.updateDefault('safeZ', val);
                 });
             }
             
             const travelZInput = document.getElementById('travel-z');
             if (travelZInput) {
+                travelZInput.value = config.machine?.heights?.travelZ;
                 travelZInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { travelZ: parseFloat(e.target.value) });
+                    const val = parseFloat(e.target.value);
+                    this.ui.core.updateSettings('machine', { travelZ: val });
+                    this.parameterManager.updateDefault('travelZ', val);
                 });
             }
             
             const rapidFeedInput = document.getElementById('rapid-feed');
             if (rapidFeedInput) {
+                rapidFeedInput.value = config.machine?.speeds?.rapidFeed;
                 rapidFeedInput.addEventListener('change', (e) => {
                     this.ui.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
                 });
@@ -554,20 +623,67 @@
             
             const postProcessorSelect = document.getElementById('post-processor');
             if (postProcessorSelect) {
+                postProcessorSelect.innerHTML = '';
+                const options = config.ui?.parameterOptions?.postProcessor || [{ value: 'grbl', label: 'GRBL (Default)' }];
+                options.forEach(opt => {
+                    const optionEl = document.createElement('option');
+                    optionEl.value = opt.value;
+                    optionEl.textContent = opt.label;
+                    postProcessorSelect.appendChild(optionEl);
+                });
+                
+                postProcessorSelect.value = config.gcode?.postProcessor;
                 postProcessorSelect.addEventListener('change', (e) => {
                     this.ui.core.updateSettings('gcode', { postProcessor: e.target.value });
+                    this.parameterManager.updateDefault('postProcessor', e.target.value);
                 });
             }
             
             const gcodeUnitsSelect = document.getElementById('gcode-units');
             if (gcodeUnitsSelect) {
+                gcodeUnitsSelect.value = config.gcode?.units;
                 gcodeUnitsSelect.addEventListener('change', (e) => {
                     this.ui.core.updateSettings('gcode', { units: e.target.value });
                 });
             }
         }
+
+        debug(message, data = null) {
+            // 1. [THE ONE CHECK]
+            // This is the *only* check. It reads the global config flag that is controlled by both your config file and the UI toggle.
+            if (!debugConfig.enabled) {
+                return;
+            }
+            
+            // Change this tag for each file
+            const logMessage = `[UIControls] ${message}`;
+
+            // 2. Log to browser console (as before)
+            if (data) {
+                console.log(logMessage, data);
+            } else {
+                console.log(logMessage);
+            }
+
+            // 3. Send to StatusManager's hybrid log
+            // We must check if the UI is fully initialized, as core modules load before the UI.
+            if (window.pcbcam?.ui?.statusManager) {
+                
+                let statusMessage = logMessage;
+                if (data) {
+                    try {
+                        // Try to convert simple data to a string for the log
+                        statusMessage += ` ${JSON.stringify(data)}`; 
+                    } catch (e) {
+                        statusMessage += " [Object]"; // Handle complex/circular objects
+                    }
+                }
+                
+                // The statusManager's 'debug' method will add the timestamp and handle filtering (though we already filtered).
+                window.pcbcam.ui.statusManager.debug(statusMessage);
+            }
+        }
     }
     
     window.UIControls = UIControls;
-    
 })();

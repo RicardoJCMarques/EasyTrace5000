@@ -26,6 +26,9 @@
 
 (function() {
     'use strict';
+
+    const config = window.PCBCAMConfig || {};
+    const geomConfig = config.geometry || {};
     
     class GlobalCurveRegistry {
         constructor() {
@@ -34,7 +37,7 @@
             this.primitiveIdToCurves = new Map();
             this.offsetCurveMap = new Map();
             this.nextId = 1;
-            this.hashPrecision = 1000;
+            this.hashPrecision = geomConfig.curveRegistry?.hashPrecision || 1000;
             
             // Statistics
             this.stats = {

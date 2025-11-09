@@ -28,6 +28,7 @@
     'use strict';
     
     const config = window.PCBCAMConfig || {};
+    const primitivesConfig = config.renderer?.primitives || {};
     const debugConfig = config.debug || {};
     
     class PrimitiveRenderer {
@@ -271,7 +272,14 @@
             
             const offsetDistance = context.distance || primitive.properties?.offsetDistance || 0;
             const isInternal = offsetDistance < 0;
-            this._setStrokeState(isInternal ? '#00aa00' : color || '#ff0000', 2 / this.core.viewScale);
+            
+            const primColors = this.core.colors.primitives || {};
+            const strokeColor = isInternal ? 
+                (primColors.offsetInternal || '#00aa00') : 
+                (color || primColors.offsetExternal || '#ff0000');
+            const strokeWidth = (primitivesConfig.offsetStrokeWidth || 2) / this.core.viewScale;
+
+            this._setStrokeState(strokeColor, strokeWidth);
             this.ctx.setLineDash([]);
             
             if (primitive.type === 'path') {
@@ -312,7 +320,7 @@
 
         _renderCenterMarks(center, markSize, color) {
             this.ctx.strokeStyle = color;
-            this.ctx.lineWidth = 3 / this.core.viewScale;
+            this.ctx.lineWidth = (primitivesConfig.centerMarkStrokeWidth || 3) / this.core.viewScale;
             this.ctx.beginPath();
             this.ctx.moveTo(center.x - markSize, center.y);
             this.ctx.lineTo(center.x + markSize, center.y);
@@ -327,7 +335,7 @@
         renderSourceDrill(primitive, fillColor, strokeColor) {
             const color = strokeColor || fillColor || '#4488ff';
             this.ctx.strokeStyle = color;
-            this.ctx.lineWidth = 3 / this.core.viewScale;
+            this.ctx.lineWidth = (primitivesConfig.sourceDrillStrokeWidth || 3) / this.core.viewScale;
             
             if (primitive.properties.role === 'drill_hole') {
                 const r = primitive.radius;
@@ -338,7 +346,9 @@
                 this.ctx.stroke();
                 
                 // Draw center crosshair
-                const markSize = Math.min(0.2, r * 0.4);
+                const markRatio = primitivesConfig.sourceDrillMarkRatio || 0.4;
+                const maxMarkSize = primitivesConfig.sourceDrillMarkSize || 0.2;
+                const markSize = Math.min(maxMarkSize, r * markRatio);
                 this._renderCenterMarks(primitive.center, markSize, color);
                 
             } else if (primitive.properties.role === 'drill_slot') {
@@ -365,7 +375,9 @@
                 this.ctx.stroke();
                 
                 // Draw crosshairs at both ends
-                const markSize = Math.min(0.2, r * 0.4);
+                const markRatio = primitivesConfig.sourceDrillMarkRatio || 0.4;
+                const maxMarkSize = primitivesConfig.sourceDrillMarkSize || 0.2;
+                const markSize = Math.min(maxMarkSize, r * markRatio);
                 this._renderCenterMarks(slot.start, markSize, color);
                 this._renderCenterMarks(slot.end, markSize, color);
             }
@@ -383,33 +395,39 @@
             const isPreview = context?.isPreview || primitive.properties?.isPreview || false;
             
             // Color priority: oversized > undersized > reducedPlunge > perfect fit
-            let markColor = '#16d329ff'; // Green means tool diameter = drill hole size
-            if (oversized) markColor = '#ff0000';  // Red oversized warning (should overwrite all others)
-            else if (undersized) markColor = '#d2cb00ff';  // Yellow undersized warning
-            else if (reducedPlunge) markColor = '#ff5e00ff';  // Dark orange reduced plunge rate warning
+            const primColors = this.core.colors.primitives || {};
+            let markColor = primColors.peckMarkGood || '#16d329ff';
+            if (oversized) markColor = primColors.peckMarkError || '#ff0000';  // Red oversized warning (should overwrite all others)
+            else if (undersized) markColor = primColors.peckMarkWarn || '#d2cb00ff';  // Yellow undersized warning
+            else if (reducedPlunge) markColor = primColors.peckMarkSlow || '#ff5e00ff';  // Dark orange reduced plunge rate warning
             
             // Offset Stage: Outline + center (like source drill)
 
             if (!isPreview) {
                 // Just outline
                 this.ctx.strokeStyle = markColor;
-                this.ctx.lineWidth = 3 / this.core.viewScale;
+                this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth || 3) / this.core.viewScale;
                 this.ctx.beginPath();
                 this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
                 this.ctx.stroke();
                 
                 // Center crosshair
-                const markSize = Math.min(0.2, radius * 0.4);
+                const markRatio = primitivesConfig.peckMarkMarkRatio || 0.4;
+                const maxMarkSize = primitivesConfig.peckMarkMarkSize || 0.2;
+                const markSize = Math.min(maxMarkSize, radius * markRatio);
                 this._renderCenterMarks(center, markSize, markColor);
                 
                 // Reduced plunge indicator (dashed ring AROUND the mark)
                 if (reducedPlunge) {
+                    const dash = primitivesConfig.peckMarkDash || [0.15, 0.15];
+                    const ringFactor = primitivesConfig.peckMarkRingFactor || 1.3;
+
                     this.ctx.save();
-                    this.ctx.strokeStyle = '#ff5e00ff';
-                    this.ctx.lineWidth = 3 / this.core.viewScale;
-                    this.ctx.setLineDash([0.15, 0.15]);
+                    this.ctx.strokeStyle = primColors.peckMarkSlow || '#ff5e00ff';
+                    this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth || 3) / this.core.viewScale;
+                    this.ctx.setLineDash(dash);
                     this.ctx.beginPath();
-                    this.ctx.arc(center.x, center.y, radius * 1.3, 0, Math.PI * 2);
+                    this.ctx.arc(center.x, center.y, radius * ringFactor, 0, Math.PI * 2);
                     this.ctx.stroke();
                     this.ctx.restore();
                 }
@@ -427,46 +445,52 @@
             
             // Solid outline
             this.ctx.strokeStyle = markColor;
-            this.ctx.lineWidth = 3 / this.core.viewScale;
+            this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth || 3) / this.core.viewScale;
             this.ctx.stroke();
             
             // Center crosshair
-            const markSize = Math.min(0.2, radius * 0.4);
+            const markRatio = primitivesConfig.peckMarkMarkRatio || 0.4;
+            const maxMarkSize = primitivesConfig.peckMarkMarkSize || 0.2;
+            const markSize = Math.min(maxMarkSize, radius * markRatio);
             this._renderCenterMarks(center, markSize, markColor);
             
             // Warning indicators (only in preview)
             if (oversized) {
+                const labelOffset = primitivesConfig.peckMarkLabelOffset || 0.3;
                 this.ctx.save();
                 this.ctx.font = `${Math.max(0.3, radius * 0.5)}px monospace`;
-                this.ctx.fillStyle = '#ff0000';
+                this.ctx.fillStyle = primColors.peckMarkError || '#ff0000';
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
-                this.ctx.fillText('!', center.x, center.y + radius + 0.3);
+                this.ctx.fillText('!', center.x, center.y + radius + labelOffset);
                 this.ctx.restore();
             }
             
             if (reducedPlunge) {
+                const dash = primitivesConfig.peckMarkDash || [0.15, 0.15];
+                const ringFactor = primitivesConfig.peckMarkRingFactor || 1.3;
                 this.ctx.save();
-                this.ctx.strokeStyle = '#ff5e00ff';
-                this.ctx.lineWidth = 3 / this.core.viewScale;
-                this.ctx.setLineDash([0.15, 0.15]);
+                this.ctx.strokeStyle = primColors.peckMarkSlow || '#ff5e00ff';
+                this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth || 3) / this.core.viewScale;
+                this.ctx.setLineDash(dash);
                 this.ctx.beginPath();
-                this.ctx.arc(center.x, center.y, radius * 1.3, 0, Math.PI * 2);
+                this.ctx.arc(center.x, center.y, radius * ringFactor, 0, Math.PI * 2);
                 this.ctx.stroke();
                 this.ctx.restore();
             }
         }
 
-        
+        // Debug special rendering mode
         renderReconstructedPrimitive(primitive, fillColor, strokeColor) {
             // Reconstructed primitives get a special highlight color
-            const accentColor = '#00ffff';
+            const primColors = this.core.colors.primitives || {};
+            const accentColor = primColors.reconstructed || '#00ffff';
             
             this.ctx.save();
             
             if (primitive.type === 'circle') {
                 this.ctx.strokeStyle = accentColor;
-                this.ctx.lineWidth = 2 / this.core.viewScale;
+                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth || 2) / this.core.viewScale;
                 this.ctx.fillStyle = fillColor + '40'; // Semi-transparent fill
                 
                 this.ctx.beginPath();
@@ -477,11 +501,11 @@
                 // Center dot
                 this.ctx.fillStyle = accentColor;
                 this.ctx.beginPath();
-                this.ctx.arc(primitive.center.x, primitive.center.y, 2 / this.core.viewScale, 0, 2 * Math.PI);
+                this.ctx.arc(primitive.center.x, primitive.center.y, (primitivesConfig.reconstructedCenterSize || 2) / this.core.viewScale, 0, 2 * Math.PI);
                 this.ctx.fill();
             } else if (primitive.type === 'arc') {
                 this.ctx.strokeStyle = accentColor;
-                this.ctx.lineWidth = 2 / this.core.viewScale;
+                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth || 2) / this.core.viewScale;
                 
                 this.ctx.beginPath();
                 this.ctx.arc(
@@ -492,11 +516,12 @@
                 this.ctx.stroke();
             } else if (primitive.type === 'path') {
                 // Partially reconstructed path
-                this.ctx.strokeStyle = '#ffff00';
-                this.ctx.lineWidth = 2 / this.core.viewScale;
-                this.ctx.setLineDash([5 / this.core.viewScale, 5 / this.core.viewScale]);
+                this.ctx.strokeStyle = primColors.reconstructedPath || '#ffff00';
+                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth || 2) / this.core.viewScale;
+                const dash = primitivesConfig.reconstructedPathDash || [5, 5];
+                this.ctx.setLineDash([dash[0] / this.core.viewScale, dash[1] / this.core.viewScale]);
                 
-                this.renderPrimitiveNormal(primitive, fillColor + '40', '#ffff00', false);
+                this.renderPrimitiveNormal(primitive, fillColor + '40', primColors.reconstructedPath || '#ffff00', false);
             }
             
             this.ctx.restore();
@@ -529,7 +554,7 @@
                     break;
                     
                 default:
-                    console.warn(`Unknown primitive type: ${primitive.type}`);
+                    console.warn(`[RendererPrimitives] Unknown primitive type: ${primitive.type}`);
                     break;
             }
         }
@@ -598,7 +623,7 @@
                     const polarity = primitive.properties?.polarity || 'dark';
                     if (polarity === 'clear') {
                         // Draw "clear" primitives with the canvas background color
-                        this.ctx.fillStyle = this.core.getBackgroundColor();
+                        this.ctx.fillStyle = this.core.colors.canvas?.background || '#0f0f0f';
                     } else {
                         // Draw "dark" primitives with the normal layer color
                         this.ctx.fillStyle = fillColor;
@@ -613,7 +638,7 @@
 
             if (shouldStroke) {
                 this.ctx.strokeStyle = strokeColor || fillColor;
-                this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
+                this.ctx.lineWidth = primitive.properties?.strokeWidth || (primitivesConfig.defaultStrokeWidth || 0.1);
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
                 this.ctx.stroke();
@@ -667,7 +692,7 @@
             }
             
             this.ctx.strokeStyle = strokeColor || fillColor;
-            this.ctx.lineWidth = primitive.properties?.strokeWidth || 0.1;
+            this.ctx.lineWidth = primitive.properties?.strokeWidth || (primitivesConfig.defaultStrokeWidth || 0.1);
             this.ctx.stroke();
         }
         
@@ -705,10 +730,10 @@
         // Wireframe Rendering
         
         renderWireframe(primitive) {
-            const theme = this.core.colors[this.core.options.theme] || this.core.colors.dark;
+            const debugColors = this.core.colors.debug;
             const strokeWidth = this.core.getWireframeStrokeWidth();
             
-            this.ctx.strokeStyle = theme.debug?.wireframe || '#00ff00';
+            this.ctx.strokeStyle = (debugColors && debugColors.wireframe) ? debugColors.wireframe : '#00ff00';
             this.ctx.lineWidth = strokeWidth;
             this.ctx.fillStyle = 'none';
             
@@ -808,8 +833,8 @@
         renderCurveDebugPoints(primitive) { // primitive is screen-space data
             if (!primitive.screenPoints) return; // Use screenPoints
 
-            const pointSize = 4;
-            this.ctx.font = '10px monospace';
+            const pointSize = primitivesConfig.debugPointSize || 4;
+            this.ctx.font = primitivesConfig.debugPointFont || '10px monospace';
 
             // Reset stats for this render pass
             this.debugStats.totalPoints = 0;
@@ -828,9 +853,9 @@
                 this.ctx.fill();
 
                 // Labels
-                this.ctx.fillStyle = '#FFFFFF';
-                this.ctx.strokeStyle = '#000000';
-                this.ctx.lineWidth = 2;
+                this.ctx.fillStyle = this.core.colors.primitives?.debugLabel || '#FFFFFF';
+                this.ctx.strokeStyle = this.core.colors.primitives?.debugLabelStroke || '#000000';
+                this.ctx.lineWidth = primitivesConfig.debugLabelLineWidth || 2;
                 // Use segmentIndex if available, otherwise fall back to array index
                 const segIdx = p.segmentIndex !== undefined ? p.segmentIndex : index;
                 const label = `C${p.curveId}:${segIdx}`;
@@ -853,7 +878,7 @@
                 const radiusScreen = segment.radiusScreen;
 
                 if (!centerScreen || radiusScreen === undefined) {
-                    console.warn("Missing screen coords for arc debug", segment);
+                    console.warn("[RendererPrimitives] Missing screen coords for arc debug", segment);
                     return; // Skip if screen coords weren't calculated
                 }
 
@@ -862,7 +887,7 @@
 
                 // Draw arc - centerScreen and radiusScreen already in screen coords
                 this.ctx.strokeStyle = color;
-                this.ctx.lineWidth = 3;
+                this.ctx.lineWidth = primitivesConfig.debugArcStrokeWidth || 3;
                 this.ctx.beginPath();
 
                 // Angles are NOT transformed, they remain in world space radians
@@ -879,14 +904,14 @@
                 // Draw center point
                 this.ctx.fillStyle = color;
                 this.ctx.beginPath();
-                this.ctx.arc(centerScreen.x, centerScreen.y, 4, 0, 2 * Math.PI);
+                this.ctx.arc(centerScreen.x, centerScreen.y, primitivesConfig.debugArcCenterSize || 4, 0, 2 * Math.PI);
                 this.ctx.fill();
 
                 // Draw label
-                this.ctx.fillStyle = '#FFFFFF';
-                this.ctx.strokeStyle = '#000000';
-                this.ctx.lineWidth = 2;
-                this.ctx.font = 'bold 12px monospace';
+                this.ctx.fillStyle = this.core.colors.primitives?.debugLabel || '#FFFFFF';
+                this.ctx.strokeStyle = this.core.colors.primitives?.debugLabelStroke || '#000000';
+                this.ctx.lineWidth = primitivesConfig.debugLabelLineWidth || 2;
+                this.ctx.font = primitivesConfig.debugArcFont || 'bold 12px monospace';
 
                 const angleDeg = Math.abs(segment.sweepAngle || (segment.endAngle - segment.startAngle)) * 180 / Math.PI;
                 // Display original world radius
@@ -899,7 +924,7 @@
         renderContourDebug(primitive) { // primitive is screen-space data
             if (!primitive.contours || primitive.contours.length <= 1) return;
 
-            const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
+            const colors = primitivesConfig.debugContourColors || ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
 
             primitive.contours.forEach((contour, idx) => {
                 // Use screenPoints from the contour
@@ -907,8 +932,8 @@
 
                 const color = colors[contour.nestingLevel % colors.length];
                 this.ctx.strokeStyle = color;
-                this.ctx.lineWidth = 2;
-                this.ctx.setLineDash(contour.isHole ? [5, 5] : []);
+                this.ctx.lineWidth = primitivesConfig.debugContourStrokeWidth || 2;
+                this.ctx.setLineDash(contour.isHole ? (primitivesConfig.debugContourDash || [5, 5]) : []);
 
                 this.ctx.beginPath();
                 // Iterate screenPoints
@@ -922,8 +947,8 @@
                 // Label using the first screen point
                 if (contour.screenPoints.length > 0) {
                     const firstPoint = contour.screenPoints[0];
-                    this.ctx.fillStyle = '#FFFFFF';
-                    this.ctx.font = '12px monospace';
+                    this.ctx.fillStyle = this.core.colors.primitives?.debugLabel || '#FFFFFF';
+                    this.ctx.font = primitivesConfig.debugContourFont || '12px monospace';
                     const label = `L${contour.nestingLevel}${contour.isHole ? 'H' : ''}`;
                     this.ctx.fillText(label, firstPoint.x + 5, firstPoint.y - 5);
                 }
@@ -935,6 +960,16 @@
         getCurveDebugColor(curveId) {
             const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
             return colors[curveId % colors.length];
+        }
+
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[Primitives] ${message}`, data);
+                } else {
+                    console.log(`[Primitives] ${message}`);
+                }
+            }
         }
     }
     

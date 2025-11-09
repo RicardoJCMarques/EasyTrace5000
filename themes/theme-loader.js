@@ -213,6 +213,38 @@
                 root.style.setProperty('--color-debug-wireframe', colors.debug.wireframe);
                 root.style.setProperty('--color-debug-bounds', colors.debug.bounds);
             }
+            
+            // Geometry colors
+            if (colors.geometry) {
+                if (colors.geometry.source) {
+                    root.style.setProperty('--color-geometry-source-isolation', colors.geometry.source.isolation);
+                    root.style.setProperty('--color-geometry-source-drill', colors.geometry.source.drill);
+                    root.style.setProperty('--color-geometry-source-clear', colors.geometry.source.clear);
+                    root.style.setProperty('--color-geometry-source-cutout', colors.geometry.source.cutout);
+                }
+                if (colors.geometry.offset) {
+                    root.style.setProperty('--color-geometry-offset-external', colors.geometry.offset.external);
+                    root.style.setProperty('--color-geometry-offset-internal', colors.geometry.offset.internal);
+                    root.style.setProperty('--color-geometry-offset-on', colors.geometry.offset.on);
+                }
+                root.style.setProperty('--color-geometry-preview', colors.geometry.preview);
+                root.style.setProperty('--color-geometry-toolpath', colors.geometry.toolpath);
+                root.style.setProperty('--color-geometry-selection', colors.geometry.selection);
+            }
+            
+            // Primitive-specific colors
+            if (colors.primitives) {
+                root.style.setProperty('--color-primitive-offset-internal', colors.primitives.offsetInternal);
+                root.style.setProperty('--color-primitive-offset-external', colors.primitives.offsetExternal);
+                root.style.setProperty('--color-primitive-peck-good', colors.primitives.peckMarkGood);
+                root.style.setProperty('--color-primitive-peck-warn', colors.primitives.peckMarkWarn);
+                root.style.setProperty('--color-primitive-peck-error', colors.primitives.peckMarkError);
+                root.style.setProperty('--color-primitive-peck-slow', colors.primitives.peckMarkSlow);
+                root.style.setProperty('--color-primitive-reconstructed', colors.primitives.reconstructed);
+                root.style.setProperty('--color-primitive-reconstructed-path', colors.primitives.reconstructedPath);
+                root.style.setProperty('--color-primitive-debug-label', colors.primitives.debugLabel);
+                root.style.setProperty('--color-primitive-debug-label-stroke', colors.primitives.debugLabelStroke);
+            }
         }
         
         /**

@@ -239,12 +239,13 @@
 
         <!-- Right Sidebar -->
         <aside class="sidebar sidebar-right" id="sidebar-right">
+            <!-- Origin & Rotation -->
             <div class="sidebar-section coordinate-section">
                 <header class="section-header collapsible-header collapsible" data-target="coordinate-controls">
                     <h2>Origin & Rotation</h2>
-                    <span class="collapse-indicator collapsed">▼</span>
+                    <span class="collapse-indicator">▼</span>
                 </header>
-                <div class="section-content collapsed" id="coordinate-controls">
+                <div class="section-content collapsible" id="coordinate-controls">
                     
                     <div class="origin-section">
                         <div class="property-field">
@@ -286,6 +287,74 @@
                 </div>
             </div>
 
+            <!-- Global Machine Parameters -->
+            <div class="sidebar-section machine-section">
+                <header class="section-header collapsible-header collapsible" data-target="machine-controls">
+                    <h2>Machine Settings</h2>
+                    <span class="collapse-indicator">▼</span>
+                </header>
+                <div class="section-content collapsible" id="machine-controls">
+                    
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label>PCB Thickness</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="pcb-thickness" step="0.1">
+                                <span class="unit">mm</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label>Safe Z</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="safe-z" step="0.5">
+                                <span class="unit">mm</span>
+                            </div>
+                        </div>
+                        <div class="property-field">
+                            <label>Travel Z</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="travel-z" step="0.5">
+                                <span class="unit">mm</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label>Rapid Feed</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="rapid-feed" step="100">
+                                <span class="unit">mm/min</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label>Post-Processor</label>
+                            <select id="post-processor">
+                                <option value="grbl">GRBL</option>
+                                <option value="marlin">Marlin</option>
+                                <option value="linuxcnc">LinuxCNC</option>
+                                <option value="mach3">Mach3</option>
+                            </select>
+                        </div>
+                        <div class="property-field">
+                            <label>G-Code Units</label>
+                            <select id="gcode-units">
+                                <option value="mm">Millimeters (G21)</option>
+                                <option value="inch">Inches (G20)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Operational Parameters -->
             <div class="sidebar-section inspector-section">
                 <header class="section-header">
                     <h2 id="inspector-title">Properties</h2>
@@ -298,7 +367,7 @@
     </div>
 
     <!-- Status Bar -->
-    <footer class="status-bar" id="status-bar">
+    <footer class="footer-bar" id="footer-bar">
         <div class="status-left">
             <button class="btn btn--icon" id="show-viz-panel-btn" title="Visualization Settings" aria-label="Visualization Settings">
                 <svg width="16" height="16" viewBox="0 0 20 20">
@@ -392,11 +461,20 @@
                             <span>B&W Mode</span>
                         </label>
                     </div>
+
+                    <div class="control-group">
+                        <h3>Log</h3>
+                        <label class="checkbox-control checkbox-label">
+                            <input type="checkbox" id="debug-log-toggle">
+                            <span>Verbose Debug</span>
+                        </label>
+                    </div>
                     <div id="arc-reconstruction-stats" class="stats-info hidden"></div>
                 </div>
             </div>
-            </div>
-        <div class="status-center">
+        </div>
+       <div class="status-bar" id="status-bar" title="Click to expand log">
+            <span class="log-toggle-icon" id="log-toggle-icon">▲</span>
             <span class="status-text" id="status-text">Ready</span>
             <span class="status-progress progress hidden" id="status-progress">
                 <span class="progress-bar" id="progress-bar"></span>
@@ -408,6 +486,11 @@
                 <a href="/LICENSE" target="_blank" title="View License">License</a> |
                 <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Documentation">GitHub</a> |
                 <a href="https://ko-fi.com/eltryus" target="_blank" title="Support the Project">Support Development</a>
+            </div>
+        </div>
+         <!-- Floating Log Panel -->
+        <div class="status-log-panel" id="status-log-panel">
+            <div class="status-log-history" id="status-log-history">
             </div>
         </div>
     </footer>
@@ -809,11 +892,11 @@
         }
 
         async function initializeApp() {
-            console.log('🚀 EasyTrace5000 Advanced Workspace v2.0');
+            console.log('EasyTrace5000 Advanced Workspace v2.0');
             for (const scriptPath of scripts) {
                 await loadScript(scriptPath);
             }
-            console.log('✅ All modules loaded');
+            console.log('All modules loaded');
         }
 
         document.addEventListener('DOMContentLoaded', initializeApp);

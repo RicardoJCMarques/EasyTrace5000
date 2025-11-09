@@ -77,9 +77,7 @@
                 plansByGroupKey.get(groupKey).push(plan);
             }
             
-            if (debugConfig.enabled) {
-                console.log(`[Optimizer] Grouped into ${plansByGroupKey.size} tool groups`);
-            }
+            this.debug(`Grouped into ${plansByGroupKey.size} tool groups`);
             
             let finalOrderedPlans = [];
             let currentMachinePos = { x: 0, y: 0, z: this.options.safeZ };
@@ -106,9 +104,7 @@
                         
                         this.stats.clustersFound += clusters.length;
                         
-                        if (debugConfig.enabled) {
-                            console.log(`[Optimizer] Found ${clusters.length} staydown clusters for Z-level`);
-                        }
+                        this.debug(`Found ${clusters.length} staydown clusters for Z-level`);
 
                         // 2. Optimize INSIDE each cluster (allowing staydown)
                         const optimizedClusters = [];
@@ -162,9 +158,7 @@
             
             // Segment Simplification
             if (this.options.enableSegmentSimplification) {
-                if (debugConfig.enabled) {
-                    console.log(`[Optimizer] Simplifying ${finalOrderedPlans.length} paths...`);
-                }
+                this.debug(`Simplifying ${finalOrderedPlans.length} paths...`);
                 // We simplify *after* ordering to preserve entry/exit points
                 // Note: simplifySegments modifies the plan in-place
                 let totalPointsRemoved = 0;
@@ -174,18 +168,14 @@
                     totalPointsRemoved += (originalCount - plan.commands.length);
                 }
                 this.stats.pointsRemoved = totalPointsRemoved;
-                 if (debugConfig.enabled) {
-                    console.log(`[Optimizer] Removed ${totalPointsRemoved} collinear points.`);
-                }
+                this.debug(`Removed ${totalPointsRemoved} collinear points.`);
             }
             
             this.stats.optimizedPathCount = finalOrderedPlans.length;
             this.stats.optimizationTime = performance.now() - startTime;
             
-            if (debugConfig.enabled) {
-                console.log(`[Optimizer] Complete: ${finalOrderedPlans.length} paths ordered`);
-                console.log(`[Optimizer] Stats:`, this.getStats());
-            }
+            this.debug(`Complete: ${finalOrderedPlans.length} paths ordered`);
+            this.debug(`Stats:`, this.getStats());
             
             return finalOrderedPlans;
         }
@@ -484,14 +474,12 @@
                 const tolerance = 0.1 * toolDiameter; // e.g., 10% of tool diameter
                 const staydownThreshold = stepDistance + tolerance;
 
-                if (this.options.debug) {
-                   console.log(`[DEBUG Staydown] Plan ${planMetadata.operationId} (Pass ${planMetadata.pass || 1}): ToolD=${toolDiameter.toFixed(3)}, StepOver=${stepOverPercent}%, StepDist=${stepDistance.toFixed(3)}, Threshold=${staydownThreshold.toFixed(3)}`);
-                   console.log(`[DEBUG Staydown]   Original Entry Dist: ${originalEntryDist.toFixed(3)}`);
-                }
+                this.debug(`Plan ${planMetadata.operationId} (Pass ${planMetadata.pass || 1}): ToolD=${toolDiameter.toFixed(3)}, StepOver=${stepOverPercent}%, StepDist=${stepDistance.toFixed(3)}, Threshold=${staydownThreshold.toFixed(3)}`);
+                this.debug(`   Original Entry Dist: ${originalEntryDist.toFixed(3)}`);
 
                 // Option 1: Use original entry point if close enough (no rotation needed)
                 if (originalEntryDist <= staydownThreshold) {
-                     if (this.options.debug) console.log(`[DEBUG Staydown]   >> Using Original Entry (Staydown) - Within Threshold`);
+                    this.debug(`   >> Using Original Entry (Staydown) - Within Threshold`);
                     return {
                         cost: originalEntryDist, // Cost is just XY distance for staydown
                         realDistance: originalEntryDist,
@@ -515,9 +503,7 @@
                     closestDist < originalEntryDist * 0.7 && // Significant improvement
                     commandIndex > 0)
                 {
-                    // if (this.options.debug){
-                        console.log(`[DEBUG Staydown]   >> Using Rotated Entry (Staydown), Dist: ${closestDist.toFixed(3)}, Index: ${commandIndex}`);
-                    // }
+                    this.debug(`   >> Using Rotated Entry (Staydown), Dist: ${closestDist.toFixed(3)}, Index: ${commandIndex}`);
                     return {
                         cost: closestDist, // Cost is just XY distance
                         realDistance: closestDist,
@@ -526,9 +512,7 @@
                         commandIndex: commandIndex // Signal rotation
                     };
                 }
-                // if (this.options.debug) {
-                     console.log(`[DEBUG Staydown]   Closest point dist (${closestDist.toFixed(3)}) too far or not worth rotating.`);
-                // }
+                    this.debug(`   Closest point dist (${closestDist.toFixed(3)}) too far or not worth rotating.`);
             }
 
             // Default: Use Rapid Link
@@ -541,7 +525,7 @@
 
             if (this.options.debug) {
                 const reason = !allowStaydown ? "Not Allowed" : (planMetadata.isPeckMark || planMetadata.isDrillMilling) ? "Drill Op" : "Too Far";
-                console.log(`[DEBUG Staydown]   >> Using Rapid Link (${reason}). Cost: ${rapidCost.toFixed(1)}, Dist: ${closestRapidXYDist.toFixed(3)}, Index: ${rapidCommandIndex}`);
+                console.log(`[Optimizer]   >> Using Rapid Link (${reason}). Cost: ${rapidCost.toFixed(1)}, Dist: ${closestRapidXYDist.toFixed(3)}, Index: ${rapidCommandIndex}`);
             }
 
             return {
@@ -1015,6 +999,16 @@
                 clustersFound: 0,
                 staydownLinksUsed: 0
             };
+        }
+
+        debug(message, data = null) {
+            if (debugConfig.enabled) {
+                if (data) {
+                    console.log(`[Optimizer] ${message}`, data);
+                } else {
+                    console.log(`[Optimizer] ${message}`);
+                }
+            }
         }
     }
     
