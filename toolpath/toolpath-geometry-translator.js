@@ -72,12 +72,14 @@
             
             // Extract parameters for metadata
             const params = {
-                cutDepth: settings.cutDepth || -1.8,
-                depthPerPass: settings.depthPerPass || 0.4,
-                multiDepth: settings.multiDepth || true,
-                feedRate: settings.feedRate || 150,
-                direction: settings.direction || 'climb',
-                entryType: settings.entryType || 'plunge',
+                cutDepth: settings.cutDepth,
+                depthPerPass: settings.depthPerPass,
+                multiDepth: settings.multiDepth,
+                feedRate: settings.feedRate,
+                plungeRate: settings.plungeRate,
+                spindleSpeed: settings.spindleSpeed,
+                direction: settings.direction,
+                entryType: settings.entryType,
                 tabs: settings.tabs, // Will be undefined if not cutout, that's OK
                 tabWidth: settings.tabWidth,
                 tabHeight: settings.tabHeight,
@@ -121,6 +123,8 @@
             plan.metadata.tool = params.tool;
             plan.metadata.cutDepth = depth;
             plan.metadata.feedRate = params.feedRate;
+            plan.metadata.plungeRate = params.plungeRate;
+            plan.metadata.spindleSpeed = params.spindleSpeed;
             plan.metadata.direction = params.direction;
             plan.metadata.entryType = params.entryType;
             const opType = this.getOperationType(operationId);
@@ -402,6 +406,9 @@
                     const plan = new ToolpathPlan(operation.id);
                     plan.metadata.tool = params.tool;
                     plan.metadata.cutDepth = finalDepth;
+                    plan.metadata.feedRate = params.feedRate;
+                    plan.metadata.plungeRate = params.plungeRate;
+                    plan.metadata.spindleSpeed = params.spindleSpeed;
                     plan.metadata.isPeckMark = true;
                     plan.metadata.entryPoint = { ...primitive.center, z: finalDepth };
                     plan.metadata.exitPoint = { ...primitive.center, z: finalDepth };

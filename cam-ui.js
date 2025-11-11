@@ -31,11 +31,11 @@
     const debugConfig = config.debug || {};
     const opsConfig = config.operations || {};
     const storageKeys = config.storageKeys || {};
-    const textConfig = config.ui?.text || {};
     
     class PCBCamUI {
-        constructor(core) {
+        constructor(core, languageManager) {
             this.core = core;
+            this.lang = languageManager;
 
             this.treeManager = null;
             this.propertyInspector = null;
@@ -114,8 +114,6 @@
                 }
                 
                 this.initializeTheme();
-                
-                this.updateStatus('Ready - Add PCB files to begin');
                 
                 this.debug('PCBCamUI initialized');
                 
@@ -539,6 +537,72 @@
                 this.updateStatus('Operation removed', 'info');
             }
         }
+
+        /**
+         * Handles the consequences of a selection in the NavTreePanel.
+         */
+        handleOperationSelection(operation, stage) {
+            // 1. Collapse the right sidebar controls to make room
+            if (this.controls && this.controls.collapseRightSidebar) {
+                this.controls.collapseRightSidebar();
+            }
+            
+            // 2. Tell the OperationPanel (PropertyInspector) to show the properties
+            if (this.propertyInspector) {
+                this.propertyInspector.showOperationProperties(operation, stage);
+            }
+        }
+
+        /**
+         * Orchestrates the deletion of a geometry subgroup.
+         */
+        handleDeleteGeometry(fileId, fileData, geometryId, geoData) {
+            if (!fileData || !geoData) return;
+            
+            // 1. Determine the layer to be deleted
+            let layerName;
+            const operation = fileData.operation;
+
+            if (geoData.type === 'offsets_combined') {
+                layerName = `offset_${operation.id}_combined`;
+                if (operation.offsets) {
+                    operation.offsets = []; // Clear all offsets
+                }
+                
+            } else if (geoData.type.startsWith('offset_')) {
+                const passIndex = parseInt(geoData.type.split('_')[1]); // e.g., "offset_0" -> 0
+                const passNumber = passIndex + 1;
+                layerName = `offset_${operation.id}_pass_${passNumber}`;
+                
+                if (operation.offsets) {
+                    operation.offsets.splice(passIndex, 1);
+                }
+            } else {
+                layerName = `${geoData.type}_${operation.id}`;
+                
+                if (geoData.type === 'preview' && operation.preview) {
+                    operation.preview = null;
+                }
+            }
+
+            // 2. Tell the renderer to delete the layer
+            if (layerName && this.renderer.layers.has(layerName)) {
+                this.renderer.layers.delete(layerName);
+            } else {
+                console.warn(`[PCBCamUI] Could not find layer to delete: ${layerName}`);
+            }
+            
+            // 3. Tell the NavTreePanel to remove the DOM node
+            if (this.treeManager) {
+                this.treeManager.removeGeometryNode(fileId, geometryId);
+            
+                // 4. Re-select the parent file node
+                this.treeManager.selectFile(fileId, fileData.operation);
+            }
+            
+            // 5. Re-draw the canvas
+            this.renderer.render();
+        }
         
         updateStatus(message, type) {
             if (!type) type = 'normal';
@@ -546,11 +610,7 @@
             if (this.statusManager) {
                 this.statusManager.updateStatus(message, type);
             } else {
-                const statusText = document.getElementById('status-text');
-                if (statusText) {
-                    statusText.textContent = message || textConfig.statusDefault;
-                    statusText.className = 'status-text ' + type;
-                }
+                console.error("StatusManager not initialized, cannot show status!");
             }
         }
         
@@ -575,13 +635,36 @@
             }
         }
 
+        /**
+         * The central "proxy" logger for all UI modules.
+         * It checks the config flag and logs to both the console and the StatusManager.
+         */
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            // 1. This is now the ONLY place that checks this flag
+            if (!debugConfig.enabled) {
+                return;
+            }
+
+            // 2. Log to the developer console
+            if (data) {
+                console.log(message, data);
+            } else {
+                console.log(message);
+            }
+
+            // 3. Send to the StatusManager's UI log
+            // (Note: We log the raw message, StatusManager adds its own prefix/timestamp)
+            if (this.statusManager && this.statusManager.debugLog) {
+                let statusMsg = message;
                 if (data) {
-                    console.log(`[UI] ${message}`, data);
-                } else {
-                    console.log(`[UI] ${message}`);
+                    try {
+                        // Attempt to stringify simple data for the log
+                        statusMsg += ` ${JSON.stringify(data)}`;
+                    } catch (e) {
+                        statusMsg += " [Object]"; // Fallback for complex data
+                    }
                 }
+                this.statusManager.debugLog(statusMsg);
             }
         }
     }

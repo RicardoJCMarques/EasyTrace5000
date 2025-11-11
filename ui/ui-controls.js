@@ -29,12 +29,12 @@
     
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
-    const uiConfig = config.ui || {};
     const renderDefaults = config.rendering?.defaultOptions || {};
     
     class UIControls {
         constructor(ui) {
             this.ui = ui;
+            this.lang = ui.lang
             this.renderer = null;
             this.coordinateSystem = null;
             
@@ -68,6 +68,7 @@
             this.setupCollapsibleMenus();
             this.setupVizPanelButton();
             this.setupMachineSettings();
+            this.attachStaticTooltips();
 
             // Link coordinate system changes back to UI updates
             if (this.coordinateSystem) {
@@ -78,6 +79,71 @@
 
             this.debug("Controls initialized.");
             return true;
+        }
+
+        attachStaticTooltips() {
+            if (!this.lang || !window.TooltipManager) return;
+
+            const processedLabels = new Set();
+
+            // Helper to find the label for an input
+            const attachTo = (inputId, tooltipKey) => {
+                const input = document.getElementById(inputId);
+                if (!input) return;
+                
+                // Find the label associated with this input
+                const label = document.querySelector(`label[for="${inputId}"]`) || 
+                              input.closest('.property-field, .sidebar-section')?.querySelector('label');
+                              
+                if (label) {
+                    // Check if this input's label already has a tooltip
+                    if (processedLabels.has(label)) {
+                        return; // We've already attached a tooltip to this label
+                    }
+                    processedLabels.add(label); // Mark this label as processed
+
+                    const text = this.lang.get(tooltipKey);
+                    
+                    // Try to get a title from the 'parameters' section, fallback to label text
+                    const titleKey = tooltipKey.replace('tooltips.', 'parameters.');
+                    const title = this.lang.get(titleKey, label.textContent);
+                    
+                    if (text) {
+                        // This will create the '?' icon
+                        window.TooltipManager.attachWithIcon(label, { title: title, text: text }, {
+                            showOnFocus: true
+                        });
+                    }
+                }
+            };
+
+            // Origin Controls
+            attachTo('x-offset', 'tooltips.originControls.originOffset');
+            attachTo('y-offset', 'tooltips.originControls.originOffset'); // Both X and Y share one tooltip
+            attachTo('rotation-angle', 'tooltips.originControls.boardRotation');
+
+            // Machine Settings
+            attachTo('pcb-thickness', 'tooltips.machineSettings.pcbThickness');
+            attachTo('safe-z', 'tooltips.machineSettings.safeZ');
+            attachTo('travel-z', 'tooltips.machineSettings.travelZ');
+            attachTo('rapid-feed', 'tooltips.machineSettings.rapidFeed');
+            attachTo('post-processor', 'tooltips.machineSettings.postProcessor');
+            attachTo('gcode-units', 'tooltips.machineSettings.gcodeUnits');
+            
+            // Visualization Panel Toggles
+            attachTo('show-grid', 'tooltips.vizPanel.grid');
+            attachTo('show-wireframe', 'tooltips.vizPanel.wireframe');
+            attachTo('show-bounds', 'tooltips.vizPanel.boardBounds');
+            attachTo('show-rulers', 'tooltips.vizPanel.rulers');
+            attachTo('show-offsets', 'tooltips.vizPanel.offsets');
+            attachTo('show-previews', 'tooltips.vizPanel.previews');
+            attachTo('fuse-geometry', 'tooltips.vizPanel.fusionMode');
+            attachTo('show-preprocessed', 'tooltips.vizPanel.preprocessed');
+            attachTo('enable-arc-reconstruction', 'tooltips.vizPanel.arcReconstruction');
+            attachTo('debug-points', 'tooltips.vizPanel.debugPoints');
+            attachTo('debug-paths', 'tooltips.vizPanel.debugPaths');
+            attachTo('black-and-white', 'tooltips.vizPanel.bwMode');
+            attachTo('debug-log-toggle', 'tooltips.vizPanel.verboseDebug');
         }
 
         setupVisualizationToggles() {
@@ -584,44 +650,11 @@
         }
 
         setupMachineSettings() {
-            const thicknessInput = document.getElementById('pcb-thickness');
-            if (thicknessInput) {
-                thicknessInput.value = config.machine?.pcb?.thickness;
-                thicknessInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('pcb', { thickness: parseFloat(e.target.value) });
-                    this.ui.parameterManager.updateDefault('pcbThickness', parseFloat(e.target.value));
-                });
-            }
-            
-            const safeZInput = document.getElementById('safe-z');
-            if (safeZInput) {
-                safeZInput.value = config.machine?.heights?.safeZ;
-                safeZInput.addEventListener('change', (e) => {
-                    const val = parseFloat(e.target.value);
-                    this.ui.core.updateSettings('machine', { safeZ: val });
-                    this.parameterManager.updateDefault('safeZ', val);
-                });
-            }
-            
-            const travelZInput = document.getElementById('travel-z');
-            if (travelZInput) {
-                travelZInput.value = config.machine?.heights?.travelZ;
-                travelZInput.addEventListener('change', (e) => {
-                    const val = parseFloat(e.target.value);
-                    this.ui.core.updateSettings('machine', { travelZ: val });
-                    this.parameterManager.updateDefault('travelZ', val);
-                });
-            }
-            
-            const rapidFeedInput = document.getElementById('rapid-feed');
-            if (rapidFeedInput) {
-                rapidFeedInput.value = config.machine?.speeds?.rapidFeed;
-                rapidFeedInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
-                });
-            }
-            
+            const loadedSettings = this.ui.core.settings;
+
             const postProcessorSelect = document.getElementById('post-processor');
+            const startCodeTA = document.getElementById('start-code-ta');
+            const endCodeTA = document.getElementById('end-code-ta');
             if (postProcessorSelect) {
                 postProcessorSelect.innerHTML = '';
                 const options = config.ui?.parameterOptions?.postProcessor || [{ value: 'grbl', label: 'GRBL (Default)' }];
@@ -631,56 +664,103 @@
                     optionEl.textContent = opt.label;
                     postProcessorSelect.appendChild(optionEl);
                 });
-                
-                postProcessorSelect.value = config.gcode?.postProcessor;
+                postProcessorSelect.value = loadedSettings.gcode.postProcessor;
                 postProcessorSelect.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('gcode', { postProcessor: e.target.value });
-                    this.parameterManager.updateDefault('postProcessor', e.target.value);
+                    const newProcessor = e.target.value;
+                    
+                    // 1. Get the new default templates
+                    const newStartCode = config.getGcodeTemplate(newProcessor, 'start');
+                    const newEndCode = config.getGcodeTemplate(newProcessor, 'end');
+                    
+                    // 2. Update the text areas in the UI
+                    if (startCodeTA) startCodeTA.value = newStartCode;
+                    if (endCodeTA) endCodeTA.value = newEndCode;
+
+                    // 3. Save ALL three settings to the core
+                    this.ui.core.updateSettings('gcode', { 
+                        postProcessor: newProcessor,
+                        startCode: newStartCode,
+                        endCode: newEndCode
+                    });
+                });
+            }
+
+            if (startCodeTA) {
+                startCodeTA.value = loadedSettings.gcode.startCode;
+                startCodeTA.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('gcode', { startCode: e.target.value });
+                });
+            }
+
+            if (endCodeTA) {
+                endCodeTA.value = loadedSettings.gcode.endCode;
+                endCodeTA.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('gcode', { endCode: e.target.value });
+                });
+            }
+
+            const thicknessInput = document.getElementById('pcb-thickness');
+            if (thicknessInput) {
+                thicknessInput.value = loadedSettings.pcb.thickness;
+                thicknessInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('pcb', { thickness: parseFloat(e.target.value) });
+                });
+            }
+            
+            const safeZInput = document.getElementById('safe-z');
+            if (safeZInput) {
+                safeZInput.value = loadedSettings.machine.safeZ;
+                safeZInput.addEventListener('change', (e) => {
+                    const val = parseFloat(e.target.value);
+                    this.ui.core.updateSettings('machine', { safeZ: val });
+                });
+            }
+            
+            const travelZInput = document.getElementById('travel-z');
+            if (travelZInput) {
+                travelZInput.value = loadedSettings.machine.travelZ;
+                travelZInput.addEventListener('change', (e) => {
+                    const val = parseFloat(e.target.value);
+                    this.ui.core.updateSettings('machine', { travelZ: val });
+                });
+            }
+            
+            const rapidFeedInput = document.getElementById('rapid-feed');
+            if (rapidFeedInput) {
+                rapidFeedInput.value = loadedSettings.machine.rapidFeed;
+                rapidFeedInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
                 });
             }
             
             const gcodeUnitsSelect = document.getElementById('gcode-units');
             if (gcodeUnitsSelect) {
-                gcodeUnitsSelect.value = config.gcode?.units;
+                gcodeUnitsSelect.value = loadedSettings.gcode.units;
                 gcodeUnitsSelect.addEventListener('change', (e) => {
                     this.ui.core.updateSettings('gcode', { units: e.target.value });
+                });
+            }
+
+            const coolantSelect = document.getElementById('coolant-type');
+            if (coolantSelect) {
+                coolantSelect.value = loadedSettings.machine.coolant || 'none';
+                coolantSelect.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { coolant: e.target.value });
+                });
+            }
+
+            const vacuumToggle = document.getElementById('vacuum-toggle');
+            if (vacuumToggle) {
+                vacuumToggle.checked = loadedSettings.machine.vacuum || false;
+                vacuumToggle.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { vacuum: e.target.checked });
                 });
             }
         }
 
         debug(message, data = null) {
-            // 1. [THE ONE CHECK]
-            // This is the *only* check. It reads the global config flag that is controlled by both your config file and the UI toggle.
-            if (!debugConfig.enabled) {
-                return;
-            }
-            
-            // Change this tag for each file
-            const logMessage = `[UIControls] ${message}`;
-
-            // 2. Log to browser console (as before)
-            if (data) {
-                console.log(logMessage, data);
-            } else {
-                console.log(logMessage);
-            }
-
-            // 3. Send to StatusManager's hybrid log
-            // We must check if the UI is fully initialized, as core modules load before the UI.
-            if (window.pcbcam?.ui?.statusManager) {
-                
-                let statusMessage = logMessage;
-                if (data) {
-                    try {
-                        // Try to convert simple data to a string for the log
-                        statusMessage += ` ${JSON.stringify(data)}`; 
-                    } catch (e) {
-                        statusMessage += " [Object]"; // Handle complex/circular objects
-                    }
-                }
-                
-                // The statusManager's 'debug' method will add the timestamp and handle filtering (though we already filtered).
-                window.pcbcam.ui.statusManager.debug(statusMessage);
+            if (this.ui && this.ui.debug) {
+                this.ui.debug(`[UIControls] ${message}`, data);
             }
         }
     }

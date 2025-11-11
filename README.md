@@ -217,7 +217,6 @@ window.getReconstructionRegistry()      // Inspect arc metadata
 * **Metric Units:** Milimeters only. System is technically unit agnostic but it's base 10. A new module that manages unit states and conversions must be made from scratch.
 * **Bézier Offsetting:** While Bézier curves from SVGs *are* parsed analytically, they are tessellated (converted to line segments) by the plotter before offsetting. True analytic offsetting of Béziers is not yet supported.
 * **Tool Changes:** The application does not currently generate tool change commands (M6). Operations using different tools must be exported as separate G-code files.
-* **Performance:** Very large or complex boards (>200mm) with high segmentation may experience UI slowdown during boolean operations, as they run on the main thread.
 * **UI:** Small screen/mobile support is incomplete.
 
 **Known Bugs:**

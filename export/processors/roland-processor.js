@@ -43,29 +43,6 @@
             });
         }
         
-        generateHeader(options) {
-            const lines = [];
-            
-            lines.push('PA;PA;'); // Initialize
-            lines.push('!MC0;'); // Motor control
-            lines.push('VS10;'); // Speed setting
-            lines.push('!VZ10;'); // Z-axis speed
-            lines.push('!PZ0,0;'); // Set Z origin
-            lines.push('PU0,0;'); // Pen up, move to origin
-            
-            return lines.join('\n');
-        }
-        
-        generateFooter(options) {
-            const lines = [];
-            
-            lines.push('PU0,0;'); // Pen up, return to origin
-            lines.push('!MC0;'); // Motors off
-            lines.push('H;'); // Home
-            
-            return lines.join('\n');
-        }
-        
         generateToolChange(tool, options) {
             return '!MC0;\n(Manual tool change required)\n!MC1;';
         }

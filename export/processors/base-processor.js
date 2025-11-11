@@ -59,15 +59,94 @@
             this.currentSpindle = null;
         }
         
-        // Abstract methods - must be implemented by subclasses
+        // Abstract methods
         generateHeader(options) {
-            throw new Error('generateHeader() must be implemented by subclass');
+            const headerLines = [];
+
+            // Add the formatted comment block IF it exists
+            if (options.includeComments && options.commentBlock) {
+                // Use the safer, Grbl-compatible semicolon for each line
+                options.commentBlock.forEach(line => {
+                    headerLines.push(`; ${line}`); // Add each line as its own comment
+                });
+            }
+
+            // Get the template from the options, or a default
+            let startCode = options.startCode;
+            
+            // Replace placeholders
+            const toolNum = options.toolNumber;
+            startCode = startCode.replace(/{toolNumber}/g, toolNum);
+            
+            // Conditionally add coolant/vacuum commands
+            if (options.coolant && options.coolant !== 'none' && !startCode.includes('M7') && !startCode.includes('M8')) {
+                if (options.coolant === 'mist') {
+                    startCode += '\nM7'; // Mist
+                } else if (options.coolant === 'flood') {
+                    startCode += '\nM8'; // Flood
+                }
+            }
+            if (options.vacuum && !startCode.includes('M10')) { // Assuming M10/M11 for vacuum
+                startCode += '\nM10'; // Vacuum On
+            }
+
+            headerLines.push(startCode); // Add the actual start code after the comments
+
+            return headerLines.join('\n');
         }
         
         generateFooter(options) {
-            throw new Error('generateFooter() must be implemented by subclass');
+            let endCode = options.endCode || ''; // Get template from config.js
+            
+            const safeZ = options.safeZ;
+            const travelZ = options.travelZ;
+
+            endCode = endCode.replace(/{safeZ}/g, this.formatCoordinate(safeZ));
+            endCode = endCode.replace(/{travelZ}/g, this.formatCoordinate(travelZ));
+
+            // Conditionally add 'off' commands (if not already in template)
+            if (options.coolant && options.coolant !== 'none' && !endCode.includes('M9')) {
+                endCode = 'M9\n' + endCode; // Coolant Off
+            }
+            if (options.vacuum && !endCode.includes('M11')) {
+                endCode = 'M11\n' + endCode; // Vacuum Off
+            }
+
+            return endCode;
         }
         
+        /**
+         * Generates G-code to set spindle speed, only if it has changed.
+         * This is the core of the stateful spindle logic.
+         * @param {number} speed - The new target RPM
+         * @returns {string} G-code string (e.g., "M5\nM3 S10000") or "" if no change.
+         */
+        setSpindle(speed) {
+            const newSpeed = Math.round(speed);
+            const currentSpeed = Math.round(this.currentSpindle);
+
+            if (newSpeed === currentSpeed) {
+                return ''; // No change needed
+            }
+
+            const lines = [];
+            const sValue = this.formatSpindle(newSpeed);
+
+            // If spindle is currently on, stop it first
+            if (currentSpeed > 0) {
+                lines.push('M5');
+            }
+            
+            // Start spindle if new speed is > 0
+            if (newSpeed > 0) {
+                lines.push(`M3 S${sValue}`);
+                lines.push('G4 P1'); // TODO: Make dwell configurable
+            }
+
+            this.currentSpindle = newSpeed; // Update the state
+            return lines.join('\n');
+        }
+
         generateToolChange(tool, options) {
             throw new Error('generateToolChange() must be implemented by subclass');
         }
@@ -88,6 +167,7 @@
         }
         
         formatSpindle(value) {
+            if (value === null || value === undefined) return '0';  // or throw error
             const precision = this.config.spindlePrecision;
             if (precision === 0) {
                 return Math.round(value).toString();
@@ -338,7 +418,6 @@
                 case 'RETRACT': return this.generateRetract(cmd);
                 case 'DWELL': return this.generateDwell(cmd);
                 default:
-                    if (cmd.comment) return `(${cmd.comment})`;
                     return '';
             }
         }

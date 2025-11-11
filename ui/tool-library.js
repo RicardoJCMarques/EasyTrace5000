@@ -413,24 +413,20 @@
         
         // Debug helpers
         debug(message, data = null) {
-            if (debugConfig.enabled) {
-                if (data) {
-                    console.log(`[ToolLibrary] ${message}`, data);
-                } else {
-                    console.log(`[ToolLibrary] ${message}`);
-                }
+            if (this.ui && this.ui.debug) {
+                this.ui.debug(`[ToolLibrary] ${message}`, data);
             }
         }
 
         logToolStats() {
             if (debugConfig.enabled) {
-                console.log('Tool Library Statistics:');
-                console.log(`  Total tools: ${this.tools.length}`);
-                console.log(`  Tool types: ${Array.from(this.toolsByType.keys()).join(', ')}`);
-                console.log(`  Operations covered: ${Array.from(this.toolsByOperation.keys()).join(', ')}`);
+                console.log('[ToolLibrary] Statistics:');
+                console.log(`   Total tools: ${this.tools.length}`);
+                console.log(`   Tool types: ${Array.from(this.toolsByType.keys()).join(', ')}`);
+                console.log(`   Operations covered: ${Array.from(this.toolsByOperation.keys()).join(', ')}`);
                 
                 this.toolsByType.forEach((tools, type) => {
-                    console.log(`  ${type}: ${tools.length} tools`);
+                    console.log(`   ${type}: ${tools.length} tools`);
                 });
             }
         }

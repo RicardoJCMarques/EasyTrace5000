@@ -28,10 +28,8 @@
     'use strict';
     
     const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    const uiConfig = config.ui || {};
-    const validationRules = uiConfig.validation || {};
-    const paramOptions = uiConfig.parameterOptions || {};
+    const validationRules = config.ui.validation || {};
+    const paramOptions = config.ui.parameterOptions || {};
     
     class ParameterManager {
         constructor() {
@@ -209,7 +207,7 @@
                     stage: 'strategy', // 
                     category: 'cutout',
                     operationType: 'cutout'
-                },
+                },  
 
                 // STAGE 3: MACHINE
                 feedRate: {
@@ -235,21 +233,7 @@
                     ...validationRules.spindleSpeed,
                     stage: 'machine',
                     category: 'feeds'
-                },
-                startCode: {
-                    type: 'textarea',
-                    label: 'Start G-code',
-                    rows: 4,
-                    stage: 'machine',
-                    category: 'gcode'
-                },
-                endCode: {
-                    type: 'textarea',
-                    label: 'End G-code',
-                    rows: 3,
-                    stage: 'machine',
-                    category: 'gcode'
-                },
+                }
             };
         }
 
@@ -482,11 +466,7 @@
                 plungeRate: opConfig.cutting?.plungeFeed,
                 spindleSpeed: opConfig.cutting?.spindleSpeed,
                 direction: opConfig.defaultSettings?.direction,
-                entryType: opConfig.defaultSettings?.entryType,
-                travelZ: config.machine?.heights?.travelZ,
-                safeZ: config.machine?.heights?.safeZ,
-                postProcessor: config.gcode?.postProcessor,
-                workOffset: paramOptions.workOffset?.[0]?.value // 'G54'
+                entryType: opConfig.defaultSettings?.entryType
             };
         }
         
@@ -531,12 +511,8 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
-                if (data) {
-                    console.log(`[ParamManager] ${message}`, data);
-                } else {
-                    console.log(`[ParamManager] ${message}`);
-                }
+            if (this.ui && this.ui.debug) {
+                this.ui.debug(`[ParameterManager] ${message}`, data);
             }
         }
     }

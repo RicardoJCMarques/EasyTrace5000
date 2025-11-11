@@ -29,9 +29,8 @@
     
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
-    const messagesConfig = config.ui?.messages || {};
-    const uiConfig = config.ui || {};
-    const timingConfig = uiConfig.timing || {};
+    const textConfig = config.ui.text || {};
+    const timingConfig = config.ui.timing || {};
     const storageKeys = config.storageKeys || {};
     const opsConfig = config.operations || {};
     
@@ -100,7 +99,10 @@
                 
                 // Initialize managers before UI
                 this.parameterManager = new ParameterManager();
-                this.modalManager = new ModalManager(this);
+                this.languageManager = new LanguageManager();
+                
+                // Load the language file beforethe UI
+                await this.languageManager.load();
 
                 // Instantiate pipeline components *after* core exists
                 this.gcodeGenerator = new GCodeGenerator(config.gcode);
@@ -109,8 +111,8 @@
                 this.toolpathOptimizer = new ToolpathOptimizer();
                 this.machineProcessor = new MachineProcessor(this.core);                
                 
-                // Initialize UI with core reference
-                this.ui = new PCBCamUI(this.core);
+                // Initialize UI with core and language manager
+                this.ui = new PCBCamUI(this.core, this.languageManager)
                 
                 // Initialize UI (pass parameter manager)
                 const uiReady = await this.ui.init(this.parameterManager);
@@ -119,6 +121,9 @@
                 if (!uiReady) {
                     throw new Error('UI initialization failed');
                 }
+
+                // Initialize managers that DO depend on UI
+                this.modalManager = new ModalManager(this)
                 
                 // Pass tool library to core if using advanced UI
                 if (this.ui.toolLibrary) {
@@ -131,7 +136,7 @@
                 
                 if (!wasmReady) {
                     console.warn('WASM modules failed to load - running in fallback mode');
-                    this.ui?.updateStatus(messagesConfig.warning || 'Warning: Clipper2 failed to load - fusion disabled', 'warning');
+                    this.ui?.updateStatus(textConfig.statusWarning || 'Warning: Clipper2 failed to load - fusion disabled', 'warning');
                 }
                 
                 // Setup global event handlers
@@ -167,7 +172,7 @@
                 console.log('PCB CAM ready');
                 
                 // Update status
-                this.ui?.updateStatus(messagesConfig.ready);
+                this.ui?.updateStatus(textConfig.statusReady);
                 
             } catch (error) {
                 console.error('Initialization failed:', error);
@@ -526,7 +531,7 @@
             }
             
             // Show loading status
-            this.ui?.updateStatus(`${messagesConfig.loading || 'Loading'} ${file.name}...`);
+            this.ui?.updateStatus(`${textConfig.statusLoading || 'Loading'} ${file.name}...`);
             
             // Read and parse file
             const reader = new FileReader();
@@ -634,7 +639,7 @@
             }
             
             if (this.pendingOperations.length > 0 && !this.initState.fullyReady) {
-                this.ui?.updateStatus(messagesConfig.loading);
+                this.ui?.updateStatus(textConfig.statusLoading);
             }
         }
         
@@ -676,118 +681,85 @@
         }
 
         async orchestrateToolpaths(options) {
-            if (!options || !options.operationIds || !this.core || !this.gcodeGenerator) {
-                console.error("[Controller] Orchestration failed, missing core components.");
-                return { gcode: "; Generation Failed", lineCount: 1, planCount: 0, estimatedTime: 0 };
+            if (!options?.operationIds || !this.core || !this.gcodeGenerator) {
+                console.error("[Controller] Orchestration failed");
+                return { gcode: "; Generation Failed", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
             }
 
-            // Ensure processors exist
-            if (!this.geometryTranslator) {
-                this.geometryTranslator = new GeometryTranslator(this.core);
-            }
-            if (!this.machineProcessor) {
-                this.machineProcessor = new MachineProcessor(this.core);
-            }
-            if (!this.toolpathOptimizer) {
-                this.toolpathOptimizer = new ToolpathOptimizer();
-            }
+            // Read ALL settings from core at start
+            const machineConfig = this.core.settings.machine;
+            const gcodeConfig = this.core.settings.gcode;
 
-            // STAGE 1: Get operations
+            // STAGE 1: Get selected operations
             const selectedOps = options.operationIds
                 .map(id => options.operations.find(o => o.id === id))
                 .filter(Boolean);
             
             if (selectedOps.length === 0) {
-                return { gcode: "; No operations selected", lineCount: 1, planCount: 0, estimatedTime: 0 };
+                return { gcode: "; No operations selected", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
             }
 
-            // STAGE 2: Separate operations
-            const millingOps = selectedOps.filter(op => op.type !== 'drill');
-            const drillOps = selectedOps.filter(op => op.type === 'drill');
+            // STAGES 2 & 3: Translate and Optimize, Operation by Operation
+            this.debug(`Stage 2/3: Translating and Optimizing ${selectedOps.length} operations in order...`);
+            const plansToProcess = [];
 
-            // STAGE 2a: Translate MILLING ops
-            this.debug(`Stage 2a: Translating ${millingOps.length} milling operations...`);
-            const pureMillingPlans = [];
-            for (const op of millingOps) {
+            for (const op of selectedOps) {
                 if (!op.offsets || op.offsets.length === 0) {
-                    console.warn(`[Controller] Milling Op ${op.id} has no offset geometry`);
+                    this.debug(`  - Skipping Op: ${op.file.name} (no offsets)`);
                     continue;
                 }
-                const opPlans = await this.geometryTranslator.translateOperation(op);
-                pureMillingPlans.push(...opPlans);
-            }
-            this.debug(`Stage 2a: ${pureMillingPlans.length} pure milling plans`);
 
-            // STAGE 2b: Translate DRILL ops
-            this.debug(`Stage 2b: Translating ${drillOps.length} drill operations...`);
-            const pureDrillPlans = [];
-            for (const op of drillOps) {
-                if (!op.offsets || op.offsets.length === 0) {
-                    console.warn(`[Controller] Drill Op ${op.id} has no strategy geometry`);
-                    continue;
+                this.debug(`  - Processing Op: ${op.file.name} (${op.type})`);
+                
+                // Stage 2: Translate this *single* operation
+                const opPurePlans = await this.geometryTranslator.translateOperation(op);
+                if (opPurePlans.length === 0) continue;
+
+                // Stage 3: Optimize *only* this operation's plans
+                let opOptimizedPlans = opPurePlans;
+                if (options.optimize === true) {
+                    // Ensure the optimizer has the latest safeZ from machine settings
+                    this.toolpathOptimizer.options.safeZ = machineConfig.safeZ;
+                    // The optimizer will optimize the list of plans for this one operation
+                    opOptimizedPlans = this.toolpathOptimizer.optimize(opPurePlans);
                 }
-                const opPlans = await this.geometryTranslator.translateOperation(op);
-                pureDrillPlans.push(...opPlans);
-            }
-            this.debug(`Stage 2b: ${pureDrillPlans.length} pure drill plans`);
 
-            
-            // STAGE 3: Optimize geometry (optional)
-            let optimizedMillingPlans = pureMillingPlans;
-            let optimizedDrillPlans = pureDrillPlans;
-
-            if (options.optimize === true) {
-                this.debug('Stage 3: Optimizing with clustering...');
-                
-                // STAGE 3a: Optimize MILLING plans
-                // (This runs with Z-grouping, clustering, etc.)
-                optimizedMillingPlans = this.toolpathOptimizer.optimize(pureMillingPlans);
-                
-                // STAGE 3b: Optimize DRILL plans
-                // (This will just do nearest-neighbor, as Z-grouping won't find groups)
-                optimizedDrillPlans = this.toolpathOptimizer.optimize(pureDrillPlans);
-
-                const stats = this.toolpathOptimizer.getStats();
-                this.debug(`Optimization complete:`, {
-                    pointsRemoved: stats.pointsRemoved,
-                    travelSaved: `${stats.travelSavedPercent}% (${stats.travelDistanceSaved.toFixed(1)}mm)`,
-                    time: `${stats.optimizationTime.toFixed(1)}ms`
-                });
+                // Add the optimized plans for this op to the final list
+                plansToProcess.push(...opOptimizedPlans);
             }
             
-            // STAGE 3c: Combine lists
-            // We run all optimized milling, then all optimized drilling.
-            const plansToProcess = [...optimizedMillingPlans, ...optimizedDrillPlans];
-
-            // STAGE 4: Add machine moves
+            // STAGE 4: Add machine operations
             this.debug('Stage 4: Adding machine operations...');
-
-            const machineSettings = {
-                safeZ: options.safeZ || this.core.settings.machine.safeZ || 5.0,
-                travelZ: options.travelZ || this.core.settings.machine.travelZ || 2.0,
-                plungeRate: options.plungeRate || 50,
-                rapidFeedRate: options.rapidFeedRate || 1000,
-                ...options
-            };
             
-            // Processor now takes ToolpathPlan[] directly
+            const machineSettings = {
+                safeZ: machineConfig.safeZ,
+                travelZ: machineConfig.travelZ,
+                rapidFeedRate: machineConfig.rapidFeed
+            };
+
             const machineReadyPlans = this.machineProcessor.processPlans(plansToProcess, machineSettings);
             this.debug(`Stage 4: ${machineReadyPlans.length} machine-ready plans`);
 
             // STAGE 5: Generate G-code
             this.debug('Stage 5: Generating G-code...');
-            const genOptions = {
-                postProcessor: options.postProcessor || 'grbl',
-                includeComments: options.includeComments !== false,
-                singleFile: options.singleFile !== false,
-                toolChanges: options.toolChanges || false,
-                safeZ: machineSettings.safeZ
-            };
             
+            const genOptions = {
+                postProcessor: options.postProcessor,
+                includeComments: options.includeComments,
+                singleFile: options.singleFile,
+                toolChanges: options.toolChanges,
+                startCode: gcodeConfig.startCode,
+                endCode: gcodeConfig.endCode,
+                safeZ: machineConfig.safeZ,
+                travelZ: machineConfig.travelZ,
+                coolant: machineConfig.coolant,
+                vacuum: machineConfig.vacuum
+            };
+
             const gcode = this.gcodeGenerator.generate(machineReadyPlans, genOptions);
 
-            // STAGE 6: Estimate time AND distance
-            this.debug('[Stage 6: Estimating time and distance...');
+            // STAGE 6: Calculate metrics
+            this.debug('Stage 6: Calculating metrics...');
             const { estimatedTime, totalDistance } = this.machineProcessor.calculatePathMetrics(machineReadyPlans);
 
             return {

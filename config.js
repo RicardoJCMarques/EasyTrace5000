@@ -531,7 +531,11 @@ window.PCBCAMConfig = {
             minX: 0,
             minY: 0,
             minZ: -5
-        }
+        },
+
+        coolant: 'none', // 'none', 'mist', 'flood'
+        vacuum: false
+
     },
 
     // ============================================================================
@@ -552,9 +556,14 @@ window.PCBCAMConfig = {
         
         templates: {                                 // [USED IN: cam-core.js line ~120, gcode-generator.js (not provided)] [MOVE TO: constants.js]
             grbl: {
-                start: 'G90 G21 G17\nG94\nM3 S{spindleSpeed}\nG4 P1',
-                end: 'M5\nG0 Z{safeZ}\nM2',
+                start: 'G90 G21 G17\nT1\nG94',
+                end: 'M5\nG0 X0Y0\nM2',
                 toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P1'
+            },
+            roland: {
+                start: 'PA;PA;!MC0;VS10;!VZ10;!PZ0,0;PU0,0;',
+                end: 'PU0,0;!MC0;H;',
+                toolChange: '!MC0;!MC1;' // (Manual tool change required)
             },
             marlin: {
                 start: 'G90 G21\nM3 S255\nG4 P1000',
@@ -570,6 +579,11 @@ window.PCBCAMConfig = {
                 start: 'G90 G21 G17\nM3 S1000\nG4 P1',
                 end: 'M5\nG0 Z10\nM30',
                 toolChange: 'M5\nG0 Z{safeZ}\nT{tool} M6\nM3 S{speed}\nG4 P1'
+            },
+            grblHAL: {
+                start: '(grblHAL)\nG90 G21 G17\nG94\nM3 S{spindleSpeed}\nG4 P1',
+                end: 'M5\nG0 Z{safeZ}\nM2',
+                toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P1'
             }
         },
         
@@ -714,37 +728,20 @@ window.PCBCAMConfig = {
             safeZ: { min: 0, max: 50, step: 0.1 }
         },
         
-        modal: {                                     // [UNUSED] [AUDIT-NEEDED] [MOVE TO: constants.js]
-            totalPages: 3,
-            titles: [
-                '📋 PCB Preview & Fusion Setup',
-                '⚙️ Offset Geometry Configuration',
-                '🛠️ Toolpath Generation'
-            ],
-            defaultPage: 1
-        },
-        
-        messages: {                                  // [USED IN: cam-controller.js line ~40] [MOVE TO: constants.js]
-            ready: 'Ready - Add PCB files to begin',
-            loading: 'Loading...',
-            processing: 'Processing...',
-            success: 'Operation completed successfully',
-            error: 'An error occurred',
-            warning: 'Warning',
-            logHint: 'Click here to expand log. Toggle verbose debug messages in Viz Panel.'
-        },
-
-        text: {                                     // [ADDED] For hardcoded UI strings
-            inspectorEmpty: '<div class="property-empty">Select an operation</div>',
-            inspectorTitle: 'Properties',
+        text: {
             noToolsAvailable: 'No tools available',
-            gcodePlaceholder: '; Click "Calculate Preview" to generate G-code preview\n; or "Export G-code" to proceed directly to export',
+            gcodePlaceholder: 'Click "Calculate Toolpaths" to generate G-code',
             gcodeDefaultFilename: 'output.nc',
             gcodeNoExportAlert: 'No G-code to export',
-            statusDefault: 'Ready - Add PCB files to begin',
-            statusReady: (ops, prims) => `Ready: ${ops} operations, ${prims} primitives`
-        },
 
+            statusReady: 'Ready - Add PCB files to begin - Click here to expand log',
+            statusLoading: 'Loading...',
+            statusProcessing: 'Processing...',
+            statusSuccess: 'Operation completed successfully',
+            statusError: 'An error occurred',
+            statusWarning: 'Warning',
+            logHintViz: 'Toggle verbose debug messages in the Viz Panel.'
+        },
         tooltips: {                                // Tooltip module to be completely rebuilt
             enabled: true,
             delay: 500,       // [DEPRECATED] - Use delayShow
@@ -830,10 +827,12 @@ window.PCBCAMConfig = {
                 { value: 'on', label: 'On Line' }
             ],
             postProcessor: [
-                { value: 'grbl', label: 'GRBL' },
-                { value: 'marlin', label: 'Marlin' },
+                { value: 'grbl', label: 'Grbl' },
+                { value: 'roland', label: 'Roland (RML)' },
+                { value: 'mach3', label: 'Mach3' },
                 { value: 'linuxcnc', label: 'LinuxCNC' },
-                { value: 'mach3', label: 'Mach3' }
+                { value: 'grblHAL', label: 'grblHAL' },
+                { value: 'marlin', label: 'Marlin' }
             ],
             workOffset: [
                 { value: 'G54', label: 'G54' },

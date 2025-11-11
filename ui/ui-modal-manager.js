@@ -29,14 +29,15 @@
     
     const config = window.PCBCAMConfig || {};
     const debugConfig = config.debug || {};
-    const uiConfig = config.ui || {};
-    const textConfig = uiConfig.text || {};
-    const iconConfig = uiConfig.icons || {};
+    const textConfig = config.ui.text || {};
+    const iconConfig = config.ui.icons || {};
     const storageKeys = config.storageKeys || {};
     
     class ModalManager {
         constructor(controller) {
             this.controller = controller;
+            this.ui = controller.ui;
+            this.lang = this.ui.lang;
             this.activeModal = null;
             this.modalStack = [];
             
@@ -326,19 +327,82 @@
             this.selectedOperations = operations;
             this.highlightedOpId = highlightOperationId;
             this.toolpathPlans.clear();
+
+            this.attachGcodeModalTooltips();
             
             this.showModal('gcode');
             
             // Update modal title
             const modal = this.modals.gcode;
             const header = modal.querySelector('.modal-header h2');
-            if (header) header.textContent = 'Toolpath Manager & G-code Export';
+            if (header) header.textContent = 'Operations Manager';
             
             this.populateToolpathModal();
             
             this.showPlaceholderPreview(); // Only shows tool reach simulated stroked paths.
             
             this.setupToolpathHandlers();
+        }
+
+        attachGcodeModalTooltips() {
+            if (!this.lang || !window.TooltipManager) return;
+
+            // Manage Modal box
+            if (!this.gcodeModalTooltipsProcessed) {
+                this.gcodeModalTooltipsProcessed = new Set();
+            }
+            const processedLabels = this.gcodeModalTooltipsProcessed;
+            
+            const attachTo = (inputId, tooltipKey) => {
+                const input = document.getElementById(inputId);
+                if (!input) return;
+
+                const label = input.closest('.property-field, .field-group')?.querySelector('label');
+                if (label) {
+                    // Check if modal already has tooltips
+                    if (processedLabels.has(label)) {
+                        return; // Already attached
+                    }
+                    processedLabels.add(label);
+
+                    const text = this.lang.get(tooltipKey);
+                    const title = label.textContent; // Just use the label text as title
+                    
+                    if (text) {
+                        // This will create the '?' icon
+                        window.TooltipManager.attachWithIcon(label, { title: title, text: text }, {
+                            showOnFocus: true
+                        });
+                    }
+                }
+            };
+            
+            // Find the "Processing Order" <h3> and attach a tooltip to its help text
+            const orderHelp = document.querySelector('#gcode-operation-order + .help-text');
+            if (orderHelp) {
+                 const text = this.lang.get('tooltips.modals.gcode.order');
+                 if (text) {
+                    window.TooltipManager.attach(orderHelp, { title: "Processing Order", text: text }, { immediate: true });
+                    orderHelp.classList.add('has-help');
+                 }
+            }
+
+            // Attach to checkboxes and inputs
+            attachTo('gcode-post-processor', 'tooltips.modals.gcode.postProcessor');
+            attachTo('gcode-single-file', 'tooltips.modals.gcode.singleFile');
+            attachTo('gcode-include-comments', 'tooltips.modals.gcode.includeComments');
+            attachTo('gcode-tool-changes', 'tooltips.modals.gcode.toolChanges');
+            attachTo('gcode-optimize-paths', 'tooltips.modals.gcode.optimize');
+            attachTo('gcode-filename', 'tooltips.modals.gcode.filename');
+            
+            // Attach to calculate button
+            const calcBtn = document.getElementById('gcode-calculate-btn');
+            if (calcBtn) {
+                 const text = this.lang.get('tooltips.modals.gcode.calculate');
+                 if (text) {
+                    window.TooltipManager.attach(calcBtn, { title: "Calculate Toolpaths", text: text }, { immediate: true });
+                 }
+            }
         }
         
         populateToolpathModal() {
@@ -610,13 +674,32 @@
             const previewText = document.getElementById('gcode-preview-text');
             const filename = document.getElementById('gcode-filename')?.value || textConfig.gcodeDefaultFilename || 'output.nc';
             
-            if (!previewText || !previewText.value || previewText.value.startsWith(';')) {
+            // Get the placeholder text from the config
+            const placeholder = textConfig.gcodePlaceholder;
+            const gcodeContent = previewText.value;
+
+            if (!previewText || !gcodeContent) {
+                alert(textConfig.gcodeNoExportAlert);
+                return;
+            }
+
+            // Check if the content is *exactly* the placeholder
+            if (gcodeContent === placeholder) {
+                alert(textConfig.gcodeNoExportAlert);
+                return;
+            }
+
+            // Check for our known "error" messages that start with ';'
+            if (gcodeContent.startsWith('; No toolpath data available') || 
+                gcodeContent.startsWith('; No operations selected') || 
+                gcodeContent.startsWith('; Generation Failed')) 
+            {
                 alert(textConfig.gcodeNoExportAlert);
                 return;
             }
             
             // Create download
-            const blob = new Blob([previewText.value], { type: 'text/plain' });
+            const blob = new Blob([gcodeContent], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

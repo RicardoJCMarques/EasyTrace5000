@@ -220,10 +220,6 @@
     position: relative; /* For progress bar */
 }
 
-.status-bar:hover {
-    background: var(--color-bg-hover);
-}
-
 /* Clickable icon for the log toggle */
 .log-toggle-icon {
     font-size: 10px;
@@ -450,7 +446,7 @@
 }
 
 .file-icon {
-    margin: 0 var(--spacing-xs);
+    margin: 0 var(--spacing-xs) 0 var(--spacing-sm);
     font-size: var(--font-size-sm);
 }
 
@@ -461,12 +457,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-
-.node-actions {
-    display: none;
-    gap: var(--spacing-xs);
-}
-
 
 /* Geometry nodes under files */
 .file-geometries {
@@ -499,26 +489,6 @@
     display: flex;
     align-items: center;
     width: 100%;
-}
-
-/* * By default (no class), the layer is VISIBLE.
- * Show the standard eye icon.
-*/
-.geometry-node .visibility-btn .icon-eye {
-    display: block;
-}
-.geometry-node .visibility-btn .icon-eye-slash {
-    display: none;
-}
-
-/* * When the .is-hidden class is present, the layer is HIDDEN.
- * Show the eye-slash icon.
-*/
-.geometry-node .visibility-btn.is-hidden .icon-eye {
-    display: none;
-}
-.geometry-node .visibility-btn.is-hidden .icon-eye-slash {
-    display: block;
 }
 
 .geometry-icon {

@@ -127,13 +127,15 @@
                     <h2>Operations</h2>
                     <div class="section-actions">
                         <button class="btn-icon btn btn--icon btn--compact" id="collapse-all-btn" title="Collapse All" aria-label="Collapse All">
-                            <svg width="16" height="16" viewBox="0 0 16 16">
-                                <path d="M2 8h12M8 2v12" stroke="currentColor" stroke-width="2"/>
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M13 11L8 6L3 11"/>
+                                <path d="M13 6L8 1L3 6"/>
                             </svg>
                         </button>
                         <button class="btn-icon btn btn--icon btn--compact" id="expand-all-btn" title="Expand All" aria-label="Expand All">
-                            <svg width="16" height="16" viewBox="0 0 16 16">
-                                <rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M13 5L8 10L3 5"/>
+                                <path d="M13 10L8 15L3 10"/>
                             </svg>
                         </button>
                     </div>
@@ -294,6 +296,35 @@
                     <span class="collapse-indicator">▼</span>
                 </header>
                 <div class="section-content collapsible" id="machine-controls">
+
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label>Post-Processor</label>
+                            <select id="post-processor">
+                                <option value="grbl" selected>grbl</option>
+                                <option value="roland">Roland</option>
+                                <option value="mach3">Mach3</option>
+                                <option value="linuxcnc">LinuxCNC</option>
+                                <option value="grblHAL">grblHAL</option>
+                                <option value="marlin">Marlin</option>
+                            </select>
+                        </div>
+                        <div class="property-field">
+                            <label for="start-code-ta">Start G-code</label>
+                            <textarea id="start-code-ta" rows="5"></textarea>
+                        </div>
+                        <div class="property-field">
+                            <label for="end-code-ta">End G-code</label>
+                            <textarea id="end-code-ta" rows="5"></textarea>
+                        </div>
+                        <div class="property-field">
+                            <label>G-Code Units</label>
+                            <select id="gcode-units">
+                                <option value="mm">Millimeters (G21)</option>
+                                <option value="inch">Inches (G20)</option>
+                            </select>
+                        </div>
+                    </div>
                     
                     <div class="property-section">
                         <div class="property-field">
@@ -334,23 +365,21 @@
 
                     <div class="property-section">
                         <div class="property-field">
-                            <label>Post-Processor</label>
-                            <select id="post-processor">
-                                <option value="grbl">GRBL</option>
-                                <option value="marlin">Marlin</option>
-                                <option value="linuxcnc">LinuxCNC</option>
-                                <option value="mach3">Mach3</option>
+                            <label for="coolant-type">Coolant</label>
+                            <select id="coolant-type">
+                                <option value="none" selected>none</option>
+                                <option value="mist">Mist</option>
+                                <option value="flood">Flood</option>
                             </select>
                         </div>
+
                         <div class="property-field">
-                            <label>G-Code Units</label>
-                            <select id="gcode-units">
-                                <option value="mm">Millimeters (G21)</option>
-                                <option value="inch">Inches (G20)</option>
-                            </select>
+                            <label class="checkbox-label" for="vacuum-toggle">
+                                <input type="checkbox" id="vacuum-toggle">
+                                <span>Vacuum</span>
+                            </label>
                         </div>
                     </div>
-
                 </div>
             </div>
 
@@ -499,24 +528,26 @@
     <template id="file-node-template">
         <div class="file-node" data-file-id="">
             <div class="file-node-content">
-                <span class="tree-expand-icon">▶</span>
                 <span class="file-icon">📄</span>
                 <span class="file-label"></span>
                 <span class="unsaved-indicator hidden" title="Unsaved changes">●</span>
-                <div class="node-actions">
-                    <button class="btn-icon btn-tiny settings-btn btn btn--icon btn--compact" title="Settings" aria-label="Settings">
-                        <svg width="12" height="12" viewBox="0 0 20 20">
-                            <circle cx="10" cy="10" r="2" stroke="currentColor" fill="none"/>
-                            <path d="M10 2v2m0 12v2m6-8h2M2 10h2" stroke="currentColor"/>
-                        </svg>
-                    </button>
-                    <button class="btn-icon btn-tiny delete-btn btn btn--icon btn--compact" title="Delete" aria-label="Delete">
-                        <svg width="12" height="12" viewBox="0 0 20 20">
-                            <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
-                            <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                    </button>
-                </div>
+                <button class="btn-icon btn-tiny visibility-btn btn btn--icon btn--compact" title="Toggle Visibility" aria-label="Toggle Visibility">
+                    <svg class="icon-eye" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z"/>
+                        <circle cx="10" cy="10" r="3"/>
+                    </svg>
+                    <svg class="icon-eye-slash" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z"/>
+                        <circle cx="10" cy="10" r="3"/>
+                        <line x1="3" y1="17" x2="17" y2="3" stroke-width="2"/>
+                    </svg>
+                </button>
+                <button class="btn-icon btn-tiny delete-btn btn btn--icon btn--compact" title="Delete" aria-label="Delete">
+                    <svg width="12" height="12" viewBox="0 0 20 20">
+                        <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
+                        <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </button>
             </div>
             <div class="file-geometries"></div>
         </div>
@@ -705,17 +736,6 @@
                         <!-- Dynamically populated, sortable -->
                     </div>
 
-                    <h3>Post-Processor Settings</h3>
-                    <div class="property-field field-group">
-                        <label>Post-Processor</label>
-                        <select id="gcode-post-processor">
-                            <option value="grbl" selected>GRBL</option>
-                            <option value="marlin">Marlin</option>
-                            <option value="linuxcnc">LinuxCNC</option>
-                            <option value="mach3">Mach3</option>
-                        </select>
-                    </div>
-
                     <h3>Output Options</h3>
                     <div class="property-field field-group">
                         <label class="checkbox-label">
@@ -779,6 +799,9 @@
     <script src="config.js"></script>
     <script>
         const scripts = [
+            // Language (& Translations)
+            'language/language-manager.js',
+
             // Geometry and processing
             'geometry/clipper2z.js',
             'geometry/geometry-processor.js',
@@ -813,8 +836,8 @@
             'ui/ui-tooltip.js',
             'ui/tool-library.js',
             'ui/ui-parameter-manager.js',
-            'ui/ui-tree-manager.js',
-            'ui/ui-property-inspector.js',
+            'ui/ui-nav-tree-panel.js',
+            'ui/ui-operation-panel.js',
             'ui/ui-status-manager.js',
             'ui/ui-controls.js',
             'ui/ui-modal-manager.js',

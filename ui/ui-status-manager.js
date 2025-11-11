@@ -28,15 +28,14 @@
     'use strict';
     
     const config = window.PCBCAMConfig || {};
-    const uiConfig = config.ui || {};
-    const timingConfig = uiConfig.timing || {};
-    const textConfig = uiConfig.text || {};
-    const messagesConfig = uiConfig.messages || {};
+    const timingConfig = config.ui.timing || {};
+    const textConfig = config.ui.text || {};
     const debugConfig = config.debug || {};
     
     class StatusManager {
         constructor(ui) {
             this.ui = ui;
+            this.lang = ui.lang;
             this.currentStatus = null;
             this.statusTimeout = null;
             this.progressVisible = false;
@@ -76,7 +75,7 @@
             }
 
             // Add initial hint message to the log
-            this.addLogEntry(messagesConfig.logHint, 'info');
+            this.addLogEntry(textConfig.logHintViz, 'info');
         }
 
         /**
@@ -205,10 +204,18 @@
             } else {
                 // Reset to default status
                 const hasOps = this.ui.core.hasValidOperations();
-                let defaultMessage = textConfig.statusDefault;
+                let defaultMessage;
                 if (hasOps) {
                     const stats = this.ui.core.getStats();
-                    defaultMessage = textConfig.statusReady(stats.operations, stats.totalPrimitives);
+                    // Get the string from en.json: "Ready: {ops} operations, {prims} primitives"
+                    defaultMessage = this.lang.get('status.readyDynamic', textConfig.statusDefault);
+                    // Replace the placeholders
+                    defaultMessage = defaultMessage
+                                        .replace('{ops}', stats.operations)
+                                        .replace('{prims}', stats.totalPrimitives);
+                } else {
+                    // Get the default string: "Ready - Add PCB files to begin"
+                    defaultMessage = this.lang.get('status.default', textConfig.statusDefault);
                 }
                 
                 statusText.textContent = defaultMessage;
@@ -221,7 +228,7 @@
             this.updateStatus(message, type);
         }
 
-        debug(message) {
+        debugLog(message) {
             this.addLogEntry(message, 'debug');
         }
         
@@ -261,12 +268,19 @@
                 });
                 
                 this.hideProgress();
-                this.updateStatus(messagesConfig.success, 'success');
+                this.updateStatus(textConfig.success, 'success');
                 return result;
             } catch (error) {
                 this.hideProgress();
-                this.updateStatus(`${messagesConfig.error}: ${error.message}`, 'error');
+                this.updateStatus(`${textConfig.error}: ${error.message}`, 'error');
                 throw error;
+            }
+        }
+
+        debug(message, data = null) {
+            if (this.ui && this.ui.debug) {
+                // It sends its message (with its name) to the central UI logger
+                this.ui.debug(`[StatusManager] ${message}`, data);
             }
         }
     }

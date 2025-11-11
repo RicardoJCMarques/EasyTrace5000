@@ -33,15 +33,15 @@
             this.currentTarget = null;
             this.showTimeout = null;
             this.hideTimeout = null;
-            this.delayShow = 500; // ms
-            this.delayHide = 100; // ms
+            this.delayShow = 300; // ms
+            this.delayHide = 150; // ms
             
             this.createTooltip();
         }
         
         createTooltip() {
             this.tooltip = document.createElement('div');
-            this.tooltip.className = 'ui-tooltip';
+            this.tooltip.className = 'tooltip';
             this.tooltip.innerHTML = '<div class="tooltip-content"></div>';
             document.body.appendChild(this.tooltip);
         }

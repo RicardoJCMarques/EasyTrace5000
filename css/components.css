@@ -157,6 +157,28 @@
 }
 
 /* ============================================================================
+   VISIBILITY TOGGLE ICON
+   ============================================================================ */
+
+/* By default (no .is-hidden), the layer is VISIBLE */
+/* Show the standard eye icon, hide the slash icon */
+.visibility-btn .icon-eye {
+    display: block;
+}
+.visibility-btn .icon-eye-slash {
+    display: none;
+}
+
+/* When .is-hidden class is on the button, the layer is HIDDEN */
+/* Hide the standard eye icon, show the slash icon */
+.visibility-btn.is-hidden .icon-eye {
+    display: none;
+}
+.visibility-btn.is-hidden .icon-eye-slash {
+    display: block;
+}
+
+/* ============================================================================
    INPUTS & FORMS
    ============================================================================ */
 
