@@ -10,10 +10,7 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Minify
-        uses: tdewolff/minify-action@v2
-        with:
-          sources: '.'
-          exclude: 'node_modules'
+        uses: anthonyftwang/minify-action@v1
       
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
