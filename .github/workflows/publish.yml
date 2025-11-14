@@ -13,6 +13,8 @@ jobs:
         uses: nizarmah/auto-minify@v3
         with:
           overwrite: true
+          js_engine: 'uglify-js'
+          css_engine: 'clean-css'
       
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
