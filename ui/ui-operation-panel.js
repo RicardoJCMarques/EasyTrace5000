@@ -27,12 +27,12 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const textConfig = config.ui.text || {};
-    const iconConfig = config.ui.icons || {};
-    const inspectorConfig = config.ui.propertyInspector || {};
-    const timingConfig = config.ui.timing || {};
-    const layoutConfig = config.layout || {};
+    const config = window.PCBCAMConfig;
+    const textConfig = config.ui.text;
+    const iconConfig = config.ui.icons;
+    const inspectorConfig = config.ui.propertyInspector;
+    const timingConfig = config.ui.timing;
+    const layoutConfig = config.layout;
     
     class PropertyInspector { // update class name to reflect new clearer file name
         constructor(ui) {
@@ -106,7 +106,7 @@
             // Render each category
             for (const [category, params] of Object.entries(categories)) {
                 const section = this.createSection(
-                    this.getCategoryTitle(category, operation.type),
+                    this.getCategoryTitle(category),
                     params.map(param => this.createField(param, currentValues[param.name]))
                 );
                 container.appendChild(section);
@@ -131,8 +131,8 @@
             return groups;
         }
         
-        getCategoryTitle(category, operationType) {
-            const categoryTitles = inspectorConfig.categories || {};
+        getCategoryTitle(category) {
+            const categoryTitles = inspectorConfig.categories;
             const title = categoryTitles[category] || category.charAt(0).toUpperCase() + category.slice(1);
             return title;
         }
@@ -319,7 +319,7 @@
         }
         
         populateToolSelect(select, operationType, selectedId) {
-            const tools = this.toolLibrary?.getToolsForOperation(operationType) || [];
+            const tools = this.toolLibrary.getToolsForOperation(operationType) || [];
             
             if (tools.length === 0) {
                 select.innerHTML = `<option>${textConfig.noToolsAvailable}</option>`;
@@ -389,14 +389,15 @@
                 toolSelect.addEventListener('change', (e) => {
                     const tool = this.toolLibrary?.getTool(e.target.value);
                     if (tool) {
+                        // Set BOTH parameters at once
+                        this.onParameterChange('tool', e.target.value);
+                        this.onParameterChange('toolDiameter', tool.geometry.diameter);
+                        
+                        // Update the diameter input to reflect the change
                         const diamInput = container.querySelector('#prop-toolDiameter');
                         if (diamInput) {
                             diamInput.value = tool.geometry.diameter;
-                            // Manually trigger onParameterChange for the diameter
-                            this.onParameterChange('toolDiameter', tool.geometry.diameter);
                         }
-                        // Trigger onParameterChange for the tool itself
-                        this.onParameterChange('tool', e.target.value);
                     }
                 });
             }
@@ -480,7 +481,6 @@
                     this.onParameterChange('millHoles', isMilling);
                     
                     if (this.currentOperation) {
-                        this.currentOperation.settings.millHoles = isMilling;
                         if (this.currentOperation.offsets?.length > 0) {
                             this.currentOperation.offsets = [];
                             this.currentOperation.preview = null;
@@ -620,8 +620,12 @@
                 // STAGE 2: Strategy -> Machine
                 try {
                     this.ui.statusManager?.showStatus('Generating toolpath preview...', 'info'); 
-                    this.generatePreview(op); // This is just creating the preview primitives
-                    
+                    const previewSuccess = await this.generatePreview(op);
+
+                    if (!previewSuccess) {
+                        return;
+                    }
+
                     if (this.ui.treeManager) {
                         const fileNode = Array.from(this.ui.treeManager.nodes.values())
                             .find(n => n.operation?.id === op.id);
@@ -678,16 +682,17 @@
         
         async generateOffsets(operation) {
             const params = this.parameterManager.getAllParameters(operation.id);
-            if (params.tool && params.toolDiameter !== undefined) {
-                params.tool = {
-                    id: params.tool,
-                    diameter: params.toolDiameter,
-                    type: this.toolLibrary?.getTool(params.tool)?.type || 'end_mill'
-                };
-            }
-            this.ui.statusManager?.showStatus('Generating offset geometry...', 'info');
+            
+            // 1. Show the spinner (and update status)
+            this.ui.showCanvasSpinner('Generating offsets...');
+            
+            // 2. NEW: Wait for 10ms. This yields to the event loop and gives the browser time to render the spinner.
+            await new Promise(resolve => setTimeout(resolve, 10));
+
             try {
+                // 3. Now, run the heavy task
                 await this.core.generateOffsetGeometry(operation, params);
+                
                 if (this.ui.treeManager) {
                     const fileNode = Array.from(this.ui.treeManager.nodes.values())
                         .find(n => n.operation?.id === operation.id);
@@ -700,6 +705,9 @@
             } catch (error) {
                 console.error('[OperationPanel] Offset generation failed:', error);
                 this.ui.statusManager?.showStatus('Failed: ' + error.message, 'error');
+            } finally {
+                // 4. Hide the spinner (this runs on success OR failure)
+                this.ui.hideCanvasSpinner();
             }
         }
         
@@ -738,15 +746,6 @@
         
         async generateCutoutOffset(operation) {
             const params = this.parameterManager.getAllParameters(operation.id);
-
-            if (params.tool && params.toolDiameter !== undefined) {
-                params.tool = {
-                    id: params.tool,
-                    diameter: params.toolDiameter,
-                    type: this.toolLibrary?.getTool(params.tool)?.type || 'end_mill'
-                };
-            }
-
             this.ui.statusManager?.showStatus('Generating cutout path...', 'info');
             
             try {
@@ -778,7 +777,7 @@
             const toolDiameter = firstOffset.metadata?.toolDiameter;
             if (typeof toolDiameter === 'undefined' || toolDiameter <= 0) {
                 this.ui.statusManager?.showStatus('Error: Tool diameter not found.', 'error');
-                return;
+                return false;
             }
             const allPrimitives = [];
             operation.offsets.forEach(offset => {
@@ -810,6 +809,7 @@
             }
             await this.ui.updateRendererAsync();
             this.ui.statusManager?.showStatus('Preview generated', 'success');
+            return true;
         }
 
         debug(message, data = null) {

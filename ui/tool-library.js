@@ -27,8 +27,8 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
+    const config = window.PCBCAMConfig;
+    const debugConfig = config.debug;
     
     class ToolLibrary {
         constructor() {
@@ -278,100 +278,6 @@
             return this.tools.filter(tool => tool.category === category);
         }
         
-        // Calculate offset parameters for a tool
-        calculateOffsetParameters(tool, passes = 1, stepOverPercent = 50) {
-            if (!tool || !tool.geometry?.diameter) {
-                throw new Error('Invalid tool for offset calculation');
-            }
-            
-            const diameter = tool.geometry.diameter;
-            const stepOver = stepOverPercent / 100;
-            const stepDistance = diameter * (1 - stepOver);
-            const offsets = [];
-            
-            for (let i = 0; i < passes; i++) {
-                // Negative for external offset (tool outside geometry)
-                // For isolation routing, we want to remove material outside the trace
-                offsets.push(-(diameter / 2 + i * stepDistance));
-            }
-            
-            return {
-                diameter,
-                stepOver,
-                stepDistance,
-                offsets
-            };
-        }
-        
-        // Get cutting parameters for G-code generation
-        getCuttingParameters(toolId, material = 'fr4') {
-            const tool = this.getTool(toolId);
-            if (!tool) return null;
-            
-            // Base parameters from tool
-            const params = {
-                feedRate: tool.cutting.feedRate,
-                plungeRate: tool.cutting.plungeRate,
-                spindleSpeed: tool.cutting.spindleSpeed,
-                maxDepthPerPass: tool.cutting.maxDepthPerPass || 0.1
-            };
-            
-            return params;
-        }
-        
-        // Create a tool selection dropdown
-        createToolDropdown(operationType, selectedId = null) {
-            const select = document.createElement('select');
-            select.className = 'tool-select';
-            
-            const tools = this.getToolsForOperation(operationType);
-            
-            // Group by category if multiple categories exist
-            const categories = new Set();
-            tools.forEach(tool => {
-                if (tool.category) categories.add(tool.category);
-            });
-            
-            if (categories.size > 1) {
-                // Create optgroups
-                categories.forEach(category => {
-                    const optgroup = document.createElement('optgroup');
-                    optgroup.label = category.charAt(0).toUpperCase() + category.slice(1);
-                    
-                    tools.filter(t => t.category === category).forEach(tool => {
-                        const option = this.createToolOption(tool, selectedId);
-                        optgroup.appendChild(option);
-                    });
-                    
-                    select.appendChild(optgroup);
-                });
-            } else {
-                // Simple list
-                tools.forEach(tool => {
-                    const option = this.createToolOption(tool, selectedId);
-                    select.appendChild(option);
-                });
-            }
-            
-            return select;
-        }
-        
-        createToolOption(tool, selectedId) {
-            const option = document.createElement('option');
-            option.value = tool.id;
-            option.textContent = `${tool.name} (${tool.geometry.diameter}mm)`;
-            
-            if (tool.id === selectedId) {
-                option.selected = true;
-            }
-            
-            // Add data attributes for quick access
-            option.dataset.diameter = tool.geometry.diameter;
-            option.dataset.type = tool.type;
-            
-            return option;
-        }
-        
         // Export tool library for backup/sharing
         exportTools() {
             return {
@@ -444,5 +350,4 @@
     }
     
     window.ToolLibrary = ToolLibrary;
-    
 })();

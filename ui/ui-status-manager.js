@@ -27,10 +27,10 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const timingConfig = config.ui.timing || {};
-    const textConfig = config.ui.text || {};
-    const debugConfig = config.debug || {};
+    const config = window.PCBCAMConfig;
+    const timingConfig = config.ui.timing;
+    const textConfig = config.ui.text;
+    const debugConfig = config.debug;
     
     class StatusManager {
         constructor(ui) {
@@ -42,7 +42,7 @@
 
             this.logHistory = [];
             this.isExpanded = false;
-            this.showDebugMessages = config.rendering?.defaultOptions?.showDebugInLog || false;
+            this.showDebugMessages = config.rendering.defaultOptions.showDebugInLog;
             
             this.footerBar = document.getElementById('footer-bar'); // The whole footer
             this.statusBar = document.getElementById('status-bar'); // The clickable center part
@@ -279,7 +279,6 @@
 
         debug(message, data = null) {
             if (this.ui && this.ui.debug) {
-                // It sends its message (with its name) to the central UI logger
                 this.ui.debug(`[StatusManager] ${message}`, data);
             }
         }

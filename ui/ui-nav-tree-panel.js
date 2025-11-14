@@ -27,8 +27,8 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const iconConfig = config.ui.icons || {};
+    const config = window.PCBCAMConfig;
+    const iconConfig = config.ui.icons;
     
     class TreeManager {
         constructor(ui) {

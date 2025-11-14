@@ -27,25 +27,25 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const renderConfig = config.rendering || {};
-    const canvasConfig = renderConfig.canvas || {};
-    const debugConfig = config.debug || {};
+    const config = window.PCBCAMConfig;
+    const renderConfig = config.rendering;
+    const canvasConfig = renderConfig.canvas;
+    const debugConfig = config.debug;
     
     class RendererCore {
         constructor(canvas) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d', { 
-                alpha: config.renderer?.context?.alpha || false,
-                desynchronized: config.renderer?.context?.desynchronized || true
+                alpha: config.renderer.context.alpha,
+                desynchronized: config.renderer.context?.desynchronized
             });
             
             if (!this.ctx) {
                 throw new Error('Could not get 2D context from canvas');
             }
             
-            const rendererConfig = config.renderer || {};
-            const zoomConfig = rendererConfig.zoom || {};
+            const rendererConfig = config.renderer;
+            const zoomConfig = rendererConfig.zoom;
 
             // View state
             this.viewOffset = { x: 0, y: 0 };
@@ -71,23 +71,23 @@
             
             // Render options
             this.options = {
-                showWireframe: renderConfig.defaultOptions?.showWireframe || false,
-                showGrid: renderConfig.defaultOptions?.showGrid !== false,
-                showOrigin: renderConfig.defaultOptions?.showOrigin !== false,
-                showBounds: renderConfig.defaultOptions?.showBounds || false,
-                showRulers: renderConfig.defaultOptions?.showRulers !== false,
-                showPads: renderConfig.defaultOptions?.showPads !== false,
-                showRegions: renderConfig.defaultOptions?.showRegions !== false,
-                showTraces: renderConfig.defaultOptions?.showTraces !== false,
-                showDrills: renderConfig.defaultOptions?.showDrills !== false,
-                showCutouts: renderConfig.defaultOptions?.showCutouts !== false,
-                fuseGeometry: renderConfig.defaultOptions?.fuseGeometry || false,
+                showWireframe: renderConfig.defaultOptions.showWireframe,
+                showGrid: renderConfig.defaultOptions.showGrid,
+                showOrigin: renderConfig.defaultOptions.showOrigin,
+                showBounds: renderConfig.defaultOptions.showBounds,
+                showRulers: renderConfig.defaultOptions.showRulers,
+                showPads: renderConfig.defaultOptions.showPads,
+                showRegions: renderConfig.defaultOptions.showRegions,
+                showTraces: renderConfig.defaultOptions.showTraces,
+                showDrills: renderConfig.defaultOptions.showDrills,
+                showCutouts: renderConfig.defaultOptions.showCutouts,
+                fuseGeometry: renderConfig.defaultOptions.fuseGeometry,
                 showPreprocessed: false,
-                blackAndWhite: renderConfig.defaultOptions?.blackAndWhite || false,
-                debugPoints: renderConfig.defaultOptions?.debugPoints || false,
-                debugPaths: renderConfig.defaultOptions?.debugPaths || false,
-                theme: renderConfig.defaultOptions?.theme,
-                showStats: renderConfig.defaultOptions?.showStats || false,
+                blackAndWhite: renderConfig.defaultOptions.blackAndWhite,
+                debugPoints: renderConfig.defaultOptions.debugPoints,
+                debugPaths: renderConfig.defaultOptions.debugPaths,
+                theme: renderConfig.defaultOptions.theme,
+                showStats: renderConfig.defaultOptions.showStats,
                 showToolPreview: false
             };
             
@@ -117,6 +117,9 @@
             // Coordinate system reference
             this.coordinateSystem = null;
             this.rendererType = 'canvas2d';
+
+            // Track mouse position for zoom center
+            this.lastMouseCanvasPos = { x: 0, y: 0 }; 
         }
         
         // Layer Management
@@ -125,19 +128,19 @@
             this.layers.set(name, {
                 name: name,
                 primitives: primitives,
-                type: options.type || 'source',
-                visible: options.visible !== false,
+                type: options.type,
+                visible: options.visible,
                 color: options.color,
-                isFused: options.isFused || false,
-                isPreprocessed: options.isPreprocessed || false,
+                isFused: options.isFused,
+                isPreprocessed: options.isPreprocessed,
                 isOffset: options.type === 'offset',
-                isPreview: options.type === 'preview' || options.isPreview,
+                isPreview: options.type === 'preview',
                 operationId: options.operationId,
                 operationType: options.operationType,
                 offsetType: options.offsetType,
                 distance: options.distance,
-                metadata: options.metadata || {},
-                bounds: options.bounds || this.calculateLayerBounds(primitives)
+                metadata: options.metadata,
+                bounds: this.calculateLayerBounds(primitives)
             });
             
             this.calculateOverallBounds();
@@ -231,7 +234,7 @@
             const screenWidth = (bounds.maxX - bounds.minX) * this.viewScale;
             const screenHeight = (bounds.maxY - bounds.minY) * this.viewScale;
             
-            const lodThreshold = config.renderer?.lodThreshold || 0.5;
+            const lodThreshold = config.renderer.lodThreshold;
             if (screenWidth < lodThreshold && screenHeight < lodThreshold) {
                 return false;
             }
@@ -277,11 +280,6 @@
                 x: this.worldToCanvasX(worldX),
                 y: this.worldToCanvasY(worldY)
             };
-        }
-        
-        // Screen to world coordinate conversion
-        screenToWorld(screenX, screenY) {
-            return this.canvasToWorld(screenX, screenY);
         }
         
         // Bounds Calculations
@@ -379,8 +377,8 @@
         
         // Zoom & Pan
         
-        zoomFit(padding) {
-            const fitPadding = padding || (config.renderer?.zoom?.fitPadding) || 1.1;
+        zoomFit() {
+            const fitPadding = config.renderer.zoom.fitPadding;
 
             if (!this.overallBounds) {
                 this.viewScale = 10;
@@ -406,35 +404,32 @@
             };
         }
         
-        zoomIn(factor = (config.renderer?.zoom?.factor || 1.2)) {
+        zoomIn(factor = (config.renderer.zoom.factor)) {
             const centerX = this.canvas.width / 2;
             const centerY = this.canvas.height / 2;
             this.zoomToPoint(centerX, centerY, factor);
         }
         
-        zoomOut(factor = (config.renderer?.zoom?.factor || 1.2)) {
+        zoomOut(factor = (config.renderer.zoom.factor)) {
             const centerX = this.canvas.width / 2;
             const centerY = this.canvas.height / 2;
             this.zoomToPoint(centerX, centerY, 1 / factor);
         }
         
         zoomToPoint(canvasX, canvasY, factor) {
-            // Get world position at cursor before zoom
+            // Get world position at point before zoom
             const worldBefore = this.canvasToWorld(canvasX, canvasY);
             
             // Apply zoom
             this.viewScale *= factor;
             
-            const minZoom = config.renderer?.zoom?.min || 0.01;
-            const maxZoom = config.renderer?.zoom?.max || 1000;
+            const minZoom = config.renderer.zoom.min;
+            const maxZoom = config.renderer.zoom.max;
             this.viewScale = Math.max(minZoom, Math.min(maxZoom, this.viewScale));
             
-            // Get world position at cursor after zoom
-            const worldAfter = this.canvasToWorld(canvasX, canvasY);
-            
-            // Adjust offset to keep the same world point under cursor
-            this.viewOffset.x += (worldAfter.x - worldBefore.x) * this.viewScale;
-            this.viewOffset.y -= (worldAfter.y - worldBefore.y) * this.viewScale;
+            // Set offset so the same world point stays under the canvas point
+            this.viewOffset.x = canvasX - worldBefore.x * this.viewScale;
+            this.viewOffset.y = canvasY + worldBefore.y * this.viewScale;
         }
         
         pan(dx, dy) {
@@ -463,12 +458,12 @@
             this.canvas.style.height = logicalHeight + 'px';
             
             // Clear canvas immediately
-            this.ctx.fillStyle = this.colors.canvas?.background || '#0f0f0f';
+            this.ctx.fillStyle = this.colors.canvas.background;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
         clearCanvas() {
-            const backgroundColor = this.colors.canvas?.background || '#0f0f0f';
+            const backgroundColor = this.colors.canvas.background;
             
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.ctx.fillStyle = backgroundColor;
@@ -478,9 +473,9 @@
         // Rendering Utilities
         
         getWireframeStrokeWidth() {
-            const baseWidth = canvasConfig.wireframe?.baseThickness || 0.08;
-            const minWidth = canvasConfig.wireframe?.minThickness || 0.02;
-            const maxWidth = canvasConfig.wireframe?.maxThickness || 0.2;
+            const baseWidth = canvasConfig.wireframe.baseThickness;
+            const minWidth = canvasConfig.wireframe.minThickness;
+            const maxWidth = canvasConfig.wireframe.maxThickness;
             
             const scaledWidth = baseWidth / this.viewScale;
             return Math.max(minWidth, Math.min(maxWidth, scaledWidth));
@@ -542,7 +537,7 @@
 
         _updateThemeColors() {
             const rootStyle = getComputedStyle(document.documentElement);
-            // Helper to read CSS var and remove extra quotes/spaces
+            // Helper to read CSS variables
             const read = (varName) => rootStyle.getPropertyValue(varName).trim();
 
             this.colors = {
@@ -590,23 +585,18 @@
                 }
             };
 
-            // Maintain 'layers' alias for backward compatibility
+            // Maintain 'layers' alias for backward compatibility // Reviewthe need for this
             this.colors.layers = this.colors.operations;
-            // Add a fused alias
+            // Add a fused alias // Reviewthe need for this
             this.colors.layers.fused = this.colors.operations.isolation;
         }
         
         getLayerColorSettings(layer) {
             // We use this.colors which is loaded from live CSS variables.
-            const colors = this.colors; 
-
-            if (layer.color) {
-                // Respect an explicit color if 'cam-ui.js' set one (which it no longer does)
-                return layer.color;
-            }
+            const colors = this.colors;
 
             // 'layers' is an alias for 'operations'
-            const opColors = colors.layers || {}; 
+            const opColors = colors.layers; 
             
             switch (layer.type) {
                 case 'isolation': return opColors.isolation;

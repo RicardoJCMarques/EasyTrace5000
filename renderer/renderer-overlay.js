@@ -27,11 +27,11 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const canvasConfig = config.rendering?.canvas || {};
-    const gridConfig = config.rendering?.grid || {};
-    const overlayConfig = config.renderer?.overlay || {};
-    const debugConfig = config.debug || {};
+    const config = window.PCBCAMConfig;
+    const canvasConfig = config.rendering?.canvas;
+    const gridConfig = config.rendering?.grid;
+    const overlayConfig = config.renderer?.overlay;
+    const debugConfig = config.debug;
     
     class OverlayRenderer {
         constructor(core) {
@@ -48,17 +48,17 @@
             const colors = this.core.colors.canvas;
             if (!colors) return;
             
-            const gridSpacing = this.calculateGridSpacing();
+            const gridSpacing = this._calculateStepSize();
             const viewBounds = this.core.getViewBounds();
             
             this.ctx.strokeStyle = colors.grid;
-            this.ctx.lineWidth = (overlayConfig.gridLineWidth || 0.1) / this.core.viewScale;
+            this.ctx.lineWidth = (overlayConfig.gridLineWidth) / this.core.viewScale;
             this.ctx.setLineDash([]);
             
             this.ctx.beginPath();
             
-            const originX = this.core.originPosition?.x || 0;
-            const originY = this.core.originPosition?.y || 0;
+            const originX = this.core.originPosition?.x;
+            const originY = this.core.originPosition?.y;
             
             const startX = Math.floor((viewBounds.minX - originX) / gridSpacing) * gridSpacing + originX;
             const endX = Math.ceil((viewBounds.maxX - originX) / gridSpacing) * gridSpacing + originX;
@@ -87,13 +87,13 @@
             const colors = this.core.colors.canvas;
             if (!colors) return;
             
-            const markerSize = (overlayConfig.originMarkerSize || 10) / this.core.viewScale;
-            const circleSize = (overlayConfig.originCircleSize || 3) / this.core.viewScale;
-            const strokeWidth = (overlayConfig.originStrokeWidth || 3) / this.core.viewScale;
-            const outlineWidth = (overlayConfig.originOutlineWidth || 1) / this.core.viewScale;
+            const markerSize = (canvasConfig.originMarkerSize) / this.core.viewScale;
+            const circleSize = (canvasConfig.originCircleSize) / this.core.viewScale;
+            const strokeWidth = (overlayConfig.originStrokeWidth) / this.core.viewScale;
+            const outlineWidth = (overlayConfig.originOutlineWidth) / this.core.viewScale;
             
-            const originX = this.core.originPosition?.x || 0;
-            const originY = this.core.originPosition?.y || 0;
+            const originX = this.core.originPosition?.x;
+            const originY = this.core.originPosition?.y;
             
             // Draw outline
             this.ctx.strokeStyle = colors.originOutline;
@@ -140,8 +140,8 @@
             const bounds = this.core.overallBounds;
             
             this.ctx.strokeStyle = colors.bounds;
-            this.ctx.lineWidth = (overlayConfig.boundsLineWidth || 1) / this.core.viewScale;
-            const dash = overlayConfig.boundsDash || [2, 2];
+            this.ctx.lineWidth = (overlayConfig.boundsLineWidth) / this.core.viewScale;
+            const dash = overlayConfig.boundsDash;
             this.ctx.setLineDash([dash[0] / this.core.viewScale, dash[1] / this.core.viewScale]);
             
             this.ctx.strokeRect(
@@ -152,9 +152,9 @@
             );
             
             // Corner markers
-            const markerSize = (overlayConfig.boundsMarkerSize || 5) / this.core.viewScale;
+            const markerSize = (overlayConfig.boundsMarkerSize) / this.core.viewScale;
             this.ctx.setLineDash([]);
-            this.ctx.lineWidth = (overlayConfig.boundsMarkerWidth || 2) / this.core.viewScale;
+            this.ctx.lineWidth = (overlayConfig.boundsMarkerWidth) / this.core.viewScale;
             
             this.ctx.beginPath();
             this.ctx.moveTo(bounds.minX, bounds.minY + markerSize);
@@ -185,18 +185,18 @@
             
             this.ctx.strokeStyle = colors.ruler;
             this.ctx.fillStyle = colors.rulerText;
-            this.ctx.lineWidth = overlayConfig.rulerLineWidth || 1;
-            this.ctx.font = overlayConfig.rulerFont || '11px Arial';
+            this.ctx.lineWidth = overlayConfig.rulerLineWidth;
+            this.ctx.font = overlayConfig.rulerFont;
             this.ctx.textBaseline = 'top';
             this.ctx.textAlign = 'center';
             
-            const rulerSize = overlayConfig.rulerSize || canvasConfig.rulerSize || 20;
-            const tickLength = overlayConfig.rulerTickLength || canvasConfig.rulerTickLength || 5;
-            const majorStep = this.calculateRulerStep();
+            const rulerSize = canvasConfig.rulerSize;
+            const tickLength = canvasConfig.rulerTickLength;
+            const majorStep = this._calculateStepSize(overlayConfig.rulerMinPixelStep, gridConfig.steps);
             const viewBounds = this.core.getViewBounds();
             
             // Ruler backgrounds
-            const rulerAlpha = overlayConfig.rulerAlpha || '99';
+            const rulerAlpha = overlayConfig.rulerAlpha;
             const bgColorWithAlpha = colors.background + rulerAlpha; 
             this.ctx.fillStyle = bgColorWithAlpha; // Apply semi-transparent background
             this.ctx.fillRect(0, 0, this.canvas.width, rulerSize); // Horizontal background
@@ -209,8 +209,8 @@
             this.ctx.moveTo(rulerSize, rulerSize);
             this.ctx.lineTo(this.canvas.width, rulerSize);
             
-            const originX = this.core.originPosition?.x || 0;
-            const originY = this.core.originPosition?.y || 0;
+            const originX = this.core.originPosition?.x;
+            const originY = this.core.originPosition?.y;
             
             const startXWorld = Math.floor((viewBounds.minX - originX) / majorStep) * majorStep + originX;
             const endXWorld = Math.ceil((viewBounds.maxX - originX) / majorStep) * majorStep + originX;
@@ -285,10 +285,10 @@
             
             // Units indicator in corner
             this.ctx.fillStyle = colors.rulerText;
-            this.ctx.font = overlayConfig.rulerCornerFont || '9px Arial';
+            this.ctx.font = overlayConfig.rulerCornerFont;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(overlayConfig.rulerCornerText || 'mm', rulerSize / 2, rulerSize / 2);
+            this.ctx.fillText(overlayConfig.rulerCornerText, rulerSize / 2, rulerSize / 2);
             
             this.ctx.restore();
         }
@@ -307,13 +307,13 @@
                 return;
             }
             
-            const padding = overlayConfig.scaleIndicatorPadding || 10;
-            const barHeight = overlayConfig.scaleIndicatorBarHeight || 4;
-            const y = this.canvas.height - padding - (overlayConfig.scaleIndicatorYOffset || 20);
+            const padding = overlayConfig.scaleIndicatorPadding;
+            const barHeight = overlayConfig.scaleIndicatorBarHeight;
+            const y = this.canvas.height - padding - overlayConfig.scaleIndicatorYOffset;
             
-            const possibleLengths = gridConfig.steps || [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
-            const minPixels = overlayConfig.scaleIndicatorMinPixels || 50;
-            const niceLength = possibleLengths.find(len => len * this.core.viewScale >= minPixels) || 1;
+            const possibleLengths = gridConfig.steps;
+            const minPixels = overlayConfig.scaleIndicatorMinPixels;
+            const niceLength = possibleLengths.find(len => len * this.core.viewScale >= minPixels);
             const barWidth = niceLength * this.core.viewScale;
             
             const x = this.canvas.width - padding - barWidth;
@@ -327,13 +327,13 @@
             this.ctx.fillRect(x, y, barWidth, barHeight);
             
             // End caps
-            const capWidth = overlayConfig.scaleIndicatorEndCapWidth || 2;
-            const capHeight = overlayConfig.scaleIndicatorEndCapHeight || 4;
+            const capWidth = overlayConfig.scaleIndicatorEndCapWidth;
+            const capHeight = overlayConfig.scaleIndicatorEndCapHeight;
             this.ctx.fillRect(x, y - (capHeight/2), capWidth, barHeight + capHeight);
             this.ctx.fillRect(x + barWidth - capWidth, y - (capHeight/2), capWidth, barHeight + capHeight);
             
             // Label
-            this.ctx.font = overlayConfig.scaleIndicatorFont || '11px Arial';
+            this.ctx.font = overlayConfig.scaleIndicatorFont;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'bottom';
             
@@ -367,9 +367,9 @@
             
             const stats = this.core.renderStats;
             
-            const x = overlayConfig.statsX || 10;
-            let y = overlayConfig.statsY || 50;
-            const lineHeight = overlayConfig.statsLineHeight || 16;
+            const x = overlayConfig.statsX;
+            let y = overlayConfig.statsY;
+            const lineHeight = overlayConfig.statsLineHeight;
             
             // Calculate background size
             const lines = [];
@@ -387,7 +387,7 @@
             
             // Background
             this.ctx.fillStyle = colors.background;
-            this.ctx.fillRect(x - 5, y - 15, overlayConfig.statsBGWidth || 200, bgHeight);
+            this.ctx.fillRect(x - 5, y - 15, overlayConfig.statsBGWidth, bgHeight);
             
             // Text
             this.ctx.fillStyle = colors.rulerText;
@@ -405,24 +405,12 @@
         
         // Helper Methods
         
-        calculateGridSpacing() {
-            const minPixelSize = overlayConfig.gridMinPixelSpacing || gridConfig.minPixelSpacing || 40;
-            const possibleSteps = overlayConfig.gridSteps || gridConfig.steps || [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+        _calculateStepSize() {
+            const minPixelSize = gridConfig.minPixelSpacing;
+            const possibleSteps = gridConfig.steps;
             
             for (const step of possibleSteps) {
                 if (step * this.core.viewScale >= minPixelSize) {
-                    return step;
-                }
-            }
-            return possibleSteps[possibleSteps.length - 1];
-        }
-        
-        calculateRulerStep() {
-            const minPixelDistance = overlayConfig.rulerMinPixelStep || 50;
-            const possibleSteps = gridConfig.steps || [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
-            
-            for (const step of possibleSteps) {
-                if (step * this.core.viewScale >= minPixelDistance) {
                     return step;
                 }
             }

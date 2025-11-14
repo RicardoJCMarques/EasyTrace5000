@@ -355,51 +355,66 @@
             this.debug(`Committed ${Object.keys(params).length} parameters to operation ${operation.id}`);
         }
         
-        // Load parameters from operation
+        /**
+         * Loads parameters from an operation's settings into the manager's state.
+         * This function now acts as the bridge from the persistent (but "dumb")
+         * operation.settings object into the manager's "live" state.
+         */
         loadFromOperation(operation) {
-            if (!operation.settings) return;
-            
-            const state = this.getOperationState(operation.id);
-            
+            if (!operation) return;
+
+            // Get the settings from the operation. This is the *only* place we should be *reading* from this property.
             const opSettings = operation.settings || {};
+
+            // Get the operation-specific config defaults (e.g., passes for "isolation")
             const defaults = this.getDefaults(operation.type);
 
-            // Iterate over ALL definitions, not just operation.settings
+            // Get (or create) the manager's internal state record for this op
+            const state = this.getOperationState(operation.id);
+
+            // Iterate over ALL parameter definitions, not just opSettings
             for (const [name, def] of Object.entries(this.parameterDefinitions)) {
-                if (!def.stage) continue; // Not a parameter with a stage
+                if (!def.stage) continue; // Skip non-parameter definitions
 
                 let value;
 
-                // 1. Check for flat param in opSettings
-                if (opSettings[name] !== undefined) {
+                // 1. Check for a value in the manager's current "live" state first.
+                //    This preserves unsaved changes if we just switch tabs and come back.
+                value = state[def.stage][name];
+
+                // 2. If not in live state, check the operation's saved settings.
+                //    This is the "load" step. We ONLY check for the flat property.
+                if (value === undefined) {
                     value = opSettings[name];
                 }
                 
-                // 2. Handle nested tool object from old settings format
-                if (name === 'tool' && opSettings.tool?.id) {
-                    value = opSettings.tool.id;
-                } else if (name === 'toolDiameter' && opSettings.tool?.diameter) {
-                    value = opSettings.tool.diameter;
-                }
-
-                // 3. Check definition default (e.g., `default: true` for a checkbox)
-                if (value === undefined) {
-                    value = def.default;
-                }
-                
-                // 4. Check config default (e.g., default passes for "isolation")
+                // 3. If not in saved settings, check the config defaults for this OpType.
                 if (value === undefined) {
                     value = defaults[name];
                 }
-                
-                // If a value was found, set it in the manager's state
+
+                // 4. If still not found, check the parameter's hardcoded default.
+                if (value === undefined) {
+                    value = def.default;
+                }
+
+                // 5. If a value was found (from any source), set it in the manager.
+                //    This validates/clamps the value on load.
                 if (value !== undefined) {
-                    // Use the setParameter logic to validate/clamp on load
-                    this.setParameter(operation.id, def.stage, name, value);
+                    // Use setParameter to ensure the loaded value is valid
+                    // Note: We use the internal state-setting method to avoid marking the operation as "dirty" just from loading it.
+                    const result = this.validators[name] 
+                        ? this.validators[name](value) 
+                        : { success: true, value: value };
+                    
+                    const finalValue = result.correctedValue !== undefined ? result.correctedValue : result.value;
+                    
+                    if (!state[def.stage]) state[def.stage] = {};
+                    state[def.stage][name] = finalValue;
                 }
             }
             
-            // Clear dirty flag after loading
+            // Clear dirty flag after a fresh load
             this.dirtyFlags.delete(operation.id);
         }
         
@@ -425,7 +440,7 @@
             return params;
         }
         
-        // Validate all parameters for an operation (used before a big action)
+        // Validate all parameters for an operation
         validateOperation(operationId) {
             const params = this.getAllParameters(operationId);
             const errors = [];
@@ -454,19 +469,34 @@
             const opConfig = config.operations?.[operationType];
             if (!opConfig) return {};
 
+            // Define opConfig.tool and opConfig.cutting as safe objects
+            const toolConfig = opConfig.tool;
+            const cuttingConfig = opConfig.cutting;
+            const settingsConfig = opConfig.defaultSettings;
+
             const enableMultiDepth = (operationType === 'drill' || operationType === 'cutout');
-            
+
             return {
-                passes: opConfig.defaultSettings?.passes,
-                stepOver: opConfig.defaultSettings?.stepOver,
-                cutDepth: opConfig.cutting?.cutDepth,
-                depthPerPass: opConfig.cutting?.passDepth,
-                multiDepth: enableMultiDepth,
-                feedRate: opConfig.cutting?.cutFeed,
-                plungeRate: opConfig.cutting?.plungeFeed,
-                spindleSpeed: opConfig.cutting?.spindleSpeed,
-                direction: opConfig.defaultSettings?.direction,
-                entryType: opConfig.defaultSettings?.entryType
+                // Tool/Strategy
+                toolDiameter: toolConfig.diameter,
+                multiDepth: settingsConfig.multiDepth,
+                passes: settingsConfig.passes,
+                stepOver: settingsConfig.stepOver,
+                direction: settingsConfig.direction,
+                entryType: settingsConfig.entryType,
+
+                // Cutting
+                cutDepth: cuttingConfig.cutDepth,
+                depthPerPass: cuttingConfig.passDepth,
+                feedRate: cuttingConfig.cutFeed,
+                plungeRate: cuttingConfig.plungeFeed,
+                spindleSpeed: cuttingConfig.spindleSpeed,
+
+                // Drill-specific strategy defaults
+                cannedCycle: settingsConfig.cannedCycle,
+                peckDepth: settingsConfig.peckDepth,
+                dwellTime: settingsConfig.dwellTime,
+                retractHeight: settingsConfig.retractHeight
             };
         }
         
@@ -518,5 +548,4 @@
     }
     
     window.ParameterManager = ParameterManager;
-    
 })();

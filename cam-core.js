@@ -27,12 +27,12 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const geomConfig = config.geometry || {};
-    const machineConfig = config.machine || {};
-    const gcodeConfig = config.gcode || {};
-    const opsConfig = config.operations || {};
-    const debugConfig = config.debug || {};
+    const config = window.PCBCAMConfig;
+    const geomConfig = config.geometry;
+    const machineConfig = config.machine;
+    const gcodeConfig = config.gcode;
+    const opsConfig = config.operations;
+    const debugConfig = config.debug;
     
     class PCBCamCore {
         constructor(options = {}) {
@@ -48,7 +48,6 @@
             this.toolLibrary = null;
             
             // Initialization control
-            this.skipInit = options.skipInit || false;
             this.isInitializing = false;
             this.isInitialized = false;
             
@@ -91,9 +90,7 @@
             this.processorInitialized = false;
             this.initializationPromise = null;
             
-            if (!this.skipInit) {
-                this.initializeProcessors();
-            }
+            this.initializeProcessors();
         }
         
         async initializeProcessors() {
@@ -202,22 +199,22 @@
             const defaults = {
                 pcb: { ...machineConfig.pcb },
                 machine: {
-                    safeZ: machineConfig.heights?.safeZ || 2,
-                    travelZ: machineConfig.heights?.travelZ || 1,
-                    rapidFeed: machineConfig.speeds?.rapidFeed || 1000,
-                    workCoordinateSystem: machineConfig.workspace?.system || 'G54',
-                    maxX: machineConfig.workspace?.maxX || 200,
-                    maxY: machineConfig.workspace?.maxY || 200
+                    safeZ: machineConfig.heights.safeZ,
+                    travelZ: machineConfig.heights.travelZ,
+                    rapidFeed: machineConfig.speeds?.rapidFeed,
+                    workCoordinateSystem: machineConfig.workspace.system,
+                    maxX: machineConfig.workspace?.maxX,
+                    maxY: machineConfig.workspace?.maxY
                 },
                 gcode: {
-                    postProcessor: gcodeConfig.postProcessor || 'grbl',
+                    postProcessor: gcodeConfig.postProcessor,
                     startCode: config.getGcodeTemplate ?
                         config.getGcodeTemplate(gcodeConfig.postProcessor, 'start') :
-                        gcodeConfig.templates?.grbl?.start || '',
+                        (gcodeConfig.templates?.[gcodeConfig.postProcessor]?.start),
                     endCode: config.getGcodeTemplate ?
                         config.getGcodeTemplate(gcodeConfig.postProcessor, 'end') :
-                        gcodeConfig.templates?.grbl?.end || '',
-                    units: gcodeConfig.units || 'mm'
+                        (gcodeConfig.templates?.[gcodeConfig.postProcessor]?.end),
+                    units: gcodeConfig.units
                 },
                 ui: {
                     theme: config.ui?.theme,
@@ -225,8 +222,8 @@
                 },
                 geometry: {
                     preserveArcs: geomConfig.preserveArcs !== false,
-                    adaptiveSegmentation: geomConfig.segments?.adaptiveSegmentation !== false,
-                    targetSegmentLength: geomConfig.segments?.targetLength || 0.1
+                    adaptiveSegmentation: geomConfig.segments.adaptiveSegmentation !== false,
+                    targetSegmentLength: geomConfig.segments.targetLength
                 }
             };
             
@@ -247,31 +244,6 @@
             }
         }
         
-        getDefaultOperationSettings(operationType) {
-            const operation = opsConfig[operationType] || opsConfig.isolation;
-            
-            let defaultTool = null;
-            if (this.toolLibrary) {
-                defaultTool = this.toolLibrary.getDefaultToolForOperation(operationType);
-            } else if (config.getDefaultTool) {
-                defaultTool = config.getDefaultTool(operationType);
-            }
-            
-            return {
-                tool: defaultTool ? {
-                    id: defaultTool.id,
-                    diameter: defaultTool.geometry?.diameter || defaultTool.diameter,
-                    type: defaultTool.type
-                } : { ...operation.tool },
-                cutting: { ...operation.cutting },
-                operation: { ...operation.strategy },
-                passes: operation.defaultSettings?.passes || 1,
-                stepOver: operation.defaultSettings?.stepOver || 50,
-                direction: operation.defaultSettings?.direction || 'climb',
-                entryType: operation.defaultSettings?.entryType || 'plunge'
-            };
-        }
-        
         createOperation(operationType, file) {
             const opConfig = opsConfig[operationType] || opsConfig.isolation;
             const fileType = this.fileTypes[operationType];
@@ -285,7 +257,6 @@
                     size: file.size,
                     lastModified: file.lastModified
                 },
-                settings: this.getDefaultOperationSettings(operationType),
                 parsed: null,
                 primitives: null,
                 bounds: null,
@@ -293,7 +264,7 @@
                 warnings: null,
                 expanded: false,
                 processed: false,
-                color: fileType?.color || opConfig.color || '#888888',
+                color: fileType?.color || opConfig.color,
                 geometricContext: {
                     hasArcs: false,
                     hasCircles: false,
@@ -946,8 +917,8 @@
                 return [];
             }
             
-            const offsetDistances = this.calculateOffsetDistances(
-                settings.toolDiameter || settings.tool?.diameter,
+            const offsetDistances = this._calculateOffsetDistances(
+                settings.toolDiameter,
                 settings.passes,
                 settings.stepOver,
                 operation.type === 'clear' // isInternal
@@ -1066,13 +1037,13 @@
                         offsetType: offsetType,
                         primitives: reconstructedGeometry,
                         metadata: {
-                            sourceCount: operation.primitives.length,
-                            offsetCount: offsetOuters.length + offsetHoles.length,
-                            unionCount: 0,
-                            finalCount: reconstructedGeometry.length,
-                            generatedAt: Date.now(),
-                            toolDiameter: settings.tool?.diameter,
-                            analytic: true
+                        sourceCount: operation.primitives.length,
+                        offsetCount: offsetOuters.length + offsetHoles.length,
+                        unionCount: 0,
+                        finalCount: reconstructedGeometry.length,
+                        generatedAt: Date.now(),
+                        toolDiameter: settings.toolDiameter,
+                        analytic: true
                         }
                     });
 
@@ -1120,33 +1091,36 @@
                         unionCount: subjectGeometry.length,
                         finalCount: reconstructedGeometry.length,
                         generatedAt: Date.now(),
-                        toolDiameter: settings.tool?.diameter
+                        toolDiameter: settings.toolDiameter
                     }
                 });
             }
             
             if (settings.combineOffsets && passResults.length > 1) {
-                this.debug(`[Core] === COMBINING ${passResults.length} PASSES ===`);
+                this.debug(`=== COMBINING ${passResults.length} PASSES ===`);
                 
                 const allPassPrimitives = passResults.flatMap(p => p.primitives);
 
-                this.debug(`[Core] Combined ${allPassPrimitives.length} total primitives`);
+                this.debug(`Combined ${allPassPrimitives.length} total primitives`);
                 
                 operation.offsets = [{
                     id: `offset_combined_${operation.id}`,
                     distance: offsetDistances[0],
                     pass: 1,
                     primitives: allPassPrimitives,
-                    combined: true,
-                    passes: passResults.length,
-                    settings: { ...settings },
+                    type: 'offset',
                     metadata: {
                         sourceCount: operation.primitives.length,
-                        totalPrimitives: allPassPrimitives.length,
-                        passCount: passResults.length,
+                        finalCount: allPassPrimitives.length,
                         generatedAt: Date.now(),
-                        toolDiameter: settings.tool?.diameter
-                    }
+                        toolDiameter: settings.toolDiameter,
+                        offset: {
+                            combined: true,
+                            passes: passResults.length,
+                            offsetCount: allPassPrimitives.length
+                        }
+                    },
+                    settings: { ...settings }
                 }];
             } else {
                 operation.offsets = passResults.map((passResult, index) => ({
@@ -1210,9 +1184,8 @@
         _determineDrillStrategy(operation, settings) {
             const plan = [];
             const warnings = [];
-            const defaultToolDiameter = opsConfig.drill?.tool?.diameter || 1.0;
-            const toolRadius = (settings.toolDiameter || settings.tool?.diameter || defaultToolDiameter) / 2;
-            const precision = geomConfig.coordinatePrecision || 0.001;
+            const toolRadius = settings.toolDiameter / 2;
+            const precision = geomConfig.coordinatePrecision;
 
             for (const primitive of operation.primitives) {
                 const role = primitive.properties?.role;
@@ -1307,7 +1280,7 @@
                         plan.push({
                             type: 'mill',
                             primitiveToOffset: primitive,
-                            passes: settings.passes || 2
+                            passes: settings.passes
                         });
                     }
                 }
@@ -1320,7 +1293,7 @@
             const strategyPrimitives = [];
             
             // Calculate internal offset distances for milling
-            const defaultToolDiameter = opsConfig.drill?.tool?.diameter || 1.0;
+            const defaultToolDiameter = opsConfig.drill.tool.diameter;
             const toolDiameter = settings.toolDiameter || settings.tool?.diameter || defaultToolDiameter;
             
             for (const action of plan) {
@@ -1344,12 +1317,12 @@
                 } else if (action.type === 'mill') {
                     // Single pass at tool centerline
                     const source = action.primitiveToOffset;
-                    const holeRadius = source.radius || Math.min(source.width, source.height) / 2;
+                    const holeRadius = source.radius;
                     const toolRadius = toolDiameter / 2;
                     const pathRadius = holeRadius - toolRadius;
 
                     const drillStrategyConfig = opsConfig.drill?.strategy || {};
-                    const minFeatureSize = drillStrategyConfig.minMillingFeatureSize || 0.01;
+                    const minFeatureSize = drillStrategyConfig.minMillingFeatureSize;
                     
                     if (pathRadius > minFeatureSize) {
                         if (source.type === 'circle') {
@@ -1414,29 +1387,39 @@
                 distance: 0,
                 pass: 1,
                 primitives: strategyGeometry,
-                combined: true,
-                isDrillStrategy: true,
-                mode: settings.millHoles ? 'milling' : 'pecking',
-                settings: { ...settings },
+                type: 'drill',
                 metadata: {
                     sourceCount: operation.primitives.length,
-                    peckCount: strategyGeometry.filter(p => p.properties?.role === 'peck_mark').length,
-                    millCount: strategyGeometry.filter(p => p.properties?.role === 'drill_milling_path').length,
+                    finalCount: strategyGeometry.length,
                     generatedAt: Date.now(),
-                    toolDiameter: settings.toolDiameter || settings.tool?.diameter
-                }
+                    toolDiameter: settings.toolDiameter || settings.tool?.diameter,
+                    drill: {
+                        mode: settings.millHoles ? 'milling' : 'pecking',
+                        peckCount: strategyGeometry.filter(p => p.properties?.role === 'peck_mark').length,
+                        millCount: strategyGeometry.filter(p => p.properties?.role === 'drill_milling_path').length
+                    }
+                },
+                settings: { ...settings }
             }];
             
             this.isToolpathCacheValid = false;
             return operation.offsets;
         }
-        
-        calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal = false) {
+
+        /**
+         * Calculates the final offset distances for a toolpath.
+        */
+        _calculateOffsetDistances(toolDiameter, passes, stepOverPercent, isInternal = false) {
+            if (!toolDiameter || toolDiameter <= 0 || !passes || passes <= 0) {
+                return []; // Invalid parameters
+            }
+
             const stepOver = stepOverPercent / 100;
             const stepDistance = toolDiameter * (1 - stepOver);
             const offsets = [];
-            
-            // External offsets are negative, internal offsets are positive
+
+            // isInternal (Clearing) = -1 (shrinks)
+            // !isInternal (Isolation) = 1 (grows)
             const sign = isInternal ? -1 : 1;
             
             for (let i = 0; i < passes; i++) {
@@ -1445,43 +1428,136 @@
             
             return offsets;
         }
-        
-        async generateOperationToolpaths(operation) {
-            if (!operation.primitives || operation.primitives.length === 0) {
-                return null;
+
+        /**
+         * Calculates the final Z-depth levels for a toolpath.
+         */
+        _calculateDepthLevels(cutDepth, depthPerPass, multiDepth) {
+            // Ensure cutDepth is negative
+            const finalDepth = Math.abs(cutDepth) * -1;
+            const step = Math.abs(depthPerPass);
+
+            if (!multiDepth || step <= 0 || Math.abs(finalDepth) <= step) {
+                return [finalDepth]; // Single pass
+            }
+
+            const levels = [];
+            let currentDepth = 0;
+
+            // Loop while currentDepth is greater than (less negative than) finalDepth
+            // Use a small epsilon to handle floating point errors
+            while (currentDepth - step > finalDepth - 1e-9) { 
+                currentDepth -= step;
+                levels.push(currentDepth);
             }
             
-            const settings = operation.settings;
-            if (!settings.tool) {
-                console.warn(`No tool for operation ${operation.id}`);
-                return null;
+            // Ensure the final depth is always included if not already last
+            if (levels.length === 0 || levels[levels.length - 1] > finalDepth) {
+                levels.push(finalDepth);
             }
             
-            const isInternal = operation.type === 'clear';
-            const offsets = this.calculateOffsetDistances(
-                settings.tool.diameter,
-                settings.passes || 1,
-                settings.stepOver || 50,
+            return levels;
+        }
+
+        /**
+         * The main "factory" function. Assembles all data for a single operation into a self-contained context object for the toolpath pipeline.
+         */
+        buildToolpathContext(operationId, parameterManager) {
+            const operation = this.operations.find(op => op.id === operationId);
+            if (!operation) {
+                throw new Error(`Operation ${operationId} not found.`);
+            }
+
+            // Get ALL parameters from manager
+            const params = parameterManager.getAllParameters(operationId);
+            
+            // Get global settings
+            const machine = this.settings.machine;
+            const gcode = this.settings.gcode;
+
+            // Get precision values
+            const toolpathConfig = config.toolpath || {};
+            const precision = config.geometry.coordinatePrecision;
+            const offsettingEpsilon = config.geometry.offsetting?.epsilon;
+
+            // Compute derived values
+            const isInternal = (operation.type === 'clear');
+            const offsetDistances = this._calculateOffsetDistances(
+                params.toolDiameter,
+                params.passes,
+                params.stepOver,
                 isInternal
             );
-            
-            const toolpathData = {
+
+            const depthLevels = this._calculateDepthLevels(
+                params.cutDepth,
+                params.depthPerPass,
+                params.multiDepth,
+                precision
+            );
+
+            // Assemble final context
+            const context = {
+                // Metadata
                 operationId: operation.id,
-                tool: settings.tool,
-                paths: []
+                operationType: operation.type,
+                fileName: operation.file.name,
+
+                // Global Settings
+                machine: { ...machine },
+                gcode: { ...gcode },
+                
+                // Operation Parameters
+                tool: {
+                    id: params.tool,
+                    diameter: params.toolDiameter
+                },
+                cutting: {
+                    feedRate: params.feedRate,
+                    plungeRate: params.plungeRate,
+                    spindleSpeed: params.spindleSpeed
+                },
+                strategy: {
+                    cutDepth: params.cutDepth,
+                    depthPerPass: params.depthPerPass,
+                    multiDepth: params.multiDepth,
+                    passes: params.passes,
+                    stepOver: params.stepOver,
+                    direction: params.direction,
+                    entryType: params.entryType,
+                    drill: {
+                        millHoles: params.millHoles,
+                        peckDepth: params.peckDepth,
+                        dwellTime: params.dwellTime,
+                        cannedCycle: params.cannedCycle
+                    },
+                    cutout: {
+                        tabs: params.tabs,
+                        tabWidth: params.tabWidth,
+                        tabHeight: params.tabHeight,
+                        cutSide: params.cutSide
+                    }
+                },
+
+                // Computed Values
+                computed: {
+                    offsetDistances: offsetDistances,
+                    depthLevels: depthLevels
+                },
+
+                // Config References
+                config: {
+                    entry: toolpathConfig.generation?.entry,
+                    tabs: toolpathConfig.tabs,
+                    optimization: config.gcode?.optimization,
+                    precision: precision,
+                    offsettingEpsilon: offsettingEpsilon
+                }
             };
-            
-            for (let i = 0; i < offsets.length; i++) {
-                toolpathData.paths.push({
-                    offset: offsets[i],
-                    pass: i + 1,
-                    primitives: []
-                });
-            }
-            
-            return toolpathData;
+
+            return context;
         }
-        
+
         async getTransformedToolpathsForExport() {
             if (!this.isToolpathCacheValid) {
                 await this.generateAllToolpaths();
@@ -1607,5 +1683,4 @@
     }
     
     window.PCBCamCore = PCBCamCore;
-    
 })();

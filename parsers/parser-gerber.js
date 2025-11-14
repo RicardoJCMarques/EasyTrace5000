@@ -27,15 +27,15 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const geomConfig = config.geometry || {};
-    const formatConfig = config.formats?.gerber || {};
+    const config = window.PCBCAMConfig;
+    const geomConfig = config.geometry;
+    const formatConfig = config.formats.gerber;
     
     class GerberParser extends ParserCore {
         constructor(options = {}) {
             super({
-                units: formatConfig.defaultUnits || 'mm',
-                format: formatConfig.defaultFormat || { integer: 3, decimal: 3 },
+                units: formatConfig.defaultUnits,
+                format: formatConfig.defaultFormat,
                 ...options
             });
             
@@ -176,7 +176,6 @@
                     const macroContent = match[2];
                     this.state.macros.set(macroName, { name: macroName, content: macroContent });
                     this.debug(`Defined Macro: ${macroName}`);
-                    // We don't need a command, just storing the definition is enough for now.
                     return { type: 'MACRO_DEF', params: { name: macroName }, line: lineNumber };
                 }
             }
@@ -213,7 +212,6 @@
                 }
             }
 
-            // --- Keep your existing handlers for other commands ---
             if (block.startsWith('FS')) {
                 const match = block.match(/FS[LT][AI]X(\d)(\d)Y(\d)(\d)/);
                 if (match) {
@@ -410,7 +408,7 @@
                     
                     // Check for a zero-length draw, which indicates a "painted" pad.
                     // If start and end positions are the same, treat it as a flash.
-                    const precision = geomConfig.zeroLengthTolerance || 0.0001;
+                    const precision = geomConfig.zeroLengthTolerance;
                     const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
                                              Math.abs(this.state.position.y - drawPos.y) < precision;
 
@@ -497,7 +495,7 @@
                 this.state.regionPoints.push({ ...first });
             }
             
-            // Create contours structure (matching SVG parser format)
+            // Create contours structure
             const contours = [{
                 points: [...this.state.regionPoints],
                 nestingLevel: 0,
@@ -658,5 +656,4 @@
     }
     
     window.GerberParser = GerberParser;
-    
 })();

@@ -113,7 +113,7 @@
             }
             
             // Check for reasonable coordinate ranges
-            const maxCoordinate = geomConfig.maxCoordinate || 1000;
+            const maxCoordinate = geomConfig.maxCoordinate;
             if (validationConfig.validateCoordinates && 
                 (Math.abs(coordinates.x) > maxCoordinate || Math.abs(coordinates.y) > maxCoordinate)) {
                 this.coordinateValidation.suspiciousCoordinates.push({
@@ -203,7 +203,7 @@
         }
         
         getTraceBounds(trace) {
-            const halfWidth = (trace.width || 0) / 2;
+            const halfWidth = (trace.width) / 2;
             return {
                 minX: Math.min(trace.start.x, trace.end.x) - halfWidth,
                 minY: Math.min(trace.start.y, trace.end.y) - halfWidth,

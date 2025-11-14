@@ -27,9 +27,9 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    const renderDefaults = config.rendering?.defaultOptions || {};
+    const config = window.PCBCAMConfig;
+    const debugConfig = config.debug;
+    const renderDefaults = config.rendering?.defaultOptions;
     
     class UIControls {
         constructor(ui) {
@@ -38,19 +38,10 @@
             this.renderer = null;
             this.coordinateSystem = null;
             
-            // Arc reconstruction state
-            this.arcReconstructionEnabled = renderDefaults.enableArcReconstruction || false;
-            
-            // Control groups
-            this.debugControls = [];
-            this.renderControls = [];
-            this.offsetControls = [];
-            
             // Input tracking
             this.inputTracking = {
                 lastXValue: '0',
-                lastYValue: '0',
-                isUpdating: false
+                lastYValue: '0'
             };
         }
         
@@ -61,7 +52,7 @@
             this.debug("Initializing controls...");
 
             // Directly call setup methods to attach listeners
-            this.setupVisualizationToggles(); // Centralized toggle setup
+            this.setupVisualizationToggles();
             this.setupOffsetControls();
             this.setupRotationControls();
             this.setupZoomControls();
@@ -146,126 +137,116 @@
             attachTo('debug-log-toggle', 'tooltips.vizPanel.verboseDebug');
         }
 
+        /**
+         * Sets up visualization toggles using event delegation and declarative data- attributes from the HTML.
+         */
         setupVisualizationToggles() {
             if (!this.renderer) return;
 
             this.debug("Setting up visualization toggles...");
+            const vizControls = document.getElementById('viz-controls');
+            if (!vizControls) {
+                console.warn("[UIControls] Visualization panel 'viz-controls' not found.");
+                return;
+            }
+            
+            // 1. Set Initial State
+            // Iterate over all checkboxes with a [data-option]
+            vizControls.querySelectorAll('input[type="checkbox"][data-option]').forEach(el => {
+                const option = el.dataset.option;
+                if (option && renderDefaults[option] !== undefined) {
+                    const initialState = renderDefaults[option];
+                    el.checked = initialState;
+                    // Sync the renderer's options to this default
+                    this.renderer.options[option] = initialState;
+                }
+            });
+            
+            // Special case: Debug log toggle
+            const debugLogToggle = document.getElementById('debug-log-toggle');
+            if (debugLogToggle) {
+                debugLogToggle.checked = debugConfig.enabled || false;
+            }
 
-            const toggleMappings = [
-                // Display Group
-                { id: 'show-grid', option: 'showGrid', default: renderDefaults.showGrid, triggersRender: true },
-                { id: 'show-wireframe', option: 'showWireframe', default: renderDefaults.showWireframe, triggersRender: true },
-                { id: 'show-bounds', option: 'showBounds', default: renderDefaults.showBounds, triggersRender: true },
-                { id: 'show-rulers', option: 'showRulers', default: renderDefaults.showRulers, triggersRender: true },
-                // Layers Group
-                { id: 'show-regions', option: 'showRegions', default: renderDefaults.showRegions, triggersRender: true },
-                { id: 'show-traces', option: 'showTraces', default: renderDefaults.showTraces, triggersRender: true },
-                { id: 'show-pads', option: 'showPads', default: renderDefaults.showPads, triggersRender: true },
-                { id: 'show-drills', option: 'showDrills', default: renderDefaults.showDrills, triggersRender: true },
-                { id: 'show-cutouts', option: 'showCutouts', default: renderDefaults.showCutouts, triggersRender: true },
-                { id: 'show-offsets', option: 'showOffsets', default: renderDefaults.showOffsets, triggersUpdate: true },
-                { id: 'show-previews', option: 'showPreviews', default: renderDefaults.showPreviews, triggersUpdate: true },
-                // Advanced Group
-                { id: 'fuse-geometry', option: 'fuseGeometry', default: renderDefaults.fuseGeometry, triggersUpdate: true }, // Triggers full update
-                { id: 'show-preprocessed', option: 'showPreprocessed', default: renderDefaults.showPreprocessed, triggersUpdate: true }, // Triggers full update
-                { id: 'enable-arc-reconstruction', option: 'enableArcReconstruction', default: renderDefaults.enableArcReconstruction, triggersUpdate: true }, // Triggers full update
-                { id: 'debug-points', option: 'debugPoints', default: renderDefaults.debugPoints, triggersRender: true }, // Simple render
-                { id: 'debug-paths', option: 'debugPaths', default: renderDefaults.debugPaths, triggersRender: true }, // Simple render
-                { id: 'black-and-white', option: 'blackAndWhite', default: renderDefaults.blackAndWhite, triggersRender: true },
-                // Log Group
-                { id: 'debug-log-toggle', option: 'showDebugInLog', default: renderDefaults.showDebugInLog, triggersRender: false }
-            ];
-
-            toggleMappings.forEach(mapping => {
-                const element = document.getElementById(mapping.id);
-                if (!element) {
-                    console.warn(`[UIControls] Toggle element not found: #${mapping.id}`);
+            // 2. Attach Single Event Listener
+            vizControls.addEventListener('change', async (e) => {
+                const el = e.target;
+                
+                // Ensure it's a checkbox that changed
+                if (el.tagName !== 'INPUT' || el.type !== 'checkbox') {
                     return;
                 }
+                
+                const isChecked = el.checked;
+                const option = el.dataset.option;
+                const action = el.dataset.action;
+                const dependencyId = el.dataset.dependency;
 
-                // Determine initial state from the correct config source
-                let initialState;
-                if (mapping.option === 'showDebugInLog') {
-                    // This toggle reads the *global* debug flag
-                    initialState = debugConfig.enabled || false;
-                } else {
-                    // All other toggles read from the renderer's state
-                    initialState = this.renderer.options[mapping.option] !== undefined
-                                ? this.renderer.options[mapping.option]
-                                : mapping.default;
+                this.debug(`Viz toggle changed: ${option || el.id} = ${isChecked}, action: ${action}`);
+
+                // 3. Handle Dependencies
+                if (dependencyId) {
+                    const dependencyEl = document.getElementById(dependencyId);
+                    if (dependencyEl && !dependencyEl.checked) {
+                        el.checked = false; // Un-check it
+                        this.ui.statusManager?.showStatus(`Enable '${dependencyEl.labels[0].textContent}' first`, 'warning');
+                        return;
+                    }
                 }
                 
-                // Set the element's checked state
-                element.checked = initialState;
-                
-                // Also set the renderer's option (for non-debug toggles)
-                if (mapping.option !== 'showDebugInLog') {
-                    this.renderer.options[mapping.option] = initialState;
-                }
-
-                // Attach listener
-                element.addEventListener('change', async (e) => {
-                    this.debug(`Toggle changed: ${mapping.option} = ${e.target.checked}`);
-                    const isChecked = e.target.checked;
-                    
-                    // Handle the debug log toggle *first* and then *return*.
-                    if (mapping.option === 'showDebugInLog') {
-                        // This toggle *controls* the global debug flag
+                // 4. Perform Action
+                switch (action) {
+                    case 'render':
+                        // Simple redraw (e.g., grid, wireframe)
+                        if (option) {
+                            this.renderer.setOptions({ [option]: isChecked });
+                        }
+                        this.renderer.render();
+                        break;
+                        
+                    case 'update':
+                        // Full re-process and redraw (e.g., fusion, offsets)
+                        if (option) {
+                            this.renderer.setOptions({ [option]: isChecked });
+                        }
+                        
+                        // Special logic for fusion/arc changes
+                        if (option === 'fuseGeometry' && !isChecked) {
+                            this.resetFusionStates(); // Turn off dependents
+                        }
+                        if (option === 'enableArcReconstruction') {
+                            this.updateArcReconstructionStats(); // Update stats display
+                        }
+                        if (option === 'fuseGeometry' || option === 'enableArcReconstruction') {
+                            if (this.ui.core.geometryProcessor) {
+                                this.ui.core.geometryProcessor.clearCachedStates();
+                            }
+                        }
+                        
+                        await this.ui.updateRendererAsync();
+                        break;
+                        
+                    case 'toggle-debug':
+                        // Special case for the global debug flag
                         if (window.PCBCAMConfig) {
                             window.PCBCAMConfig.debug.enabled = isChecked;
                         }
-                        // Manually tell the status manager to update its log view
                         if (this.ui.statusManager) {
                             this.ui.statusManager.setDebugVisibility(isChecked);
                         }
-                        return; // This toggle doesn't trigger a render or update
-                    }
-
-                    // Special handling for dependent toggles
-                    if (mapping.id === 'enable-arc-reconstruction' && isChecked && !this.renderer.options.fuseGeometry) {
-                        e.target.checked = false; // Prevent enabling arc without fusion
-                        this.ui.statusManager?.showStatus('Enable Fusion Mode first', 'warning');
-                        return;
-                    }
-                    if (mapping.id === 'show-preprocessed' && isChecked && !this.renderer.options.fuseGeometry) {
-                        e.target.checked = false; // Prevent enabling preprocessed without fusion
-                        this.ui.viewState.showPreprocessed = false; // ← Ensure sync
-                        this.ui.statusManager?.showStatus('Enable Fusion Mode first', 'warning');
-                        return;
-                    }
-
-                    // Update renderer options
-                    this.renderer.setOptions({ [mapping.option]: isChecked });
-
-                    // Update internal state if necessary (used by other logic)
-                    if (mapping.option === 'enableArcReconstruction') {
-                        this.arcReconstructionEnabled = isChecked;
-                        this.ui.viewState.enableArcReconstruction = isChecked; // Keep UI state synced
-                        this.updateArcReconstructionStats(); // Update stats display
-                    }
-                     if (mapping.option === 'fuseGeometry') {
-                        this.ui.viewState.fuseGeometry = isChecked; // Keep UI state synced
-                        if (!isChecked) this.resetFusionStates(); // Reset dependents if fusion is turned off
-                    }
-                    if (mapping.option === 'showPreprocessed') {
-                        this.ui.viewState.showPreprocessed = isChecked; // Keep UI state synced
-                    }
-
-                    // Trigger appropriate update
-                    if (mapping.triggersUpdate) {
-                        this.debug(`Triggering full UI update for ${mapping.option}`);
-                        if (mapping.option === 'enableArcReconstruction' || mapping.option === 'fuseGeometry') {
-                            if (this.ui.core.geometryProcessor) {
-                                this.ui.core.geometryProcessor.clearCachedStates(); // Clear cache on fusion/arc changes
-                            }
+                        break;
+                        
+                    default:
+                        // For toggles that manage layer visibility directly (e.g., show-regions)
+                        if (option) {
+                            this.renderer.setOptions({ [option]: isChecked });
                         }
-                        await this.ui.updateRendererAsync(); // Full update involves re-processing geometry
-                    } else if (mapping.triggersRender) {
-                        this.debug(`Triggering simple render for ${mapping.option}`);
-                        this.renderer.render(); // Simple render just redraws
-                    }
-                });
+                        // This will be caught on the next render, but a simple render is safer
+                        this.renderer.render();
+                        break;
+                }
             });
+            
             this.debug("Visualization toggles setup complete.");
         }
         
@@ -285,15 +266,7 @@
             this.inputTracking.lastYValue = yInput.value || '0';
 
             if (xInput && yInput) {
-                xInput.removeAttribute('readonly');
-                yInput.removeAttribute('readonly');
-                
-                this.inputTracking.lastXValue = xInput.value || '0';
-                this.inputTracking.lastYValue = yInput.value || '0';
-                
                 const handleValueChange = () => {
-                    if (this.inputTracking.isUpdating) return;
-                    
                     const currentX = xInput.value;
                     const currentY = yInput.value;
                     
@@ -323,8 +296,7 @@
                 
                 xInput.addEventListener('keypress', handleEnter);
                 yInput.addEventListener('keypress', handleEnter);
-                
-                this.offsetControls.push(xInput, yInput);
+
             }
             
             // Center origin button
@@ -393,39 +365,42 @@
         
         resetFusionStates() {
             // Reset preprocessed view
-            this.ui.viewState.showPreprocessed = false;
+            this.renderer.setOptions({ showPreprocessed: false });
             const preprocessedToggle = document.getElementById('show-preprocessed');
             if (preprocessedToggle) {
                 preprocessedToggle.checked = false;
             }
-            
+
             // Reset arc reconstruction
-            this.arcReconstructionEnabled = false;
-            this.ui.viewState.enableArcReconstruction = false;
+            this.renderer.setOptions({ enableArcReconstruction: false });
             const arcToggle = document.getElementById('enable-arc-reconstruction');
             if (arcToggle) {
                 arcToggle.checked = false;
             }
-            
-            this.ui.fusionStats.arcReconstructionEnabled = false;
-            this.updateArcReconstructionStats();
+
+            // Clear stats by calling with empty data
+            this.updateArcReconstructionStats({ curvesRegistered: 0 });
         }
         
-        updateArcReconstructionStats() {
+        updateArcReconstructionStats(stats = null) {
             const statsContainer = document.getElementById('arc-reconstruction-stats');
             if (!statsContainer) return;
-            
-            const stats = this.ui.fusionStats;
-            
-            if (stats.arcReconstructionEnabled && stats.curvesRegistered > 0) {
+
+            // If stats weren't passed, get them from core. Default to empty.
+            const currentStats = stats || this.ui.core.geometryProcessor?.getArcReconstructionStats() || {};
+
+            // Get enabled state
+            const isEnabled = this.renderer.options.enableArcReconstruction;
+
+            if (isEnabled && currentStats.curvesRegistered > 0) {
                 statsContainer.classList.remove('hidden');
-                const successRate = stats.curvesRegistered > 0 ? 
-                    ((stats.curvesReconstructed / stats.curvesRegistered) * 100).toFixed(1) : 0;
-                
+                const successRate = currentStats.curvesRegistered > 0 ? 
+                    ((currentStats.curvesReconstructed / currentStats.curvesRegistered) * 100).toFixed(1) : 0;
+
                 statsContainer.innerHTML = `
-                    <div>Curves registered: ${stats.curvesRegistered}</div>
-                    <div>Curves reconstructed: ${stats.curvesReconstructed}</div>
-                    <div>Curves lost: ${stats.curvesLost}</div>
+                    <div>Curves registered: ${currentStats.curvesRegistered}</div>
+                    <div>Curves reconstructed: ${currentStats.curvesReconstructed}</div>
+                    <div>Curves lost: ${currentStats.curvesLost}</div>
                     <div>Success rate: ${successRate}%</div>
                 `;
             } else {
@@ -438,7 +413,6 @@
             const yInput = document.getElementById('y-offset');
             
             if (xInput && yInput && this.coordinateSystem) {
-                this.inputTracking.isUpdating = true;
                 
                 const offset = this.coordinateSystem.getOffsetFromSaved();
                 const precision = config.gcode?.precision?.coordinates || 3;
@@ -448,10 +422,9 @@
                 xInput.value = newXValue;
                 yInput.value = newYValue;
                 
+                // Also update the trackers
                 this.inputTracking.lastXValue = newXValue;
                 this.inputTracking.lastYValue = newYValue;
-                
-                this.inputTracking.isUpdating = false;
             }
         }
         
@@ -487,24 +460,7 @@
             
             const result = this.coordinateSystem.saveCurrentOrigin();
             if (result.success) {
-                this.inputTracking.isUpdating = true;
-                
-                const precision = config.gcode?.precision?.coordinates || 3;
-                const zeroValue = (0).toFixed(precision);
-
-                const xInput = document.getElementById('x-offset');
-                const yInput = document.getElementById('y-offset');
-                if (xInput) {
-                    xInput.value = zeroValue;
-                    this.inputTracking.lastXValue = zeroValue;
-                }
-                if (yInput) {
-                    yInput.value = zeroValue;
-                    this.inputTracking.lastYValue = zeroValue;
-                }
-                
-                this.inputTracking.isUpdating = false;
-                
+                // The change listener will fire and call updateOffsetInputsWithTracking which now correctly updates the inputs AND the trackers.
                 this.ui.updateOriginDisplay();
                 this.ui.statusManager.showStatus('Origin saved at current position', 'success');
             } else {
@@ -556,13 +512,22 @@
             const outBtn = document.getElementById('zoom-out-btn');
 
             if (fitBtn) {
-                fitBtn.addEventListener('click', () => this.renderer?.zoomFit());
+                fitBtn.addEventListener('click', () => {
+                    this.ui.renderer.core.zoomFit();
+                    this.ui.renderer.render();
+                });
             }
             if (inBtn) {
-                inBtn.addEventListener('click', () => this.renderer?.zoomIn());
+                inBtn.addEventListener('click', () => {
+                    this.ui.renderer.core.zoomIn();
+                    this.ui.renderer.render();
+                });
             }
             if (outBtn) {
-                outBtn.addEventListener('click', () => this.renderer?.zoomOut());
+                outBtn.addEventListener('click', () => {
+                    this.ui.renderer.core.zoomOut();
+                    this.ui.renderer.render();
+                });
             }
         }
 

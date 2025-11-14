@@ -60,6 +60,9 @@
             if (typeof Mach3PostProcessor !== 'undefined') {
                 this.registerProcessor('mach3', new Mach3PostProcessor());
             }
+            if (typeof GrblHALPostProcessor !== 'undefined') {
+                this.registerProcessor('grblhal', new GrblHALPostProcessor());
+            }
         }
         
         registerProcessor(name, processor) {
@@ -108,7 +111,10 @@
                 options.commentBlock = commentBlock;
             }
 
-            // 1. Generate header (which will now process the commentBlock if it exists)
+            // Pass the first plan to the header for feed rate setup (for Roland)
+            options.firstPlan = toolpathPlans[0];
+
+            // 1. Generate header
             output.push(this.currentProcessor.generateHeader(options));
             
             let coordinateTransform = null;

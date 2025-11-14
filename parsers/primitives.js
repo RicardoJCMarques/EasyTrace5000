@@ -262,7 +262,7 @@
             this.width = width;
             this.height = height;
             
-            const tolerance = geomConfig.coordinatePrecision || 0.001;
+            const tolerance = geomConfig.coordinatePrecision;
             this.isCircular = Math.abs(width - height) < tolerance;
             
             this.geometricContext.isAnalytic = true;
@@ -439,7 +439,7 @@
         }
         
         canOffsetAnalytically() {
-            return false; // Bezier curves can't be offset analytically yet
+            return false; // Bezier curves can't be offset analytically yet // this sounds like it should just be a constant in the config file?
         }
         
         calculateBounds() {
@@ -467,7 +467,6 @@
         }
     }
     
-    // Export
     window.RenderPrimitive = RenderPrimitive;
     window.PathPrimitive = PathPrimitive;
     window.CirclePrimitive = CirclePrimitive;
@@ -476,5 +475,4 @@
     window.ArcPrimitive = ArcPrimitive;
     window.EllipticalArcPrimitive = EllipticalArcPrimitive;
     window.BezierPrimitive = BezierPrimitive;
-    
 })();

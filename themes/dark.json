@@ -9,7 +9,7 @@
   },
 
   "version": "0.1",
-  "lastModified": "2025-11-06",
+  "lastModified": "2025-11-13",
   
   "id": "dark",
   "colors": {
@@ -46,7 +46,7 @@
       "isolation": "#ff8844",
       "drill": "#4488ff",
       "clear": "#44ff88",
-      "cutout": "#ff00ff",
+      "cutout": "#333333",
       "toolpath": "#00ffff"
     },
     "canvas": {
@@ -63,7 +63,7 @@
         "isolation": "#ff8844",
         "drill": "#4488ff",
         "clear": "#44ff88",
-        "cutout": "#666666"
+        "cutout": "#333333"
       },
       "offset": {
         "external": "#a60000",

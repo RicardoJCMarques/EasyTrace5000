@@ -98,8 +98,10 @@
                     // Respect PathOrdering option
                     if (this.options.enablePathOrdering) {
                         // 1. Build Staydown Clusters using geometric proximity
-                        const toolDiameter = zGroup[0].metadata.tool?.diameter || 1.0;
-                        const staydownMargin = toolDiameter * 0.6;
+                        const toolDiameter = zGroup[0].metadata.toolDiameter;
+
+                        const staydownMarginFactor = config.gcode?.optimization?.staydownMarginFactor || 0.6;
+                        const staydownMargin = toolDiameter * staydownMarginFactor;
                         const clusters = this.buildStaydownClusters(zGroup, staydownMargin);
                         
                         this.stats.clustersFound += clusters.length;
@@ -464,14 +466,14 @@
                 );
 
                 // Use calculated stepDistance + tolerance
-                const toolDiameter = planMetadata.tool?.diameter || 1.0;
-                // Get stepOver from settings (use default from config if missing on plan)
-                const stepOverPercent = planMetadata.stepOver || (config.operations[planMetadata.operationType || 'isolation']?.defaultSettings?.stepOver) || 50;
+                const toolDiameter = planMetadata.toolDiameter;
+                // Get stepOver from settings
+                const stepOverPercent = planMetadata.stepOver;
                 const stepOverRatio = stepOverPercent / 100.0;
                 const stepDistance = toolDiameter * (1.0 - stepOverRatio);
 
                 // Threshold is the expected step distance plus a small tolerance
-                const tolerance = 0.1 * toolDiameter; // e.g., 10% of tool diameter
+                const tolerance = 0.1 * toolDiameter; // e.g., 10% of tool diameter // I don't trust this tollerance.
                 const staydownThreshold = stepDistance + tolerance;
 
                 this.debug(`Plan ${planMetadata.operationId} (Pass ${planMetadata.pass || 1}): ToolD=${toolDiameter.toFixed(3)}, StepOver=${stepOverPercent}%, StepDist=${stepDistance.toFixed(3)}, Threshold=${staydownThreshold.toFixed(3)}`);
@@ -541,7 +543,11 @@
          * Helper for rapid cost calculation
          */
         calculateRapidCost(fromPos, toPos, xyDist) {
-            const zTravelThreshold = 5.0;
+            // Get optimization config
+            const rapidConfig = config.toolpath?.generation?.rapidCost || {};
+            const zTravelThreshold = rapidConfig.zTravelThreshold;
+            const zCostFactor = rapidConfig.zCostFactor;
+            const baseCost = rapidConfig.baseCost;
             let zCost;
             
             if (xyDist < zTravelThreshold) {
@@ -551,7 +557,7 @@
                 zCost = Math.abs(this.options.safeZ - fromPos.z) + Math.abs(toPos.z - this.options.safeZ);
             }
             
-            return (xyDist + zCost * 1.5) + 10000;
+            return (xyDist + zCost * zCostFactor) + baseCost;
         }
         
         /**
@@ -683,7 +689,7 @@
         rotateCircleEntry(plan, fromPos) {
             const center = plan.metadata.center;
             const radius = plan.metadata.radius;
-            const feedRate = plan.metadata.feedRate || 150;
+            const feedRate = plan.metadata.feedRate; // Rorate circle shouldn't be adding commands? It should rotate circle entrypoints where it makes sense, then a regular drill cycle is run?
             const clockwise = plan.metadata.direction === 'conventional';
             const depth = plan.metadata.cutDepth;
             
@@ -748,8 +754,10 @@
                     // Check the *arc length* of the arc (straight line from start to end)
                     const arcLength = Math.hypot(cmdTargetPos.x - currentPos.x, cmdTargetPos.y - currentPos.y);
                     
-                    // If the arc moves less than 0.01mm, it's an artifact.
-                    if (arcLength < 0.01) { 
+                    // Check if this is a helical arc (changing Z)
+                    const isHelical = cmd.z !== null && Math.abs(cmd.z - currentPos.z) > 1e-6;
+
+                    if (arcLength < 0.01 && !isHelical) {  // Don't ignore helical arcs
                         isIgnorableArc = true;
                     }
                 }
@@ -857,9 +865,9 @@
 
             plan.commands = simplified;
         }
-        
+
         /**
-         * Simplifies a point sequence by removing collinear points.
+         * Simplifies a point sequence by removing collinear points based on deviation AND angle.
          */
         simplifyCollinearPoints(points) {
             if (points.length <= 2) {
@@ -868,76 +876,64 @@
 
             const simplified = [points[0]]; // Always keep the start point
 
-            // "Softer" (stricter) tolerance for short segments to preserve curves
-            const curveTolerance = (this.options.minSegmentLength / 100.0) || 0.0005; // e.g., 0.0005mm
-
-            // "Aggressive" (looser) tolerance for long segments to remove collinear points
-            const straightTolerance = (this.options.minSegmentLength / 10.0) || 0.005; // e.g., 0.005mm
-
-            // The segment length at which we switch from "curve" to "straight" logic.
-            // (e.g., 0.5mm)
-            const segmentThreshold = this.options.minSegmentLength * 10 || 0.5; 
+            const simpConfig = config.toolpath?.generation?.simplification || {};
+            
+            // Get the 4 tolerance values from config
+            const curveTolerance = simpConfig.curveToleranceFallback || 0.0005;
+            const straightTolerance = simpConfig.straightToleranceFallback || 0.005;
+            const sharpCornerTolerance = simpConfig.sharpCornerTolerance || 0.00001;
+            
+            const straightAngleThreshold = simpConfig.straightAngleThreshold || 1.0; 
+            const sharpAngleThreshold = simpConfig.sharpAngleThreshold || 10.0;
 
             for (let i = 1; i < points.length - 1; i++) {
                 const p0 = simplified[simplified.length - 1]; // Last *kept* point
                 const p1 = points[i];
                 const p2 = points[i + 1];
 
+                // 1. Calculate deviation distance (how far p1 is from line p0-p2)
                 const dist = this.perpendicularDistance(p1, p0, p2);
                 
-                // Get the length of the segment leading *into* the point we are checking
-                const segmentLength = Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+                // 2. Calculate the angle (curvature) at p1
+                const v1x = p1.x - p0.x;
+                const v1y = p1.y - p0.y;
+                const v2x = p2.x - p1.x;
+                const v2y = p2.y - p1.y;
 
-                // Apply the correct tolerance
-                const effectiveTolerance = (segmentLength < segmentThreshold) ? curveTolerance : straightTolerance;
+                const mag1 = Math.hypot(v1x, v1y);
+                const mag2 = Math.hypot(v2x, v2y);
                 
-                // Keep the point if it deviates more than the *effective* tolerance
+                let angle = 0;
+                // Only calculate angle if segments are not zero-length
+                if (mag1 > 1e-9 && mag2 > 1e-9) {
+                    const dot = v1x * v2x + v1y * v2y;
+                    // Clamp to avoid floating point errors with acos()
+                    const cosTheta = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
+                    angle = Math.acos(cosTheta) * (180 / Math.PI); // Angle 0-180
+                }
+
+                // 3. Determine nuanced tolerance based on the angle
+                let effectiveTolerance;
+                if (angle > sharpAngleThreshold) {
+                    // This is a SHARP CORNER. Be extremely strict to preserve it.
+                    effectiveTolerance = sharpCornerTolerance;
+                } else if (angle < straightAngleThreshold) {
+                    // This is a STRAIGHT LINE. Be aggressive/loose.
+                    effectiveTolerance = straightTolerance;
+                } else {
+                    // This is a GENTLE CURVE. Use the standard curve tolerance.
+                    effectiveTolerance = curveTolerance;
+                }
+                
+                // 4. Keep the point ONLY if it deviates more than the nuanced tolerance
                 if (dist >= effectiveTolerance) {
                     simplified.push(p1); 
                 }
-                // If collinear (dist < tolerance), p1 is dropped.
-                // The next check will be against (p0, p2, p3), which is correct.
+                // If dist < effectiveTolerance, p1 is dropped.
             }
 
             simplified.push(points[points.length - 1]); // Always keep the end point
             return simplified;
-}
-        
-        /**
-         * Douglas-Peucker line simplification algorithm
-         */
-        douglasPeucker(points, tolerance) {
-            if (points.length <= 2) return points;
-            
-            // Find point with maximum distance from line
-            let maxDist = 0;
-            let maxIndex = 0;
-            const end = points.length - 1;
-            
-            for (let i = 1; i < end; i++) {
-                const dist = this.perpendicularDistance(
-                    points[i],
-                    points[0],
-                    points[end]
-                );
-                
-                if (dist > maxDist) {
-                    maxDist = dist;
-                    maxIndex = i;
-                }
-            }
-            
-            // If max distance is greater than tolerance, recursively simplify
-            if (maxDist > tolerance) {
-                const left = this.douglasPeucker(points.slice(0, maxIndex + 1), tolerance);
-                const right = this.douglasPeucker(points.slice(maxIndex), tolerance);
-                
-                // Merge results (removing duplicate middle point)
-                return [...left.slice(0, -1), ...right];
-            } else {
-                // All points between start and end can be removed
-                return [points[0], points[end]];
-            }
         }
         
         /**

@@ -414,19 +414,19 @@
                     <div class="control-group">
                         <h3>Display</h3>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-grid" checked>
+                            <input type="checkbox" id="show-grid" data-option="showGrid" data-action="render" checked>
                             <span>Grid</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-wireframe">
+                            <input type="checkbox" id="show-wireframe" data-option="showWireframe" data-action="render">
                             <span>Wireframe</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-bounds">
+                            <input type="checkbox" id="show-bounds" data-option="showBounds" data-action="render">
                             <span>Board Bounds</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-rulers" checked>
+                            <input type="checkbox" id="show-rulers" data-option="showRulers" data-action="render" checked>
                             <span>Rulers</span>
                         </label>
                     </div>
@@ -434,31 +434,31 @@
                     <div class="control-group">
                         <h3>Layers</h3>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-regions" checked>
+                            <input type="checkbox" id="show-regions" data-option="showRegions" data-action="render" checked>
                             <span>Regions</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-traces" checked>
+                            <input type="checkbox" id="show-traces" data-option="showTraces" data-action="render" checked>
                             <span>Traces</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-pads" checked>
+                            <input type="checkbox" id="show-pads" data-option="showPads" data-action="render" checked>
                             <span>Pads</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-drills" checked>
+                            <input type="checkbox" id="show-drills" data-option="showDrills" data-action="render" checked>
                             <span>Drills</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-cutouts" checked>
+                            <input type="checkbox" id="show-cutouts" data-option="showCutouts" data-action="render" checked>
                             <span>Cutouts</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-offsets" checked>
+                            <input type="checkbox" id="show-offsets" data-option="showOffsets" data-action="update" checked>
                             <span>Offsets</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-previews" checked>
+                            <input type="checkbox" id="show-previews" data-option="showPreviews" data-action="update" checked>
                             <span>Previews</span>
                         </label>
                     </div>
@@ -466,27 +466,27 @@
                     <div class="control-group">
                         <h3>Advanced</h3>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="fuse-geometry">
+                            <input type="checkbox" id="fuse-geometry" data-option="fuseGeometry" data-action="update">
                             <span>Fusion Mode</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="show-preprocessed">
+                            <input type="checkbox" id="show-preprocessed" data-option="showPreprocessed" data-action="update" data-dependency="fuse-geometry">
                             <span>Preprocessed</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="enable-arc-reconstruction">
+                            <input type="checkbox" id="enable-arc-reconstruction" data-option="enableArcReconstruction" data-action="update" data-dependency="fuse-geometry">
                             <span>Arc Reconstruction</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="debug-points">
+                            <input type="checkbox" id="debug-points" data-option="debugPoints" data-action="render">
                             <span>Debug Points</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="debug-paths">
+                            <input type="checkbox" id="debug-paths" data-option="debugPaths" data-action="render">
                             <span>Debug Paths</span>
                         </label>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="black-and-white">
+                            <input type="checkbox" id="black-and-white" data-option="blackAndWhite" data-action="render">
                             <span>B&W Mode</span>
                         </label>
                     </div>
@@ -494,7 +494,7 @@
                     <div class="control-group">
                         <h3>Log</h3>
                         <label class="checkbox-control checkbox-label">
-                            <input type="checkbox" id="debug-log-toggle">
+                            <input type="checkbox" id="debug-log-toggle" data-action="toggle-debug">
                             <span>Verbose Debug</span>
                         </label>
                     </div>
@@ -851,6 +851,11 @@
             // G-code generation
             "export/processors/base-processor.js",
             "export/processors/grbl-processor.js",
+            "export/processors/grblHAL-processor.js",
+            "export/processors/roland-processor.js",
+            "export/processors/marlin-processor.js",
+            "export/processors/mach3-processor.js",
+            "export/processors/linuxcnc-processor.js",
             "export/gcode-generator.js",
             
             // Core application

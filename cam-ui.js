@@ -27,10 +27,10 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    const opsConfig = config.operations || {};
-    const storageKeys = config.storageKeys || {};
+    const config = window.PCBCAMConfig;
+    const debugConfig = config.debug;
+    const opsConfig = config.operations;
+    const storageKeys = config.storageKeys;
     
     class PCBCamUI {
         constructor(core, languageManager) {
@@ -46,24 +46,6 @@
             this.renderer = null;
             this.coordinateSystem = null;
             this.svgExporter = null;
-
-            this.viewState = {
-                showPreprocessed: false,
-                enableArcReconstruction: false,
-                fuseGeometry: false,
-                showWireframe: false,
-                showGrid: true,
-                blackAndWhite: false,
-                debugPoints: false,
-                debugPaths: false
-            };
-            
-            this.fusionStats = {
-                arcReconstructionEnabled: false,
-                curvesRegistered: 0,
-                curvesReconstructed: 0,
-                curvesLost: 0
-            };
             
             this.stats = {
                 files: 0,
@@ -141,8 +123,16 @@
                         debug: debugConfig.enabled 
                     });
                     this.core.coordinateSystem = this.coordinateSystem;
-                    this.renderer.setCoordinateSystem(this.coordinateSystem);
-                    this.coordinateSystem.setRenderer(this.renderer);
+
+                    // The UI listens for changes from the coordinate system
+                    this.coordinateSystem.addChangeListener((status) => {
+                        // When a change happens, the UI tells the renderer
+                        if (this.renderer) {
+                            this.renderer.core.setOriginPosition(status.currentPosition.x, status.currentPosition.y);
+                            this.renderer.core.setRotation(status.currentRotation, status.rotationCenter);
+                            this.renderer.render();
+                        }
+                    });
                 }
                 
                 if (typeof SVGExporter !== 'undefined') {
@@ -162,9 +152,8 @@
                 
                 if (window.ResizeObserver) {
                     const resizeObserver = new ResizeObserver(() => {
-                        if (this.renderer) {
-                            this.renderer.resizeCanvas();
-                        }
+                        this.renderer.core.resizeCanvas();
+                        this.renderer.render();
                     });
                     resizeObserver.observe(canvas.parentElement);
                 }
@@ -184,8 +173,6 @@
         }
         
         async updateRendererAsync() {
-            if (!this.renderer) return;
-            
             if (this._updatePending) {
                 this._updateQueued = true;
                 return;
@@ -195,8 +182,8 @@
             
             try {
                 this.renderer.clearLayers();
-                
-                if (this.viewState.fuseGeometry) {
+
+                if (this.renderer.options.fuseGeometry) {
                     await this.performFusion();
                 } else {
                     this.addIndividualLayers();
@@ -223,26 +210,20 @@
             }
             
             const fusionOptions = {
-                enableArcReconstruction: this.viewState.enableArcReconstruction
+                enableArcReconstruction: this.renderer.options.enableArcReconstruction
             };
 
-            this.debug('performFusion() - Starting performFusion. Options:', fusionOptions);
+            this.debug('performFusion() - Starting. Options:', fusionOptions);
             
             try {
                 const fused = await this.core.fuseAllPrimitives(fusionOptions);
-                
-                if (this.viewState.enableArcReconstruction && this.core.geometryProcessor) {
+                if (this.renderer.options.enableArcReconstruction && this.core.geometryProcessor) {
                     const arcStats = this.core.geometryProcessor.getArcReconstructionStats();
-                    this.fusionStats.curvesRegistered = arcStats.curvesRegistered || 0;
-                    this.fusionStats.curvesReconstructed = arcStats.curvesReconstructed || 0;
-                    this.fusionStats.curvesLost = arcStats.curvesLost || 0;
-                    
                     if (this.controls && this.controls.updateArcReconstructionStats) {
-                        this.controls.updateArcReconstructionStats();
+                        this.controls.updateArcReconstructionStats(arcStats);
                     }
                 }
-                
-                if (this.viewState.showPreprocessed) {
+                if (this.renderer.options.showPreprocessed) {
                     this.addPreprocessedLayer();
                 } else {
                     this.addFusedLayer(fused);
@@ -395,9 +376,7 @@
             });
         }
         
-        updateOriginDisplay() {
-            if (!this.coordinateSystem) return;
-            
+        updateOriginDisplay() {            
             const status = this.coordinateSystem.getStatus();
             const sizeElement = document.getElementById('board-size');
             if (sizeElement && status.boardSize) {
@@ -436,11 +415,9 @@
         }
         
         toggleGrid() {
-            this.viewState.showGrid = !this.viewState.showGrid;
-            if (this.renderer) {
-                this.renderer.setOptions({ showGrid: this.viewState.showGrid });
-                this.renderer.render();
-            }
+            const currentState = this.renderer.core.options.showGrid;
+            this.renderer.core.setOptions({ showGrid: !currentState });
+            this.renderer.render();
         }
         
         async processFile(file, type) {
@@ -506,20 +483,15 @@
         }
         
         async exportSVG() {
-        if (!this.svgExporter) {
-            this.updateStatus('SVG exporter not available', 'error');
-            return;
+            try {
+                // The SVGExporter will handle the download internally.
+                this.svgExporter.exportSVG(); 
+                this.updateStatus('SVG exported successfully', 'success');
+            } catch (error) {
+                console.error('SVG export error:', error);
+                this.updateStatus('SVG export failed: ' + error.message, 'error');
+            }
         }
-
-        try {
-            // The SVGExporter will handle the download internally.
-            this.svgExporter.exportSVG(); 
-            this.updateStatus('SVG exported successfully', 'success');
-        } catch (error) {
-            console.error('SVG export error:', error);
-            this.updateStatus('SVG export failed: ' + error.message, 'error');
-        }
-    }
         
         async exportGCode() {
             this.updateStatus('G-code export not yet implemented', 'warning');
@@ -635,6 +607,25 @@
             }
         }
 
+        showCanvasSpinner(message = 'Processing...') {
+            const overlay = document.getElementById('canvas-loading-overlay');
+            const msgEl = document.getElementById('canvas-loading-message');
+            
+            if (msgEl) {
+                msgEl.textContent = message;
+            }
+            if (overlay) {
+                overlay.classList.remove('hidden');
+            }
+        }
+        
+        hideCanvasSpinner() {
+            const overlay = document.getElementById('canvas-loading-overlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+            }
+        }
+
         /**
          * The central "proxy" logger for all UI modules.
          * It checks the config flag and logs to both the console and the StatusManager.
@@ -670,5 +661,4 @@
     }
     
     window.PCBCamUI = PCBCamUI;
-    
 })();

@@ -228,7 +228,7 @@ Exported from the current canvas view.
             let transform = 'scale(1,-1)';
             
             if (viewState.rotation !== 0) {
-                const center = this.core.rotationCenter || { x: 0, y: 0 };
+                const center = this.core.rotationCenter;
                 // Note: SVG rotation is clockwise, but our Y-flip inverts it. We apply the *same* rotation angle as the canvas.
                 transform += ` rotate(${viewState.rotation} ${this._formatNumber(center.x, config.precision)} ${this._formatNumber(center.y, config.precision)})`;
             }

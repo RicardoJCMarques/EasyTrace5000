@@ -27,12 +27,12 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    const textConfig = config.ui.text || {};
-    const timingConfig = config.ui.timing || {};
-    const storageKeys = config.storageKeys || {};
-    const opsConfig = config.operations || {};
+    const config = window.PCBCAMConfig;
+    const debugConfig = config.debug;
+    const textConfig = config.ui.text;
+    const timingConfig = config.ui.timing;
+    const storageKeys = config.storageKeys;
+    const opsConfig = config.operations;
     
     // PCB Example definitions
     const PCB_EXAMPLES = {
@@ -160,7 +160,7 @@
                 const hideWelcome = localStorage.getItem(key);
                 
                 if (!hideWelcome) {
-                    // USE THE MODAL MANAGER
+                    // Use the Modal Manager
                     this.modalManager.showModal('welcome', { examples: PCB_EXAMPLES });
                 } else {
                     // Ensure coordinate system is initialized
@@ -231,17 +231,27 @@
             
             if (quickActionsBtn && quickActionsMenu) {
                 quickActionsBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
+                    // Stop this click from being caught by the document listener below
+                    e.stopPropagation(); 
                     quickActionsBtn.classList.toggle('active');
                     quickActionsMenu.classList.toggle('show');
                 });
                 
-                // Close on outside click
-                document.addEventListener('click', () => {
-                    quickActionsBtn.classList.remove('active');
-                    quickActionsMenu.classList.remove('show');
+                // 'click outside' listener
+                document.addEventListener('click', (e) => {
+                    // If the menu is not shown, do nothing
+                    if (!quickActionsMenu.classList.contains('show')) {
+                        return;
+                    }
+                    
+                    // If the click was NOT on the button AND NOT inside the menu, close it
+                    if (!quickActionsBtn.contains(e.target) && !quickActionsMenu.contains(e.target)) {
+                        quickActionsBtn.classList.remove('active');
+                        quickActionsMenu.classList.remove('show');
+                    }
                 });
                 
+                // Prevent clicks *inside* the menu from closing it
                 quickActionsMenu.addEventListener('click', (e) => {
                     e.stopPropagation();
                 });
@@ -251,7 +261,6 @@
             const addFilesBtn = document.getElementById('toolbar-add-files');
             if (addFilesBtn) {
                 addFilesBtn.addEventListener('click', () => {
-                    // USE THE MODAL MANAGER
                     this.modalManager.showModal('file'); 
                     quickActionsBtn.classList.remove('active');
                     quickActionsMenu.classList.remove('show');
@@ -298,9 +307,10 @@
         setupGlobalHandlers() {
             // Handle resize
             window.addEventListener('resize', () => {
-                if (this.ui?.renderer) {
-                    this.ui.renderer.resizeCanvas();
-                }
+                window.addEventListener('resize', () => {
+                    this.ui.renderer.core.resizeCanvas();
+                    this.ui.renderer.render();
+                });
             });
             
             // Handle file drops on entire window
@@ -336,7 +346,7 @@
                 // F: Fit to view (when not in input)
                 if (e.key === 'f') {
                     e.preventDefault();
-                    this.ui?.renderer?.zoomFit();
+                    this.ui.renderer.core.zoomFit();
                 }
                 
                 // W: Toggle wireframe
@@ -364,13 +374,9 @@
                 themeToggle.addEventListener('click', async () => {
                     if (window.ThemeLoader && window.ThemeLoader.isLoaded()) {
                         await window.ThemeLoader.toggleTheme();
-                        
-                        // Update renderer if needed
-                        if (this.ui?.renderer) {
-                            const currentTheme = window.ThemeLoader.getCurrentTheme();
-                            this.ui.renderer.setOptions({ theme: currentTheme });
-                            this.ui.renderer.render();
-                        }
+                        const currentTheme = window.ThemeLoader.getCurrentTheme();
+                        this.ui.renderer.setOptions({ theme: currentTheme });
+                        this.ui.renderer.render();
                     }
                 });
             }
@@ -380,9 +386,7 @@
             if (this.core?.coordinateSystem && !this.core.coordinateSystem.initialized) {
                 // Initialize with empty bounds if no operations
                 this.core.coordinateSystem.initializeEmpty();
-                if (this.ui?.renderer) {
-                    this.ui.updateOriginDisplay();
-                }
+                this.ui.updateOriginDisplay();
             }
         }
         
@@ -412,7 +416,7 @@
             // Auto-fit to show all loaded geometry
             if (this.ui?.renderer) {
                 setTimeout(() => {
-                    this.ui.renderer.zoomFit(1.1);
+                    this.ui.renderer.core.zoomFit();
                 }, 100); // Small delay to ensure rendering is complete
             }
         }
@@ -488,13 +492,12 @@
             this.ui?.updateStatus(`Example '${example.name}' loaded successfully.`, 'success');
             
             // Update renderer and fit view
-            if (this.ui?.renderer) {
-                await this.ui.updateRendererAsync();
-                this.ui.renderer.zoomFit();
-            }
+            await this.ui.updateRendererAsync();
+            this.ui.renderer.core.zoomFit();
+            this.ui.renderer.render();
             
             // Expand operations after loading
-            if (this.ui?.treeManager) {
+            if (this.ui.treeManager) {
                 this.ui.treeManager.expandAll();
             }
         }
@@ -531,7 +534,7 @@
             }
             
             // Show loading status
-            this.ui?.updateStatus(`${textConfig.statusLoading || 'Loading'} ${file.name}...`);
+            this.ui?.updateStatus(`${textConfig.statusLoading} ${file.name}...`);
             
             // Read and parse file
             const reader = new FileReader();
@@ -585,7 +588,7 @@
                     // Auto-fit on first file
                     const hasMultipleOps = this.core.operations.length > 1;
                     if (!hasMultipleOps && this.ui?.renderer) {
-                        this.ui.renderer.zoomFit();
+                        this.ui.renderer.core.zoomFit();
                     }
                     
                     // Update statistics
@@ -632,9 +635,8 @@
                 // Force renderer update and zoom
                 if (this.ui?.updateRendererAsync) {
                     await this.ui.updateRendererAsync();
-                    if (this.ui.renderer) {
-                        this.ui.renderer.zoomFit();
-                    }
+                    this.ui.renderer.core.zoomFit();
+                    this.ui.renderer.render();
                 }
             }
             
@@ -644,7 +646,7 @@
         }
         
         getOperationTypeFromExtension(ext) {
-            const operations = config.operations || {};
+            const operations = config.operations;
             for (let [type, op] of Object.entries(operations)) {
                 if (op.extensions && op.extensions.some(e => e.slice(1) === ext)) {
                     return type;
@@ -686,63 +688,66 @@
                 return { gcode: "; Generation Failed", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
             }
 
-            // Read ALL settings from core at start
-            const machineConfig = this.core.settings.machine;
-            const gcodeConfig = this.core.settings.gcode;
+            // STAGE 1: Build Contexts and Attach to Operations"
 
-            // STAGE 1: Get selected operations
-            const selectedOps = options.operationIds
-                .map(id => options.operations.find(o => o.id === id))
-                .filter(Boolean);
-            
-            if (selectedOps.length === 0) {
-                return { gcode: "; No operations selected", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
+            this.debug(`Stage 1: Building contexts for ${options.operationIds.length} operations...`);
+
+            // Create pairs instead of mutating operations
+            const operationContextPairs = [];
+            for (const opId of options.operationIds) {
+                try {
+                    const operation = this.core.operations.find(o => o.id === opId);
+                    if (!operation) throw new Error(`Operation ${opId} not found.`);
+
+                    // Commit any "live" UI changes to the operation object before building the context from it.
+                    if (this.parameterManager.hasUnsavedChanges(opId)) {
+                        this.parameterManager.commitToOperation(operation);
+                        this.debug(`Committed unsaved parameters for ${opId}`);
+                    }
+
+                    const ctx = this.core.buildToolpathContext(opId, this.parameterManager);
+                    
+                    // Pass as a pair - no mutation
+                    operationContextPairs.push({ operation, context: ctx });
+
+                } catch (error) {
+                    console.warn(`Skipping operation ${opId}: ${error.message}`);
+                }
             }
 
-            // STAGES 2 & 3: Translate and Optimize, Operation by Operation
-            this.debug(`Stage 2/3: Translating and Optimizing ${selectedOps.length} operations in order...`);
-            const plansToProcess = [];
+            if (operationContextPairs.length === 0) {
+                return { gcode: "; No valid operations to process", /* ... */ };
+            }
 
-            for (const op of selectedOps) {
-                if (!op.offsets || op.offsets.length === 0) {
-                    this.debug(`  - Skipping Op: ${op.file.name} (no offsets)`);
-                    continue;
-                }
+            // STAGE 2: Translate
+            this.debug(`Stage 2: Translating ${operationContextPairs.length} operations...`);
 
-                this.debug(`  - Processing Op: ${op.file.name} (${op.type})`);
-                
-                // Stage 2: Translate this *single* operation
-                const opPurePlans = await this.geometryTranslator.translateOperation(op);
-                if (opPurePlans.length === 0) continue;
+            // Pass pairs directly
+            const plans = await this.geometryTranslator.translateAllOperations(operationContextPairs);
+            
+            if (!plans || plans.length === 0) {
+                 return { gcode: "; No toolpath geometry generated", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
+            }
 
-                // Stage 3: Optimize *only* this operation's plans
-                let opOptimizedPlans = opPurePlans;
-                if (options.optimize === true) {
-                    // Ensure the optimizer has the latest safeZ from machine settings
-                    this.toolpathOptimizer.options.safeZ = machineConfig.safeZ;
-                    // The optimizer will optimize the list of plans for this one operation
-                    opOptimizedPlans = this.toolpathOptimizer.optimize(opPurePlans);
-                }
-
-                // Add the optimized plans for this op to the final list
-                plansToProcess.push(...opOptimizedPlans);
+            // STAGE 3: Optimize
+            this.debug(`Stage 3: Entered optimizer stage, checking for user set flag`);
+            let plansToProcess = plans;
+            if (options.optimize === true) {
+                this.debug(`Stage 3: Optimized ${plans.length} plans...`);
+                plansToProcess = this.toolpathOptimizer.optimize(plans);
             }
             
             // STAGE 4: Add machine operations
             this.debug('Stage 4: Adding machine operations...');
-            
-            const machineSettings = {
-                safeZ: machineConfig.safeZ,
-                travelZ: machineConfig.travelZ,
-                rapidFeedRate: machineConfig.rapidFeed
-            };
-
-            const machineReadyPlans = this.machineProcessor.processPlans(plansToProcess, machineSettings);
+            const firstContext = operationContextPairs[0].context; // Get context from pairs
+            const machineReadyPlans = this.machineProcessor.processPlans(plansToProcess, firstContext);
             this.debug(`Stage 4: ${machineReadyPlans.length} machine-ready plans`);
 
             // STAGE 5: Generate G-code
             this.debug('Stage 5: Generating G-code...');
-            
+            const gcodeConfig = operationContextPairs[0].context.gcode;
+            const machineConfig = operationContextPairs[0].context.machine;
+
             const genOptions = {
                 postProcessor: options.postProcessor,
                 includeComments: options.includeComments,
@@ -750,12 +755,12 @@
                 toolChanges: options.toolChanges,
                 startCode: gcodeConfig.startCode,
                 endCode: gcodeConfig.endCode,
+                units: gcodeConfig.units,
                 safeZ: machineConfig.safeZ,
                 travelZ: machineConfig.travelZ,
                 coolant: machineConfig.coolant,
                 vacuum: machineConfig.vacuum
             };
-
             const gcode = this.gcodeGenerator.generate(machineReadyPlans, genOptions);
 
             // STAGE 6: Calculate metrics
@@ -1005,5 +1010,5 @@
         }
         return registry;
     };
-    
+
 })();

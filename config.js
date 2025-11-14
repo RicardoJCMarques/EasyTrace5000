@@ -97,6 +97,7 @@ window.PCBCAMConfig = {
             },
             defaultSettings: {                       // [USED IN: cam-core.js, ui-parameter-manager.js] [MOVE TO: settings.js]
                 millHoles: true,
+                multiDepth: true,
                 cannedCycle: 'none',
                 peckDepth: 0,
                 dwellTime: 0,
@@ -186,6 +187,14 @@ window.PCBCAMConfig = {
                 cutSide: 'outside'
             }
         }
+    },
+
+    // ============================================================================
+    // STORAGE KEYS (ADD THIS BLOCK)
+    // ============================================================================
+    storageKeys: {
+        theme: 'pcbcam-theme',
+        hideWelcome: 'pcbcam-hide-welcome'
     },
 
     // ============================================================================
@@ -300,7 +309,7 @@ window.PCBCAMConfig = {
             alpha: false,
             desynchronized: true
         },
-        lodThreshold: 0.5,                           // [ADDED] [HARDCODED in renderer-core.js]
+        lodThreshold: 1,                             // [ADDED] [HARDCODED in renderer-core.js]
         zoom: {
             fitPadding: 1.1,                         // [ADDED] [HARDCODED in renderer-core.js]
             factor: 1.2,                             // [ADDED] [HARDCODED in renderer-core.js]
@@ -366,6 +375,30 @@ window.PCBCAMConfig = {
             cursorGrab: 'grab',
             coordPrecision: 2,
             zoomPrecision: 0
+        },
+        primitives: {                                
+            offsetStrokeWidth: 2,
+            centerMarkStrokeWidth: 3,
+            sourceDrillStrokeWidth: 3,
+            sourceDrillMarkSize: 0.2,
+            sourceDrillMarkRatio: 0.4,
+            peckMarkStrokeWidth: 3,
+            peckMarkMarkSize: 0.2,
+            peckMarkMarkRatio: 0.4,
+            peckMarkDash: [0.15, 0.15],
+            peckMarkRingFactor: 1.3,
+            peckMarkLabelOffset: 0.3,
+            reconstructedStrokeWidth: 2,
+            reconstructedCenterSize: 2,
+            reconstructedPathDash: [5, 5],
+            defaultStrokeWidth: 0.1,
+            debugPointSize: 4,
+            debugFont: '11px monospace',
+            debugLabelLineWidth: 2,
+            debugArcStrokeWidth: 3,
+            debugArcCenterSize: 4,
+            debugContourStrokeWidth: 2,
+            debugContourDash: [5, 5]
         }
     },
 
@@ -462,6 +495,27 @@ window.PCBCAMConfig = {
         svgPointMatchTolerance: 1e-2,                // [ADDED] [HARDCODED in parser-svg.js]
         svgZeroLengthTolerance: 1e-6                 // [ADDED] [HARDCODED in parser-svg.js]
     },
+
+
+    // ============================================================================
+    // Centralized precision constants
+    // [MOVE TO: constants.js]
+    // ============================================================================
+
+    precision: {
+        // Geometric comparison thresholds
+        pointEquality: 1e-6,           // Two points are "same" if closer than this
+        zeroLength: 1e-9,              // Segment length considered zero
+        collinear: 1e-12,              // Perpendicular distance for collinearity
+        
+        // Toolpath thresholds
+        xyMatch: 0.01,                 // XY position matching for multi-depth detection
+        closedLoop: 0.01,              // Distance to consider loop closed
+        
+        // Machine thresholds
+        rapidClearance: 0.1,           // Clearance for rapid moves
+        staydownMargin: 0.5            // Factor of tool diameter for staydown // This value needs auditing and testing. Base condition is offset distance, plus nuance for diagonnal points in corners.
+    },
     
     // ============================================================================
     // FILE FORMATS
@@ -556,34 +610,34 @@ window.PCBCAMConfig = {
         
         templates: {                                 // [USED IN: cam-core.js line ~120, gcode-generator.js (not provided)] [MOVE TO: constants.js]
             grbl: {
-                start: 'G90 G21 G17\nT1\nG94',
+                start: 'T1\n',
                 end: 'M5\nG0 X0Y0\nM2',
                 toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P1'
             },
             roland: {
-                start: 'PA;PA;!MC0;VS10;!VZ10;!PZ0,0;PU0,0;',
+                start: 'PA;PA;!MC0;',
                 end: 'PU0,0;!MC0;H;',
-                toolChange: '!MC0;!MC1;' // (Manual tool change required)
+                toolChange: '!MC0;(Manual tool change required)!MC1;'
             },
             marlin: {
-                start: 'G90 G21\nM3 S255\nG4 P1000',
-                end: 'M5\nG0 Z10\nM84',
+                start: '',
+                end: 'M5\nG0 X0Y0\nM84',
                 toolChange: 'M5\nG0 Z{safeZ}\nM0\nM3 S{speed}\nG4 P1000'
             },
             linuxcnc: {
-                start: 'G90 G21 G17\nG64 P0.01\nM3 S1000\nG4 P1',
-                end: 'M5\nG0 Z10\nM2',
+                start: 'G64 P0.01\nG4 P1',
+                end: 'M5\nG0 X0Y0\nM2',
                 toolChange: 'M5\nG0 Z{safeZ}\nT{tool} M6\nM3 S{speed}\nG4 P1'
             },
             mach3: {
-                start: 'G90 G21 G17\nM3 S1000\nG4 P1',
-                end: 'M5\nG0 Z10\nM30',
+                start: '',
+                end: 'M5\nG0 X0Y0\nM30',
                 toolChange: 'M5\nG0 Z{safeZ}\nT{tool} M6\nM3 S{speed}\nG4 P1'
             },
             grblHAL: {
-                start: '(grblHAL)\nG90 G21 G17\nG94\nM3 S{spindleSpeed}\nG4 P1',
-                end: 'M5\nG0 Z{safeZ}\nM2',
-                toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P1'
+                start: 'T1',
+                end: 'M5\nG0 X0 Y0\nM2',
+                toolChange: 'M5\nG0 Z{safeZ}\nT{tool} M6\nM0\nM3 S{speed}\nG4 P1'
             }
         },
         
@@ -661,6 +715,9 @@ window.PCBCAMConfig = {
                 curveToleranceFallback: 0.0005,
                 straightToleranceFactor: 10.0,
                 straightToleranceFallback: 0.005,
+                straightAngleThreshold: 1.0,  // Angle (deg) below which is "straight"
+                sharpAngleThreshold: 10.0, // Angle (deg) above which is "sharp"
+                sharpCornerTolerance: 0.00001, // Tolerance for "sharp" corners
                 segmentThresholdFactor: 10.0,
                 segmentThresholdFallback: 0.5,
                 linePointEpsilon: 1e-12
@@ -668,7 +725,8 @@ window.PCBCAMConfig = {
         },
         tabs: {                                      // [ADDED] For settings in toolpath-geometry-translator.js
             cornerMarginFactor: 2.0,                 // [ADDED] [HARDCODED in toolpath-geometry-translator.js]
-            minCornerAngle: 30                       // [ADDED] [HARDCODED in toolpath-geometry-translator.js]
+            minCornerAngle: 30,                      // [ADDED] [HARDCODED in toolpath-geometry-translator.js]
+            minTabLengthFactor: 1.5
         }
     },
     

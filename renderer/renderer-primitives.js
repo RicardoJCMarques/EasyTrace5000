@@ -27,9 +27,9 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const primitivesConfig = config.renderer?.primitives || {};
-    const debugConfig = config.debug || {};
+    const config = window.PCBCAMConfig;
+    const primitivesConfig = config.renderer.primitives;
+    const debugConfig = config.debug;
     
     class PrimitiveRenderer {
         constructor(core) {
@@ -56,12 +56,12 @@
                     case 'drill_hole':
                     case 'drill_slot':
                         // Source drill geometry
-                        this.renderSourceDrill(primitive, fillColor, strokeColor);
+                        this.renderSourceDrill(primitive, strokeColor);
                         return;
                         
                     case 'peck_mark':
                         // Strategy layer peck marks
-                        this.renderPeckMark(primitive, fillColor, strokeColor, context);
+                        this.renderPeckMark(primitive, context);
                         return;
                         
                     case 'drill_milling_path':
@@ -71,18 +71,18 @@
                 }
             }
             
-            if (context.isPreview || primitive.properties?.isPreview) {
+            if (context.isPreview) {
                 this.renderToolPreview(primitive, fillColor || strokeColor, context);
                 return;
             }
             
-            if (context.isOffset || primitive.properties?.isOffset) {
+            if (context.isOffset) {
                 this.renderOffsetPrimitive(primitive, strokeColor || fillColor, context);
                 return;
             }
             
-            if (primitive.properties?.reconstructed) {
-                this.renderReconstructedPrimitive(primitive, fillColor, strokeColor);
+            if (primitive.properties.reconstructed) {
+                this.renderReconstructedPrimitive(primitive, fillColor);
                 return;
             }
             
@@ -158,7 +158,7 @@
             }
 
             // If we are here, it's a path with analytic arc data.
-            const segments = primitive.arcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
+            const segments = primitive.arcSegments;
             let currentIndex = 0;
 
             path2d.moveTo(points[0].x, points[0].y);
@@ -232,7 +232,7 @@
             
             // Drill previews are filled, not stroked
             if (primitive.properties?.role === 'peck_mark') {
-                this.renderPeckMark(primitive, color, color, context);
+                this.renderPeckMark(primitive, context);
                 this.ctx.restore();
                 return;
             }
@@ -273,11 +273,11 @@
             const offsetDistance = context.distance || primitive.properties?.offsetDistance || 0;
             const isInternal = offsetDistance < 0;
             
-            const primColors = this.core.colors.primitives || {};
+            const primColors = this.core.colors.primitives;
             const strokeColor = isInternal ? 
-                (primColors.offsetInternal || '#00aa00') : 
-                (color || primColors.offsetExternal || '#ff0000');
-            const strokeWidth = (primitivesConfig.offsetStrokeWidth || 2) / this.core.viewScale;
+                (primColors.offsetInternal) : 
+                (color || primColors.offsetExternal);
+            const strokeWidth = (primitivesConfig.offsetStrokeWidth) / this.core.viewScale;
 
             this._setStrokeState(strokeColor, strokeWidth);
             this.ctx.setLineDash([]);
@@ -320,7 +320,7 @@
 
         _renderCenterMarks(center, markSize, color) {
             this.ctx.strokeStyle = color;
-            this.ctx.lineWidth = (primitivesConfig.centerMarkStrokeWidth || 3) / this.core.viewScale;
+            this.ctx.lineWidth = (primitivesConfig.centerMarkStrokeWidth) / this.core.viewScale;
             this.ctx.beginPath();
             this.ctx.moveTo(center.x - markSize, center.y);
             this.ctx.lineTo(center.x + markSize, center.y);
@@ -332,8 +332,7 @@
         /**
          * Renders source drill geometry (holes and slots from parser)
          */
-        renderSourceDrill(primitive, fillColor, strokeColor) {
-            const color = strokeColor || fillColor || '#4488ff';
+        renderSourceDrill(primitive, color) {
             this.ctx.strokeStyle = color;
             this.ctx.lineWidth = (primitivesConfig.sourceDrillStrokeWidth || 3) / this.core.viewScale;
             
@@ -346,8 +345,8 @@
                 this.ctx.stroke();
                 
                 // Draw center crosshair
-                const markRatio = primitivesConfig.sourceDrillMarkRatio || 0.4;
-                const maxMarkSize = primitivesConfig.sourceDrillMarkSize || 0.2;
+                const markRatio = primitivesConfig.sourceDrillMarkRatio;
+                const maxMarkSize = primitivesConfig.sourceDrillMarkSize;
                 const markSize = Math.min(maxMarkSize, r * markRatio);
                 this._renderCenterMarks(primitive.center, markSize, color);
                 
@@ -386,45 +385,45 @@
         /**
          * Renders peck mark previews (strategy layer)
          */
-        renderPeckMark(primitive, fillColor, strokeColor, context) {
+        renderPeckMark(primitive, context) {
             const center = primitive.center;
             const radius = primitive.radius;
-            const oversized = primitive.properties?.oversized || false;
-            const undersized = primitive.properties?.undersized || false;
-            const reducedPlunge = primitive.properties?.reducedPlunge || false;
-            const isPreview = context?.isPreview || primitive.properties?.isPreview || false;
+            const oversized = primitive.properties.oversized;
+            const undersized = primitive.properties.undersized;
+            const reducedPlunge = primitive.properties.reducedPlunge;
+            const isPreview = context.layer.isPreview;
             
             // Color priority: oversized > undersized > reducedPlunge > perfect fit
-            const primColors = this.core.colors.primitives || {};
-            let markColor = primColors.peckMarkGood || '#16d329ff';
-            if (oversized) markColor = primColors.peckMarkError || '#ff0000';  // Red oversized warning (should overwrite all others)
-            else if (undersized) markColor = primColors.peckMarkWarn || '#d2cb00ff';  // Yellow undersized warning
-            else if (reducedPlunge) markColor = primColors.peckMarkSlow || '#ff5e00ff';  // Dark orange reduced plunge rate warning
+            const primColors = this.core.colors.primitives;
+            let markColor = primColors.peckMarkGood;
+            if (oversized) markColor = primColors.peckMarkError;  // Oversized warning (should overwrite all others)
+            else if (undersized) markColor = primColors.peckMarkWarn;  // Undersized warning
+            else if (reducedPlunge) markColor = primColors.peckMarkSlow;  // Reduced splot plunge rate warning
             
             // Offset Stage: Outline + center (like source drill)
 
             if (!isPreview) {
                 // Just outline
                 this.ctx.strokeStyle = markColor;
-                this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth || 3) / this.core.viewScale;
+                this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth) / this.core.viewScale;
                 this.ctx.beginPath();
                 this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
                 this.ctx.stroke();
                 
                 // Center crosshair
-                const markRatio = primitivesConfig.peckMarkMarkRatio || 0.4;
-                const maxMarkSize = primitivesConfig.peckMarkMarkSize || 0.2;
+                const markRatio = primitivesConfig.peckMarkMarkRatio;
+                const maxMarkSize = primitivesConfig.peckMarkMarkSize;
                 const markSize = Math.min(maxMarkSize, radius * markRatio);
                 this._renderCenterMarks(center, markSize, markColor);
                 
                 // Reduced plunge indicator (dashed ring AROUND the mark)
                 if (reducedPlunge) {
-                    const dash = primitivesConfig.peckMarkDash || [0.15, 0.15];
-                    const ringFactor = primitivesConfig.peckMarkRingFactor || 1.3;
+                    const dash = primitivesConfig.peckMarkDash;
+                    const ringFactor = primitivesConfig.peckMarkRingFactor;
 
                     this.ctx.save();
-                    this.ctx.strokeStyle = primColors.peckMarkSlow || '#ff5e00ff';
-                    this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth || 3) / this.core.viewScale;
+                    this.ctx.strokeStyle = primColors.peckMarkSlow;
+                    this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth) / this.core.viewScale;;
                     this.ctx.setLineDash(dash);
                     this.ctx.beginPath();
                     this.ctx.arc(center.x, center.y, radius * ringFactor, 0, Math.PI * 2);
@@ -445,21 +444,21 @@
             
             // Solid outline
             this.ctx.strokeStyle = markColor;
-            this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth || 3) / this.core.viewScale;
+            this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth) / this.core.viewScale;
             this.ctx.stroke();
             
             // Center crosshair
-            const markRatio = primitivesConfig.peckMarkMarkRatio || 0.4;
-            const maxMarkSize = primitivesConfig.peckMarkMarkSize || 0.2;
+            const markRatio = primitivesConfig.peckMarkMarkRatio;
+            const maxMarkSize = primitivesConfig.peckMarkMarkSize;
             const markSize = Math.min(maxMarkSize, radius * markRatio);
             this._renderCenterMarks(center, markSize, markColor);
             
             // Warning indicators (only in preview)
             if (oversized) {
-                const labelOffset = primitivesConfig.peckMarkLabelOffset || 0.3;
+                const labelOffset = primitivesConfig.peckMarkLabelOffset;
                 this.ctx.save();
                 this.ctx.font = `${Math.max(0.3, radius * 0.5)}px monospace`;
-                this.ctx.fillStyle = primColors.peckMarkError || '#ff0000';
+                this.ctx.fillStyle = primColors.peckMarkError;
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
                 this.ctx.fillText('!', center.x, center.y + radius + labelOffset);
@@ -467,11 +466,11 @@
             }
             
             if (reducedPlunge) {
-                const dash = primitivesConfig.peckMarkDash || [0.15, 0.15];
-                const ringFactor = primitivesConfig.peckMarkRingFactor || 1.3;
+                const dash = primitivesConfig.peckMarkDash;
+                const ringFactor = primitivesConfig.peckMarkRingFactor;
                 this.ctx.save();
-                this.ctx.strokeStyle = primColors.peckMarkSlow || '#ff5e00ff';
-                this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth || 3) / this.core.viewScale;
+                this.ctx.strokeStyle = primColors.peckMarkSlow ;
+                this.ctx.lineWidth = (primitivesConfig.peckMarkStrokeWidth) / this.core.viewScale;
                 this.ctx.setLineDash(dash);
                 this.ctx.beginPath();
                 this.ctx.arc(center.x, center.y, radius * ringFactor, 0, Math.PI * 2);
@@ -481,16 +480,16 @@
         }
 
         // Debug special rendering mode
-        renderReconstructedPrimitive(primitive, fillColor, strokeColor) {
+        renderReconstructedPrimitive(primitive, fillColor) {
             // Reconstructed primitives get a special highlight color
             const primColors = this.core.colors.primitives || {};
-            const accentColor = primColors.reconstructed || '#00ffff';
+            const accentColor = primColors.reconstructed;
             
             this.ctx.save();
             
             if (primitive.type === 'circle') {
                 this.ctx.strokeStyle = accentColor;
-                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth || 2) / this.core.viewScale;
+                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth) / this.core.viewScale;
                 this.ctx.fillStyle = fillColor + '40'; // Semi-transparent fill
                 
                 this.ctx.beginPath();
@@ -501,11 +500,11 @@
                 // Center dot
                 this.ctx.fillStyle = accentColor;
                 this.ctx.beginPath();
-                this.ctx.arc(primitive.center.x, primitive.center.y, (primitivesConfig.reconstructedCenterSize || 2) / this.core.viewScale, 0, 2 * Math.PI);
+                this.ctx.arc(primitive.center.x, primitive.center.y, (primitivesConfig.reconstructedCenterSize) / this.core.viewScale, 0, 2 * Math.PI);
                 this.ctx.fill();
             } else if (primitive.type === 'arc') {
                 this.ctx.strokeStyle = accentColor;
-                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth || 2) / this.core.viewScale;
+                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth) / this.core.viewScale;
                 
                 this.ctx.beginPath();
                 this.ctx.arc(
@@ -516,12 +515,12 @@
                 this.ctx.stroke();
             } else if (primitive.type === 'path') {
                 // Partially reconstructed path
-                this.ctx.strokeStyle = primColors.reconstructedPath || '#ffff00';
-                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth || 2) / this.core.viewScale;
-                const dash = primitivesConfig.reconstructedPathDash || [5, 5];
+                this.ctx.strokeStyle = primColors.reconstructedPath;
+                this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth) / this.core.viewScale;
+                const dash = primitivesConfig.reconstructedPathDash;
                 this.ctx.setLineDash([dash[0] / this.core.viewScale, dash[1] / this.core.viewScale]);
                 
-                this.renderPrimitiveNormal(primitive, fillColor + '40', primColors.reconstructedPath || '#ffff00', false);
+                this.renderPrimitiveNormal(primitive, fillColor + '40', primColors.reconstructedPath);
             }
             
             this.ctx.restore();
@@ -530,8 +529,6 @@
         // Normal Rendering
         
         renderPrimitiveNormal(primitive, fillColor, strokeColor, isPreprocessed) {
-            const props = primitive.properties || {};
-            // Should these be batched themselves?
             switch (primitive.type) {
                 case 'path':
                     this.renderPath(primitive, fillColor, strokeColor, isPreprocessed);
@@ -563,7 +560,7 @@
             // If it's preprocessed, it should *always* fill.
             const shouldFill = (primitive.properties?.fill !== false && !primitive.properties?.stroke) || isPreprocessed;
             // If it's preprocessed, it should *never* stroke.
-            const shouldStroke = (primitive.properties?.stroke === true || primitive.properties?.isTrace) && !isPreprocessed;
+            const shouldStroke = (primitive.properties.stroke === true) && !isPreprocessed;
             const points = primitive.points;
 
             if (!points || points.length === 0) return;
@@ -617,13 +614,13 @@
 
             if (shouldFill) {
                 // Handle fill rules for complex shapes (like fused geometry)
-                const fillRule = (primitive.holes && primitive.holes.length > 0) || (primitive.contours && primitive.contours.length > 1) ? 'evenodd' : 'nonzero';
+                const fillRule = (primitive.contours && primitive.contours.length > 1) ? 'evenodd' : 'nonzero';
 
                 if (isPreprocessed) {
-                    const polarity = primitive.properties?.polarity || 'dark';
+                    const polarity = primitive.properties?.polarity;
                     if (polarity === 'clear') {
                         // Draw "clear" primitives with the canvas background color
-                        this.ctx.fillStyle = this.core.colors.canvas?.background || '#0f0f0f';
+                        this.ctx.fillStyle = this.core.colors.canvas?.background;
                     } else {
                         // Draw "dark" primitives with the normal layer color
                         this.ctx.fillStyle = fillColor;
@@ -637,8 +634,8 @@
             }
 
             if (shouldStroke) {
-                this.ctx.strokeStyle = strokeColor || fillColor;
-                this.ctx.lineWidth = primitive.properties?.strokeWidth || (primitivesConfig.defaultStrokeWidth || 0.1);
+                this.ctx.strokeStyle = strokeColor;
+                this.ctx.lineWidth = primitive.properties.strokeWidth;
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
                 this.ctx.stroke();
@@ -654,9 +651,9 @@
                 this.ctx.fill();
             }
             
-            if (primitive.properties?.stroke || strokeColor) {
-                this.ctx.strokeStyle = strokeColor || fillColor;
-                this.ctx.lineWidth = primitive.properties?.strokeWidth || this.core.getWireframeStrokeWidth();
+            if (primitive.properties.stroke) {
+                this.ctx.strokeStyle = strokeColor;
+                this.ctx.lineWidth = primitive.properties.strokeWidth;
                 this.ctx.stroke();
             }
         }
@@ -667,9 +664,9 @@
                 this.ctx.fillRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
             }
             
-            if (primitive.properties?.stroke || strokeColor) {
-                this.ctx.strokeStyle = strokeColor || fillColor;
-                this.ctx.lineWidth = primitive.properties?.strokeWidth || this.core.getWireframeStrokeWidth();
+            if (primitive.properties.stroke) {
+                this.ctx.strokeStyle = strokeColor;
+                this.ctx.lineWidth = primitive.properties.strokeWidth;
                 this.ctx.strokeRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
             }
         }
@@ -682,7 +679,7 @@
                 primitive.radius,
                 primitive.startAngle,
                 primitive.endAngle,
-                primitive.counterclockwise || primitive.clockwise
+                primitive.counterclockwise
             );
             
             if (primitive.properties?.fill) {
@@ -691,8 +688,8 @@
                 this.ctx.fill();
             }
             
-            this.ctx.strokeStyle = strokeColor || fillColor;
-            this.ctx.lineWidth = primitive.properties?.strokeWidth || (primitivesConfig.defaultStrokeWidth || 0.1);
+            this.ctx.strokeStyle = strokeColor;
+            this.ctx.lineWidth = primitive.properties.strokeWidth;
             this.ctx.stroke();
         }
         
@@ -720,9 +717,9 @@
                 this.ctx.fill();
             }
             
-            if (primitive.properties?.stroke || strokeColor) {
-                this.ctx.strokeStyle = strokeColor || fillColor;
-                this.ctx.lineWidth = primitive.properties?.strokeWidth || this.core.getWireframeStrokeWidth();
+            if (primitive.properties.stroke) {
+                this.ctx.strokeStyle = strokeColor;
+                this.ctx.lineWidth = primitive.properties.strokeWidth;
                 this.ctx.stroke();
             }
         }
@@ -833,8 +830,8 @@
         renderCurveDebugPoints(primitive) { // primitive is screen-space data
             if (!primitive.screenPoints) return; // Use screenPoints
 
-            const pointSize = primitivesConfig.debugPointSize || 4;
-            this.ctx.font = primitivesConfig.debugPointFont || '10px monospace';
+            const pointSize = primitivesConfig.debugPointSize;
+            this.ctx.font = primitivesConfig.debugFont;
 
             // Reset stats for this render pass
             this.debugStats.totalPoints = 0;
@@ -853,9 +850,9 @@
                 this.ctx.fill();
 
                 // Labels
-                this.ctx.fillStyle = this.core.colors.primitives?.debugLabel || '#FFFFFF';
-                this.ctx.strokeStyle = this.core.colors.primitives?.debugLabelStroke || '#000000';
-                this.ctx.lineWidth = primitivesConfig.debugLabelLineWidth || 2;
+                this.ctx.fillStyle = this.core.colors.primitives.debugLabel;
+                this.ctx.strokeStyle = this.core.colors.primitives.debugLabelStroke;
+                this.ctx.lineWidth = primitivesConfig.debugLabelLineWidth;
                 // Use segmentIndex if available, otherwise fall back to array index
                 const segIdx = p.segmentIndex !== undefined ? p.segmentIndex : index;
                 const label = `C${p.curveId}:${segIdx}`;
@@ -887,7 +884,7 @@
 
                 // Draw arc - centerScreen and radiusScreen already in screen coords
                 this.ctx.strokeStyle = color;
-                this.ctx.lineWidth = primitivesConfig.debugArcStrokeWidth || 3;
+                this.ctx.lineWidth = primitivesConfig.debugArcStrokeWidth;
                 this.ctx.beginPath();
 
                 // Angles are NOT transformed, they remain in world space radians
@@ -904,16 +901,16 @@
                 // Draw center point
                 this.ctx.fillStyle = color;
                 this.ctx.beginPath();
-                this.ctx.arc(centerScreen.x, centerScreen.y, primitivesConfig.debugArcCenterSize || 4, 0, 2 * Math.PI);
+                this.ctx.arc(centerScreen.x, centerScreen.y, primitivesConfig.debugArcCenterSize);
                 this.ctx.fill();
 
                 // Draw label
-                this.ctx.fillStyle = this.core.colors.primitives?.debugLabel || '#FFFFFF';
-                this.ctx.strokeStyle = this.core.colors.primitives?.debugLabelStroke || '#000000';
-                this.ctx.lineWidth = primitivesConfig.debugLabelLineWidth || 2;
-                this.ctx.font = primitivesConfig.debugArcFont || 'bold 12px monospace';
+                this.ctx.fillStyle = this.core.colors.primitives.debugLabel;
+                this.ctx.strokeStyle = this.core.colors.primitives.debugLabelStroke;
+                this.ctx.lineWidth = primitivesConfig.debugLabelLineWidth;
+                this.ctx.font = primitivesConfig.debugFont;
 
-                const angleDeg = Math.abs(segment.sweepAngle || (segment.endAngle - segment.startAngle)) * 180 / Math.PI;
+                const angleDeg = Math.abs(segment.sweepAngle) * 180 / Math.PI;
                 // Display original world radius
                 const label = `Arc ${idx}: r=${segment.radius.toFixed(2)}, ${angleDeg.toFixed(1)}°`;
                 this.ctx.strokeText(label, centerScreen.x + 10, centerScreen.y - 10);
@@ -932,8 +929,8 @@
 
                 const color = colors[contour.nestingLevel % colors.length];
                 this.ctx.strokeStyle = color;
-                this.ctx.lineWidth = primitivesConfig.debugContourStrokeWidth || 2;
-                this.ctx.setLineDash(contour.isHole ? (primitivesConfig.debugContourDash || [5, 5]) : []);
+                this.ctx.lineWidth = primitivesConfig.debugContourStrokeWidth;
+                this.ctx.setLineDash(contour.isHole ? (primitivesConfig.debugContourDash) : []);
 
                 this.ctx.beginPath();
                 // Iterate screenPoints
@@ -947,8 +944,8 @@
                 // Label using the first screen point
                 if (contour.screenPoints.length > 0) {
                     const firstPoint = contour.screenPoints[0];
-                    this.ctx.fillStyle = this.core.colors.primitives?.debugLabel || '#FFFFFF';
-                    this.ctx.font = primitivesConfig.debugContourFont || '12px monospace';
+                    this.ctx.fillStyle = this.core.colors.primitives.debugLabel;
+                    this.ctx.font = primitivesConfig.debugFont;
                     const label = `L${contour.nestingLevel}${contour.isHole ? 'H' : ''}`;
                     this.ctx.fillText(label, firstPoint.x + 5, firstPoint.y - 5);
                 }

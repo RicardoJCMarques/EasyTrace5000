@@ -180,9 +180,9 @@
         }
 
         /**
-         * - Polarity is determined by winding ONLY for compound paths (regions with >1 subpath).
-         * - Single subpaths are ALWAYS 'dark', regardless of winding.
-         * - Winding is normalized: 'dark' primitives are forced CW, 'clear' are forced CCW.
+         * Polarity is determined by winding ONLY for compound paths (regions with >1 subpath).
+         * Single subpaths are ALWAYS 'dark', regardless of winding.
+         * Winding is normalized: 'dark' primitives are forced CW, 'clear' are forced CCW.
          */
         plotRegion(region) {
             const analyticSubpaths = region.analyticSubpaths;
@@ -631,5 +631,4 @@
     }
     
     window.ParserPlotter = ParserPlotter;
-    
 })();

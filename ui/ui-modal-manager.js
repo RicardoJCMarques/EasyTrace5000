@@ -329,6 +329,40 @@
             this.toolpathPlans.clear();
 
             this.attachGcodeModalTooltips();
+
+            // 1. Get the modal's dropdown
+            const modalPostSelect = document.getElementById('gcode-post-processor');
+            
+            // 2. Get the *current* setting from the core
+            const currentPost = this.controller.core?.getSetting('gcode', 'postProcessor') || 'grbl';
+
+            if (modalPostSelect) {
+                // 3. Populate it (if it's empty)
+                if (modalPostSelect.options.length === 0) {
+                    const options = config.ui?.parameterOptions?.postProcessor || [{ value: 'grbl', label: 'GRBL (Default)' }];
+                    options.forEach(opt => {
+                        const optionEl = document.createElement('option');
+                        optionEl.value = opt.value;
+                        optionEl.textContent = opt.label;
+                        modalPostSelect.appendChild(optionEl);
+                    });
+                }
+                
+                // 4. Set its value to match the core setting
+                modalPostSelect.value = currentPost;
+            }
+            
+            // Set corresponding file extension
+            const filenameInput = document.getElementById('gcode-filename');
+            if (filenameInput && this.controller.gcodeGenerator) {
+                // Get the info for the currently selected processor
+                const processorInfo = this.controller.gcodeGenerator.getProcessorInfo(currentPost);
+                if (processorInfo) {
+                    const currentFilename = filenameInput.value;
+                    const newFilename = currentFilename.replace(/\.[^.]+$/, processorInfo.fileExtension);
+                    filenameInput.value = newFilename;
+                }
+            }
             
             this.showModal('gcode');
             
@@ -590,10 +624,10 @@
                 const options = {
                     operationIds: selectedItemIds,
                     operations: this.selectedOperations,
-                    safeZ: this.controller.core?.getSetting('machine', 'safeZ'), // Read from core
-                    travelZ: this.controller.core?.getSetting('machine', 'travelZ'), // Read from core
-                    rapidFeedRate: this.controller.core?.getSetting('machine', 'rapidFeed'), // Read from core
-                    postProcessor: document.getElementById('gcode-post-processor')?.value,
+                    safeZ: this.controller.core?.getSetting('machine', 'safeZ'),
+                    travelZ: this.controller.core?.getSetting('machine', 'travelZ'),
+                    rapidFeedRate: this.controller.core?.getSetting('machine', 'rapidFeed'),
+                    postProcessor: this.controller.core?.getSetting('gcode', 'postProcessor'),
                     includeComments: document.getElementById('gcode-include-comments')?.checked,
                     singleFile: document.getElementById('gcode-single-file')?.checked,
                     toolChanges: document.getElementById('gcode-tool-changes')?.checked,

@@ -1,6 +1,6 @@
 /**
  * @file        toolpath/toolpath-machine-processor.js
- * @description Adds machine operations to pure geometry plans
+ * @description Adds machine operations and define special cycles (like Helix entry milled holes and slots)
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -27,47 +27,39 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    const machineConfig = config.machine || {};
-    
+    const config = window.PCBCAMConfig;
+    const debugConfig = config.debug;
+
     class MachineProcessor {
         constructor(core) {
             this.core = core;
             this.currentPosition = { x: 0, y: 0, z: 0 };
+            this.context = null;
         }
         
         /**
          * Process toolpath plans and add machine moves
          */
-        processPlans(toolpathPlans, settings = {}) {
+        processPlans(toolpathPlans, context) {
             if (!toolpathPlans || toolpathPlans.length === 0) {
                 return [];
             }
-            
-            this.settings = {
-                safeZ: settings.safeZ || machineConfig.heights?.safeZ || 5.0,
-                travelZ: settings.travelZ || machineConfig.heights?.travelZ || 2.0,
-                plungeRate: settings.plungeRate || 50,
-                rapidFeedRate: settings.rapidFeedRate || 1000,
-                cannedCycle: settings.cannedCycle || 'none',
-                peckDepth: settings.peckDepth || 0,
-                dwellTime: settings.dwellTime || 0,
-                retractHeight: settings.retractHeight || 0.5,
-                tabs: settings.tabs || 0,
-                tabWidth: settings.tabWidth,
-                tabHeight: settings.tabHeight,
-                ...settings
-            };
+
+            if (!context) {
+                console.error("[MachineProcessor] Plans are missing toolpath context!");
+                return [];
+            }
+
+            // Set settings from the context
+            this.context = context;
             
             const machineReadyPlans = [];
-            // Initialize at safe Z
-            this.currentPosition = { x: 0, y: 0, z: this.settings.safeZ };
+            this.currentPosition = { x: 0, y: 0, z: this.context.machine.safeZ };
             
             // Initial safe Z move (if not already there implicitly)
             // It's safer to always add this explicitly.
             const initPlan = new ToolpathPlan('init');
-            initPlan.addRapid(null, null, this.settings.safeZ); // Ensure starting at safe Z
+            initPlan.addRapid(null, null, this.context.machine.safeZ); // Ensure starting at safe Z
             machineReadyPlans.push(initPlan);
             
             for (let i = 0; i < toolpathPlans.length; i++) {
@@ -81,10 +73,10 @@
                     // Update position: After pecking, we are at travel Z above the hole
                     const peckData = planMetadata.peckData;
                     if (peckData && peckData.position) {
-                         this.currentPosition = { ...peckData.position, z: this.settings.travelZ };
+                         this.currentPosition = { ...peckData.position, z: this.context.machine.travelZ };
                     } else {
                          // Fallback if position missing, assume exit point used
-                         this.currentPosition = { ...(planMetadata.exitPoint || {x:0, y:0}), z: this.settings.travelZ };
+                         this.currentPosition = { ...(planMetadata.exitPoint || {x:0, y:0}), z: this.context.machine.travelZ };
                     }
                     continue; // Go to the next plan
                 }
@@ -94,12 +86,27 @@
                     const primitiveType = planMetadata.primitiveType;
                     const useHelix = (planMetadata.entryType || 'plunge') === 'helix';
                     
-                    if (useHelix && (primitiveType === 'circle' || primitiveType === 'obround')) {
-                        const helixPlan = this.generateHelicalDrillMilling(plan);
-                        machineReadyPlans.push(helixPlan);
-                         // Update position: After helical milling, we retract to travel Z
-                        this.currentPosition = { ...(planMetadata.exitPoint || {x:0, y:0}), z: this.settings.travelZ };
-                        continue; // Go to the next plan
+                    if (useHelix) {
+                        if (primitiveType === 'circle') {
+                            // Validate metadata for CIRCLE helix generation
+                            if (!planMetadata.center || !planMetadata.radius) {
+                                console.error(`[MachineProcessor] Missing geometry for circle helix: center=${!!planMetadata.center}, radius=${!!planMetadata.radius}`);
+                                // Fall through to standard milling
+                            } else {
+                                // Circle is valid, generate helix
+                                const helixPlan = this.generateHelicalDrillMilling(plan);
+                                machineReadyPlans.push(helixPlan);
+                                this.currentPosition = { ...(planMetadata.exitPoint || {x:0, y:0}), z: this.context.machine.travelZ };
+                                continue; // Skip to next plan
+                            }
+                        } else if (primitiveType === 'obround') {
+                            // Obround helix doesn't need center/radius, it needs obroundData (checked later).
+                            // We can proceed directly to generation.
+                            const helixPlan = this.generateHelicalDrillMilling(plan);
+                            machineReadyPlans.push(helixPlan);
+                            this.currentPosition = { ...(planMetadata.exitPoint || {x:0, y:0}), z: this.context.machine.travelZ };
+                            continue; // Skip to next plan
+                        }
                     }
                     // Otherwise fall through to standard milling
                 }
@@ -148,7 +155,7 @@
                         null, // Do NOT command X
                         null, // Do NOT command Y
                         planMetadata.entryPoint.z, // Command ONLY Z
-                        this.settings.plungeRate // Use plunge rate for Z move
+                        this.context.machine.plungeRate // Use plunge rate for Z move
                     );
                     connectionPlan.metadata.type = 'multidepth_plunge';
                     this.currentPosition.z = planMetadata.entryPoint.z; // Z changes here
@@ -166,9 +173,9 @@
                     // Current Z remains the cutting depth
                 } else { // Default: Rapid move
                     // Retract to travel Z ONLY if currently below it
-                    if (this.currentPosition.z < this.settings.travelZ) {
-                        connectionPlan.addRapid(null, null, this.settings.travelZ);
-                        this.currentPosition.z = this.settings.travelZ;
+                    if (this.currentPosition.z < this.context.machine.travelZ) {
+                        connectionPlan.addRapid(null, null, this.context.machine.travelZ);
+                        this.currentPosition.z = this.context.machine.travelZ;
                     }
                     // Rapid XY move at travel Z
                     connectionPlan.addRapid(planMetadata.entryPoint.x, planMetadata.entryPoint.y, null); // Keep Z at travelZ
@@ -253,10 +260,10 @@
                     // Retract needed
                     const retractPlan = new ToolpathPlan('retract');
                     // Retract to travel Z
-                    retractPlan.addRetract(this.settings.travelZ);
+                    retractPlan.addRetract(this.context.machine.travelZ);
                     machineReadyPlans.push(retractPlan);
                     // Update Z position after retract
-                    this.currentPosition.z = this.settings.travelZ;
+                    this.currentPosition.z = this.context.machine.travelZ;
                 } else {
                     // No retract, Z stays at cutDepth for staydown or multi-depth
                     this.currentPosition.z = planMetadata.exitPoint.z;
@@ -266,8 +273,8 @@
             // Final retract to safe Z
             const finalPlan = new ToolpathPlan('final');
             // Only add if not already there
-            if (this.currentPosition.z < this.settings.safeZ) {
-                 finalPlan.addRetract(this.settings.safeZ);
+            if (this.currentPosition.z < this.context.machine.safeZ) {
+                 finalPlan.addRetract(this.context.machine.safeZ);
                  machineReadyPlans.push(finalPlan);
             }
             
@@ -280,51 +287,60 @@
         generateEntryMove(plan, planMetadata, entryType) {
             const cutDepth = planMetadata.entryPoint.z;
             const entryPoint = planMetadata.entryPoint;
-            
+            const plungeRate = planMetadata.plungeRate;
+
             // Actually respect the entry type setting
             if (entryType === 'helix' && !planMetadata.isSimpleCircle) {
-                this.generateHelixEntry(plan, entryPoint, cutDepth);
+                this.generateHelixEntry(plan, entryPoint, cutDepth, plungeRate);
             } else if (entryType === 'ramp') {
-                this.generateRampEntry(plan, planMetadata, cutDepth);
+                this.generateRampEntry(plan, planMetadata, cutDepth, plungeRate);
             } else {
                 // Default to plunge for everything else including circles
-                plan.addPlunge(cutDepth, this.settings.plungeRate);
+                plan.addPlunge(cutDepth, plungeRate);
             }
         }
         
         /**
          * Helix entry for standard milling
          */
-        generateHelixEntry(plan, entryPoint, targetDepth) {
-            const toolDiameter = this.settings.tool?.diameter || 1.0;
-            const helixRadius = toolDiameter * 0.4;
-            const helixPitch = 0.5;
+        generateHelixEntry(plan, entryPoint, targetDepth, plungeRate) {
+            // Get helix config from the context
+            const helixConfig = this.context.config.entry.helix;
+            if (!helixConfig) {
+                console.error("[MachineProcessor] Missing helix config in context! Falling back to plunge.");
+                plan.addPlunge(targetDepth, plungeRate);
+                return;
+            }
+
+            const toolDiameter = this.context.tool.diameter;
+            const helixRadius = toolDiameter * helixConfig.radiusFactor;
+            const helixPitch = helixConfig.pitch;
             const revolutions = Math.abs(targetDepth) / helixPitch;
-            const steps = Math.ceil(revolutions * 16);
+            const steps = Math.ceil(revolutions * helixConfig.segmentsPerRevolution);
             
-            plan.addPlunge(0, this.settings.plungeRate);
+            plan.addPlunge(0, plungeRate);
             
             for (let i = 1; i <= steps; i++) {
                 const angle = (i / steps) * revolutions * 2 * Math.PI;
                 const z = (i / steps) * targetDepth;
                 const x = entryPoint.x + helixRadius * Math.cos(angle);
                 const y = entryPoint.y + helixRadius * Math.sin(angle);
-                plan.addLinear(x, y, z, this.settings.plungeRate);
+                plan.addLinear(x, y, z, plungeRate);
             }
             
-            plan.addLinear(entryPoint.x, entryPoint.y, targetDepth, this.settings.plungeRate);
+            plan.addLinear(entryPoint.x, entryPoint.y, targetDepth, plungeRate);
         }
         
         /**
          * Ramp entry
          */
-        generateRampEntry(plan, purePlan, targetDepth) {
-            const rampAngle = this.settings.rampAngle || 10;
+        generateRampEntry(plan, purePlan, targetDepth, plungeRate) {
+            const rampAngle = this.context.strategy.entryRampAngle;
             const rampSlope = Math.tan(rampAngle * Math.PI / 180);
             const rampLength = Math.abs(targetDepth) / rampSlope;
             
             const shallowDepth = targetDepth * 0.1;
-            plan.addPlunge(shallowDepth, this.settings.plungeRate);
+            plan.addPlunge(shallowDepth, plungeRate);
             
             if (purePlan.metadata.primitiveType === 'path' && purePlan.commands && purePlan.commands.length > 2) {
                 let accumulatedLength = 0;
@@ -344,47 +360,61 @@
                         const zAtPoint = shallowDepth - (accumulatedLength / rampLength) * Math.abs(targetDepth - shallowDepth);
                         const finalZ = Math.max(zAtPoint, targetDepth);
                         
-                        plan.addLinear(cmd.x, cmd.y, finalZ, this.settings.plungeRate);
+                        plan.addLinear(cmd.x, cmd.y, finalZ, plungeRate);
                         
                         if (finalZ === targetDepth) break;
                     }
                 }
             } else {
-                plan.addPlunge(targetDepth, this.settings.plungeRate);
+                plan.addPlunge(targetDepth, plungeRate);
             }
         }
         
         /**
-         * Process peck mark (ASSUMES at X,Y,travelZ from connection)
+         * Process peck mark
          */
         processPeckMark(purePlan) {
             const machinePlan = new ToolpathPlan(purePlan.operationId);
             Object.assign(machinePlan.metadata, purePlan.metadata);
-            
+
+            const planContext = purePlan.metadata.context;
             const peckData = purePlan.metadata.peckData;
             const position = peckData.position;
             const finalDepth = purePlan.metadata.cutDepth;
+
+            // Get the correct machine settings from the plan's context
+            const machine = planContext.machine;
+            const strategy = planContext.strategy.drill;
+            const cutting = planContext.cutting;
             
             // Connection to position
-            machinePlan.addRapid(position.x, position.y, this.settings.travelZ);
+            // Retract to travel Z if needed
+            if (this.currentPosition.z < machine.travelZ) {
+                machinePlan.addRapid(null, null, machine.travelZ);
+                this.currentPosition.z = machine.travelZ;
+            }
+            // Rapid to XY position at travel Z
+            machinePlan.addRapid(position.x, position.y, null);
+            this.currentPosition.x = position.x;
+            this.currentPosition.y = position.y;
             
-            if (this.settings.cannedCycle === 'none' || this.settings.peckDepth === 0 ||
-                this.settings.peckDepth >= Math.abs(finalDepth)) {
+            if (strategy.cannedCycle === 'none' || strategy.peckDepth === 0 ||
+                strategy.peckDepth >= Math.abs(finalDepth)) {
                 // Single plunge
-                machinePlan.addPlunge(finalDepth, this.settings.plungeRate);
-                
-                if (this.settings.dwellTime > 0) {
-                    machinePlan.addDwell(this.settings.dwellTime);
+                machinePlan.addPlunge(finalDepth, cutting.plungeRate);
+
+                if (strategy.dwellTime > 0) {
+                    machinePlan.addDwell(strategy.dwellTime);
                 }
-                machinePlan.addRetract(this.settings.travelZ);
+                machinePlan.addRetract(machine.travelZ);
             } else {
                 // Multi-peck cycle
                 let lastCutDepth = 0;
-                const retractPlane = this.settings.retractHeight;
+                const retractPlane = strategy.retractHeight;
                 const rapidDownClearance = 0.1;
-                
+
                 while (lastCutDepth > finalDepth) {
-                    let targetPeckDepth = lastCutDepth - this.settings.peckDepth;
+                    let targetPeckDepth = lastCutDepth - planContext.strategy.drill.peckDepth;
                     if (targetPeckDepth < finalDepth) {
                         targetPeckDepth = finalDepth;
                     }
@@ -392,10 +422,10 @@
                     const rapidDownTo = (lastCutDepth === 0) ? rapidDownClearance : (lastCutDepth + rapidDownClearance);
                     machinePlan.addRapid(undefined, undefined, rapidDownTo);
                     
-                    machinePlan.addPlunge(targetPeckDepth, this.settings.plungeRate);
-                    
-                    if (this.settings.dwellTime > 0) {
-                        machinePlan.addDwell(this.settings.dwellTime);
+                    machinePlan.addPlunge(targetPeckDepth, cutting.plungeRate);
+
+                    if (strategy.dwellTime > 0) {
+                        machinePlan.addDwell(strategy.dwellTime);
                     }
                     
                     lastCutDepth = targetPeckDepth;
@@ -405,29 +435,36 @@
                     }
                 }
                 
-                machinePlan.addRetract(this.settings.travelZ);
+                machinePlan.addRetract(machine.travelZ);
             }
             
             return machinePlan;
         }
         
         /**
-         * Generate helical drill milling (ASSUMES at X,Y,travelZ from connection)
+         * Generate helical drill milling
          */
         generateHelicalDrillMilling(purePlan) {
             const machinePlan = new ToolpathPlan(purePlan.operationId);
             Object.assign(machinePlan.metadata, purePlan.metadata);
             
+            // Use context as single source of truth
             const primitiveType = purePlan.metadata.primitiveType;
             const finalDepth = purePlan.metadata.cutDepth;
-            const toolDiameter = purePlan.metadata.tool?.diameter || 0.8;
-            const feedRate = purePlan.metadata.feedRate || 150;
-            const direction = purePlan.metadata.direction || 'climb';
+            const toolDiameter = purePlan.metadata.toolDiameter;
+            const feedRate = purePlan.metadata.feedRate;
+            const direction = purePlan.metadata.direction;
             const clockwise = direction === 'conventional';
+            
+            // Add debugging
+            if (this.context.config.entry.helix === undefined) {
+                console.error('[MachineProcessor] Helix config missing in context');
+                return;
+            }
             
             // Add connection to entry point
             const entryPoint = purePlan.metadata.entryPoint;
-            machinePlan.addRapid(entryPoint.x, entryPoint.y, this.settings.travelZ);
+            machinePlan.addRapid(entryPoint.x, entryPoint.y, this.context.machine.travelZ);
             
             if (primitiveType === 'obround') {
                 this.generateSlotHelix(machinePlan, purePlan, finalDepth, toolDiameter, feedRate, clockwise);
@@ -450,7 +487,9 @@
                 return;
             }
             
-            const helixPitch = Math.min(Math.abs(finalDepth / 3), toolDiameter * 0.5);
+            const requestedPitch = Math.abs(purePlan.metadata.depthPerPass);
+            const maxPitchForTool = toolDiameter * 0.5;
+            const helixPitch = Math.min(requestedPitch, maxPitchForTool);
             const revolutions = Math.max(2, Math.abs(finalDepth) / helixPitch);
             const segmentsPerRev = 16;
             const totalSegments = Math.ceil(revolutions * segmentsPerRev);
@@ -458,7 +497,7 @@
             const startX = center.x + radius;
             const startY = center.y;
             
-            machinePlan.addPlunge(0, this.settings.plungeRate);
+            machinePlan.addPlunge(0, this.context.machine.plungeRate);
             
             let lastX = startX, lastY = startY;
             const angleSpan = revolutions * 2 * Math.PI;
@@ -477,14 +516,14 @@
                 lastX = x;
                 lastY = y;
             }
-            
+
             // Cleanup pass
             machinePlan.addLinear(lastX, lastY, undefined, feedRate);
             const i_val = center.x - lastX;
             const j_val = center.y - lastY;
             machinePlan.addArc(lastX, lastY, finalDepth, i_val, j_val, clockwise, feedRate);
             
-            machinePlan.addRetract(this.settings.travelZ);
+            machinePlan.addRetract(this.context.machine.travelZ);
         }
         
         /**
@@ -494,12 +533,12 @@
             const obroundData = purePlan.metadata.obroundData;
             if (!obroundData) {
                 console.error('[MachineProcessor] Missing obround data - falling back to plunge');
-                machinePlan.addPlunge(finalDepth, this.settings.plungeRate);
+                machinePlan.addPlunge(finalDepth, this.context.machine.plungeRate);
                 // Add the cutting commands from the pure plan
                 for (const cmd of purePlan.commands) {
                     machinePlan.commands.push(cmd);
                 }
-                machinePlan.addRetract(this.settings.travelZ);
+                machinePlan.addRetract(this.context.machine.travelZ);
                 return;
             }
             
@@ -508,7 +547,7 @@
             const startCapCenter = obroundData.startCapCenter;
             const endCapCenter = obroundData.endCapCenter;
             
-            const requestedPitch = Math.abs(this.settings.depthPerPass || 0.5); // Using fallback, not connected to UI? depthPerPass doesn't exist in this.settings
+            const requestedPitch = Math.abs(purePlan.metadata.depthPerPass);
             const maxPitchForTool = toolDiameter * 0.5;
             const helixPitch = Math.min(requestedPitch, maxPitchForTool);
             const depthPerSemicircle = helixPitch * 0.5;
@@ -521,7 +560,7 @@
             const startX = startCapCenter.x + slotRadius * Math.cos(startAngle);
             const startY = startCapCenter.y + slotRadius * Math.sin(startAngle);
             
-            machinePlan.addPlunge(0, this.settings.plungeRate);
+            machinePlan.addPlunge(0, this.context.machine.plungeRate);
             
             let currentZ = 0;
             let atStartCap = true;
@@ -674,7 +713,7 @@
                 }
             }
 
-            machinePlan.addRetract(this.settings.travelZ);
+            machinePlan.addRetract(this.context.machine.travelZ);
         }
         
         /**
@@ -685,8 +724,8 @@
             Object.assign(machinePlan.metadata, JSON.parse(JSON.stringify(purePlan.metadata)));
             
             const cutDepth = purePlan.metadata.cutDepth;
-            const tabPositions = purePlan.metadata.tabPositions || [];
-            const tabHeight = purePlan.metadata.tabHeight || this.settings.tabHeight;
+            const tabPositions = purePlan.metadata.tabPositions;
+            const tabHeight = purePlan.metadata.tabHeight;
             const tabTopZ = -tabHeight;
             const needsLift = cutDepth < tabTopZ;
             const tabZ = needsLift ? tabTopZ : cutDepth;
@@ -733,10 +772,10 @@
                         console.warn(`[DEBUG Tabs] Linear command ${i} missing coordinates, length assumed 0.`);
                     }
                 } else if (cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') {
-                    const radius = Math.hypot(cmd.i || 0, cmd.j || 0); // Use || 0 for safety
+                    const radius = Math.hypot(cmd.i, cmd.j);
                     if (radius > 1e-6) {
-                        const centerX = prevCmdPos.x + (cmd.i || 0);
-                        const centerY = prevCmdPos.y + (cmd.j || 0);
+                        const centerX = prevCmdPos.x + (cmd.i);
+                        const centerY = prevCmdPos.y + (cmd.j);
                         
                         const startAngle = Math.atan2(prevCmdPos.y - centerY, prevCmdPos.x - centerX);
                         // Use cmd.x/y if available, otherwise assume full circle end=start
@@ -800,7 +839,7 @@
                                     } else { machinePlan.addCommand({ ...cmd, z: tabZ, f: cmd.f || feedRate }); } // Fallback: full seg at tab Z
 
                                     // Plunge back down
-                                    machinePlan.addLinear(null, null, cutDepth, this.settings.plungeRate);
+                                    machinePlan.addLinear(null, null, cutDepth, this.context.machine.plungeRate);
                                     processingTab = false; // Exited tab region
 
                                     // Cut at CUT DEPTH from tab end to segment end
@@ -834,7 +873,7 @@
                                } else { /* Should not happen if overlap detected */ }
 
                                // Lift Z
-                               machinePlan.addLinear(null, null, tabZ, this.settings.plungeRate);
+                               machinePlan.addLinear(null, null, tabZ, this.context.machine.plungeRate);
                                processingTab = true; // Entered tab region
 
                                // Scenario 2a: Tab also ends *within* or *at the end* of this segment
@@ -848,7 +887,7 @@
                                     } else { /* Error case */ }
 
                                     // Plunge back down
-                                    machinePlan.addLinear(null, null, cutDepth, this.settings.plungeRate);
+                                    machinePlan.addLinear(null, null, cutDepth, this.context.machine.plungeRate);
                                     processingTab = false; // Exited tab region
 
                                     // Cut at CUT DEPTH from tab end to segment end
@@ -955,9 +994,9 @@
         calculatePathMetrics(plans) {
             let totalTime = 0;
             let totalDistance = 0;
-            let lastPos = { x: 0, y: 0, z: this.settings.safeZ }; // Start at safeZ
+            let lastPos = { x: 0, y: 0, z: this.context.machine.safeZ }; // Start at safeZ
             
-            const rapidFeed = this.settings.rapidFeedRate;
+            const rapidFeed = this.context.machine.rapidFeedRate;
             
             for (const plan of plans) {
                 for (const cmd of plan.commands) {

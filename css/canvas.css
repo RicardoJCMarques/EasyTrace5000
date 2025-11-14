@@ -65,10 +65,6 @@
     z-index: var(--z-dropdown);
 }
 
-.canvas-loading-overlay.hidden {
-    display: none;
-}
-
 /* ============================================================================
    CANVAS RENDERING SETTINGS
    These control the visual appearance of rendered geometry

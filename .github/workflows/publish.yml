@@ -8,6 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      
+      - name: Minify
+        uses: tdewolff/minify-action@v2
+        with:
+          sources: '.'
+          exclude: 'node_modules'
+      
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:

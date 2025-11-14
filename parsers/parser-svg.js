@@ -124,7 +124,6 @@
 
         /**
          * Processes a stroked shape, creating analytic 'trace' objects for the ParserPlotter.
-         * This function correctly handles all analytic segment types.
          */
         _processStrokedShape(geometry, transform, strokeWidth) {
             const transformed = this._applyTransformToGeometry(geometry, transform);
@@ -930,5 +929,4 @@
     }
 
     window.SVGParser = SVGParser;
-
 })();

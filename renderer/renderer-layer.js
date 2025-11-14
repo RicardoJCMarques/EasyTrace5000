@@ -27,8 +27,8 @@
 (function() {
     'use strict';
     
-    const config = window.PCBCAMConfig || {};
-    const primitivesConfig = config.renderer?.primitives || {};
+    const config = window.PCBCAMConfig;
+    const primitivesConfig = config.renderer?.primitives;
     
     class LayerRenderer {
         constructor(canvasId, core) {
@@ -39,7 +39,7 @@
             
             this.core = new RendererCore(this.canvas);
             this.pcbCore = core;
-            this.camCore = core; // Alias for compatibility
+            this.camCore = core; // Alias for compatibility // Review if it's worth keeping
             
             this.primitiveRenderer = new PrimitiveRenderer(this.core);
             this.overlayRenderer = new OverlayRenderer(this.core);
@@ -99,14 +99,14 @@
             const startTime = this.core.beginRender();
 
             this.core.clearCanvas();
-            
+
             this.debugPrimitives = [];
-            
-            this.core.setupTransform();
+
+            this.core.setupTransform(); // <-- Sets pan/zoom
 
             // Save the simple pan/zoom transform
             this.ctx.save();
-            
+
             // Apply object rotation if it exists
             if (this.core.currentRotation !== 0 && this.core.rotationCenter) {
                 this.ctx.translate(this.core.rotationCenter.x, this.core.rotationCenter.y);
@@ -114,7 +114,7 @@
                 this.ctx.translate(-this.core.rotationCenter.x, -this.core.rotationCenter.y);
             }
 
-            // Main geometry rendering logic
+            // 1. RENDER GEOMETRY (inside rotation)
             if (this.options.showWireframe) {
                 this.layers.forEach(layer => {
                     if (layer.visible) {
@@ -126,19 +126,23 @@
                 this.renderVisibleLayers();
             }
 
-            // Background elements & Overlays
+            // 2. RESTORE FROM ROTATION
+            // Restore from the object rotation
+            this.ctx.restore();
+
+            // 3. RENDER WORLD-SPACE OVERLAYS (outside rotation)
+            // (Grid, Bounds, Origin are now drawn with pan/zoom, but NOT rotated)
             if (this.options.showGrid) { this.overlayRenderer.renderGrid(); }
             if (this.options.showBounds) { this.overlayRenderer.renderBounds(); }
             if (this.options.showOrigin) { this.overlayRenderer.renderOrigin(); }
+
+            // 4. RESET ALL TRANSFORMS (to screen space)
+            this.core.resetTransform();
+
+            // 5. RENDER SCREEN-SPACE OVERLAYS (rulers, stats)
             if (this.options.showRulers) { this.overlayRenderer.renderRulers(); }
             this.overlayRenderer.renderScaleIndicator();
             if (this.options.showStats) { this.overlayRenderer.renderStats(); }
-            
-            // Restore from the object rotation
-            this.ctx.restore();
-            
-            // Reset the transform AFTER all world-space drawing is done
-            this.core.resetTransform();
 
             // Pre-transform debug primitives to screen space
             if ((this.options.debugPoints || this.options.debugPaths) &&
@@ -204,20 +208,30 @@
             const offsetLayers = [];
             const previewLayers = [];
             const toolpathLayers = [];
-            
+
             this.layers.forEach((layer, name) => {
                 if (!layer.visible) return;
-                
-                if (name.startsWith('offset_')) {
-                    offsetLayers.push({ name, layer });
-                } else if (name.startsWith('preview_')) {
-                    previewLayers.push({ name, layer });
-                } else if (name.startsWith('toolpath_')) {
-                    toolpathLayers.push({ name, layer });
-                } else if (name.startsWith('fused_')) {
-                    fusedLayers.push({ name, layer });
-                } else {
-                    sourceLayers.push({ name, layer });
+
+                switch (layer.type) {
+                    case 'offset':
+                        offsetLayers.push({ name, layer });
+                        break;
+                    case 'preview':
+                        previewLayers.push({ name, layer });
+                        break;
+                    case 'toolpath': // Assuming 'toolpath' is a type // Note: toolpath doesn't exist?
+                        toolpathLayers.push({ name, layer });
+                        break;
+                    case 'fused':
+                        fusedLayers.push({ name, layer });
+                        break;
+                    case 'isolation':
+                    case 'clear':
+                    case 'drill':
+                    case 'cutout':
+                    default: // All other source types
+                        sourceLayers.push({ name, layer });
+                        break;
                 }
             });
             
@@ -261,15 +275,14 @@
         // Layer Rendering (With Culling and Context)
         
         renderLayer(layer) {
-            let fillColor = this.core.getLayerColorSettings(layer);
+            let layerColor = this.core.getLayerColorSettings(layer);    
             
             if (this.options.blackAndWhite) {
-                const isDarkTheme = (this.core.colors.canvas?.background || '#0f0f0f') === '#0f0f0f';
-                fillColor = isDarkTheme ? '#ffffff' : '#000000';
+                layerColor = this.core.colors.text.primary;
             }
 
             const viewBounds = this.core.getViewBounds();
-            this.renderLayerPrimitives(layer, viewBounds, fillColor);
+            this.renderLayerPrimitives(layer, viewBounds, layerColor, layerColor);
         }
         
         renderLayerPrimitives(layer, viewBounds, fillColor, strokeColor = null) {
@@ -394,6 +407,11 @@
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
+
+                if (!this.core.shouldRenderPrimitive(primitive, layer.type)) {
+                    this.core.renderStats.skippedPrimitives++;
+                    return;
+                }
                 
                 if (this.shouldCollectDebugPoints(primitive)) {
                     this.debugPrimitives.push(primitive);
@@ -413,16 +431,24 @@
             
             // Batch render normal geometry
             if (normalPrimitives.length > 0) {
-                const layerBatch = new Path2D();
+                const batchesByPass = new Map();
                 normalPrimitives.forEach(primitive => {
-                    this.primitiveRenderer.addPrimitiveToPath2D(primitive, layerBatch);
+                    const pass = primitive.properties?.pass || 1;
+                    if (!batchesByPass.has(pass)) {
+                        batchesByPass.set(pass, new Path2D());
+                    }
+                    this.primitiveRenderer.addPrimitiveToPath2D(primitive, batchesByPass.get(pass));
                 });
-                
+
+                // Render each pass batch
                 this.ctx.strokeStyle = offsetColor;
                 this.ctx.lineWidth = (primitivesConfig.offsetStrokeWidth || 2) / this.core.viewScale;
                 this.ctx.setLineDash([]);
-                this.ctx.stroke(layerBatch);
-                this.core.renderStats.drawCalls++;
+
+                batchesByPass.forEach((batch) => {
+                    this.ctx.stroke(batch);
+                    this.core.renderStats.drawCalls++;
+                });
             }
             
             // Render drill peck marks as filled circles with warning colors
@@ -465,6 +491,11 @@
                 
                 const primBounds = primitive.getBounds();
                 if (!isRotated && !this.core.boundsIntersect(primBounds, viewBounds)) {
+                    this.core.renderStats.skippedPrimitives++;
+                    return;
+                }
+
+                if (!this.core.shouldRenderPrimitive(primitive, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
@@ -643,106 +674,7 @@
             
             this.ctx.restore();
         }
-        
-        // Public API
-        
-        zoomFit(padding) {
-            this.core.calculateOverallBounds();
-            this.core.zoomFit(padding);
-            this.render();
-        }
-        
-        zoomIn() {
-            this.core.zoomIn();
-            this.render();
-        }
-        
-        zoomOut() {
-            this.core.zoomOut();
-            this.render();
-        }
-        
-        zoomToPoint(worldX, worldY, factor) {
-            this.core.zoomToPoint(worldX, worldY, factor);
-            this.render();
-        }
-        
-        pan(dx, dy) {
-            this.core.pan(dx, dy);
-            this.render();
-        }
-        
-        resizeCanvas() {
-            this.core.resizeCanvas();
-            this.render();
-        }
-        
-        worldToCanvasX(worldX) {
-            return this.core.worldToCanvasX(worldX);
-        }
-        
-        worldToCanvasY(worldY) {
-            return this.core.worldToCanvasY(worldY);
-        }
-        
-        canvasToWorld(canvasX, canvasY) {
-            return this.core.canvasToWorld(canvasX, canvasY);
-        }
-        
-        worldToScreen(worldX, worldY) {
-            return this.core.worldToScreen(worldX, worldY);
-        }
-        
-        screenToWorld(screenX, screenY) {
-            return this.core.screenToWorld(screenX, screenY);
-        }
-        
-        getViewBounds() {
-            return this.core.getViewBounds();
-        }
-        
-        getWireframeStrokeWidth() {
-            return this.core.getWireframeStrokeWidth();
-        }
-        
-        calculateOverallBounds() {
-            return this.core.calculateOverallBounds();
-        }
-        
-        // Coordinate system integration
-        setOriginPosition(x, y) {
-            this.core.setOriginPosition(x, y);
-            this.render();
-        }
-        
-        setRotation(angle, center) {
-            this.core.setRotation(angle, center);
-            this.render();
-        }
-        
-        getOriginPosition() {
-            return { x: this.core.originPosition?.x || 0, y: this.core.originPosition?.y || 0 };
-        }
-        
-        getViewState() {
-            return this.core.getViewState?.() || {
-                offset: { ...this.viewOffset },
-                scale: this.viewScale,
-                bounds: this.bounds,
-                rotation: this.core.rotation?.angle || 0
-            };
-        }
-        
-        setViewState(state) {
-            if (this.core.setViewState) {
-                this.core.setViewState(state);
-            } else {
-                if (state.offset) this.core.viewOffset = { ...state.offset };
-                if (state.scale !== undefined) this.core.viewScale = state.scale;
-            }
-            this.render();
-        }
-        
+
         destroy() {
             if (this.interactionHandler) {
                 this.interactionHandler.destroy();

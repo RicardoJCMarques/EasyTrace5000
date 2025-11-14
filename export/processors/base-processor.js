@@ -65,11 +65,21 @@
 
             // Add the formatted comment block IF it exists
             if (options.includeComments && options.commentBlock) {
-                // Use the safer, Grbl-compatible semicolon for each line
                 options.commentBlock.forEach(line => {
-                    headerLines.push(`; ${line}`); // Add each line as its own comment
+                    headerLines.push(`; ${line}`);
                 });
+                headerLines.push('');
             }
+
+            // 1. Set unit mode from options (comes from dropdown)
+            this.modalState.units = (options.units === 'in') ? 'G20' : 'G21';
+            
+            // 2. Output all modal commands based on state
+            headerLines.push(this.modalState.coordinateMode); // G90 - Absolute Coordinates
+            headerLines.push(this.modalState.units);          // G20 or G21
+            headerLines.push(this.modalState.plane);          // G17 - XY Plane
+            headerLines.push(this.modalState.feedRateMode);   // G94 - Units/minute
+            headerLines.push(''); // Blank line
 
             // Get the template from the options, or a default
             let startCode = options.startCode;
@@ -86,11 +96,11 @@
                     startCode += '\nM8'; // Flood
                 }
             }
-            if (options.vacuum && !startCode.includes('M10')) { // Assuming M10/M11 for vacuum
+            if (options.vacuum && !startCode.includes('M10')) {
                 startCode += '\nM10'; // Vacuum On
             }
 
-            headerLines.push(startCode); // Add the actual start code after the comments
+            headerLines.push(startCode); // Add the actual start code after the modals
 
             return headerLines.join('\n');
         }
@@ -429,6 +439,7 @@
             this.modalState = {
                 motionMode: null,
                 coordinateMode: 'G90',
+                units: null,
                 units: 'G21',
                 plane: 'G17',
                 feedRateMode: 'G94'

@@ -59,11 +59,6 @@
             
             this.debug('CoordinateSystemManager initialized with config integration');
         }
-        
-        setRenderer(renderer) {
-            this.renderer = renderer;
-            this.debug('Renderer linked to coordinate system');
-        }
 
         initializeEmpty() {
             // Initialize with default empty bounds for empty canvas
@@ -157,14 +152,11 @@
         }
 
         syncToRenderer() {
-            if (this.renderer) {
-                this.renderer.setOriginPosition(this.previewOrigin.x, this.previewOrigin.y);
-                this.renderer.setRotation(this.currentRotation, this.rotationCenter);
-                
-                if (debugConfig.logging?.coordinateConversion) {
-                    this.debug(`Synced preview to renderer: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)}), rotation: ${this.currentRotation}°`);
-                }
+            if (debugConfig.logging?.coordinateConversion) {
+                this.debug(`Sync requested: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)}), rotation: ${this.currentRotation}°`);
             }
+            // Notify listeners that a change has occurred
+            this.notifyChange({ action: 'syncPreview' });
         }
 
         previewCenterOrigin() {
@@ -519,7 +511,5 @@
         }
     }
     
-    // Export
     window.CoordinateSystemManager = CoordinateSystemManager;
-    
 })();
