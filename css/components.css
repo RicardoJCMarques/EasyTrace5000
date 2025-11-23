@@ -393,7 +393,7 @@ input[type="radio"] {
     background: var(--color-bg-secondary);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
-    min-width: 480px;
+    min-width: 560px;
     max-width: 90vw;
     max-width: 800px;
     max-height: 80vh;
@@ -457,7 +457,7 @@ input[type="radio"] {
 
 #welcome-modal .welcome-upload-zones {
     grid-template-columns: 1fr;
-    max-width: 400px;
+    max-width: 800px;
     margin: 0 auto;
 }
 

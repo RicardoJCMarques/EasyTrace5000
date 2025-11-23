@@ -26,38 +26,38 @@
 
 (function() {
     'use strict';
-    
+
     // Get config reference
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    const geomConfig = config.geometry || {};
-    
+    const config = window.PCBCAMConfig;
+    const debugConfig = config.debug;
+    const geomConfig = config.geometry;
+
     class CoordinateSystemManager {
         constructor(options = {}) {
             this.options = {
-                debug: options.debug || false,
+                debug: options.debug,
                 ...options
             };
-            
+
             // Simplified coordinate tracking - only one saved origin
             this.fileOrigin = { x: 0, y: 0 }; // Original file coordinates (0,0)
             this.savedOrigin = { x: 0, y: 0 }; // User's saved origin position
             this.previewOrigin = { x: 0, y: 0 }; // Current preview position (for display)
-            
+
             // Rotation tracking
             this.currentRotation = 0; // Current rotation angle in degrees
             this.fileRotation = 0; // Original file rotation (always 0)
             this.rotationCenter = null; // Center point for rotation (board center)
-            
+
             this.boardBounds = null; // Board bounds in file coordinates
             this.initialized = false;
-            
+
             // Communication with renderer
             this.renderer = null;
 
             this.changeListeners = new Set(); // To notify UI of changes
-            
-            this.debug('CoordinateSystemManager initialized with config integration');
+
+            this.debug('Initializing with config integration');
         }
 
         initializeEmpty() {
@@ -73,27 +73,27 @@
                     centerX: 50,
                     centerY: 50
                 };
-                
+
                 this.rotationCenter = {
                     x: 50,
                     y: 50
                 };
-                
+
                 this.fileOrigin = { x: 0, y: 0 };
                 this.savedOrigin = { x: 0, y: 0 };
                 this.previewOrigin = { x: 0, y: 0 };
                 this.currentRotation = 0;
                 this.fileRotation = 0;
                 this.initialized = true;
-                
+
                 this.syncToRenderer();
                 this.debug('Initialized with empty canvas bounds');
                 this.notifyChange({ action: 'syncPreview' });
             }
-            
+
             return this.getStatus();
         }
-        
+
         analyzeCoordinateSystem(operations) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             let hasData = false;
@@ -116,9 +116,9 @@
                     centerX: (minX + maxX) / 2,
                     centerY: (minY + maxY) / 2
                 };
-                
+
                 this.boardBounds = { ...bounds };
-                
+
                 // Set rotation center to board center
                 if (this.currentRotation === 0 || !this.initialized) {
                     this.rotationCenter = {
@@ -129,7 +129,7 @@
                 } else {
                     this.debug('Board bounds recalculated (rotation center preserved):', this.boardBounds);
                 }
-                
+
                 // Initialize origins if not already initialized
                 if (!this.initialized) {
                     this.fileOrigin = { x: 0, y: 0 };
@@ -138,10 +138,10 @@
                     this.currentRotation = 0;
                     this.fileRotation = 0;
                     this.initialized = true;
-                    
+
                     // Sync preview to renderer
                     this.syncToRenderer();
-                    
+
                     this.debug('Initialized with file origin (0, 0)');
                 }
             } else {
@@ -163,37 +163,37 @@
             if (!this.boardBounds) {
                 return { success: false, error: 'No board bounds available' };
             }
-            
+
             // Calculate rotated center position
             const rotatedBounds = this.getRotatedBoardBounds();
-            
+
             this.previewOrigin.x = rotatedBounds.centerX;
             this.previewOrigin.y = rotatedBounds.centerY;
-            
+
             // Sync preview to renderer
             this.syncToRenderer();
-            
+
             this.debug(`Preview origin at center: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)})`);
             return { 
                 success: true,
                 position: { ...this.previewOrigin }
             };
         }
-        
+
         previewBottomLeftOrigin() {
             if (!this.boardBounds) {
                 return { success: false, error: 'No board bounds available' };
             }
-            
+
             // Calculate rotated bottom-left position
             const rotatedBounds = this.getRotatedBoardBounds();
-            
+
             this.previewOrigin.x = rotatedBounds.minX;
             this.previewOrigin.y = rotatedBounds.minY;
-            
+
             // Sync preview to renderer
             this.syncToRenderer();
-            
+
             this.debug(`Preview origin at bottom-left: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)})`);
             return { 
                 success: true,
@@ -205,14 +205,14 @@
             if (!this.initialized) {
                 return { success: false, error: 'Coordinate system not initialized' };
             }
-            
+
             // Preview position is saved position plus offset
             this.previewOrigin.x = this.savedOrigin.x + offsetX;
             this.previewOrigin.y = this.savedOrigin.y + offsetY;
-            
+
             // Sync preview to renderer
             this.syncToRenderer();
-            
+
             this.debug(`Preview updated by offset (${offsetX}, ${offsetY}) to: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)})`);
             return { success: true };
         }
@@ -221,11 +221,11 @@
             if (!this.initialized) {
                 return { success: false, error: 'Coordinate system not initialized' };
             }
-            
+
             // Save preview position as the new saved origin
             this.savedOrigin.x = this.previewOrigin.x;
             this.savedOrigin.y = this.previewOrigin.y;
-            
+
             this.debug(`Saved origin: (${this.savedOrigin.x.toFixed(3)}, ${this.savedOrigin.y.toFixed(3)})`);
 
             this.notifyChange({ action: 'saveOrigin' });
@@ -237,14 +237,14 @@
             if (!this.initialized) {
                 return { success: false, error: 'Coordinate system not initialized' };
             }
-            
+
             // Reset preview to saved position
             this.previewOrigin.x = this.savedOrigin.x;
             this.previewOrigin.y = this.savedOrigin.y;
-            
+
             // Sync to renderer
             this.syncToRenderer();
-            
+
             this.debug(`Reset preview to saved origin: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)})`);
 
             this.notifyChange({ action: 'resetOrigin' });
@@ -256,7 +256,7 @@
             if (!this.initialized) {
                 return { x: 0, y: 0 };
             }
-            
+
             return {
                 x: this.previewOrigin.x - this.savedOrigin.x,
                 y: this.previewOrigin.y - this.savedOrigin.y
@@ -316,22 +316,22 @@
             if (!this.initialized) {
                 return { success: false, error: 'Coordinate system not initialized' };
             }
-            
+
             if (!this.boardBounds) {
                 return { success: false, error: 'No board bounds available for rotation' };
             }
-            
+
             // Normalize angle to 0-360 range
             const normalizedAngle = ((angle % 360) + 360) % 360;
-            
+
             // Apply rotation
             this.currentRotation = (this.currentRotation + normalizedAngle) % 360;
-            
+
             // Sync rotation to renderer
             this.syncToRenderer();
-            
+
             this.debug(`Board rotated by ${normalizedAngle}°, total rotation: ${this.currentRotation}°`);
-            
+
             this.notifyChange({ action: 'rotate', angle: normalizedAngle });
 
             return { 
@@ -346,19 +346,19 @@
             if (!this.initialized) {
                 return { success: false, error: 'Coordinate system not initialized' };
             }
-            
+
             const previousRotation = this.currentRotation;
-            
+
             // Reset rotation to file orientation only
             this.currentRotation = this.fileRotation; // Should be 0
-            
+
             // Sync to renderer
             this.syncToRenderer();
-            
+
             this.debug(`Board rotation reset: ${previousRotation}° → ${this.currentRotation}°`);
 
             this.notifyChange({ action: 'resetRotation' });
-            
+
             return { 
                 success: true,
                 previousRotation: previousRotation,
@@ -385,19 +385,19 @@
                 width: rotatedBounds.width,
                 height: rotatedBounds.height
             } : { width: 0, height: 0 };
-            
+
             const currentPosition = { ...this.previewOrigin };
             const savedPosition = { ...this.savedOrigin };
             const offset = this.getOffsetFromSaved();
-            
+
             // Use config precision for comparison
-            const precision = geomConfig.coordinatePrecision || 0.01;
-            
+            const precision = geomConfig.coordinatePrecision;
+
             // Origin description based on preview position
             let originDescription = 'File Origin';
             if (this.boardBounds) {
                 const atSaved = Math.abs(offset.x) < precision && Math.abs(offset.y) < precision;
-                
+
                 if (atSaved && savedPosition.x === 0 && savedPosition.y === 0) {
                     originDescription = 'File Origin';
                 } else if (atSaved) {
@@ -406,7 +406,7 @@
                                     Math.abs(savedPosition.y - this.boardBounds.centerY) < precision;
                     const atBottomLeft = Math.abs(savedPosition.x - this.boardBounds.minX) < precision &&
                                         Math.abs(savedPosition.y - this.boardBounds.minY) < precision;
-                    
+
                     if (atCenter) {
                         originDescription = 'Board Center (saved)';
                     } else if (atBottomLeft) {
@@ -419,12 +419,12 @@
                     originDescription = `Preview: +${offset.x.toFixed(1)}, +${offset.y.toFixed(1)}mm`;
                 }
             }
-            
+
             // Add rotation info if rotated
             if (this.currentRotation !== 0) {
                 originDescription += ` • ${this.currentRotation}°`;
             }
-            
+
             return {
                 boardSize: boardSize,
                 currentPosition: currentPosition,
@@ -451,12 +451,12 @@
                 rotationCenter: this.rotationCenter ? { ...this.rotationCenter } : null
             };
         }
-        
+
         getRotationMatrix() {
             const radians = (this.currentRotation * Math.PI) / 180;
             const cos = Math.cos(radians);
             const sin = Math.sin(radians);
-            
+
             return {
                 a: cos,  // scale X
                 b: sin,  // skew Y
@@ -466,7 +466,7 @@
                 f: 0     // translate Y
             };
         }
-        
+
         getRotationState() {
             return {
                 angle: this.currentRotation,
@@ -474,7 +474,7 @@
                 hasRotation: this.currentRotation !== 0
             };
         }
-        
+
         debug(message, data = null) {
             if (this.options.debug) {
                 if (data) {
@@ -510,6 +510,6 @@
             }
         }
     }
-    
+
     window.CoordinateSystemManager = CoordinateSystemManager;
 })();

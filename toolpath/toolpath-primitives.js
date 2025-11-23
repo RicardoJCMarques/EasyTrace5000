@@ -26,32 +26,32 @@
 
 (function() {
     'use strict';
-    
+
     /**
      * Lightweight motion command structure
      */
     class MotionCommand {
         constructor(type, coords, params = {}) {
             this.type = type; // 'RAPID', 'LINEAR', 'ARC_CW', 'ARC_CCW', 'PLUNGE', 'RETRACT', 'DWELL'
-            
+
             // Only set coordinates that are explicitly provided
             this.x = coords.x !== undefined ? coords.x : null;
             this.y = coords.y !== undefined ? coords.y : null;
             this.z = coords.z !== undefined ? coords.z : null;
             this.f = params.feed;
-            
+
             // Arc parameters (I,J are relative offsets from start)
             if (type === 'ARC_CW' || type === 'ARC_CCW') {
                 this.i = params.i;
                 this.j = params.j;
             }
-            
+
             // Optional parameters
             if (params.dwell) this.dwell = params.dwell;
             if (params.comment) this.comment = params.comment;
         }
     }
-    
+
     /**
      * Toolpath plan container
      */
@@ -76,11 +76,11 @@
                 hasArcs: false
             };
         }
-        
+
         addCommand(cmd) {
             this.commands.push(cmd);
         }
-        
+
         addRapid(x, y, z) {
             this.commands.push(new MotionCommand('RAPID', {
                 x: x !== undefined ? x : null, 
@@ -88,7 +88,7 @@
                 z: z !== undefined ? z : null
             }));
         }
-        
+
         addLinear(x, y, z, feed) {
             this.commands.push(new MotionCommand('LINEAR', {
                 x: x !== undefined ? x : null, 
@@ -96,27 +96,25 @@
                 z: z !== undefined ? z : null
             }, { feed: feed }));
         }
-        
+
         addPlunge(z, feed) {
             this.commands.push(new MotionCommand('PLUNGE', {x: null, y: null, z}, {feed}));
         }
-        
+
         addRetract(z) {
             this.commands.push(new MotionCommand('RETRACT', {x: null, y: null, z}));
         }
-        
+
         addArc(x, y, z, i, j, clockwise, feed) {
             const type = clockwise ? 'ARC_CW' : 'ARC_CCW';
             this.commands.push(new MotionCommand(type, {x, y, z}, {i, j, feed}));
         }
-        
+
         addDwell(duration) {
             this.commands.push(new MotionCommand('DWELL', {x: null, y: null, z: null}, {dwell: duration}));
         }
     }
-    
-    // Export to global namespace
+
     window.MotionCommand = MotionCommand;
     window.ToolpathPlan = ToolpathPlan;
-    
 })();

@@ -26,19 +26,19 @@
 
 (function() {
     'use strict';
-    
-    const config = window.PCBCAMConfig || {};
-    const geomConfig = config.geometry || {};
-    const debugConfig = config.debug || {};
-    
+
+    const config = window.PCBCAMConfig;
+    const geomConfig = config.geometry;
+    const debugConfig = config.debug;
+
     class SVGExporter {
         constructor(renderer) {
             this.renderer = renderer;
             this.core = renderer.core;
             this.svgNS = 'http://www.w3.org/2000/svg';
-            
+
             this.options = {
-                precision: config.gcode?.precision?.coordinates || 3,
+                precision: config.gcode.precision.coordinates,
                 padding: 5,
                 preserveArcs: geomConfig.preserveArcs !== false,
                 includeMetadata: true,
@@ -54,7 +54,7 @@
         _createExportComment() {
             const viewOptions = this.core.options;
             let geoState;
-            
+
             if (viewOptions.fuseGeometry) {
                 if (viewOptions.showPreprocessed) {
                     geoState = 'Preprocessed (Dark/Clear Polygons)';
@@ -64,7 +64,7 @@
             } else {
                 geoState = 'Source Geometry';
             }
-            
+
             const content = `
 EasyTrace5000 SVG Export
 Timestamp: ${new Date().toISOString()}
@@ -77,7 +77,7 @@ Exported from the current canvas view.
 `;
             return document.createComment(content);
         }
-        
+
         /**
          * Main entry point. Exports the current canvas view to an SVG file.
          * @param {object} options - Optional overrides for export settings.
@@ -120,7 +120,7 @@ Exported from the current canvas view.
             // 6. Serialize and download
             return this._serializeAndDownload(svg, filename, exportConfig);
         }
-        
+
         /**
          * Creates the root <svg> element with viewBox.
          * @param {object} bounds - The calculated bounds of the content.
@@ -129,14 +129,14 @@ Exported from the current canvas view.
          */
         _createSVGRoot(bounds, config) {
             const svg = document.createElementNS(this.svgNS, 'svg');
-            
+
             const width = bounds.width + config.padding * 2;
             const height = bounds.height + config.padding * 2;
-            
+
             svg.setAttribute('xmlns', this.svgNS);
             svg.setAttribute('width', `${width.toFixed(config.precision)}mm`);
             svg.setAttribute('height', `${height.toFixed(config.precision)}mm`);
-            
+
             if (config.useViewBox) {
                 // ViewBox Y is inverted due to scale(1, -1) transform
                 const viewY = -(bounds.maxY + config.padding);
@@ -147,7 +147,7 @@ Exported from the current canvas view.
                     `${this._formatNumber(height, config.precision)}`
                 );
             }
-            
+
             return svg;
         }
 
@@ -163,19 +163,19 @@ Exported from the current canvas view.
             const colors = this.core.colors.operations; 
             const canvasColors = this.core.colors.canvas;
             const debugColors = this.core.colors.debug;
-            
+
             const isWireframe = this.core.options.showWireframe;
             const wireframeColor = (debugColors && debugColors.wireframe) ? debugColors.wireframe : '#00ff00';
-            
+
             this.debug(`Generating styles. isWireframe = ${isWireframe}`);
-            
+
             const wireframeStroke = `fill: none; stroke: ${wireframeColor}; stroke-width: 0.05;`;
-            
+
             // Fallback colors added for safety
             const traceStyles = `fill: none; stroke: ${colors.isolation}; stroke-linecap: round; line-join: round;`;
             // Use 6-digit.
             const cutoutStyles = `fill: none; stroke: ${colors.cutout.substring(0, 7)}; stroke-width: 0.1;`;
-            
+
             let css = '';
 
            if (isWireframe) {
@@ -196,7 +196,7 @@ Exported from the current canvas view.
                 // SOLID FILL MODE
                 const solidFill = 'stroke: none;';
                 const bgColor = (canvasColors && canvasColors.background) ? canvasColors.background : '#0f0f0f';
-                
+
                 css = `
                     .pcb-source-isolation { fill: ${colors.isolation}; ${solidFill} }
                     .pcb-source-drill { fill: ${colors.drill}; ${solidFill} }
@@ -209,12 +209,12 @@ Exported from the current canvas view.
                     .pcb-preview { fill: none; stroke-linecap: round; line-join: round; }
                 `;
             }
-            
+
             style.textContent = css;
             defs.appendChild(style);
             return defs;
         }
-        
+
         /**
          * Creates the main <g> element with Y-flip and rotation transforms.
          * @param {object} config - The export configuration.
@@ -223,21 +223,21 @@ Exported from the current canvas view.
         _createMainGroup(config) {
             const mainGroup = document.createElementNS(this.svgNS, 'g');
             mainGroup.setAttribute('id', 'pcb-layers');
-            
+
             const viewState = this.core.getViewState();
             let transform = 'scale(1,-1)';
-            
+
             if (viewState.rotation !== 0) {
                 const center = this.core.rotationCenter;
-                // Note: SVG rotation is clockwise, but our Y-flip inverts it. We apply the *same* rotation angle as the canvas.
+                // Note: SVG rotation is clockwise, but Y-flip inverts it. Apply the *same* rotation angle as the canvas.
                 transform += ` rotate(${viewState.rotation} ${this._formatNumber(center.x, config.precision)} ${this._formatNumber(center.y, config.precision)})`;
             }
-            
+
             mainGroup.setAttribute('transform', transform);
-            
+
             // Delegate to populate this group
             this._exportVisibleLayers(mainGroup, config);
-            
+
             return mainGroup;
         }
 
@@ -302,7 +302,7 @@ Exported from the current canvas view.
 
             // Apply semantic class and dynamic styles (if any)
             this._applySemanticClass(element, primitive, layer, isWireframe);
-            
+
             return element;
         }
 
@@ -313,7 +313,7 @@ Exported from the current canvas view.
          * @param {object} layer - The layer this primitive belongs to.
          */
         _applySemanticClass(element, primitive, layer, isWireframe) {
-            const props = primitive.properties || {};
+            const props = primitive.properties;
             // Get the layer state flags
             const isPreprocessed = layer.isPreprocessed;
             const isFused = layer.isFused;
@@ -331,7 +331,7 @@ Exported from the current canvas view.
                 return; // Styling is complete for preprocessed
             }
 
-            // If NOT preprocessed, continue with other checks...
+            // If not preprocessed, continue with other checks...
             const isStrokedPath = (props.isTrace || props.stroke === true) && layer.type !== 'cutout';
 
             if (isStrokedPath) {
@@ -373,7 +373,7 @@ Exported from the current canvas view.
             element.setAttribute('class', 'pcb-source-isolation');
         }
 
-        // GEOMETRY CONVERTERS
+        // Geometry Converters
 
         _createCircleElement(primitive, config) {
             const precision = config.precision;
@@ -405,7 +405,7 @@ Exported from the current canvas view.
             if (primitive.holes && primitive.holes.length > 0) {
                 path.setAttribute('fill-rule', 'evenodd');
             }
-            
+
             return path;
         }
 
@@ -450,9 +450,9 @@ Exported from the current canvas view.
          */
         _buildSimplePathData(points, closed, precision) {
             if (!points || points.length === 0) return '';
-            
+
             const p = (val) => this._formatNumber(val, precision);
-            
+
             let d = `M${p(points[0].x)},${p(points[0].y)}`;
             for (let i = 1; i < points.length; i++) {
                 d += ` L${p(points[i].x)},${p(points[i].y)}`;
@@ -484,10 +484,10 @@ Exported from the current canvas view.
                 }
 
                 const endPointOfArc = points[arc.endIndex];
-                
+
                 // Use the pre-calculated sweep angle from the stitcher
                 let angleSpan = arc.sweepAngle;
-                
+
                 // Fallback if sweepAngle is missing (shouldn't happen with fixed stitcher)
                 if (angleSpan === undefined) {
                     console.warn('[SVGExporter] arc.sweepAngle not found, recalculating...');
@@ -518,10 +518,10 @@ Exported from the current canvas view.
             if (primitive.closed !== false) {
                 pathParts.push('Z');
             }
-            
+
             return pathParts.join(' ');
         }
-        
+
         /**
          * Builds an SVG path string for a standalone ArcPrimitive.
          */
@@ -536,17 +536,17 @@ Exported from the current canvas view.
             let angleSpan = primitive.endAngle - primitive.startAngle;
             if (primitive.clockwise && angleSpan > 0) angleSpan -= 2 * Math.PI;
             if (!primitive.clockwise && angleSpan < 0) angleSpan += 2 * Math.PI;
-            
+
             const largeArc = Math.abs(angleSpan) > Math.PI ? 1 : 0;
             // Invert sweep-flag due to Y-axis flip
             const sweep = !primitive.clockwise ? 1 : 0;
-            
+
             let d = `M${p(startX)},${p(startY)}`;
             d += ` A${p(primitive.radius)},${p(primitive.radius)} 0 ${largeArc} ${sweep} ${p(endX)},${p(endY)}`;
-            
+
             return d;
         }
-        
+
         /**
          * Builds an SVG path string for an ObroundPrimitive.
          */
@@ -554,12 +554,12 @@ Exported from the current canvas view.
             const p = (val) => this._formatNumber(val, precision);
             const r = Math.min(primitive.width, primitive.height) / 2;
             let d = '';
-            
+
             const x = primitive.position.x;
             const y = primitive.position.y;
             const w = primitive.width;
             const h = primitive.height;
-            
+
             if (w > h) { // Horizontal
                 d = `M${p(x + r)},${p(y)}`;
                 d += ` L${p(x + w - r)},${p(y)}`;
@@ -580,34 +580,34 @@ Exported from the current canvas view.
             return d;
         }
 
-        // SERIALIZE & DOWNLOAD
-        
+        // Serialize and Download
+
         _serializeAndDownload(svg, filename) {
             const serializer = new XMLSerializer();
             let svgString = serializer.serializeToString(svg);
-            
+
             svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgString;
-            
+
             this.downloadSVG(svgString, filename);
             return svgString;
         }
-        
+
         _formatNumber(value, precision) {
             // Use parseFloat and toString to remove trailing zeros
             return parseFloat(value.toFixed(precision)).toString();
         }
-        
+
         downloadSVG(svgString, filename) {
             const blob = new Blob([svgString], { type: 'image/svg+xml' });
             const url = URL.createObjectURL(blob);
-            
+
             const link = document.createElement('a');
             link.href = url;
             link.download = filename;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            
+
             setTimeout(() => URL.revokeObjectURL(url), 100);
         }
 
@@ -621,6 +621,6 @@ Exported from the current canvas view.
             }
         }
     }
-    
+
     window.SVGExporter = SVGExporter;
 })();

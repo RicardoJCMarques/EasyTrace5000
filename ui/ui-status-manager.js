@@ -26,12 +26,12 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
     const timingConfig = config.ui.timing;
     const textConfig = config.ui.text;
     const debugConfig = config.debug;
-    
+
     class StatusManager {
         constructor(ui) {
             this.ui = ui;
@@ -43,7 +43,7 @@
             this.logHistory = [];
             this.isExpanded = false;
             this.showDebugMessages = config.rendering.defaultOptions.showDebugInLog;
-            
+
             this.footerBar = document.getElementById('footer-bar'); // The whole footer
             this.statusBar = document.getElementById('status-bar'); // The clickable center part
             this.logPanel = document.getElementById('status-log-panel');
@@ -78,9 +78,6 @@
             this.addLogEntry(textConfig.logHintViz, 'info');
         }
 
-        /**
-         * New function to update debug visibility
-         */
         setDebugVisibility(isVisible) {
             this.showDebugMessages = isVisible;
             // Re-render the log with/without debug messages
@@ -104,13 +101,10 @@
             }
         }
 
-        /**
-         * Adds an entry to the log history array and updates the UI if open.
-         */
         addLogEntry(message, type = 'normal') {
             const isDebug = type === 'debug';
 
-            // If this is a debug message AND the global debug flag is off, skip it.
+            // If this is a debug message and the global debug flag is off, skip it.
             if (isDebug && !debugConfig.enabled) {
                 return;
             }
@@ -121,9 +115,9 @@
                 message,
                 type
             };
-            
+
             this.logHistory.push(logEntry);
-            
+
             // Keep log from getting too big
             if (this.logHistory.length > 500) {
                 this.logHistory.shift();
@@ -135,9 +129,6 @@
             }
         }
 
-        /**
-         * Renders the *entire* log history to the DOM.
-         */
         _renderLog() {
             if (!this.logHistoryContainer) return;
 
@@ -157,9 +148,6 @@
             this.logHistoryContainer.scrollTop = this.logHistoryContainer.scrollHeight;
         }
 
-        /**
-         * Appends a *single* new entry to the DOM.
-         */
         _appendLogEntry(logEntry) {
             if (!this.logHistoryContainer) return;
             const shouldScroll = this.logHistoryContainer.scrollTop + this.logHistoryContainer.clientHeight >= this.logHistoryContainer.scrollHeight - 20;
@@ -169,32 +157,29 @@
             }
         }
 
-        /**
-         * Creates a single log entry DOM element
-         */
         _createLogElement(logEntry) {
             const p = document.createElement('p');
             p.className = `log-entry ${logEntry.type}`;
             p.textContent = `[${logEntry.timestamp}] ${logEntry.message}`;
             return p;
         }
-        
+
         updateStatus(message = null, type = 'normal') {
             const statusText = document.getElementById('status-text');
             if (!statusText) return;
-            
+
             if (this.statusTimeout) {
                 clearTimeout(this.statusTimeout);
                 this.statusTimeout = null;
             }
-            
+
             if (message) {
                 statusText.textContent = message;
                 statusText.className = `status-text ${type}`;
                 this.currentStatus = { message, type };
 
                 this.addLogEntry(message, type);
-                
+
                 if (type === 'success' || type === 'info') {
                     const duration = timingConfig.statusMessageDuration;
                     this.statusTimeout = setTimeout(() => {
@@ -207,23 +192,23 @@
                 let defaultMessage;
                 if (hasOps) {
                     const stats = this.ui.core.getStats();
-                    // Get the string from en.json: "Ready: {ops} operations, {prims} primitives"
+                    // Get the string from en.json
                     defaultMessage = this.lang.get('status.readyDynamic', textConfig.statusDefault);
                     // Replace the placeholders
                     defaultMessage = defaultMessage
                                         .replace('{ops}', stats.operations)
                                         .replace('{prims}', stats.totalPrimitives);
                 } else {
-                    // Get the default string: "Ready - Add PCB files to begin"
+                    // Get the default string:
                     defaultMessage = this.lang.get('status.default', textConfig.statusDefault);
                 }
-                
+
                 statusText.textContent = defaultMessage;
                 statusText.className = 'status-text';
                 this.currentStatus = null;
             }
         }
-        
+
         showStatus(message, type = 'normal') {
             this.updateStatus(message, type);
         }
@@ -231,18 +216,18 @@
         debugLog(message) {
             this.addLogEntry(message, 'debug');
         }
-        
+
         showProgress(percent) {
             const progressBar = document.getElementById('progress-bar');
             const progressContainer = document.getElementById('status-progress');
-            
+
             if (progressBar && progressContainer) {
                 progressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
                 progressContainer.classList.remove('hidden');
                 this.progressVisible = true;
             }
         }
-        
+
         hideProgress() {
             const progressContainer = document.getElementById('status-progress');
             if (progressContainer) {
@@ -250,23 +235,23 @@
                 this.progressVisible = false;
             }
         }
-        
+
         updateProgressMessage(message, percent) {
             this.updateStatus(message, 'info');
             if (percent !== undefined) {
                 this.showProgress(percent);
             }
         }
-        
+
         async withProgress(message, asyncFn) {
             this.updateStatus(message, 'info');
             this.showProgress(0);
-            
+
             try {
                 const result = await asyncFn((percent) => {
                     this.showProgress(percent);
                 });
-                
+
                 this.hideProgress();
                 this.updateStatus(textConfig.success, 'success');
                 return result;
@@ -283,6 +268,6 @@
             }
         }
     }
-    
+
     window.StatusManager = StatusManager;
 })();

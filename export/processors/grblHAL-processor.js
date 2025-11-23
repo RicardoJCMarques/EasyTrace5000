@@ -26,7 +26,7 @@
 
 (function() {
     'use strict';
-    
+
     // grblHAL is a superset of GRBL but adds M6 tool change and canned cycle support, making it similar to LinuxCNC.
     class GrblHALPostProcessor extends BasePostProcessor {
         constructor() {
@@ -34,7 +34,7 @@
                 fileExtension: '.nc',
                 supportsToolChange: true,
                 supportsArcCommands: true,
-                supportsCannedCycles: true, // grblHAL supports this
+                supportsCannedCycles: true,
                 arcFormat: 'IJ',
                 coordinatePrecision: 3,
                 feedPrecision: 0,
@@ -44,7 +44,7 @@
                 maxRapidRate: 5000
             });
         }
-        
+
         generateToolChange(tool, options) {
             const lines = [];
             const safeZ = options.safeZ || this.config.safetyHeight;
@@ -62,8 +62,8 @@
 
             lines.push(`G0 Z${this.formatCoordinate(safeZ)}`);
             this.currentPosition.z = safeZ;
-            
-            // grblHAL uses M6 T... for tool changes
+
+            // grblHAL uses M6 Tx for tool changes
             const toolNumber = tool.number || options.toolNumber || 1;
             lines.push(`T${toolNumber} M6`);
             lines.push('M0 (Tool change pause - press cycle start)');
@@ -81,13 +81,13 @@
 
             return lines.join('\n');
         }
-        
+
         // grblHAL supports canned cycles
         generatePeckDrill(position, depth, retract, peckDepth, feedRate) {
             // G83 - Peck drilling cycle
             return `G83 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} Q${this.formatCoordinate(peckDepth)} F${this.formatFeed(feedRate)}`;
         }
-        
+
         generateSimpleDrill(position, depth, retract, feedRate, dwell) {
             if (dwell > 0) {
                 // G82 - Drilling cycle with dwell
@@ -96,12 +96,12 @@
                 // G81 - Simple drilling cycle
                 return `G81 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} F${this.formatFeed(feedRate)}`;
             }
-        }
-        
+        } // What about G73?
+
         cancelCannedCycle() {
             return 'G80';
         }
     }
-    
+
     window.GrblHALPostProcessor = GrblHALPostProcessor;
 })();

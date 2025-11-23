@@ -179,7 +179,7 @@
                         </div>
                         <div class="category-files"></div>
                     </div>
-                    <div class="operation-category" data-op-type="clear">
+                    <div class="operation-category" data-op-type="clearing">
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
                             <span class="category-icon">
@@ -189,7 +189,7 @@
                                 </svg>
                             </span>
                             <span class="category-label">Copper Clearing</span>
-                            <button class="btn-icon btn-tiny add-file-btn btn btn--icon btn--compact" data-op-type="clear" title="Add File" aria-label="Add Clear File">
+                            <button class="btn-icon btn-tiny add-file-btn btn btn--icon btn--compact" data-op-type="clearing" title="Add File" aria-label="Add Clearing File">
                                 <svg width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="2"/>
                                 </svg>
@@ -672,12 +672,12 @@
                         <div class="zone-status" id="drill-status"></div>
                     </div>
 
-                    <div class="upload-zone" data-op-type="clear">
+                    <div class="upload-zone" data-op-type="clearing">
                         <div class="zone-header">
                             <span class="zone-icon">🔄</span>
                             <h3>Copper Clearing</h3>
                         </div>
-                        <div class="file-drop-zone" id="clear-drop-zone">
+                        <div class="file-drop-zone" id="clearing-drop-zone">
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                 <polyline points="17 8 12 3 7 8"></polyline>
@@ -685,9 +685,9 @@
                             </svg>
                             <p>Drop keepout/ground files</p>
                             <span class="file-types">.gbr, .gpl, .gnd</span>
-                            <input type="file" id="clear-file" accept=".gbr,.ger,.gpl,.gp1,.gnd" hidden>
+                            <input type="file" id="clearing-file" accept=".gbr,.ger,.gpl,.gp1,.gnd" hidden>
                         </div>
-                        <div class="zone-status" id="clear-status"></div>
+                        <div class="zone-status" id="clearing-status"></div>
                     </div>
 
                     <div class="upload-zone" data-op-type="cutout">
@@ -760,7 +760,7 @@
 
                     <div class="property-field field-group">
                         <label class="checkbox-label">
-                            <input type="checkbox" id="gcode-optimize-paths">
+                            <input type="checkbox" id="gcode-optimize-paths" checked>
                             <span>Optimize toolpaths (Experimental)</span>
                         </label>
                     </div>
@@ -846,6 +846,7 @@
             'toolpath/toolpath-primitives.js',
             'toolpath/toolpath-optimizer.js',
             'toolpath/toolpath-machine-processor.js',
+            'toolpath/toolpath-tab-planner.js',
             'toolpath/toolpath-geometry-translator.js',
             
             // G-code generation

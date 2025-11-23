@@ -26,7 +26,7 @@
 
 (function() {
     'use strict';
-    
+
     class GRBLPostProcessor extends BasePostProcessor {
         constructor() {
             super('GRBL', {
@@ -39,11 +39,11 @@
                 feedPrecision: 0,
                 spindlePrecision: 0,
                 modalCommands: true,
-                maxSpindleSpeed: 30000,
+                maxSpindleSpeed: 30000, // in config?
                 maxRapidRate: 1000
             });
         }
-        
+
         generateToolChange(tool, options) {
             const lines = [];
             const safeZ = options.safeZ || this.config.safetyHeight;
@@ -55,7 +55,7 @@
             if (stopGcode) {
                 lines.push(stopGcode);
             } else if (this.currentSpindle > 0) {
-                lines.push('M5 ; Spindle Stop'); // Fallback
+                lines.push('M5 ; Spindle Stop'); // Failsafe
                 this.currentSpindle = 0;
             }
 
@@ -94,6 +94,6 @@
             return warnings;
         }
     }
-    
+
     window.GRBLPostProcessor = GRBLPostProcessor;
 })();

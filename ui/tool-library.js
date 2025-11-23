@@ -26,55 +26,55 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
     const debugConfig = config.debug;
-    
+
     class ToolLibrary {
         constructor() {
             this.tools = [];
             this.toolsById = new Map();
             this.toolsByType = new Map();
             this.toolsByOperation = new Map();
-            
+
             this.isLoaded = false;
             this.loadError = null;
         }
-        
+
         async init() {
             if (this.isLoaded) return true;
-            
+
             try {
                 // First try to load from config
                 if (config.tools && Array.isArray(config.tools)) {
                     this.loadFromConfig();
                     return true;
                 }
-                
-                // Fallback to loading from external file
+
+                // Fallback to loading from external file // Review - This shouldn't really be the fallback but the main option?
                 const loaded = await this.loadFromFile('tools.json');
                 return loaded;
-                
+
             } catch (error) {
                 console.error('[ToolLibrary] Failed to initialize tool library:', error);
                 this.loadError = error.message;
-                
-                // Load minimal defaults as fallback
+
+                // Load minimal defaults as fallback // Review - How many fallbacks are needed?
                 this.loadDefaults();
                 return false;
             }
         }
-        
+
         loadFromConfig() {
             if (!config.tools || !Array.isArray(config.tools)) {
                 throw new Error('No tools found in config');
             }
-            
+
             this.tools = [];
             this.toolsById.clear();
             this.toolsByType.clear();
             this.toolsByOperation.clear();
-            
+
             config.tools.forEach(tool => {
                 if (this.validateTool(tool)) {
                     this.addTool(tool);
@@ -82,7 +82,7 @@
                     console.warn(`[ToolLibrary] Invalid tool skipped: ${tool.id || 'unknown'}`);
                 }
             });
-            
+
             this.isLoaded = true;
             
             if (debugConfig.enabled) {
@@ -90,46 +90,45 @@
                 this.logToolStats();
             }
         }
-        
+
         async loadFromFile(url) {
             try {
                 const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                
+
                 const data = await response.json();
-                
+
                 if (!data.tools || !Array.isArray(data.tools)) {
                     throw new Error('Invalid tools.json format');
                 }
-                
+
                 this.tools = [];
                 this.toolsById.clear();
                 this.toolsByType.clear();
                 this.toolsByOperation.clear();
-                
+
                 data.tools.forEach(tool => {
                     if (this.validateTool(tool)) {
                         this.addTool(tool);
                     }
                 });
-                
+
                 this.isLoaded = true;
-                
+
                 this.debug(`Loaded ${this.tools.length} tools from ${url}`);
-                
+
                 return true;
-                
+
             } catch (error) {
                 console.error('[ToolLibrary] Failed to load tools from file:', error);
                 this.loadError = error.message;
                 return false;
             }
         }
-        
+
         loadDefaults() {
-            // Minimal fallback tools
             const defaults = [
                 {
                     id: 'default_endmill',
@@ -151,7 +150,7 @@
                         maxDepthPerPass: 0.05,
                         stepOver: 0.5
                     },
-                    operations: ['isolation', 'clear', 'cutout'],
+                    operations: ['isolation', 'clearing', 'cutout'],
                     material: 'carbide'
                 },
                 {
@@ -177,23 +176,23 @@
                     material: 'carbide'
                 }
             ];
-            
+
             defaults.forEach(tool => this.addTool(tool));
-            
+
             this.isLoaded = true;
             console.warn('[ToolLibrary] Using default tools due to loading failure');
         }
-        
+
         addTool(tool) {
             this.tools.push(tool);
             this.toolsById.set(tool.id, tool);
-            
+
             // Index by type
             if (!this.toolsByType.has(tool.type)) {
                 this.toolsByType.set(tool.type, []);
             }
             this.toolsByType.get(tool.type).push(tool);
-            
+
             // Index by operations
             if (tool.operations && Array.isArray(tool.operations)) {
                 tool.operations.forEach(op => {
@@ -204,7 +203,7 @@
                 });
             }
         }
-        
+
         validateTool(tool) {
             // Required top-level fields
             const required = ['id', 'name', 'type', 'geometry', 'cutting', 'operations'];
@@ -216,7 +215,7 @@
                     return false;
                 }
             }
-            
+
             // Required geometry fields
             if (!tool.geometry.diameter) {
                 if (debugConfig.enabled) {
@@ -224,7 +223,7 @@
                 }
                 return false;
             }
-            
+
             // Required cutting parameters
             const cuttingRequired = ['feedRate', 'plungeRate', 'spindleSpeed'];
             for (const field of cuttingRequired) {
@@ -238,19 +237,19 @@
             
             return true;
         }
-        
+
         getTool(id) {
             return this.toolsById.get(id) || null;
         }
-        
+
         getToolsByType(type) {
             return this.toolsByType.get(type) || [];
         }
-        
+
         getToolsForOperation(operationType) {
             return this.toolsByOperation.get(operationType) || [];
         }
-        
+
         getDefaultToolForOperation(operationType) {
             // Try to get default from config
             const opConfig = config.operations?.[operationType];
@@ -258,12 +257,12 @@
                 const tool = this.getTool(opConfig.defaultTool);
                 if (tool) return tool;
             }
-            
+
             // Fallback to first compatible tool
             const compatibleTools = this.getToolsForOperation(operationType);
             return compatibleTools[0] || null;
         }
-        
+
         getToolCategories() {
             const categories = new Set();
             this.tools.forEach(tool => {
@@ -273,11 +272,11 @@
             });
             return Array.from(categories);
         }
-        
+
         getToolsByCategory(category) {
             return this.tools.filter(tool => tool.category === category);
         }
-        
+
         // Export tool library for backup/sharing
         exportTools() {
             return {
@@ -286,7 +285,7 @@
                 tools: this.tools
             };
         }
-        
+
         // Import tools from JSON
         importTools(data) {
             if (!data || !data.tools || !Array.isArray(data.tools)) {
@@ -316,8 +315,7 @@
                 total: data.tools.length
             };
         }
-        
-        // Debug helpers
+
         debug(message, data = null) {
             if (this.ui && this.ui.debug) {
                 this.ui.debug(`[ToolLibrary] ${message}`, data);
@@ -336,7 +334,7 @@
                 });
             }
         }
-        
+
         getStats() {
             return {
                 totalTools: this.tools.length,
@@ -348,6 +346,6 @@
             };
         }
     }
-    
+
     window.ToolLibrary = ToolLibrary;
 })();

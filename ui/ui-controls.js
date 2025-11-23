@@ -26,25 +26,25 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
     const debugConfig = config.debug;
     const renderDefaults = config.rendering?.defaultOptions;
-    
+
     class UIControls {
         constructor(ui) {
             this.ui = ui;
             this.lang = ui.lang
             this.renderer = null;
             this.coordinateSystem = null;
-            
+
             // Input tracking
             this.inputTracking = {
                 lastXValue: '0',
                 lastYValue: '0'
             };
         }
-        
+
         init(renderer, coordinateSystem) {
             this.renderer = renderer;
             this.coordinateSystem = coordinateSystem;
@@ -81,26 +81,26 @@
             const attachTo = (inputId, tooltipKey) => {
                 const input = document.getElementById(inputId);
                 if (!input) return;
-                
+
                 // Find the label associated with this input
                 const label = document.querySelector(`label[for="${inputId}"]`) || 
                               input.closest('.property-field, .sidebar-section')?.querySelector('label');
-                              
+
                 if (label) {
                     // Check if this input's label already has a tooltip
                     if (processedLabels.has(label)) {
-                        return; // We've already attached a tooltip to this label
+                        return; // Tooltip already attached to this label
                     }
                     processedLabels.add(label); // Mark this label as processed
 
                     const text = this.lang.get(tooltipKey);
-                    
+
                     // Try to get a title from the 'parameters' section, fallback to label text
                     const titleKey = tooltipKey.replace('tooltips.', 'parameters.');
                     const title = this.lang.get(titleKey, label.textContent);
-                    
+
                     if (text) {
-                        // This will create the '?' icon
+                        // This will create the '?' tooltip icon
                         window.TooltipManager.attachWithIcon(label, { title: title, text: text }, {
                             showOnFocus: true
                         });
@@ -120,7 +120,7 @@
             attachTo('rapid-feed', 'tooltips.machineSettings.rapidFeed');
             attachTo('post-processor', 'tooltips.machineSettings.postProcessor');
             attachTo('gcode-units', 'tooltips.machineSettings.gcodeUnits');
-            
+
             // Visualization Panel Toggles
             attachTo('show-grid', 'tooltips.vizPanel.grid');
             attachTo('show-wireframe', 'tooltips.vizPanel.wireframe');
@@ -138,7 +138,7 @@
         }
 
         /**
-         * Sets up visualization toggles using event delegation and declarative data- attributes from the HTML.
+         * Sets up visualization toggles using event delegation and declarative data attributes from the HTML
          */
         setupVisualizationToggles() {
             if (!this.renderer) return;
@@ -149,7 +149,7 @@
                 console.warn("[UIControls] Visualization panel 'viz-controls' not found.");
                 return;
             }
-            
+
             // 1. Set Initial State
             // Iterate over all checkboxes with a [data-option]
             vizControls.querySelectorAll('input[type="checkbox"][data-option]').forEach(el => {
@@ -161,7 +161,7 @@
                     this.renderer.options[option] = initialState;
                 }
             });
-            
+
             // Special case: Debug log toggle
             const debugLogToggle = document.getElementById('debug-log-toggle');
             if (debugLogToggle) {
@@ -176,7 +176,7 @@
                 if (el.tagName !== 'INPUT' || el.type !== 'checkbox') {
                     return;
                 }
-                
+
                 const isChecked = el.checked;
                 const option = el.dataset.option;
                 const action = el.dataset.action;
@@ -193,7 +193,7 @@
                         return;
                     }
                 }
-                
+
                 // 4. Perform Action
                 switch (action) {
                     case 'render':
@@ -203,13 +203,13 @@
                         }
                         this.renderer.render();
                         break;
-                        
+
                     case 'update':
                         // Full re-process and redraw (e.g., fusion, offsets)
                         if (option) {
                             this.renderer.setOptions({ [option]: isChecked });
                         }
-                        
+
                         // Special logic for fusion/arc changes
                         if (option === 'fuseGeometry' && !isChecked) {
                             this.resetFusionStates(); // Turn off dependents
@@ -222,10 +222,10 @@
                                 this.ui.core.geometryProcessor.clearCachedStates();
                             }
                         }
-                        
+
                         await this.ui.updateRendererAsync();
                         break;
-                        
+
                     case 'toggle-debug':
                         // Special case for the global debug flag
                         if (window.PCBCAMConfig) {
@@ -235,21 +235,21 @@
                             this.ui.statusManager.setDebugVisibility(isChecked);
                         }
                         break;
-                        
+
                     default:
                         // For toggles that manage layer visibility directly (e.g., show-regions)
                         if (option) {
                             this.renderer.setOptions({ [option]: isChecked });
                         }
-                        // This will be caught on the next render, but a simple render is safer
+                        // This will be caught on the next render, but a simple render is safer // Review - What now?
                         this.renderer.render();
                         break;
                 }
             });
-            
+
             this.debug("Visualization toggles setup complete.");
         }
-        
+
         setupOffsetControls() {
             const xInput = document.getElementById('x-offset');
             const yInput = document.getElementById('y-offset');
@@ -258,10 +258,10 @@
                 console.warn('[UIControls] Coordinate inputs not found in sidebar');
                 return;
             }
-            
+
             xInput.removeAttribute('readonly');
             yInput.removeAttribute('readonly');
-            
+
             this.inputTracking.lastXValue = xInput.value || '0';
             this.inputTracking.lastYValue = yInput.value || '0';
 
@@ -269,21 +269,21 @@
                 const handleValueChange = () => {
                     const currentX = xInput.value;
                     const currentY = yInput.value;
-                    
+
                     if (currentX !== this.inputTracking.lastXValue || currentY !== this.inputTracking.lastYValue) {
                         const offsetX = parseFloat(currentX) || 0;
                         const offsetY = parseFloat(currentY) || 0;
-                        
+
                         if (this.coordinateSystem) {
                             this.coordinateSystem.updatePreviewByOffset(offsetX, offsetY);
                             this.ui.updateOriginDisplay();
                         }
-                        
+
                         this.inputTracking.lastXValue = currentX;
                         this.inputTracking.lastYValue = currentY;
                     }
                 };
-                
+
                 xInput.addEventListener('blur', handleValueChange);
                 yInput.addEventListener('blur', handleValueChange);
                 
@@ -296,37 +296,36 @@
                 
                 xInput.addEventListener('keypress', handleEnter);
                 yInput.addEventListener('keypress', handleEnter);
-
             }
-            
+
             // Center origin button
             const centerBtn = document.getElementById('center-origin-btn');
             if (centerBtn) {
                 centerBtn.addEventListener('click', () => this.centerOrigin());
             }
-            
+
             // Bottom-left origin button
             const bottomLeftBtn = document.getElementById('bottom-left-origin-btn');
             if (bottomLeftBtn) {
                 bottomLeftBtn.addEventListener('click', () => this.bottomLeftOrigin());
             }
-            
+
             // Reset origin button
             const resetBtn = document.getElementById('reset-origin-btn');
             if (resetBtn) {
                 resetBtn.addEventListener('click', () => this.resetOrigin());
             }
-            
+
             // Apply offset button
             const applyBtn = document.getElementById('apply-set-origin-btn');
             if (applyBtn) {
                 applyBtn.addEventListener('click', () => this.applyOffsetAndSetOrigin());
             }
         }
-        
+
         setupRotationControls() {
             const rotationInput = document.getElementById('rotation-angle');
-            
+
             if (rotationInput) {
                 rotationInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') {
@@ -338,7 +337,7 @@
                     }
                 });
             }
-            
+
             // Apply rotation button
             const applyBtn = document.getElementById('apply-rotation-btn');
             if (applyBtn) {
@@ -351,7 +350,7 @@
                     }
                 });
             }
-            
+
             // Reset rotation button
             const resetBtn = document.getElementById('reset-rotation-btn');
             if (resetBtn) {
@@ -362,7 +361,7 @@
                 });
             }
         }
-        
+
         resetFusionStates() {
             // Reset preprocessed view
             this.renderer.setOptions({ showPreprocessed: false });
@@ -407,31 +406,31 @@
                 statsContainer.classList.add('hidden');
             }
         }
-        
+
         updateOffsetInputsWithTracking() {
             const xInput = document.getElementById('x-offset');
             const yInput = document.getElementById('y-offset');
-            
+
             if (xInput && yInput && this.coordinateSystem) {
-                
+
                 const offset = this.coordinateSystem.getOffsetFromSaved();
                 const precision = config.gcode?.precision?.coordinates || 3;
                 const newXValue = offset.x.toFixed(precision);
                 const newYValue = offset.y.toFixed(precision);
-                
+
                 xInput.value = newXValue;
                 yInput.value = newYValue;
-                
+
                 // Also update the trackers
                 this.inputTracking.lastXValue = newXValue;
                 this.inputTracking.lastYValue = newYValue;
             }
         }
-        
+
         // Coordinate system operations
         centerOrigin() {
             if (!this.coordinateSystem) return;
-            
+
             const result = this.coordinateSystem.previewCenterOrigin();
             if (result.success) {
                 this.updateOffsetInputsWithTracking();
@@ -441,10 +440,10 @@
                 this.ui.statusManager.showStatus('Cannot preview center: ' + result.error, 'error');
             }
         }
-        
+
         bottomLeftOrigin() {
             if (!this.coordinateSystem) return;
-            
+
             const result = this.coordinateSystem.previewBottomLeftOrigin();
             if (result.success) {
                 this.updateOffsetInputsWithTracking();
@@ -454,7 +453,7 @@
                 this.ui.statusManager.showStatus('Cannot preview bottom-left: ' + result.error, 'error');
             }
         }
-        
+
         applyOffsetAndSetOrigin() {
             if (!this.coordinateSystem) return;
             
@@ -467,12 +466,11 @@
                 this.ui.statusManager.showStatus('Cannot save origin: ' + result.error, 'error');
             }
         }
-        
+
         resetOrigin() {
             if (!this.coordinateSystem) return;
-            
+
             const result = this.coordinateSystem.resetToSavedOrigin();
-            
             if (result.success) {
                 this.updateOffsetInputsWithTracking();
                 this.ui.updateOriginDisplay();
@@ -481,10 +479,10 @@
                 this.ui.statusManager.showStatus('Cannot reset: ' + result.error, 'error');
             }
         }
-        
+
         applyBoardRotation(angle) {
             if (!this.coordinateSystem) return;
-            
+
             const result = this.coordinateSystem.rotateBoardBy(angle);
             if (result.success) {
                 this.ui.updateOriginDisplay();
@@ -493,10 +491,10 @@
                 this.ui.statusManager.showStatus(`Cannot rotate board: ${result.error}`, 'error');
             }
         }
-        
+
         resetBoardRotationOnly() {
             if (!this.coordinateSystem) return;
-            
+
             const result = this.coordinateSystem.resetRotationOnly();
             if (result.success) {
                 this.ui.updateOriginDisplay();
@@ -558,16 +556,15 @@
 
         /**
          * Finds and collapses all collapsible sections in the right sidebar.
-         * This is called by the TreeManager to ensure the PropertyInspector is visible when a new item is selected.
          */
         collapseRightSidebar() {
             this.debug('Collapsing right sidebar sections...');
             const rightSidebar = document.getElementById('sidebar-right');
             if (!rightSidebar) return;
 
-            // Find all collapsible content panels *within the right sidebar*
+            // Find all collapsible content panels within the right sidebar
             const sections = rightSidebar.querySelectorAll('.section-content.collapsible');
-            
+
             // This is safer than querying the headers, as it finds the content directly
             sections.forEach(content => {
                 // Find the corresponding header and indicator
@@ -576,7 +573,7 @@
 
                 // Add the 'collapsed' class to hide the content
                 content.classList.add('collapsed');
-                
+
                 // Also update the '▼' indicator
                 if (indicator) {
                     indicator.classList.add('collapsed');
@@ -595,7 +592,7 @@
 
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                // We toggle the 'collapsed' class, which is already in your HTML
+                // Toggle the collapsed class
                 panel.classList.toggle('collapsed'); 
                 btn.classList.toggle('active', !panel.classList.contains('collapsed'));
             });
@@ -632,16 +629,16 @@
                 postProcessorSelect.value = loadedSettings.gcode.postProcessor;
                 postProcessorSelect.addEventListener('change', (e) => {
                     const newProcessor = e.target.value;
-                    
+
                     // 1. Get the new default templates
                     const newStartCode = config.getGcodeTemplate(newProcessor, 'start');
                     const newEndCode = config.getGcodeTemplate(newProcessor, 'end');
-                    
+
                     // 2. Update the text areas in the UI
                     if (startCodeTA) startCodeTA.value = newStartCode;
                     if (endCodeTA) endCodeTA.value = newEndCode;
 
-                    // 3. Save ALL three settings to the core
+                    // 3. Save all three settings to the core
                     this.ui.core.updateSettings('gcode', { 
                         postProcessor: newProcessor,
                         startCode: newStartCode,
@@ -671,7 +668,7 @@
                     this.ui.core.updateSettings('pcb', { thickness: parseFloat(e.target.value) });
                 });
             }
-            
+
             const safeZInput = document.getElementById('safe-z');
             if (safeZInput) {
                 safeZInput.value = loadedSettings.machine.safeZ;
@@ -680,7 +677,7 @@
                     this.ui.core.updateSettings('machine', { safeZ: val });
                 });
             }
-            
+
             const travelZInput = document.getElementById('travel-z');
             if (travelZInput) {
                 travelZInput.value = loadedSettings.machine.travelZ;
@@ -689,7 +686,7 @@
                     this.ui.core.updateSettings('machine', { travelZ: val });
                 });
             }
-            
+
             const rapidFeedInput = document.getElementById('rapid-feed');
             if (rapidFeedInput) {
                 rapidFeedInput.value = loadedSettings.machine.rapidFeed;
@@ -697,7 +694,7 @@
                     this.ui.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
                 });
             }
-            
+
             const gcodeUnitsSelect = document.getElementById('gcode-units');
             if (gcodeUnitsSelect) {
                 gcodeUnitsSelect.value = loadedSettings.gcode.units;

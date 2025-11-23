@@ -1,6 +1,6 @@
 /**
- * @file        geometry/geometry-curve-registry.js
- * @description Manages the Curve Registry for arc-reconstruction - 64-bit Packing: CurveID (24-bit) + SegmentIndex (31-bit) + Clockwise Winding (1-bit) + Unused (8-bit)
+ * @file        geometry/geometry-clipper-wrapper.js
+ * @description Clipper2 WASM library intermediary
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -27,30 +27,30 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    
+    const config = window.PCBCAMConfig;
+    const debugConfig = config.debug;
+
     class ClipperWrapper {
         constructor(options = {}) {
             this.options = {
-                scale: options.scale || 10000,
+                scale: options.scale,
             };
-            
+
             this.clipper2 = null;
             this.initialized = false;
             this.supportsZ = false;
-            
+
             // Track allocated WASM objects for cleanup
             this.allocatedObjects = [];
-            
-            // Metadata packing configuration
+
+            // Metadata packing configuration - 64-bit Packing: CurveID (24-bit) + SegmentIndex (31-bit) + Clockwise Winding (1-bit) + Unused (8-bit)
             this.metadataPacking = {
                 curveIdBits: 24n,      // Bits 0-23: supports 16.7 million curves
                 segmentIndexBits: 31n,  // Bits 24-54: supports 2.1 billion points per curve (reduced by 1)
                 clockwiseBit: 1n,       // Bit 55: clockwise flag
                 reservedBits: 8n        // Bits 56-63: reserved for future use
             };
-            
+
             // Pre-calculate bit masks for efficiency
             this.bitMasks = {
                 curveId: (1n << this.metadataPacking.curveIdBits) - 1n,
@@ -59,61 +59,60 @@
                 reserved: (1n << this.metadataPacking.reservedBits) - 1n
             };
         }
-        
+
         async initialize() {
             if (this.initialized) return true;
-            
+
             try {
                 if (typeof Clipper2ZFactory === 'undefined') {
                     throw new Error('Clipper2ZFactory not found');
                 }
-                
+
                 const clipper2Core = await Clipper2ZFactory();
                 if (!clipper2Core) {
                     throw new Error('Failed to load Clipper2 core module');
                 }
-                
+
                 this.clipper2 = clipper2Core;
-                
+
                 // Verify required APIs
                 const requiredAPIs = [
                     'Paths64', 'Path64', 'Point64', 'Clipper64',
                     'ClipType', 'FillRule', 'PolyPath64', 'AreaPath64'
                 ];
-                
+
                 for (const api of requiredAPIs) {
                     if (!this.clipper2[api]) {
                         throw new Error(`Required Clipper2 API '${api}' not found`);
                     }
                 }
-                
+
                 // Check Z coordinate support
                 const testPoint = new this.clipper2.Point64(BigInt(0), BigInt(0), BigInt(1));
                 this.supportsZ = testPoint.z !== undefined;
                 testPoint.delete();
-                
+
                 this.initialized = true;
                 this.debug(`Clipper2 initialized (Z support: ${this.supportsZ})`);
                 this.debug(`Metadata packing: ${24}-bit curveId, ${31}-bit segmentIndex, 1-bit clockwise, ${8}-bit reserved`);
                 return true;
-                
+
             } catch (error) {
                 console.error('Failed to initialize Clipper2:', error);
                 this.initialized = false;
                 throw error;
             }
         }
-        
+
         // Calculate signed area of a path (negative = clockwise, positive = CCW)
-        // Properly exposed for external use with coordinate conversion
         calculateSignedArea(points) {
             if (!this.initialized || !points || points.length < 3) {
                 return 0;
             }
-            
+
             const { Path64, Point64, AreaPath64 } = this.clipper2;
             const path = new Path64();
-            
+
             try {
                 // Add points to path with proper scaling
                 points.forEach(p => {
@@ -123,17 +122,17 @@
                     path.push_back(point);
                     point.delete();
                 });
-                
+
                 // Calculate area using Clipper2's native function
                 const area = AreaPath64(path);
-                
+
                 // Convert BigInt to number and unscale
                 // The area is in scaled units squared, so divide by scale²
                 const scaledArea = Number(area);
                 const actualArea = scaledArea / (this.options.scale * this.options.scale);
-                
+
                 return actualArea;
-                
+
             } finally {
                 // Clean up WASM objects
                 if (path && typeof path.delete === 'function') {
@@ -141,16 +140,16 @@
                 }
             }
         }
-        
+
         // Calculate signed area without scaling (for already-scaled points)
         calculateSignedAreaRaw(points) {
             if (!this.initialized || !points || points.length < 3) {
                 return 0;
             }
-            
+
             const { Path64, Point64, AreaPath64 } = this.clipper2;
             const path = new Path64();
-            
+
             try {
                 // Add points without scaling (assume already in integer coordinates)
                 points.forEach(p => {
@@ -160,18 +159,18 @@
                     path.push_back(point);
                     point.delete();
                 });
-                
+
                 // Calculate area
                 const area = AreaPath64(path);
                 return Number(area);
-                
+
             } finally {
                 if (path && typeof path.delete === 'function') {
                     path.delete();
                 }
             }
         }
-        
+
         // Determine if points form a clockwise path
         // In screen coordinates (Y-down): negative area = CW, positive = CCW
         isClockwise(points) {
@@ -181,52 +180,51 @@
             // Positive area = Counter-clockwise
             return area < 0;
         }
-        
+
         // Determine orientation specifically for arc reconstruction
-        // Takes into account the coordinate system being used
         determineArcOrientation(points, center = null) {
             if (!this.initialized || !points || points.length < 2) {
                 return false; // Default to CCW
             }
-            
-            // For 2-point arcs, we need to use a different approach
+
+            // For 2-point arcs
             if (points.length === 2 && center) {
                 // Use the angle progression to determine direction
                 const p1 = points[0];
                 const p2 = points[1];
-                
+
                 const angle1 = Math.atan2(p1.y - center.y, p1.x - center.x);
                 const angle2 = Math.atan2(p2.y - center.y, p2.x - center.x);
-                
+
                 // Normalize angle difference
                 let angleDiff = angle2 - angle1;
                 while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
                 while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-                
+
                 // In screen coordinates (Y-down):
                 // Positive angle difference = CW
                 // Negative angle difference = CCW
                 return angleDiff > 0;
             }
-            
+
             // For 3+ points, use signed area
             const area = this.calculateSignedArea(points);
-            
+
             // In screen coordinates (Y-down):
             // Negative area = Clockwise
             // Positive area = Counter-clockwise
             return area < 0;
         }
-        
+
         // Pack metadata into 64-bit Z coordinate
         packMetadata(curveId, segmentIndex, clockwise = false, reserved = 0) {
             if (!curveId || curveId === 0) return BigInt(0);
-            
+
             const packedCurveId = BigInt(curveId) & this.bitMasks.curveId;
             const packedSegmentIndex = BigInt(segmentIndex || 0) & this.bitMasks.segmentIndex;
             const packedClockwise = clockwise ? 1n : 0n;
             const packedReserved = BigInt(reserved) & this.bitMasks.reserved;
-            
+
             // Pack: reserved(8) | clockwise(1) | segmentIndex(31) | curveId(24)
             const z = packedCurveId | 
                      (packedSegmentIndex << 24n) | 
@@ -235,82 +233,82 @@
             
             return z;
         }
-        
+
         // Unpack metadata from 64-bit Z coordinate
         unpackMetadata(z) {
             if (!z || z === 0n) {
                 return { curveId: 0, segmentIndex: 0, clockwise: false, reserved: 0 };
             }
-            
+
             const zBigInt = BigInt(z);
-            
+
             const curveId = Number(zBigInt & this.bitMasks.curveId);
             const segmentIndex = Number((zBigInt >> 24n) & this.bitMasks.segmentIndex);
             const clockwise = Boolean((zBigInt >> 55n) & 1n);
             const reserved = Number((zBigInt >> 56n) & this.bitMasks.reserved);
-            
+
             return { curveId, segmentIndex, clockwise, reserved };
         }
-        
+
         // Union multiple paths into merged regions
         async union(paths, fillRule = 'nonzero') {
             await this.ensureInitialized();
-            
+
             const { Paths64, ClipType, FillRule, Clipper64, PolyPath64 } = this.clipper2;
             const objects = [];
-            
+
             try {
                 const input = new Paths64();
                 objects.push(input);
-                
+
                 // Convert JS paths to Clipper paths
                 paths.forEach(path => {
-                    const clipperPath = this._jsPathToClipper(path.points || path, path.curveIds, path.clockwise);
+                    const points = path.contours?.[0]?.points;
+                    const clipperPath = this._jsPathToClipper(points, path.clockwise);
                     if (clipperPath) {
                         input.push_back(clipperPath);
                         objects.push(clipperPath);
                     }
                 });
-                
+
                 const clipper = new Clipper64();
                 const solution = new PolyPath64();
                 objects.push(clipper, solution);
-                
+
                 clipper.AddSubject(input);
-                
+
                 const fr = fillRule === 'evenodd' ? FillRule.EvenOdd : FillRule.NonZero;
                 const success = clipper.ExecutePoly(ClipType.Union, fr, solution);
-                
+
                 if (!success) {
                     this.debug('Union operation failed');
                     return [];
                 }
-                
+
                 return this._polyTreeToJS(solution);
-                
+
             } finally {
                 this._cleanup(objects);
             }
         }
-        
+
         // Difference operation (subtract clipPaths from subjectPaths)
         async difference(subjectPaths, clipPaths, fillRule = 'nonzero') {
             await this.ensureInitialized();
-            
+
             const { Paths64, ClipType, FillRule, Clipper64, PolyPath64 } = this.clipper2;
             const objects = [];
-            
+
             try {
                 const subjects = new Paths64();
                 const clips = new Paths64();
                 objects.push(subjects, clips);
-                
+
                 // Add subject paths (ensure CCW for positive)
                 subjectPaths.forEach(path => {
+                    const points = path.contours?.[0]?.points;
                     const clipperPath = this._jsPathToClipper(
-                        path.points || path,
-                        path.curveIds,
-                        path.clockwise,
+                        points,
                         'dark'
                     );
                     if (clipperPath) {
@@ -318,13 +316,12 @@
                         objects.push(clipperPath);
                     }
                 });
-                
+
                 // Add clip paths (ensure CW for negative)
                 clipPaths.forEach(path => {
+                    const points = path.contours?.[0]?.points;
                     const clipperPath = this._jsPathToClipper(
-                        path.points || path,
-                        path.curveIds,
-                        path.clockwise,
+                        points,
                         'clear'
                     );
                     if (clipperPath) {
@@ -332,41 +329,41 @@
                         objects.push(clipperPath);
                     }
                 });
-                
+
                 const clipper = new Clipper64();
                 const solution = new PolyPath64();
                 objects.push(clipper, solution);
-                
+
                 if (subjects.size() > 0) clipper.AddSubject(subjects);
                 if (clips.size() > 0) clipper.AddClip(clips);
-                
+
                 const fr = fillRule === 'evenodd' ? FillRule.EvenOdd : FillRule.NonZero;
                 const success = clipper.ExecutePoly(ClipType.Difference, fr, solution);
-                
+
                 if (!success) {
                     this.debug('Difference operation failed');
                     return [];
                 }
-                
+
                 return this._polyTreeToJS(solution);
-                
+
             } finally {
                 this._cleanup(objects);
             }
         }
-        
+
         // Convert JS path to Clipper Path64 with metadata packing
-        _jsPathToClipper(points, curveIds = [], isClockwise = false, polarity = 'dark') {
+        _jsPathToClipper(points, polarity = 'dark') {
             const { Path64, Point64, AreaPath64 } = this.clipper2;
-            
+
             if (!points || points.length < 3) return null;
-            
+
             const path = new Path64();
-            
+
             try {
                 let metadataPointCount = 0;
                 let debugSample = null;
-                
+
                 // Get clockwise info from the global registry if available
                 const getClockwiseForCurve = (curveId) => {
                     if (window.globalCurveRegistry) {
@@ -375,12 +372,12 @@
                     }
                     return false;
                 };
-                
+
                 // Add points with metadata packing
                 points.forEach((p, index) => {
                     const x = BigInt(Math.round(p.x * this.options.scale));
                     const y = BigInt(Math.round(p.y * this.options.scale));
-                    
+
                     // Pack metadata into Z coordinate
                     let z = BigInt(0);
                     if (this.supportsZ) {
@@ -394,7 +391,7 @@
                                 0 // reserved
                             );
                             metadataPointCount++;
-                            
+
                             // Capture first tagged point for debug
                             if (!debugSample && debugConfig.enabled) {
                                 debugSample = {
@@ -406,39 +403,28 @@
                                 };
                             }
                         }
-                        // Fallback to primitive-level curve IDs if no point-level data
-                        else if (curveIds && curveIds[index] !== undefined) {
-                            const curveClockwise = getClockwiseForCurve(curveIds[index]);
-                            z = this.packMetadata(
-                                curveIds[index],
-                                index,
-                                curveClockwise,
-                                0
-                            );
-                            metadataPointCount++;
-                        }
                     }
-                    
+
                     const point = new Point64(x, y, z);
                     path.push_back(point);
                     point.delete();
                 });
-                
+
                 if (metadataPointCount > 0) {
                     this.debug(`Packed metadata for ${metadataPointCount}/${points.length} points`);
                     if (debugSample) {
                         this.debug(`Sample: Point ${debugSample.index} - ...`);
                     }
                 }
-                
+
                 // Check and fix winding based on polarity
                 const area = AreaPath64(path);
                 const pathIsClockwise = area < 0;
-                
+
                 const needsReversal = 
                     (polarity === 'dark' && pathIsClockwise) ||
                     (polarity === 'clear' && !pathIsClockwise);
-                
+
                 if (needsReversal) {
                     const reversed = new Path64();
                     for (let i = path.size() - 1; i >= 0; i--) {
@@ -447,38 +433,37 @@
                     path.delete();
                     return reversed;
                 }
-                
                 return path;
-                
+
             } catch (error) {
                 console.error('Error converting path to Clipper:', error);
                 path.delete();
                 return null;
             }
         }
-        
+
         // Convert Clipper PolyTree to JS primitives with metadata unpacking
         _polyTreeToJS(polyNode) {
             const primitives = [];
-            
+
             // Process each root node (top-level polygon)
             for (let i = 0; i < polyNode.count(); i++) {
                 const rootNode = polyNode.child(i);
                 const rootPoly = rootNode.polygon();
-                
+
                 if (!rootPoly || rootPoly.size() < 3) continue;
-                
+
                 // Extract root points with metadata
                 const rootPoints = [];
                 const curveIds = new Set();
-                
+
                 for (let j = 0; j < rootPoly.size(); j++) {
                     const pt = rootPoly.get(j);
                     const point = {
                         x: Number(pt.x) / this.options.scale,
                         y: Number(pt.y) / this.options.scale
                     };
-                    
+
                     if (this.supportsZ && pt.z !== undefined) {
                         const z = BigInt(pt.z);
                         if (z > 0n) {
@@ -491,27 +476,27 @@
                             }
                         }
                     }
-                    
+
                     rootPoints.push(point);
                 }
-                
+
                 // Build complete contour hierarchy recursively
                 const contours = [];
-                
+
                 const extractContours = (node, level, parentIdx) => {
                     const poly = node.polygon();
                     if (!poly || poly.size() < 3) return;
-                    
+
                     const points = [];
                     const contourCurveIds = new Set();
-                    
+
                     for (let k = 0; k < poly.size(); k++) {
                         const pt = poly.get(k);
                         const point = {
                             x: Number(pt.x) / this.options.scale,
                             y: Number(pt.y) / this.options.scale
                         };
-                        
+
                         // Extract metadata for ALL contours
                         if (this.supportsZ && pt.z !== undefined) {
                             const z = BigInt(pt.z);
@@ -525,13 +510,12 @@
                                 }
                             }
                         }
-                        
                         points.push(point);
                     }
-                    
+
                     const isHole = level % 2 === 1;
                     const contourIdx = contours.length;
-                    
+
                     contours.push({
                         points: points,
                         nestingLevel: level,
@@ -539,13 +523,13 @@
                         parentId: parentIdx,
                         curveIds: Array.from(contourCurveIds) // Store curve IDs per contour
                     });
-                    
+
                     // Recursively process children
                     for (let c = 0; c < node.count(); c++) {
                         extractContours(node.child(c), level + 1, contourIdx);
                     }
                 };
-                
+
                 // Root is level 0
                 contours.push({
                     points: rootPoints,
@@ -553,29 +537,27 @@
                     isHole: false,
                     parentId: null
                 });
-                
+
                 // Extract all nested contours
                 for (let j = 0; j < rootNode.count(); j++) {
                     extractContours(rootNode.child(j), 1, 0);
                 }
-                
-                // Create primitive with full hierarchy
-                const primitive = this._createPathPrimitive(rootPoints, {
+
+                // Pass the fully formed contours array directly to the constructor.
+                const primitive = new PathPrimitive(contours, {
                     isFused: true,
                     fill: true,
                     polarity: 'dark',
-                    closed: true,
-                    contours: contours
+                    closed: true
                 });
-                
+
                 if (curveIds.size > 0) {
                     primitive.curveIds = Array.from(curveIds);
                     primitive.hasReconstructableCurves = true;
                 }
-                
                 primitives.push(primitive);
             }
-            
+
             if (debugConfig.enabled && primitives.length > 0) {
                 const totalContours = primitives.reduce((sum, p) => sum + (p.contours?.length || 0), 0);
                 const maxDepth = Math.max(...primitives.flatMap(p => 
@@ -583,61 +565,9 @@
                 ));
                 console.log(`[ClipperWrapper] Extracted ${primitives.length} primitives, ${totalContours} contours, max depth: ${maxDepth}`);
             }
-            
             return primitives;
         }
-        
-        // Helper to create PathPrimitive with getBounds method
-        _createPathPrimitive(points, properties) {
-            // Try to use PathPrimitive class if available
-            if (typeof PathPrimitive !== 'undefined') {
-                return new PathPrimitive(points, properties);
-            }
-            
-            // Fallback with getBounds method
-            return {
-                type: 'path',
-                points: points,
-                properties: properties || {},
-                closed: properties?.closed !== false,
-                // Add contours property to fallback for consistency
-                contours: properties?.contours || [{ 
-                    points: points, 
-                    isHole: false, 
-                    nestingLevel: 0, 
-                    parentId: null 
-                }],
-                getBounds: function() {
-                    let minX = Infinity, minY = Infinity;
-                    let maxX = -Infinity, maxY = -Infinity;
-                    
-                    // Get bounds from all NON-HOLE contours
-                    if (this.contours && this.contours.length > 0) {
-                        this.contours.forEach(contour => {
-                            // Only include outer paths (non-holes) in the main bounds
-                            if (!contour.isHole && contour.points) {
-                                contour.points.forEach(p => {
-                                    minX = Math.min(minX, p.x);
-                                    minY = Math.min(minY, p.y);
-                                    maxX = Math.max(maxX, p.x);
-                                    maxY = Math.max(maxY, p.y);
-                                });
-                            }
-                        });
-                    } else if (this.points) {
-                        // Fallback if contours is missing but points exists
-                        this.points.forEach(p => {
-                            minX = Math.min(minX, p.x);
-                            minY = Math.min(minY, p.y);
-                            maxX = Math.max(maxX, p.x);
-                            maxY = Math.max(maxY, p.y);
-                        });
-                    }
-                    return { minX, minY, maxX, maxY };
-                }
-            };
-        }
-        
+
         // Ensure initialized
         async ensureInitialized() {
             if (!this.initialized) {
@@ -647,7 +577,7 @@
                 throw new Error('Clipper2 not initialized');
             }
         }
-        
+
         // Clean up WASM objects
         _cleanup(objects) {
             objects.forEach(obj => {
@@ -660,7 +590,7 @@
                 }
             });
         }
-        
+
         // Debug logging
         debug(message, data = null) {
             if (debugConfig.enabled) {
@@ -671,7 +601,7 @@
                 }
             }
         }
-        
+
         // Get capabilities
         getCapabilities() {
             return {
@@ -688,34 +618,7 @@
                 }
             };
         }
-        
-        // Test metadata packing/unpacking
-        testMetadataPacking() {
-            const testCases = [
-                { curveId: 1, segmentIndex: 0, clockwise: false, reserved: 0 },
-                { curveId: 100, segmentIndex: 42, clockwise: true, reserved: 0 },
-                { curveId: 16777215, segmentIndex: 2147483647, clockwise: false, reserved: 255 }, // Max values
-                { curveId: 12345, segmentIndex: 67890, clockwise: true, reserved: 7 }
-            ];
-            
-            console.log('[ClipperWrapper] Testing metadata packing/unpacking:');
-            
-            for (const test of testCases) {
-                const packed = this.packMetadata(test.curveId, test.segmentIndex, test.clockwise, test.reserved);
-                const unpacked = this.unpackMetadata(packed);
-                
-                const success = unpacked.curveId === test.curveId &&
-                               unpacked.segmentIndex === test.segmentIndex &&
-                               unpacked.clockwise === test.clockwise &&
-                               unpacked.reserved === test.reserved;
-                
-                console.log(`  Test: curveId=${test.curveId}, segmentIndex=${test.segmentIndex}, clockwise=${test.clockwise}, reserved=${test.reserved}`);
-                console.log(`  Packed: 0x${packed.toString(16)}`);
-                console.log(`  Unpacked: curveId=${unpacked.curveId}, segmentIndex=${unpacked.segmentIndex}, clockwise=${unpacked.clockwise}, reserved=${unpacked.reserved}`);
-                console.log(`  Result: ${success ? 'PASS' : 'FAIL'}`);
-            }
-        }
     }
-    
+
     window.ClipperWrapper = ClipperWrapper;
 })();

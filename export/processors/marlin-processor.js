@@ -26,7 +26,7 @@
 
 (function() {
     'use strict';
-    
+
     class MarlinPostProcessor extends BasePostProcessor {
         constructor() {
             super('Marlin', {
@@ -43,29 +43,29 @@
                 maxRapidRate: 1000
             });
         }
-        
+
         generateToolChange(tool, options) {
             const lines = [];
             const safeZ = options.safeZ || this.config.safetyHeight;
-            
+
             lines.push('');
             lines.push(`; Tool change: ${tool.name || tool.id}`);
             lines.push(`; Diameter: ${tool.diameter}mm`);
-            
+
             if (options.useM3) {
                 lines.push('M5 ; Stop spindle');
             } else {
                 lines.push('M107 ; Stop fan');
             }
-            
+
             lines.push(`G0 Z${this.formatCoordinate(safeZ)} ; Retract to safe Z`);
             this.currentPosition.z = safeZ;
             lines.push('M0 ; Pause for manual tool change');
             lines.push('');
-            
+
             const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
             const pwmValue = Math.min(255, Math.round((spindleSpeed / 30000) * 255));
-            
+
             if (options.useM3) {
                 lines.push(`M3 S${pwmValue} ; Restart spindle`);
             } else {
@@ -73,10 +73,10 @@
             }
             lines.push('G4 P1000 ; Wait for spindle');
             lines.push('');
-            
+
             return lines.join('\n');
         }
     }
-    
+
     window.MarlinPostProcessor = MarlinPostProcessor;
 })();

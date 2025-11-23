@@ -26,33 +26,33 @@
 
 (function() {
     'use strict';
-    
-    const config = window.PCBCAMConfig || {};
-    const validationRules = config.ui.validation || {};
-    const paramOptions = config.ui.parameterOptions || {};
-    
+
+    const config = window.PCBCAMConfig;
+    const validationRules = config.ui.validation;
+    const paramOptions = config.ui.parameterOptions;
+
     class ParameterManager {
         constructor() {
             // Parameter definitions and metadata
             this.parameterDefinitions = this.initializeDefinitions();
-            
+
             // State storage - persists across operation/stage switches
             this.operationStates = new Map(); // operationId -> { source: {}, offset: {}, preview: {} }
             this.dirtyFlags = new Map(); // operationId -> Set of dirty stages
-            
+
             // Active state
             this.currentOperationId = null;
             this.currentStage = null;
-            
+
             this.validators = this.initializeValidators();
-            
+
             // Change listeners
             this.changeListeners = new Set();
         }
-        
+
         initializeDefinitions() {
             return {
-                // STAGE 1: GEOMETRY
+                // 1: Geometry
                 tool: {
                     type: 'select',
                     label: 'Tool',
@@ -63,6 +63,8 @@
                     type: 'number',
                     label: 'Tool Diameter',
                     unit: 'mm',
+                    step: 0.01, // connect to config
+                    min: 0.01, // connect to config
                     ...validationRules.toolDiameter,
                     stage: 'geometry',
                     category: 'tool'
@@ -107,11 +109,13 @@
                     operationType: 'cutout'
                 },
 
-                // STAGE 2: STRATEGY
+                // 2: Strategy
                 cutDepth: {
                     type: 'number',
                     label: 'Cut Depth',
                     unit: 'mm',
+                    step: 0.01, // connect to config
+                    min: 0.01, // connect to config
                     ...validationRules.cutDepth,
                     stage: 'strategy',
                     category: 'depth'
@@ -120,6 +124,8 @@
                     type: 'number',
                     label: 'Depth per Pass',
                     unit: 'mm',
+                    step: 0.01, // connect to config
+                    min: 0.01, // connect to config
                     ...validationRules.depthPerPass,
                     stage: 'strategy',
                     category: 'depth',
@@ -131,13 +137,6 @@
                     default: true,
                     stage: 'strategy',
                     category: 'depth'
-                },
-                direction: {
-                    type: 'select',
-                    label: 'Cut Direction',
-                    options: paramOptions.direction,
-                    stage: 'strategy',
-                    category: 'strategy'
                 },
                 entryType: {
                     type: 'select',
@@ -159,6 +158,8 @@
                     type: 'number',
                     label: 'Peck Depth',
                     unit: 'mm',
+                    step: 0.01, // connect to config
+                    min: 0.01, // connect to config
                     ...validationRules.peckDepth,
                     stage: 'strategy',
                     category: 'drill',
@@ -168,6 +169,8 @@
                     type: 'number',
                     label: 'Dwell Time',
                     unit: 's',
+                    step: 1, // connect to config
+                    min: 1, // connect to config
                     ...validationRules.dwellTime,
                     stage: 'strategy',
                     category: 'drill',
@@ -177,6 +180,8 @@
                     type: 'number',
                     label: 'Retract Height',
                     unit: 'mm',
+                    step: 0.1, // connect to config
+                    min: 0.1, // connect to config
                     ...validationRules.retractHeight,
                     stage: 'strategy',
                     category: 'drill',
@@ -185,6 +190,8 @@
                 tabs: {
                     type: 'number',
                     label: 'Number of Tabs',
+                    step: 1, // connect to config
+                    min: 1, // connect to config
                     ...validationRules.tabs,
                     stage: 'strategy',
                     category: 'cutout',
@@ -194,6 +201,8 @@
                     type: 'number',
                     label: 'Tab Width',
                     unit: 'mm',
+                    step: 0.1, // connect to config
+                    min: 0.1, // connect to config
                     ...validationRules.tabWidth,
                     stage: 'strategy',
                     category: 'cutout',
@@ -203,17 +212,21 @@
                     type: 'number',
                     label: 'Tab Height',
                     unit: 'mm',
+                    step: 0.1, // connect to config
+                    min: 0.1, // connect to config
                     ...validationRules.tabHeight,
-                    stage: 'strategy', // 
+                    stage: 'strategy',
                     category: 'cutout',
                     operationType: 'cutout'
                 },  
 
-                // STAGE 3: MACHINE
+                // 3: Machine
                 feedRate: {
                     type: 'number',
                     label: 'Feed Rate',
                     unit: 'mm/min',
+                    step: 1, // connect to config
+                    min: 1, // connect to config
                     ...validationRules.feedRate,
                     stage: 'machine',
                     category: 'feeds'
@@ -222,6 +235,8 @@
                     type: 'number',
                     label: 'Plunge Rate',
                     unit: 'mm/min',
+                    step: 1, // connect to config
+                    min: 1, // connect to config
                     ...validationRules.plungeRate,
                     stage: 'machine',
                     category: 'feeds'
@@ -230,6 +245,8 @@
                     type: 'number',
                     label: 'Spindle Speed',
                     unit: 'RPM',
+                    step: 1, // connect to config
+                    min: 1, // connect to config
                     ...validationRules.spindleSpeed,
                     stage: 'machine',
                     category: 'feeds'
@@ -239,7 +256,6 @@
 
         initializeValidators() {
             // Dynamically build validator based on the definitions, which are based on the config.
-            // This is the SINGLE source of truth for validation logic.
             const validators = {};
             for (const [name, def] of Object.entries(this.parameterDefinitions)) {
                 if (def.type === 'number') {
@@ -273,47 +289,47 @@
             }
             return this.operationStates.get(operationId);
         }
-        
+
         // Get parameters for current context
         getParameters(operationId, stage) {
             const state = this.getOperationState(operationId);
             return state[stage] || {};
         }
-        
+
         setParameter(operationId, stage, name, value) {
             const state = this.getOperationState(operationId);
             if (!state[stage]) state[stage] = {};
-            
-            // Validate if validator exists
+
+            // Check if validator exists
             if (this.validators[name]) {
                 const result = this.validators[name](value);
 
                 if (!result.success) {
                     this.debug(`Invalid value for ${name}: ${value}. ${result.error}`);
-                    // If validation failed but provided a corrected value (clamping), we'll set that corrected value.
+                    // If validation failed but provided a corrected value (clamping), set that corrected value.
                     if (result.correctedValue !== undefined) {
                         state[stage][name] = result.correctedValue;
                         this.markDirty(operationId, stage);
                         this.notifyChange(operationId, stage, name, result.correctedValue);
-                        // Return the error AND the value it was changed to
+                        // Return the error and the value it was changed to
                         return { success: false, error: result.error, correctedValue: result.correctedValue };
                     }
-                    // If no corrected value, just return the failure
+                    // If no corrected value, return the failure
                     return { success: false, error: result.error, correctedValue: state[stage][name] }; // Return old value
                 }
-                
+
                 // Validation succeeded, update the value
                 value = result.value;
             }
-            
+
             // Non-validated type (e.g., checkbox, select) or valid number
             state[stage][name] = value;
             this.markDirty(operationId, stage);
             this.notifyChange(operationId, stage, name, value);
-            
+
             return { success: true, value: value };
         }
-        
+
         markDirty(operationId, stage) {
             if (!this.dirtyFlags.has(operationId)) {
                 this.dirtyFlags.set(operationId, new Set());
@@ -330,7 +346,7 @@
                 this.setParameter(operationId, stage, name, value);
             }
         }
-        
+
         // Get all parameters for an operation (merged across stages)
         getAllParameters(operationId) {
             const state = this.getOperationState(operationId);
@@ -340,30 +356,29 @@
                 ...state.machine
             };
         }
-        
+
         // Commit parameters to operation object
         commitToOperation(operation) {
             const params = this.getAllParameters(operation.id);
-            
+
             // Merge into operation settings
             if (!operation.settings) operation.settings = {};
             Object.assign(operation.settings, params);
-            
+
             // Clear dirty flag
             this.dirtyFlags.delete(operation.id);
-            
+
             this.debug(`Committed ${Object.keys(params).length} parameters to operation ${operation.id}`);
         }
-        
+
         /**
          * Loads parameters from an operation's settings into the manager's state.
-         * This function now acts as the bridge from the persistent (but "dumb")
-         * operation.settings object into the manager's "live" state.
+         * This function now acts as the bridge from the persistent (but dumb) operation.settings object into the manager's live state.
          */
         loadFromOperation(operation) {
             if (!operation) return;
 
-            // Get the settings from the operation. This is the *only* place we should be *reading* from this property.
+            // Get the settings from the operation.
             const opSettings = operation.settings || {};
 
             // Get the operation-specific config defaults (e.g., passes for "isolation")
@@ -379,15 +394,15 @@
                 let value;
 
                 // 1. Check for a value in the manager's current "live" state first.
-                //    This preserves unsaved changes if we just switch tabs and come back.
+                //    Preserve unsaved changes if switching tabs and coming back.
                 value = state[def.stage][name];
 
                 // 2. If not in live state, check the operation's saved settings.
-                //    This is the "load" step. We ONLY check for the flat property.
+                //    This is the "load" step. ONLY check for the flat property.
                 if (value === undefined) {
                     value = opSettings[name];
                 }
-                
+
                 // 3. If not in saved settings, check the config defaults for this OpType.
                 if (value === undefined) {
                     value = defaults[name];
@@ -402,49 +417,49 @@
                 //    This validates/clamps the value on load.
                 if (value !== undefined) {
                     // Use setParameter to ensure the loaded value is valid
-                    // Note: We use the internal state-setting method to avoid marking the operation as "dirty" just from loading it.
+                    // Note: Uses the internal state-setting method to avoid marking the operation as "dirty" just from loading it.
                     const result = this.validators[name] 
                         ? this.validators[name](value) 
                         : { success: true, value: value };
-                    
+
                     const finalValue = result.correctedValue !== undefined ? result.correctedValue : result.value;
-                    
+
                     if (!state[def.stage]) state[def.stage] = {};
                     state[def.stage][name] = finalValue;
                 }
             }
-            
+
             // Clear dirty flag after a fresh load
             this.dirtyFlags.delete(operation.id);
         }
-        
+
         // Check if operation has unsaved changes
         hasUnsavedChanges(operationId) {
             return this.dirtyFlags.has(operationId);
         }
-        
+
         // Get parameters filtered by stage and operation type
         getStageParameters(stage, operationType) {
             const params = [];
-            
+
             for (const [name, def] of Object.entries(this.parameterDefinitions)) {
                 // Check stage match
                 if (def.stage !== stage) continue;
-                
+
                 // Check operation type if specified
                 if (def.operationType && def.operationType !== operationType) continue;
-                
+
                 params.push({ name, ...def });
             }
-            
+
             return params;
         }
-        
+
         // Validate all parameters for an operation
         validateOperation(operationId) {
             const params = this.getAllParameters(operationId);
             const errors = [];
-            
+
             for (const [name, value] of Object.entries(params)) {
                 if (this.validators[name]) {
                     const result = this.validators[name](value);
@@ -457,24 +472,23 @@
                     }
                 }
             }
-            
+
             return {
                 valid: errors.length === 0,
                 errors
             };
         }
-        
+
         // Get default values for operation type
         getDefaults(operationType) {
             const opConfig = config.operations?.[operationType];
             if (!opConfig) return {};
 
-            // Define opConfig.tool and opConfig.cutting as safe objects
             const toolConfig = opConfig.tool;
             const cuttingConfig = opConfig.cutting;
             const settingsConfig = opConfig.defaultSettings;
 
-            const enableMultiDepth = (operationType === 'drill' || operationType === 'cutout');
+            const enableMultiDepth = (operationType === 'drill' || operationType === 'cutout'); // dead code? Review
 
             return {
                 // Tool/Strategy
@@ -482,7 +496,6 @@
                 multiDepth: settingsConfig.multiDepth,
                 passes: settingsConfig.passes,
                 stepOver: settingsConfig.stepOver,
-                direction: settingsConfig.direction,
                 entryType: settingsConfig.entryType,
 
                 // Cutting
@@ -499,22 +512,22 @@
                 retractHeight: settingsConfig.retractHeight
             };
         }
-        
+
         // Change notification
         addChangeListener(callback) {
             this.changeListeners.add(callback);
         }
-        
+
         removeChangeListener(callback) {
             this.changeListeners.delete(callback);
         }
-        
+
         notifyChange(operationId, stage, name, value) {
             for (const listener of this.changeListeners) {
                 listener({ operationId, stage, name, value });
             }
         }
-        
+
         // Export state for saving
         exportState() {
             const state = {};
@@ -523,7 +536,7 @@
             }
             return state;
         }
-        
+
         // Import saved state
         importState(state) {
             this.operationStates.clear();
@@ -533,7 +546,7 @@
                 this.operationStates.set(opId, opState);
             }
         }
-        
+
         // Clear state for an operation
         clearOperation(operationId) {
             this.operationStates.delete(operationId);
@@ -546,6 +559,6 @@
             }
         }
     }
-    
+
     window.ParameterManager = ParameterManager;
 })();

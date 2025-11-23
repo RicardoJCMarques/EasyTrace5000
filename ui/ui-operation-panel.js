@@ -26,15 +26,15 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
     const textConfig = config.ui.text;
     const iconConfig = config.ui.icons;
-    const inspectorConfig = config.ui.propertyInspector;
+    const inspectorConfig = config.ui.operationPanel;
     const timingConfig = config.ui.timing;
     const layoutConfig = config.layout;
-    
-    class PropertyInspector { // update class name to reflect new clearer file name
+
+    class OperationPanel {
         constructor(ui) {
             this.ui = ui;
             this.core = ui.core;
@@ -48,61 +48,61 @@
             // Track input changes for auto-save
             this.changeTimeout = null;
         }
-        
+
         init(toolLibrary, parameterManager) {
             this.toolLibrary = toolLibrary;
             this.parameterManager = parameterManager || new ParameterManager();
-            
+
             // Listen for parameter changes from other sources
             this.parameterManager.addChangeListener((change) => {
                 this.onExternalParameterChange(change);
             });
-            
+
             this.debug('Initialized with parameter manager');
         }
-        
+
         clearProperties() {
             this.currentOperation = null;
             this.currentGeometryStage = 'geometry';
         }
-        
+
         showOperationProperties(operation, geometryStage = 'geometry') {
             if (!operation) {
                 this.clearProperties();
                 return;
             }
-            
+
             // Auto-save current operation before switching
             if (this.currentOperation && this.currentOperation.id !== operation.id) {
                 this.saveCurrentState();
             }
-            
+
             this.currentOperation = operation;
             this.currentGeometryStage = geometryStage;
-            
+
             // Load existing parameters for this operation
             this.parameterManager.loadFromOperation(operation);
-            
+
             const container = document.getElementById('property-form');
             const title = document.getElementById('inspector-title');
-            
+
             if (!container || !title) return;
-            
+
             title.textContent = operation.file.name;
             container.innerHTML = '';
-            
+
             // Show warnings if any
             if (operation.warnings && operation.warnings.length > 0) {
                 container.appendChild(this.createWarningPanel(operation.warnings));
             }
-            
+
             // Get appropriate parameters for this stage and operation type
             const stageParams = this.parameterManager.getStageParameters(geometryStage, operation.type);
             const currentValues = this.parameterManager.getParameters(operation.id, geometryStage);
-            
+
             // Group parameters by category
             const categories = this.groupByCategory(stageParams);
-            
+
             // Render each category
             for (const [category, params] of Object.entries(categories)) {
                 const section = this.createSection(
@@ -111,16 +111,16 @@
                 );
                 container.appendChild(section);
             }
-            
+
             // Add action button
             const actionText = this.getActionButtonText(geometryStage, operation.type);
             if (actionText) {
                 container.appendChild(this.createActionButton(actionText));
             }
-            
+
             this.attachEventHandlers(container);
         }
-        
+
         groupByCategory(params) {
             const groups = {};
             for (const param of params) {
@@ -130,13 +130,13 @@
             }
             return groups;
         }
-        
+
         getCategoryTitle(category) {
             const categoryTitles = inspectorConfig.categories;
             const title = categoryTitles[category] || category.charAt(0).toUpperCase() + category.slice(1);
             return title;
         }
-        
+
         getActionButtonText(stage, operationType) {
             if (stage === 'geometry') {
                 if (operationType === 'drill') return 'Generate Drill Strategy';
@@ -149,31 +149,31 @@
             }
             return null;
         }
-        
+
         createSection(title, fields) {
             const section = document.createElement('div');
             section.className = 'property-section';
-            
+
             const h3 = document.createElement('h3');
             h3.textContent = title;
             section.appendChild(h3);
-            
+
             fields.forEach(field => section.appendChild(field));
-            
+
             return section;
         }
-        
+
         createField(param, currentValue) {
             const field = document.createElement('div');
             field.className = 'property-field';
             field.dataset.param = param.name;
-            
+
             // Handle conditionals
             if (param.conditional) {
                 field.dataset.conditional = param.conditional;
                 // Will be evaluated in attachEventHandlers
             }
-            
+
             const label = document.createElement('label');
 
             // Use param.name as the key (e.g., "toolDiameter", "passes")
@@ -182,15 +182,15 @@
             label.textContent = labelText;
             field.appendChild(label);
 
-            // Check if a helpKey exists AND the strings have been loaded
+            // Check if a helpKey exists and the strings have been loaded
             const tooltipKey = 'tooltips.parameters.' + helpKey;
             if (this.lang.has(tooltipKey)) {
-                
+
                 // Get the tooltip text from en.json
                 const helpText = this.lang.get(tooltipKey);
-                // The title is the label text we just found
+                // The title is the label text just found
                 const helpTitle = labelText; 
-                    
+
                 if (helpText && window.TooltipManager) {
                     // This will create the '?' icon at the end of the label
                     window.TooltipManager.attachWithIcon(label, { title: helpTitle, text: helpText }, {
@@ -198,13 +198,13 @@
                     });
                 }
             }
-            
+
             // Use default if no current value
             if (currentValue === undefined) {
                 const defaults = this.parameterManager.getDefaults(this.currentOperation.type);
                 currentValue = defaults[param.name];
             }
-            
+
             switch (param.type) {
                 case 'number':
                     this.createNumberField(field, param, currentValue);
@@ -221,14 +221,14 @@
                 default:
                     console.warn(`[OperationPanel] Unknown parameter type: ${param.type}`);
             }
-            
+
             return field;
         }
-        
+
         createNumberField(field, param, value) {
             const wrapper = document.createElement('div');
             wrapper.className = 'input-unit';
-            
+
             const input = document.createElement('input');
             input.type = 'number';
             input.id = `prop-${param.name}`;
@@ -236,7 +236,7 @@
             if (param.min !== undefined) input.min = param.min;
             if (param.max !== undefined) input.max = param.max;
             if (param.step !== undefined) input.step = param.step;
-            
+
             // Prevent negative sign if min is >= 0
             if (param.min !== undefined && param.min >= 0) {
                 input.addEventListener('keydown', (e) => {
@@ -251,9 +251,9 @@
                     }
                 });
             }
-            
+
             wrapper.appendChild(input);
-            
+
             if (param.unit) {
                 const unitSpan = document.createElement('span');
                 unitSpan.className = 'unit';
@@ -263,31 +263,31 @@
             
             field.appendChild(wrapper);
         }
-        
+
         createCheckboxField(field, param, value) {
             // Clear the label already added
             field.innerHTML = '';
-            
+
             const label = document.createElement('label');
             label.className = 'checkbox-label';
-            
+
             const input = document.createElement('input');
             input.type = 'checkbox';
             input.id = `prop-${param.name}`;
             input.checked = value || false;
-            
+
             const span = document.createElement('span');
             span.textContent = param.label;
-            
+
             label.appendChild(input);
             label.appendChild(span);
             field.appendChild(label);
         }
-        
+
         createSelectField(field, param, value) {
             const select = document.createElement('select');
             select.id = `prop-${param.name}`;
-            
+
             // Special case for tool selection
             if (param.name === 'tool') {
                 this.populateToolSelect(select, this.currentOperation.type, value);
@@ -300,33 +300,33 @@
                     select.appendChild(option);
                 });
             }
-            
+
             field.appendChild(select);
         }
-        
+
         createTextAreaField(field, param, value) {
             const textarea = document.createElement('textarea');
             textarea.id = `prop-${param.name}`;
             textarea.rows = param.rows || 4;
             textarea.value = value || '';
-            
+
             // Apply styles from config
             if (inspectorConfig.textAreaStyle) {
                 Object.assign(textarea.style, inspectorConfig.textAreaStyle);
             }
-            
+
             field.appendChild(textarea);
         }
-        
+
         populateToolSelect(select, operationType, selectedId) {
             const tools = this.toolLibrary.getToolsForOperation(operationType) || [];
-            
+
             if (tools.length === 0) {
                 select.innerHTML = `<option>${textConfig.noToolsAvailable}</option>`;
                 select.disabled = true;
                 return;
             }
-            
+
             tools.forEach(tool => {
                 const option = document.createElement('option');
                 option.value = tool.id;
@@ -336,52 +336,52 @@
                 select.appendChild(option);
             });
         }
-        
+
         createWarningPanel(warnings) {
             const panel = document.createElement('div');
             panel.className = 'warning-panel';
-            
+
             if (inspectorConfig.warningPanelCSS) {
                 Object.assign(panel.style, inspectorConfig.warningPanelCSS);
             }
-            
+
             const header = document.createElement('div');
             if (inspectorConfig.warningHeaderCSS) {
                 Object.assign(header.style, inspectorConfig.warningHeaderCSS);
             }
-            
+
             const icon = iconConfig.treeWarning;
             header.innerHTML = `${icon} ${warnings.length} Warning${warnings.length > 1 ? 's' : ''}`;
             panel.appendChild(header);
-            
+
             const list = document.createElement('ul');
             if (inspectorConfig.warningListCSS) {
                 Object.assign(list.style, inspectorConfig.warningListCSS);
             }
-            
+
             warnings.forEach(warning => {
                 const item = document.createElement('li');
                 item.textContent = warning.message;
                 list.appendChild(item);
             });
-            
+
             panel.appendChild(list);
             return panel;
         }
-        
+
         createActionButton(text) {
             const wrapper = document.createElement('div');
             wrapper.className = 'property-actions';
-            
+
             const button = document.createElement('button');
             button.className = 'btn btn--primary btn--block';
             button.id = 'action-button';
             button.textContent = text;
-            
+
             wrapper.appendChild(button);
             return wrapper;
         }
-        
+
         attachEventHandlers(container) {
             // Tool selection updates diameter
             const toolSelect = container.querySelector('#prop-tool');
@@ -389,10 +389,10 @@
                 toolSelect.addEventListener('change', (e) => {
                     const tool = this.toolLibrary?.getTool(e.target.value);
                     if (tool) {
-                        // Set BOTH parameters at once
+                        // Set both parameters at once
                         this.onParameterChange('tool', e.target.value);
                         this.onParameterChange('toolDiameter', tool.geometry.diameter);
-                        
+
                         // Update the diameter input to reflect the change
                         const diamInput = container.querySelector('#prop-toolDiameter');
                         if (diamInput) {
@@ -401,13 +401,13 @@
                     }
                 });
             }
-            
+
             // Auto-save on all inputs
             container.querySelectorAll('input, select, textarea').forEach(input => {
                 if (input.id === 'prop-tool') return; // Already handled
-                
+
                 const paramName = input.id.replace('prop-', '');
-                
+
                 input.addEventListener('change', () => {
                     let value;
                     if (input.type === 'checkbox') {
@@ -417,19 +417,19 @@
                     } else {
                         value = input.value;
                     }
-                    
+
                     this.onParameterChange(paramName, value);
                 });
 
                 // Real-time validation for number inputs
                 if (input.type === 'number') {
                     const paramName = input.id.replace('prop-', '');
-                    
+
                     input.addEventListener('input', (e) => {
                         const value = e.target.value;
                         const def = this.parameterManager.parameterDefinitions[paramName];
-                        
-                        // 1. Check for invalid characters (e.g., 'abc', '5e-')
+
+                        // Check for invalid characters (e.g., 'abc', '5e-')
                         const num = parseFloat(value);
                         if (isNaN(num) && value !== "" && value !== "-") { 
                             this.ui.statusManager.showStatus(`${def.label} must be a number`, 'error');
@@ -438,7 +438,7 @@
                             return;
                         }
 
-                        // 2. Check Min/Max *while typing* (only clamp on max)
+                        // Check Min/Max while typing (only clamp on max)
                         if (def.max !== undefined && num > def.max) {
                             this.ui.statusManager.showStatus(`${def.label} cannot be more than ${def.max}`, 'error');
                             e.target.value = def.max; // Clamp immediately
@@ -446,16 +446,15 @@
                             this.onParameterChange(paramName, def.max);
                             return; // Stop further processing
                         }
-                        
+
                         // Don't clamp min while typing, as user might be typing "-0.1"
-                        
-                        // 3. If it's a valid partial number, send it to the manager (onParameterChange will handle final validation on 'change'/'blur')
+                        // If it's a valid partial number, send it to the manager (onParameterChange will handle final validation on 'change'/'blur')
                         if (!isNaN(num)) {
                              this.onParameterChange(paramName, num, true); // 'true' for real-time update
                         }
                     });
                 }
-                
+
                 // Save on blur for text inputs
                 if (input.type === 'text' || input.type === 'number' || input.tagName === 'TEXTAREA') {
                     input.addEventListener('blur', () => {
@@ -467,19 +466,19 @@
                             value = input.value;
                         }
                         this.onParameterChange(paramName, value); // This will clamp
-                        this.saveCurrentState(); // And this will save
+                        this.saveCurrentState(); // This will save
                     });
                 }
             });
-            
+
             // Mill holes toggle
             const millCheck = container.querySelector('#prop-millHoles');
             if (millCheck) {
                 millCheck.addEventListener('change', async (e) => {
                     const isMilling = e.target.checked;
-                    
+
                     this.onParameterChange('millHoles', isMilling);
-                    
+
                     if (this.currentOperation) {
                         if (this.currentOperation.offsets?.length > 0) {
                             this.currentOperation.offsets = [];
@@ -487,7 +486,7 @@
                             this.currentOperation.warnings = [];
                         }
                     }
-                    
+
                     this.showOperationProperties(this.currentOperation, this.currentGeometryStage);
                     await this.ui.updateRendererAsync();
                     
@@ -497,39 +496,39 @@
                     );
                 });
             }
-            
+
             // Action button
             const actionBtn = container.querySelector('#action-button');
             if (actionBtn) {
                 actionBtn.addEventListener('click', () => this.handleAction());
             }
-            
+
             // Initial conditional evaluation
             this.evaluateConditionals(container);
         }
-        
+
         evaluateConditionals(container) {
             const currentValues = this.parameterManager.getAllParameters(this.currentOperation.id);
-            
+
             container.querySelectorAll('[data-conditional]').forEach(field => {
                 const conditional = field.dataset.conditional;
                 let shouldShow = true;
-                
+
                 if (conditional.startsWith('!')) {
                     const paramName = conditional.slice(1);
-                    // Read the *actual* value from the manager, not the checkbox (which might be stale) - can checkbox become stale?
+                    // Read the value from the manager, not the checkbox (which might be stale) // Review - can checkboxes become stale?
                     shouldShow = !currentValues[paramName];
                 } else {
                     shouldShow = currentValues[conditional];
                 }
-                
+
                 field.style.display = shouldShow ? '' : 'none';
             });
         }
-        
+
         onParameterChange(name, value, isRealtime = false) {
             if (!this.currentOperation) return;
-            
+
             const result = this.parameterManager.setParameter(
                 this.currentOperation.id,
                 this.currentGeometryStage,
@@ -545,7 +544,7 @@
             } else {
                 // Show error
                 this.ui.statusManager.showStatus(result.error, 'error');
-                
+
                 // Clamp the value in the UI
                 if (result.correctedValue !== undefined) {
                     const input = document.getElementById(`prop-${name}`);
@@ -554,7 +553,7 @@
                     }
                 }
             }
-            
+
             // Conditionals must be re-evaluated on *every* change
             const container = document.getElementById('property-form');
             if (container) this.evaluateConditionals(container);
@@ -562,13 +561,13 @@
             // Debounced auto-save (only if successful and not a real-time 'input' event)
             if (result.success && !isRealtime) {
                 clearTimeout(this.changeTimeout);
-                const delay = timingConfig.propertyDebounce || 500;
+                const delay = timingConfig.propertyDebounce;
                 this.changeTimeout = setTimeout(() => {
                     this.saveCurrentState();
                 }, delay);
             }
         }
-        
+
         onExternalParameterChange(change) {
             // Update UI if the change is for current operation/stage
             if (change.operationId === this.currentOperation?.id &&
@@ -583,24 +582,24 @@
                 }
             }
         }
-        
+
         saveCurrentState() {
             if (!this.currentOperation) return;
-            
+
             // Commit to operation
             this.parameterManager.commitToOperation(this.currentOperation);
-            
+
             this.debug(`Saved state for operation ${this.currentOperation.id}`);
         }
-        
+
         async handleAction() {
             this.saveCurrentState(); 
-            
+
             const op = this.currentOperation; 
             const stage = this.currentGeometryStage; 
-            
+
             if (stage === 'geometry') {
-                // STAGE 1: Geometry -> Strategy
+                // 1: Geometry -> Strategy
                 if (op.type === 'drill') { 
                     await this.generateDrillStrategy(op); 
                 } else if (op.type === 'cutout') { 
@@ -615,9 +614,9 @@
                         this.switchGeometryStage('strategy');
                     }, transitionDelay);
                 }
-                
+
             } else if (stage === 'strategy') {
-                // STAGE 2: Strategy -> Machine
+                // 2: Strategy -> Machine
                 try {
                     this.ui.statusManager?.showStatus('Generating toolpath preview...', 'info'); 
                     const previewSuccess = await this.generatePreview(op);
@@ -626,14 +625,14 @@
                         return;
                     }
 
-                    if (this.ui.treeManager) {
-                        const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                    if (this.ui.navTreePanel) {
+                        const fileNode = Array.from(this.ui.navTreePanel.nodes.values())
                             .find(n => n.operation?.id === op.id);
                         if (fileNode) { 
-                            this.ui.treeManager.updateFileGeometries(fileNode.id, op); 
+                            this.ui.navTreePanel.updateFileGeometries(fileNode.id, op); 
                         }
                     }
-                    
+
                     await this.ui.updateRendererAsync(); 
                     this.ui.statusManager?.showStatus('Preview generated', 'success');
 
@@ -643,21 +642,21 @@
                             this.switchGeometryStage('machine');
                         }, transitionDelay);
                     }
-                    
+
                 } catch (error) {
                     console.error('[OperationPanel] Preview generation failed:', error); 
                     this.ui.statusManager?.showStatus('Preview failed: ' + error.message, 'error'); 
                 }
-                
+
             } else if (stage === 'machine') {
-                // STAGE 3: Machine -> Modal
+                // 3: Machine -> Modal
                 if (window.pcbcam?.modalManager) {
                     const readyOps = this.ui.core.operations.filter(o => o.preview?.ready); 
                     if (readyOps.length === 0) { 
                         this.ui.statusManager?.showStatus('No operations ready. Generate previews first.', 'warning'); 
                         return; 
                     }
-                    
+
                     window.pcbcam.modalManager.showToolpathModal(readyOps, op.id); 
                 } else {
                     this.ui.statusManager?.showStatus('Operations manager not available', 'error'); 
@@ -671,33 +670,33 @@
                 console.warn(`[OperationPanel] Invalid geometry stage: ${newStage}`);
                 return;
             }
-            
+
             this.currentGeometryStage = newStage;
-            
+
             // Simply rebuild the parameter panel for the new stage
             if (this.currentOperation) {
                 this.showOperationProperties(this.currentOperation, newStage);
             }
         }
-        
+
         async generateOffsets(operation) {
             const params = this.parameterManager.getAllParameters(operation.id);
-            
-            // 1. Show the spinner (and update status)
+
+            // Show the spinner (and update status)
             this.ui.showCanvasSpinner('Generating offsets...');
-            
-            // 2. NEW: Wait for 10ms. This yields to the event loop and gives the browser time to render the spinner.
+
+            // Wait for 10ms. This yields to the event loop and gives the browser time to render the spinner
             await new Promise(resolve => setTimeout(resolve, 10));
 
             try {
-                // 3. Now, run the heavy task
+                // Run the heavy task
                 await this.core.generateOffsetGeometry(operation, params);
-                
-                if (this.ui.treeManager) {
-                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
+
+                if (this.ui.navTreePanel) {
+                    const fileNode = Array.from(this.ui.navTreePanel.nodes.values())
                         .find(n => n.operation?.id === operation.id);
                     if (fileNode) {
-                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                        this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
                     }
                 }
                 await this.ui.updateRendererAsync();
@@ -706,11 +705,11 @@
                 console.error('[OperationPanel] Offset generation failed:', error);
                 this.ui.statusManager?.showStatus('Failed: ' + error.message, 'error');
             } finally {
-                // 4. Hide the spinner (this runs on success OR failure)
+                // Hide the spinner (this runs on success OR failure)
                 this.ui.hideCanvasSpinner();
             }
         }
-        
+
         async generateDrillStrategy(operation) {
             const params = this.parameterManager.getAllParameters(operation.id);
             this.ui.statusManager?.showStatus(
@@ -719,11 +718,11 @@
             );
             try {
                 await this.core.generateDrillStrategy(operation, params);
-                if (this.ui.treeManager) {
-                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                if (this.ui.navTreePanel) {
+                    const fileNode = Array.from(this.ui.navTreePanel.nodes.values())
                         .find(n => n.operation?.id === operation.id);
                     if (fileNode) {
-                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                        this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
                     }
                 }
                 await this.ui.updateRendererAsync();
@@ -743,23 +742,23 @@
                 this.ui.statusManager?.showStatus('Failed: ' + error.message, 'error');
             }
         }
-        
+
         async generateCutoutOffset(operation) {
             const params = this.parameterManager.getAllParameters(operation.id);
             this.ui.statusManager?.showStatus('Generating cutout path...', 'info');
             
             try {
-                // We pass the 'params' object as the settings.
+                // Pass the params object as the settings.
                 await this.core.generateOffsetGeometry(operation, params);
                 
-                if (this.ui.treeManager) {
-                    const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                if (this.ui.navTreePanel) {
+                    const fileNode = Array.from(this.ui.navTreePanel.nodes.values())
                         .find(n => n.operation?.id === operation.id);
                     if (fileNode) {
-                        this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                        this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
                     }
                 }
-                
+
                 await this.ui.updateRendererAsync();
                 this.ui.statusManager?.showStatus('Cutout path generated', 'success');
             } catch (error) {
@@ -767,7 +766,7 @@
                 this.ui.statusManager?.showStatus('Failed: ' + error.message, 'error');
             }
         }
-        
+
         async generatePreview(operation) {
             if (!operation.offsets || operation.offsets.length === 0) {
                 this.ui.statusManager?.showStatus('Generate offsets/strategy first', 'warning');
@@ -800,11 +799,11 @@
             this.ui.renderer?.setOptions({ showPreviews: true });
             const previewToggle = document.getElementById('show-previews');
             if (previewToggle) previewToggle.checked = true;
-            if (this.ui.treeManager) {
-                const fileNode = Array.from(this.ui.treeManager.nodes.values())
+            if (this.ui.navTreePanel) {
+                const fileNode = Array.from(this.ui.navTreePanel.nodes.values())
                     .find(n => n.operation?.id === operation.id);
                 if (fileNode) {
-                    this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                    this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
                 }
             }
             await this.ui.updateRendererAsync();
@@ -818,6 +817,6 @@
             }
         }
     }
-    
-    window.PropertyInspector = PropertyInspector; 
+
+    window.OperationPanel = OperationPanel; 
 })();

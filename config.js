@@ -33,9 +33,8 @@ window.PCBCAMConfig = {
     // ============================================================================
     operations: {
         isolation: {
-            name: 'Isolation Routing',              // [USED IN: cam-core.js, ui-tree-manager.js] [MOVE TO: constants.js]
-            icon: '🎯',                              // [USED IN: cam-core.js, ui-tree-manager.js] [MOVE TO: constants.js]
-            color: '#ff8844',                    // [DEPRECATED] Move to themes/dark.json geometry.source.isolation
+            name: 'Isolation Routing',              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
+            icon: '🎯',                              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
             extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs', '.svg'], // [USED IN: cam-core.js] [MOVE TO: constants.js]
             defaultTool: 'em_0.2mm_flat',           // [USED IN: cam-core.js] [MOVE TO: settings.js]
             tool: {                                  // [USED IN: cam-core.js line ~130] [MOVE TO: settings.js]
@@ -69,9 +68,8 @@ window.PCBCAMConfig = {
             }
         },
         drill: {
-            name: 'Drilling',                        // [USED IN: cam-core.js, ui-tree-manager.js] [MOVE TO: constants.js]
-            icon: '🔧',                              // [USED IN: cam-core.js, ui-tree-manager.js] [MOVE TO: constants.js]
-            color: '#4488ff',                    // [DEPRECATED] Move to themes/dark.json geometry.source.drill
+            name: 'Drilling',                        // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
+            icon: '🔧',                              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
             extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'], // [USED IN: cam-core.js] [MOVE TO: constants.js]
             defaultTool: 'drill_1.0mm',             // [USED IN: cam-core.js] [MOVE TO: settings.js]
             tool: {                                  // [USED IN: cam-core.js] [MOVE TO: settings.js]
@@ -107,10 +105,9 @@ window.PCBCAMConfig = {
                 entryType: 'helix',
             }
         },
-        clear: {
-            name: 'Copper Clearing',                 // [USED IN: cam-core.js, ui-tree-manager.js] [MOVE TO: constants.js]
-            icon: '🔄',                              // [USED IN: cam-core.js, ui-tree-manager.js] [MOVE TO: constants.js]
-            color: '#44ff88',                    // [DEPRECATED] Move to themes/dark.json geometry.source.clear
+        clearing: {
+            name: 'Copper Clearing',                 // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
+            icon: '🔄',                              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
             extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd', '.svg'], // [USED IN: cam-core.js] [MOVE TO: constants.js]
             defaultTool: 'em_0.8mm_flat',           // [USED IN: cam-core.js] [MOVE TO: settings.js]
             tool: {                                  // [USED IN: cam-core.js] [MOVE TO: settings.js]
@@ -145,9 +142,8 @@ window.PCBCAMConfig = {
             }
         },
         cutout: {
-            name: 'Board Cutout',                    // [USED IN: cam-core.js, ui-tree-manager.js] [MOVE TO: constants.js]
-            icon: '✂️',                              // [USED IN: cam-core.js, ui-tree-manager.js] [MOVE TO: constants.js]
-            color: '#333333ff',                  // [DEPRECATED] Move to themes/dark.json geometry.source.cutout
+            name: 'Board Cutout',                    // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
+            icon: '✂️',                              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
             extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill', '.svg'], // [USED IN: cam-core.js] [MOVE TO: constants.js]
             defaultTool: 'em_1.0mm_flat',           // [USED IN: cam-core.js] [MOVE TO: settings.js]
             tool: {                                  // [USED IN: cam-core.js] [MOVE TO: settings.js]
@@ -232,7 +228,7 @@ window.PCBCAMConfig = {
             }
         },
 
-        ui: {                                        // [USED IN: cam-controller.js, ui-property-inspector.js] [MOVE TO: settings.js]
+        ui: {                                        // [USED IN: cam-controller.js, ui-operation-panel.js] [MOVE TO: settings.js]
             autoTransition: true,
             transitionDelay: 125
         }
@@ -440,7 +436,7 @@ window.PCBCAMConfig = {
             adaptiveSegmentation: true,
             minEndCap: 32,                           // [ADDED] [HARDCODED in geometry-utils.js]
             maxEndCap: 256,                          // [ADDED] [HARDCODED in geometry-utils.js]
-            defaultMinSegments: 8,                   // [ADDED] [HARDCODED in geometry-utils.js] Fallback min segments for tessellation.
+            defaultMinSegments: 16,                  // [ADDED] [HARDCODED in geometry-utils.js] Fallback min segments for tessellation.
             defaultFallbackSegments: {               // [ADDED] [HARDCODED in geometry-utils.js] Default for unknown types.
                 min: 32,
                 max: 128
@@ -650,14 +646,14 @@ window.PCBCAMConfig = {
             variableSpindle: true
         },
 
-        enableOptimization: false,                   // [USED IN: ui-modal-manager.js line ~265] [MOVE TO: settings.js]
+        enableOptimization: true,                   // [USED IN: ui-modal-manager.js line ~265] [MOVE TO: settings.js]
         
         optimization: {                              // [USED IN: toolpath-optimizer.js] [MOVE TO: settings.js]
             enableGrouping: true,
             pathOrdering: true,
             segmentSimplification: true,
             leadInOut: true,
-            zLevelGrouping: true,
+            zLevelGrouping: true, // allow users to pick and choose?
 
             rapidStrategy: 'adaptive',
             shortTravelThreshold: 5.0,
@@ -697,7 +693,8 @@ window.PCBCAMConfig = {
                 helixMaxDepthFactor: 3.0,
                 helixSegmentsPerRev: 16,
                 slotHelixSegments: 12,
-                slotHelixMaxPitchFactor: 0.5
+                slotHelixMaxPitchFactor: 0.5,
+                minHelixDiameter: 0.2
             },
             rapidCost: {                             // [ADDED] [HARDCODED in toolpath-machine-processor.js, toolpath-optimizer.js]
                 zTravelThreshold: 5.0,
@@ -708,7 +705,7 @@ window.PCBCAMConfig = {
                 toleranceFactor: 0.1,
                 improvementThreshold: 0.7
             },
-            simplification: {                        // [ADDED] [HARDCODED in toolpath-machine-processor.js]
+            simplification: {                        // [ADDED] [HARDCODED in toolpath-machine-processor.js] Isn't this inside the optimizer?
                 minArcLength: 0.01,
                 minSegmentEpsilon: 1e-6,
                 curveToleranceFactor: 100.0,
@@ -760,10 +757,10 @@ window.PCBCAMConfig = {
             inputDebounceDelay: 300,
             renderThrottle: 16,
             autoSaveInterval: 30000,
-            propertyDebounce: 500                   // [ADDED] [HARDCODED in ui-property-inspector.js]
+            propertyDebounce: 500                   // [ADDED] [HARDCODED in ui-operation-panel.js]
         },
         
-        validation: {                                // [USED IN: ui-property-inspector.js, ui-parameter-manager.js] [MOVE TO: constants.js]
+        validation: {                                // [USED IN: ui-operation-panel.js, ui-parameter-manager.js] [MOVE TO: constants.js]
             minToolDiameter: 0.01,
             maxToolDiameter: 10,
             minFeedRate: 1,
@@ -826,8 +823,8 @@ window.PCBCAMConfig = {
             tooltipTrigger: '?'
         },
 
-        // [ADDED] For ui-property-inspector
-        propertyInspector: {                        // [USED IN: ui-property-inspector.js] [MOVE TO: constants.js]
+        // [ADDED] For ui-operation-panel
+        operationPanel: {                        // [USED IN: ui-operation-panel.js] [MOVE TO: constants.js]
             categories: {
                 tool: 'Tool Selection',
                 offset: 'Offset Generation',
@@ -932,7 +929,7 @@ window.PCBCAMConfig = {
             mergeThreshold: 0.001
         },
         
-        debounce: {                                  // [USED IN: ui-property-inspector.js, ui-tree-manager.js] [MOVE TO: settings.js]
+        debounce: {                                  // [USED IN: ui-operation-panel.js, ui-nav-tree-panel.js] [MOVE TO: settings.js]
             propertyChanges: 300,
             treeSelection: 100,
             canvasInteraction: 16

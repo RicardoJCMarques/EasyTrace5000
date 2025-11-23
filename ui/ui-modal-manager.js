@@ -26,13 +26,13 @@
 
 (function() {
     'use strict';
-    
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    const textConfig = config.ui.text || {};
-    const iconConfig = config.ui.icons || {};
-    const storageKeys = config.storageKeys || {};
-    
+
+    const config = window.PCBCAMConfig ;
+    const debugConfig = config.debug;
+    const textConfig = config.ui.text;
+    const iconConfig = config.ui.icons;
+    const storageKeys = config.storageKeys;
+
     class ModalManager {
         constructor(controller) {
             this.controller = controller;
@@ -40,22 +40,22 @@
             this.lang = this.ui.lang;
             this.activeModal = null;
             this.modalStack = [];
-            
+
             // Modal references
             this.modals = {
                 welcome: document.getElementById('welcome-modal'),
                 file: document.getElementById('file-modal'),
                 gcode: document.getElementById('gcode-export-modal')
             };
-            
+
             // Toolpath-specific state
             this.selectedOperations = [];
             this.highlightedOpId = null;
             this.toolpathPlans = new Map();
-            
+
             this.init();
         }
-        
+
         init() {
             // Setup ESC key handler
             document.addEventListener('keydown', (e) => {
@@ -63,7 +63,7 @@
                     this.closeModal();
                 }
             });
-            
+
             // Setup click-outside-to-close
             Object.values(this.modals).forEach(modal => {
                 if (modal) {
@@ -75,13 +75,13 @@
                 }
             });
         }
-        
+
         showPlaceholderPreview() {
             const previewText = document.getElementById('gcode-preview-text');
             if (previewText) {
                 previewText.value = textConfig.gcodePlaceholder;
             }
-            
+
             // Reset stats
             document.getElementById('gcode-line-count').textContent = '0';
             const opCountEl = document.getElementById('gcode-op-count');
@@ -89,7 +89,7 @@
             document.getElementById('gcode-est-time').textContent = '--:--';
             document.getElementById('gcode-distance').textContent = '0mm';
         }
-        
+
         // Generic modal methods
         showModal(modalName, options = {}) {
             const modal = this.modals[modalName];
@@ -97,28 +97,28 @@
                 console.error(`[UI-ModalManager] Modal - '${modalName}' - not found`);
                 return;
             }
-            
+
             // Close current modal if exists
             if (this.activeModal) {
                 this.modalStack.push(this.activeModal);
                 this.activeModal.classList.remove('active');
             }
-            
+
             this.activeModal = modal;
             modal.classList.add('active');
-            
+
             // Call specific show handler
             const handler = `show${modalName.charAt(0).toUpperCase() + modalName.slice(1)}Handler`;
             if (this[handler]) {
                 this[handler](options);
             }
         }
-        
+
         closeModal() {
             if (!this.activeModal) return;
-            
+
             this.activeModal.classList.remove('active');
-            
+
             // Check for stacked modals
             if (this.modalStack.length > 0) {
                 this.activeModal = this.modalStack.pop();
@@ -127,11 +127,11 @@
                 this.activeModal = null;
             }
         }
-        
+
         // Welcome modal handler
         showWelcomeHandler(options) {
             const modal = this.modals.welcome;
-            
+
             // Setup example dropdown
             const select = document.getElementById('pcb-example-select');
             if (select && options.examples) {
@@ -143,7 +143,7 @@
                     select.appendChild(option);
                 });
             }
-            
+
             // Setup buttons
             const loadExampleBtn = document.getElementById('load-example-btn');
             if (loadExampleBtn) {
@@ -155,14 +155,14 @@
                     this.handleWelcomeClose();
                 };
             }
-            
+
             const openFilesBtn = document.getElementById('open-files-btn');
             if (openFilesBtn) {
                 openFilesBtn.onclick = () => {
                     // Don't close the welcome modal, just show 'file' on top of it. showModal() will handle the stack.
                     this.showModal('file'); 
-                    
-                    // We still want to handle the "don't show again" checkbox
+
+                    // Handle the "don't show again" checkbox
                     const dontShowCheckbox = document.getElementById('dont-show-welcome');
                     const key = storageKeys.hideWelcome || 'pcbcam-hide-welcome';
                     if (dontShowCheckbox?.checked) {
@@ -170,7 +170,7 @@
                     }
                 };
             }
-            
+
             const startEmptyBtn = document.getElementById('start-empty-btn');
             if (startEmptyBtn) {
                 startEmptyBtn.onclick = () => {
@@ -180,7 +180,7 @@
                     }
                 };
             }
-            
+
             const closeBtn = modal.querySelector('.modal-close');
             if (closeBtn) {
                 closeBtn.onclick = () => {
@@ -188,7 +188,7 @@
                 };
             }
         }
-        
+
         handleWelcomeClose() {
             const dontShowCheckbox = document.getElementById('dont-show-welcome');
             const key = storageKeys.hideWelcome || 'pcbcam-hide-welcome';
@@ -200,21 +200,21 @@
                 this.controller.ensureCoordinateSystem();
             }
         }
-        
+
         // File modal handler
-        showFileHandler(options) {
+        showFileHandler(options) { // Review - Useless parameter?
             this.controller.uploadedFiles = {
                 isolation: null,
                 drill: null,
-                clear: null,
+                clearing: null,
                 cutout: null
             };
-            
+
             // Setup drop zones
-            ['isolation', 'drill', 'clear', 'cutout'].forEach(type => {
+            ['isolation', 'drill', 'clearing', 'cutout'].forEach(type => {
                 this.setupDropZone(type);
             });
-            
+
             // Process button
             const processBtn = document.getElementById('process-files-btn');
             if (processBtn) {
@@ -225,7 +225,7 @@
                     this.closeModal();    // Now this will close the file modal and not reopen the welcome modal
                 };
             }
-            
+
             // Back button
             const backBtn = document.getElementById('back-files-btn');
             if (backBtn) {
@@ -234,7 +234,7 @@
                     this.controller.uploadedFiles = {};
                 };
             }
-            
+
             // Close button
             const closeBtn = this.modals.file.querySelector('.modal-close');
             if (closeBtn) {
@@ -244,17 +244,17 @@
                 };
             }
         }
-        
+
         setupDropZone(opType) {
             const dropZone = document.getElementById(`${opType}-drop-zone`);
             const fileInput = document.getElementById(`${opType}-file`);
             const status = document.getElementById(`${opType}-status`);
-            
+
             if (!dropZone || !fileInput) return;
-            
+
             // Click to browse
             dropZone.addEventListener('click', () => fileInput.click());
-            
+
             // File input change
             fileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
@@ -262,17 +262,17 @@
                     this.handleFileForOperation(file, opType);
                 }
             });
-            
+
             // Drag events
             dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 dropZone.classList.add('dragging');
             });
-            
+
             dropZone.addEventListener('dragleave', () => {
                 dropZone.classList.remove('dragging');
             });
-            
+
             dropZone.addEventListener('drop', (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('dragging');
@@ -281,14 +281,14 @@
                     this.handleFileForOperation(files[0], opType);
                 }
             });
-            
+
             // Clear status
             if (status) {
                 status.textContent = '';
                 status.className = 'zone-status';
             }
         }
-        
+
         handleFileForOperation(file, opType) {
             const validation = this.controller.core?.validateFileType(file.name, opType);
             if (validation && !validation.valid) {
@@ -299,18 +299,18 @@
                 }
                 return;
             }
-            
+
             this.controller.uploadedFiles[opType] = file;
-            
+
             const status = document.getElementById(`${opType}-status`);
             if (status) {
                 status.textContent = `✓ ${file.name}`;
                 status.className = 'zone-status success';
             }
-            
+
             this.updateProcessButton();
         }
-        
+
         updateProcessButton() {
             const processBtn = document.getElementById('process-files-btn');
             if (processBtn) {
@@ -318,26 +318,42 @@
                 processBtn.disabled = !hasFiles;
             }
         }
-        
+
         // Toolpath modal handler
         showToolpathModal(operations, highlightOperationId = null) {
             this.debug(`Opening toolpath manager with ${operations.length} operation(s)`);
-            
-            // Store operations
-            this.selectedOperations = operations;
+
+            // Helper function to get the desired sort order
+            const getSortOrder = (opType) => {
+                switch (opType) {
+                    case 'isolation': return 1;
+                    case 'clearing':  return 2;
+                    case 'drill':     return 3;
+                    case 'cutout':    return 4;
+                    default:          return 0; // Put any other types (if they exist) first
+                }
+            };
+
+            // Sort the incoming operations array based on the priority
+            const sortedOperations = operations.sort((a, b) => {
+                return getSortOrder(a.type) - getSortOrder(b.type);
+            });
+
+            // Store the *sorted* operations
+            this.selectedOperations = sortedOperations;
             this.highlightedOpId = highlightOperationId;
             this.toolpathPlans.clear();
 
             this.attachGcodeModalTooltips();
 
-            // 1. Get the modal's dropdown
+            // Get the modal's dropdown
             const modalPostSelect = document.getElementById('gcode-post-processor');
             
-            // 2. Get the *current* setting from the core
+            // Get the *current* setting from the core
             const currentPost = this.controller.core?.getSetting('gcode', 'postProcessor') || 'grbl';
 
             if (modalPostSelect) {
-                // 3. Populate it (if it's empty)
+                // Populate it (if it's empty)
                 if (modalPostSelect.options.length === 0) {
                     const options = config.ui?.parameterOptions?.postProcessor || [{ value: 'grbl', label: 'GRBL (Default)' }];
                     options.forEach(opt => {
@@ -347,11 +363,11 @@
                         modalPostSelect.appendChild(optionEl);
                     });
                 }
-                
-                // 4. Set its value to match the core setting
+
+                // Set its value to match the core setting
                 modalPostSelect.value = currentPost;
             }
-            
+
             // Set corresponding file extension
             const filenameInput = document.getElementById('gcode-filename');
             if (filenameInput && this.controller.gcodeGenerator) {
@@ -363,18 +379,18 @@
                     filenameInput.value = newFilename;
                 }
             }
-            
+
             this.showModal('gcode');
-            
+
             // Update modal title
             const modal = this.modals.gcode;
             const header = modal.querySelector('.modal-header h2');
             if (header) header.textContent = 'Operations Manager';
-            
+
             this.populateToolpathModal();
-            
-            this.showPlaceholderPreview(); // Only shows tool reach simulated stroked paths.
-            
+
+            this.showPlaceholderPreview();
+
             this.setupToolpathHandlers();
         }
 
@@ -386,7 +402,7 @@
                 this.gcodeModalTooltipsProcessed = new Set();
             }
             const processedLabels = this.gcodeModalTooltipsProcessed;
-            
+
             const attachTo = (inputId, tooltipKey) => {
                 const input = document.getElementById(inputId);
                 if (!input) return;
@@ -395,12 +411,12 @@
                 if (label) {
                     // Check if modal already has tooltips
                     if (processedLabels.has(label)) {
-                        return; // Already attached
+                        return;
                     }
                     processedLabels.add(label);
 
                     const text = this.lang.get(tooltipKey);
-                    const title = label.textContent; // Just use the label text as title
+                    const title = label.textContent; // Use the label text as title
                     
                     if (text) {
                         // This will create the '?' icon
@@ -410,7 +426,7 @@
                     }
                 }
             };
-            
+
             // Find the "Processing Order" <h3> and attach a tooltip to its help text
             const orderHelp = document.querySelector('#gcode-operation-order + .help-text');
             if (orderHelp) {
@@ -428,7 +444,7 @@
             attachTo('gcode-tool-changes', 'tooltips.modals.gcode.toolChanges');
             attachTo('gcode-optimize-paths', 'tooltips.modals.gcode.optimize');
             attachTo('gcode-filename', 'tooltips.modals.gcode.filename');
-            
+
             // Attach to calculate button
             const calcBtn = document.getElementById('gcode-calculate-btn');
             if (calcBtn) {
@@ -438,25 +454,25 @@
                  }
             }
         }
-        
+
         populateToolpathModal() {
             const list = document.getElementById('gcode-operation-order');
             if (!list) {
                 console.error('[UI-ModalManager] #gcode-operation-order list not found!');
                 return;
             }
-            
+
             list.innerHTML = '';
-            
+
             for (const op of this.selectedOperations) {
                 const item = this.createOperationItem(op);
                 list.appendChild(item);
             }
-            
+
             // Make the correct list sortable
             this.makeSortable(list);
 
-            // Clear the *other* list (gcode-operation-list) in case it had old content
+            // Clear the other list (gcode-operation-list) in case it had old content // Review - Does the operation-list data-structure still exist?
             const checklist = document.getElementById('gcode-operation-list');
             if (checklist) {
                 checklist.innerHTML = ''; // This list is not used by this function
@@ -466,17 +482,17 @@
             const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
             if (optimizeCheckbox && config.gcode) {
                 // Use the master switch 'enableOptimization'
-                optimizeCheckbox.checked = config.gcode.enableOptimization || false;
+                optimizeCheckbox.checked = config.gcode.enableOptimization;
             }
         }
-        
-        createOperationItem(operation) {
+
+        createOperationItem(operation) { // Review - There shouldn't be any CSS here
             const item = document.createElement('div');
-            item.className = 'file-node-content'; // Was 'operation-item'
+            item.className = 'file-node-content';
             item.style.marginBottom = 'var(--spacing-xs)';
             item.style.cursor = 'grab'; // Cue for dragging
             item.dataset.operationId = operation.id;
-            
+
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = true;
@@ -501,10 +517,10 @@
             item.appendChild(dragHandle);
             item.appendChild(checkbox);
             item.appendChild(label);
-            
+
             // Show key parameters
             const params = document.createElement('div');
-            params.className = 'geometry-info'; // Was 'operation-params'
+            params.className = 'geometry-info';
             params.style.fontSize = 'var(--font-size-xs)';
             params.style.color = 'var(--color-text-hint)';
             params.style.fontFamily = 'var(--font-mono)';
@@ -512,15 +528,15 @@
             const tool = operation.settings.tool?.diameter;
             const depth = operation.settings.cutDepth;
             const feed = operation.settings.feedRate;
-            
+
             params.innerHTML = `
                 T: ${tool}mm | Z: ${depth}mm | F: ${feed}
             `;
             item.appendChild(params);
-            
+
             return item;
         }
-        
+
         makeSortable(container) {
             let draggedItem = null;
 
@@ -544,7 +560,7 @@
             container.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 if (!draggedItem) return;
-                
+
                 const afterElement = this.getDragAfterElement(container, e.clientY);
                 if (afterElement == null) {
                     container.appendChild(draggedItem);
@@ -558,14 +574,14 @@
                 item.draggable = true;
             });
         }
-        
+
         getDragAfterElement(container, y) {
             const draggableElements = [...container.querySelectorAll('.file-node-content:not(.dragging)')];
-            
+
             return draggableElements.reduce((closest, child) => {
                 const box = child.getBoundingClientRect();
                 const offset = y - box.top - box.height / 2;
-                
+
                 if (offset < 0 && offset > closest.offset) {
                     return { offset: offset, element: child };
                 } else {
@@ -573,7 +589,7 @@
                 }
             }, { offset: Number.NEGATIVE_INFINITY }).element;
         }
-        
+
         async runToolpathOrchestration(btn) {
             // 1. Show loading state
             const originalText = btn.textContent;
@@ -631,7 +647,7 @@
                     includeComments: document.getElementById('gcode-include-comments')?.checked,
                     singleFile: document.getElementById('gcode-single-file')?.checked,
                     toolChanges: document.getElementById('gcode-tool-changes')?.checked,
-                    optimize: optimizeCheckbox ? optimizeCheckbox.checked : false
+                    optimize: optimizeCheckbox ? optimizeCheckbox.checked : true
                 };
 
                 // 5. Run orchestration
@@ -659,7 +675,7 @@
                     const seconds = Math.floor(result.estimatedTime % 60);
                     estTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
                 }
-                
+
                 const distanceEl = document.getElementById('gcode-distance');
                 if (distanceEl) {
                     distanceEl.textContent = `${result.totalDistance.toFixed(1)}mm`;
@@ -682,7 +698,7 @@
             if (cancelBtn) {
                 cancelBtn.onclick = () => this.closeModal();
             }
-            
+
             // Calculate button
             const calculateBtn = document.getElementById('gcode-calculate-btn');
             if (calculateBtn) {
@@ -690,24 +706,24 @@
                     this.runToolpathOrchestration(calculateBtn);
                 };
             }
-            
+
             // Export button
             const exportBtn = document.getElementById('gcode-export-btn');
             if (exportBtn) {
                 exportBtn.onclick = () => this.exportGCode();
             }
-            
+
             // Close button
             const closeBtn = this.modals.gcode?.querySelector('.modal-close');
             if (closeBtn) {
                 closeBtn.onclick = () => this.closeModal();
             }
         }
-        
+
         exportGCode() {
             const previewText = document.getElementById('gcode-preview-text');
             const filename = document.getElementById('gcode-filename')?.value || textConfig.gcodeDefaultFilename || 'output.nc';
-            
+
             // Get the placeholder text from the config
             const placeholder = textConfig.gcodePlaceholder;
             const gcodeContent = previewText.value;
@@ -717,7 +733,7 @@
                 return;
             }
 
-            // Check if the content is *exactly* the placeholder
+            // Check if the content is exactly the placeholder
             if (gcodeContent === placeholder) {
                 alert(textConfig.gcodeNoExportAlert);
                 return;
@@ -731,7 +747,7 @@
                 alert(textConfig.gcodeNoExportAlert);
                 return;
             }
-            
+
             // Create download
             const blob = new Blob([gcodeContent], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
@@ -740,18 +756,18 @@
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
-            
+
             if (this.controller.ui?.statusManager) {
                 this.controller.ui.statusManager.showStatus('G-code exported successfully', 'success');
             }
-            
+
             this.closeModal();
         }
-        
+
         // Warning modal (for future use)
         showWarning(title, message, options = {}) {
             const { onConfirm, onCancel, confirmText = 'OK', cancelText = 'Cancel' } = options;
-            
+
             // Create modal dynamically if not exists
             let modal = document.getElementById('warning-modal');
             if (!modal) {
@@ -759,11 +775,11 @@
                 document.body.appendChild(modal);
                 this.modals.warning = modal;
             }
-            
+
             // Set content
             modal.querySelector('.warning-title').textContent = title;
             modal.querySelector('.warning-message').textContent = message;
-            
+
             // Setup buttons
             const confirmBtn = modal.querySelector('.warning-confirm');
             confirmBtn.textContent = confirmText;
@@ -771,7 +787,7 @@
                 if (onConfirm) onConfirm();
                 this.closeModal();
             };
-            
+
             const cancelBtn = modal.querySelector('.warning-cancel');
             if (onCancel) {
                 cancelBtn.style.display = '';
@@ -783,15 +799,15 @@
             } else {
                 cancelBtn.style.display = 'none';
             }
-            
+
             this.showModal('warning');
         }
-        
+
         createWarningModal() {
             const modal = document.createElement('div');
             modal.id = 'warning-modal';
             modal.className = 'modal';
-            
+
             modal.innerHTML = `
                 <div class="modal-content modal-warning">
                     <div class="modal-header">
@@ -807,9 +823,9 @@
                     </div>
                 </div>
             `;
-            
+
             modal.querySelector('.modal-close').onclick = () => this.closeModal();
-            
+
             return modal;
         }
 
@@ -823,6 +839,6 @@
             }
         }
     }
-    
+
     window.ModalManager = ModalManager;
 })();

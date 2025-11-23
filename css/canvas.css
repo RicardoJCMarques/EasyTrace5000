@@ -102,7 +102,7 @@
     /* Operation Colors - Set by theme */
     --color-op-isolation: var(--color-operation-isolation, #ff8844);
     --color-op-drill: var(--color-operation-drill, #4488ff);
-    --color-op-clear: var(--color-operation-clear, #44ff88);
+    --color-op-clearing: var(--color-operation-clearing, #44ff88);
     --color-op-cutout: var(--color-operation-cutout, #ff00ff);
     --color-op-toolpath: var(--color-operation-toolpath, #00ffff);
     

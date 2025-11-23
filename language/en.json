@@ -3,9 +3,11 @@
     "file": "language/en.json",
     "description": "English language file for EasyTrace5000",
     "author": "Eltryus - Ricardo Marques",
+    "see": "https://github.com/RicardoJCMarques/EasyTrace5000",
     "license": "AGPL-3.0-or-later",
     "copyright": "Copyright (C) 2025 Eltryus"
   },
+
   "language": "en",
   "version": "1.0",
   "strings": {
@@ -289,7 +291,7 @@
           "exportSingle": "Combine all selected operations into one G-code file. If unchecked, you will get one file per operation.",
           "includeComments": "Add human-readable comments (e.g., '; Starting Operation: isolation.gbr') to the G-code.",
           "toolChanges": "Insert a pause (M0 or M6) when the tool changes between operations. (Not yet implemented)",
-          "optimize": "Experimental! Attempt to re-order cutting paths to reduce travel time. May increase calculation time."
+          "optimize": "Applies multiple algorithms to reduce operation time. Disable to try and remove unexpected toolpaths."
         }
       }
     },
@@ -374,7 +376,7 @@
           "singleFile": "Combine all selected operations into one G-code file. If unchecked, you will get one file per operation.",
           "includeComments": "Add human-readable comments (e.g., '; Starting Operation: isolation.gbr') to the G-code.",
           "toolChanges": "Insert a pause (M0 or M6) when the tool changes between operations. (Not yet implemented)",
-          "optimize": "Experimental! Attempt to re-order cutting paths to reduce travel time. May increase calculation time.",
+          "optimize": "Applies multiple algorithms to reduce operation time. Disable to try and remove unexpected toolpaths.",
           "filename": "The name of the G-code file that will be downloaded.",
           "calculate": "Process the selected operations and generate the G-code preview based on the current order and settings."
         }

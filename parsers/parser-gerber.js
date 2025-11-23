@@ -26,11 +26,11 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
     const geomConfig = config.geometry;
     const formatConfig = config.formats.gerber;
-    
+
     class GerberParser extends ParserCore {
         constructor(options = {}) {
             super({
@@ -38,7 +38,7 @@
                 format: formatConfig.defaultFormat,
                 ...options
             });
-            
+
             // Gerber-specific state
             this.state = {
                 position: { x: 0, y: 0 },
@@ -52,7 +52,7 @@
                 units: this.options.units,
                 format: { ...this.options.format }
             };
-            
+
             // Results
             this.layers = {
                 polarity: 'positive',
@@ -62,33 +62,33 @@
                 objects: []
             };
         }
-        
+
         parse(content) {
             try {
                 this.debug('Starting Gerber parse');
-                
+
                 // Reset state
                 this.reset();
-                
+
                 // Phase 1: Tokenize into commands
                 const commands = this.tokenize(content);
                 this.debug(`Tokenized ${commands.length} commands`);
 
                 // Phase 2: Execute commands sequentially
                 this.executeCommands(commands);
-                
+
                 // Phase 3: Finalize
                 this.finalizeParse();
                 this.debug(`Parse complete: ${this.layers.objects.length} objects created`);
                 this.logStatistics();
-                
+
                 return {
                     success: true,
                     layers: this.layers,
                     errors: this.errors,
                     warnings: this.warnings
                 };
-                
+
             } catch (error) {
                 this.errors.push(`Parse error: ${error.message}`);
                 return {
@@ -99,7 +99,7 @@
                 };
             }
         }
-        
+
         reset() {
             this.state = {
                 position: { x: 0, y: 0 },
@@ -113,7 +113,7 @@
                 units: this.options.units,
                 format: { ...this.options.format }
             };
-            
+
             this.layers = {
                 polarity: 'positive',
                 units: this.options.units,
@@ -121,7 +121,7 @@
                 apertures: [],
                 objects: []
             };
-            
+
             this.errors = [];
             this.warnings = [];
             this.stats = {
@@ -132,21 +132,21 @@
                 commandsProcessed: 0
             };
         }
-        
+
         tokenize(content) {
             const commands = [];
             let currentBlock = '';
             let inExtended = false;
             let lineNumber = 1;
-            
+
             for (let i = 0; i < content.length; i++) {
                 const char = content[i];
-                
+
                 if (char === '\n') {
                     lineNumber++;
                     this.stats.linesProcessed++;
                 }
-                
+
                 if (char === '%') {
                     if (inExtended && currentBlock.trim()) {
                         commands.push(this.parseExtendedCommand(currentBlock.trim(), lineNumber));
@@ -163,10 +163,10 @@
                     currentBlock += char;
                 }
             }
-            
+
             return commands;
         }
-        
+
         parseExtendedCommand(block, lineNumber) {
             // Aperture Macro Definition (e.g., %AMMACRO1*...%)
             if (block.startsWith('AM')) {
@@ -227,40 +227,40 @@
             
             return { type: 'UNKNOWN', params: { content: block }, line: lineNumber };
         }
-        
+
         parseStandardCommand(block, lineNumber) {
             const commands = [];
             let remaining = block;
-            
+
             // Extract G-codes
             if (remaining.includes('G36')) {
                 commands.push({ type: 'START_REGION', params: {}, line: lineNumber });
                 remaining = remaining.replace('G36', '').trim();
             }
-            
+
             if (remaining.includes('G37')) {
                 commands.push({ type: 'END_REGION', params: {}, line: lineNumber });
                 remaining = remaining.replace('G37', '').trim();
             }
-            
+
             if (remaining.includes('G01')) {
                 commands.push({ type: 'SET_INTERPOLATION', params: { mode: 'linear' }, line: lineNumber });
                 remaining = remaining.replace('G01', '').trim();
             }
-            
+
             if (remaining.includes('G02')) {
                 commands.push({ type: 'SET_INTERPOLATION', params: { mode: 'cw_arc' }, line: lineNumber });
                 remaining = remaining.replace('G02', '').trim();
             }
-            
+
             if (remaining.includes('G03')) {
                 commands.push({ type: 'SET_INTERPOLATION', params: { mode: 'ccw_arc' }, line: lineNumber });
                 remaining = remaining.replace('G03', '').trim();
             }
-            
+
             // Extract coordinates
             const coords = this.extractCoordinates(remaining);
-            
+
             // Extract D-code operation
             let operation = null;
             if (remaining.includes('D01')) {
@@ -280,7 +280,7 @@
                     });
                 }
             }
-            
+
             // Create operation command
             if (coords || operation) {
                 if (operation === 'FLASH') {
@@ -309,7 +309,7 @@
                     });
                 }
             }
-            
+
             // Handle M-codes
             if (remaining.startsWith('M02') || remaining.startsWith('M00') || remaining.startsWith('M30')) {
                 commands.push({ type: 'EOF', params: {}, line: lineNumber });
@@ -317,38 +317,38 @@
             
             return commands;
         }
-        
+
         extractCoordinates(text) {
             const coords = {};
-            
+
             const xMatch = text.match(/X([+-]?\d+)/);
             if (xMatch) coords.x = xMatch[1];
-            
+
             const yMatch = text.match(/Y([+-]?\d+)/);
             if (yMatch) coords.y = yMatch[1];
-            
+
             const iMatch = text.match(/I([+-]?\d+)/);
             if (iMatch) coords.i = iMatch[1];
-            
+
             const jMatch = text.match(/J([+-]?\d+)/);
             if (jMatch) coords.j = jMatch[1];
-            
+
             return Object.keys(coords).length > 0 ? coords : null;
         }
-        
+
         executeCommands(commands) {
             for (const command of commands) {
                 this.executeCommand(command);
                 this.stats.commandsProcessed++;
             }
-            
+
             // Handle unclosed region
             if (this.state.inRegion && this.state.regionPoints.length > 0) {
                 this.warnings.push('File ended with unclosed region');
                 this.finalizeRegion();
             }
         }
-        
+
         executeCommand(command) {
             switch (command.type) {
                 case 'SET_FORMAT':
@@ -356,37 +356,37 @@
                     this.state.format.decimal = command.params.xDecimal;
                     this.debug(`Format set to ${this.state.format.integer}.${this.state.format.decimal}`);
                     break;
-                    
+
                 case 'SET_UNITS':
                     this.state.units = command.params.units;
                     this.layers.units = this.state.units;
                     this.debug(`Units set to ${this.state.units}`);
                     break;
-                    
+
                 case 'SET_POLARITY':
                     this.state.polarity = command.params.polarity;
                     this.debug(`Polarity set to ${this.state.polarity}`);
                     break;
-                    
+
                 case 'SET_INTERPOLATION':
                     this.state.interpolation = command.params.mode;
                     break;
-                    
+
                 case 'DEFINE_APERTURE':
                     this.state.apertures.set(command.params.code, command.params);
                     break;
-                    
+
                 case 'SELECT_APERTURE':
                     this.state.aperture = command.params.aperture;
                     break;
-                    
+
                 case 'START_REGION':
                     if (!this.state.inRegion) {
                         this.state.inRegion = true;
                         this.state.regionPoints = [];
                     }
                     break;
-                    
+
                 case 'END_REGION':
                     if (this.state.inRegion) {
                         this.finalizeRegion();
@@ -394,7 +394,7 @@
                         this.state.regionPoints = [];
                     }
                     break;
-                    
+
                 case 'MOVE':
                     const movePos = this.parsePosition(command.params);
                     if (this.state.inRegion && this.state.regionPoints.length === 0) {
@@ -402,18 +402,17 @@
                     }
                     this.state.position = movePos;
                     break;
-                    
+
                 case 'DRAW':
                     const drawPos = this.parsePosition(command.params);
-                    
-                    // Check for a zero-length draw, which indicates a "painted" pad.
-                    // If start and end positions are the same, treat it as a flash.
+
+                    // Check for a zero-length draw.
                     const precision = geomConfig.zeroLengthTolerance;
                     const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
                                              Math.abs(this.state.position.y - drawPos.y) < precision;
 
+                    // If start and end positions are the same treat it as a flash.
                     if (isZeroLengthDraw) {
-                        // This is effectively a flash, not a trace.
                         this.debug(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
 
                         this.createFlash(drawPos);
@@ -434,7 +433,7 @@
                             this.stats.coordinatesParsed++;
                         }
                     }
-                    
+
                     if (this.state.inRegion) {
                         if (this.state.regionPoints.length === 0) {
                             this.state.regionPoints.push({ ...this.state.position });
@@ -446,13 +445,13 @@
                     }
                     this.state.position = drawPos;
                     break;
-                    
+
                 case 'FLASH':
                     const flashPos = this.parsePosition(command.params);
                     this.createFlash(flashPos);
                     this.state.position = flashPos;
                     break;
-                    
+
                 case 'EOF':
                     this.debug('End of file');
                     break;
@@ -461,22 +460,22 @@
         
         parsePosition(params) {
             const newPos = { ...this.state.position };
-            
+
             if (params.x !== undefined) {
                 newPos.x = this.parseCoordinateValue(params.x, this.state.format, this.state.units);
                 this.stats.coordinatesParsed++;
             }
-            
+
             if (params.y !== undefined) {
                 newPos.y = this.parseCoordinateValue(params.y, this.state.format, this.state.units);
                 this.stats.coordinatesParsed++;
             }
-            
+
             if (this.validateCoordinates(newPos)) {
                 this.updateCoordinateRange(newPos);
                 this.coordinateValidation.validCoordinates++;
             }
-            
+
             return newPos;
         }
 
@@ -485,16 +484,16 @@
                 this.warnings.push(`Region with only ${this.state.regionPoints.length} points discarded`);
                 return;
             }
-            
+
             // Close region if needed
             const first = this.state.regionPoints[0];
             const last = this.state.regionPoints[this.state.regionPoints.length - 1];
             const precision = config.geometry?.coordinatePrecision || 0.001;
-            
+
             if (Math.abs(first.x - last.x) > precision || Math.abs(first.y - last.y) > precision) {
                 this.state.regionPoints.push({ ...first });
             }
-            
+
             // Create contours structure
             const contours = [{
                 points: [...this.state.regionPoints],
@@ -502,31 +501,31 @@
                 isHole: false,
                 parentId: null
             }];
-            
+
             const region = {
                 type: 'region',
                 points: [...this.state.regionPoints],
                 polarity: this.state.polarity,
                 contours: contours
             };
-            
+
             this.layers.objects.push(region);
             this.stats.objectsCreated++;
             this.debug(`Created region with ${region.points.length} points`);
         }
-        
+
         createTrace(start, end, arcData = null) {
             if (!this.state.aperture) {
                 this.warnings.push(`Draw operation without aperture at (${end.x}, ${end.y})`);
                 return;
             }
-            
+
             const aperture = this.state.apertures.get(this.state.aperture);
             if (!aperture) {
                 this.warnings.push(`Undefined aperture ${this.state.aperture}`);
                 return;
             }
-            
+
             const trace = {
                 type: 'trace',
                 start: { ...start },
@@ -536,24 +535,24 @@
                 polarity: this.state.polarity,
                 interpolation: this.state.interpolation
             };
-            
+
             // Add arc data if present
             if (arcData && (this.state.interpolation === 'cw_arc' || this.state.interpolation === 'ccw_arc')) {
                 trace.arc = arcData;
                 trace.clockwise = this.state.interpolation === 'cw_arc';
                 this.debug(`Created arc trace with offsets i=${arcData.i}, j=${arcData.j}`);
             }
-            
+
             this.layers.objects.push(trace);
             this.stats.objectsCreated++;
         }
-        
+
         createFlash(position) {
             if (!this.state.aperture) {
                 this.warnings.push(`Flash operation without aperture at (${position.x}, ${position.y})`);
                 return;
             }
-            
+
             const aperture = this.state.apertures.get(this.state.aperture);
             if (!aperture) {
                 this.warnings.push(`Undefined aperture ${this.state.aperture}`);
@@ -567,7 +566,7 @@
                 polarity: this.state.polarity,
                 shape: aperture.shape // Use the 'shape' property from the aperture definition
             };
-            
+
             switch (aperture.shape) {
                 case 'circle':
                     flash.radius = (aperture.parameters[0] || 0) / 2;
@@ -579,7 +578,7 @@
                     flash.height = aperture.parameters[1] || aperture.parameters[0];
                     flash.parameters = aperture.parameters;
                     break;
-                
+
                 case 'obround':
                     flash.width = aperture.parameters[0];
                     flash.height = aperture.parameters[1] || aperture.parameters[0];
@@ -590,7 +589,7 @@
                     if (aperture.macroName === 'MACRO1') {
                         flash.shape = 'polygon'; // The plotter receives a polygon
                         const [width, height, rotation] = aperture.variables;
-                        
+
                         const half_w = width / 2;
                         const half_h = height / 2;
                         const angleRad = rotation * Math.PI / 180;
@@ -618,15 +617,15 @@
                      this.warnings.push(`Unsupported flash shape: ${aperture.shape}`);
                      return;
             }
-            
+
             this.layers.objects.push(flash);
             this.stats.objectsCreated++;
         }
-        
+
         finalizeParse() {
             // Remove duplicate traces
             this.layers.objects = this.removeDuplicateTraces(this.layers.objects);
-            
+
             // Export apertures
             const apertureMap = new Map();
             this.layers.objects.forEach(obj => {
@@ -637,13 +636,13 @@
                     }
                 }
             });
-            
+
             this.layers.apertures = Array.from(apertureMap.values());
-            
+
             // Calculate bounds
             this.layers.bounds = this.calculateBounds(this.layers.objects);
         }
-        
+
         getApertureShape(char) {
             switch (char) {
                 case 'C': return 'circle';
@@ -654,6 +653,6 @@
             }
         }
     }
-    
+
     window.GerberParser = GerberParser;
 })();

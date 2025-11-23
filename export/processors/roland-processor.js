@@ -26,7 +26,7 @@
 
 (function() {
     'use strict';
-    
+
     // This class DOES NOT extend BasePostProcessor.
     // It implements the same interface to be used by GCodeGenerator.
     class RolandPostProcessor {
@@ -40,19 +40,19 @@
                 // RML uses integer "plotter units". 1mm = 40 units.
                 unitsPerMM: 40 
             };
-            
+
             this.resetState();
         }
 
         resetState() {
-            // We still track position, but in MM (scaling happens on format)
+            // Still tracking position, but in mm (scaling happens on format)
             this.currentPosition = { x: 0, y: 0, z: 0 };
             this.currentSpindle = 0; // 0 = off, 1 = on
         }
 
         generateHeader(options) {
             const headerLines = [];
-            
+
             // 1. Add comment block (RML uses ';')
             if (options.includeComments && options.commentBlock) {
                 options.commentBlock.forEach(line => {
@@ -66,21 +66,20 @@
             if (options.startCode) {
                 headerLines.push(options.startCode);
             }
-            
+
             // Set initial velocity (feed rate)
-            // We find the first plan to get a feed rate.
+            // Find the first plan to get a feed rate.
             // This is a limitation; RML sets feed globally.
             const firstPlan = options.firstPlan;
             if (firstPlan && firstPlan.metadata && firstPlan.metadata.feedRate) {
                 headerLines.push(`VS ${this.formatFeed(firstPlan.metadata.feedRate)};`);
             }
-            
+
             return headerLines.join('\n');
         }
 
         generateFooter(options) {
-             // Just return the custom end code from config.js
-            return options.endCode || '; End of job';
+            return options.endCode || '; End of job'; // Review - DANGER? options.endCode links to generic g-code, not RML?
         }
 
         setSpindle(speed) {
@@ -92,17 +91,17 @@
             this.currentSpindle = newSpeed;
             return newSpeed === 1 ? '!MC1;' : '!MC0;'; // Motor Control On/Off
         }
-        
+
         generateToolChange(tool, options) {
             const lines = [];
-            const safeZ = options.safeZ || 5.0; // Get safe Z from options
+            const safeZ = options.safeZ;
 
             lines.push('');
             lines.push('; Tool change');
-            
+
             // 1. Stop spindle
             lines.push(this.setSpindle(0));
-            
+
             // 2. Retract to safe Z (PU = Pen Up)
             lines.push(`PU ${this.formatCoordinate(this.currentPosition.x)}, ${this.formatCoordinate(this.currentPosition.y)};`);
             lines.push(`PA;PA;!PZ 0, ${this.formatCoordinate(safeZ)};`); // Z-move
@@ -111,20 +110,20 @@
             // 3. Pause
             lines.push('M0 ; Pause for manual tool change');
             lines.push('');
-            
+
             // 4. Set new speed (if supported, RML spindle is usually just on/off)
-            // Spindle speed is set in header. We just turn it on.
+            // Spindle speed is set in header. Turn it on.
             lines.push(this.setSpindle(tool.spindleSpeed || 10000));
             lines.push('');
-            
+
             return lines.join('\n');
         }
 
-        processCommand(cmd, options, metadata) {
-            // 1. COORDINATE FORMATTING
+        processCommand(cmd) {
+            // 1. Coordinate Formatting
             const coords = [];
-            let hasMotion = false;
-            
+            let hasMotion = false; // Review - Unused constant?
+
             const targetX = (cmd.x !== null && cmd.x !== undefined) ? cmd.x : this.currentPosition.x;
             const targetY = (cmd.y !== null && cmd.y !== undefined) ? cmd.y : this.currentPosition.y;
             const targetZ = (cmd.z !== null && cmd.z !== undefined) ? cmd.z : this.currentPosition.z;
@@ -133,11 +132,11 @@
             const xChanged = Math.abs(targetX - this.currentPosition.x) > 1e-6;
             const yChanged = Math.abs(targetY - this.currentPosition.y) > 1e-6;
             const zChanged = Math.abs(targetZ - this.currentPosition.z) > 1e-6;
-            
+
             // Update state *before* formatting
             this.currentPosition = { x: targetX, y: targetY, z: targetZ };
 
-            // 2. COMMAND TRANSLATION
+            // 2. Command Translation
             switch (cmd.type) {
                 case 'RAPID':
                 case 'RETRACT':
@@ -163,36 +162,35 @@
                         rmlCmds.push(`PD ${this.formatCoordinate(targetX)}, ${this.formatCoordinate(targetY)};`);
                     }
                     return rmlCmds.join('\n');
-                
+
                 case 'DWELL':
                     const milliseconds = Math.round((cmd.dwell || 0) * 1000);
                     if (milliseconds > 0) {
-                        // RML 'PA' (Pause) command is in MILLISECONDS.
-                        // We must use the absolute positioning prefix 'PA;PA;'
+                        // RML 'PA' (Pause) command is in milliseconds.
+                        // Must use the absolute positioning prefix 'PA;PA;'
                         return `PA;PA;!PW ${milliseconds};`;
                     }
                     return '';
 
-                // ARCs are linearized by GCodeGenerator, so we only get LINEAR
+                // Arcs are linearized by GCodeGenerator, must only ger Linear
                 case 'ARC_CW':
                 case 'ARC_CCW':
                     return '; ARC_NOT_SUPPORTED_BY_PROCESSOR';
-                
+
                 default:
                     return '';
             }
         }
-        
+
         // Helper Functions
-        
         formatCoordinate(value) {
             if (value === null || value === undefined) return '';
             const units = Math.round(value * this.config.unitsPerMM);
             return units.toString();
         }
-        
+
         formatFeed(value) {
-            // RML feed rate is in cm/s. We get mm/min.
+            // RML feed rate is in cm/s. Convert to mm/min.
             // (value mm/min) * (1 min / 60s) * (1cm / 10mm) = value / 600 cm/s
             const cm_per_sec = (value / 600.0);
             // Roland only supports 1-15 cm/s
@@ -200,6 +198,6 @@
             return clamped.toFixed(1);
         }
     }
-    
+
     window.RolandPostProcessor = RolandPostProcessor;
 })();

@@ -26,10 +26,9 @@
 
 (function() {
     'use strict';
-    
-    // Get config reference
-    const config = window.PCBCAMConfig || {};
-    const geomConfig = config.geometry || {};
+
+    const config = window.PCBCAMConfig;
+    const geomConfig = config.geometry;
 
     class SVGParser extends ParserCore {
         constructor(options = {}) {
@@ -50,7 +49,7 @@
                 if (svgNode.tagName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) {
                     throw new Error(doc.querySelector('parsererror')?.textContent || 'Invalid SVG file');
                 }
-                
+
                 let height = 0;
                 const viewBox = svgNode.getAttribute('viewBox');
                 if (viewBox) {
@@ -59,7 +58,7 @@
                     height = parseFloat(svgNode.getAttribute('height'));
                 }
                 if (!isFinite(height)) height = 0;
-                
+
                 // This transform is applied to all geometry
                 const yFlipTransform = [1, 0, 0, -1, 0, height];
                 this._traverseNode(svgNode, yFlipTransform);
@@ -103,14 +102,15 @@
                     if (styles.fill && styles.fill !== 'none' && styles.fillOpacity > 0) {
                         this._processFilledShape(geometry, currentTransform);
                     }
+                    
                     if (styles.stroke && styles.stroke !== 'none' && styles.strokeWidth > 0 && styles.strokeOpacity > 0) {
                         this._processStrokedShape(geometry, currentTransform, styles.strokeWidth);
                     }
                     break;
             }
         }
-        
-        // Processes a filled shape, creating 'flash' or 'region' objects.
+
+        // Processes a filled shape, creating flash or region objects.
         _processFilledShape(geometry, transform) {
             const transformed = this._applyTransformToGeometry(geometry, transform);
 
@@ -123,13 +123,13 @@
         }
 
         /**
-         * Processes a stroked shape, creating analytic 'trace' objects for the ParserPlotter.
+         * Processes a stroked shape
          */
         _processStrokedShape(geometry, transform, strokeWidth) {
             const transformed = this._applyTransformToGeometry(geometry, transform);
             // The 'subpaths' here are the transformed analytic segments
             const subpaths = Array.isArray(transformed.subpaths) ? transformed.subpaths : [];
-            const tolerance = geomConfig.coordinatePrecision || 0.001;
+            const tolerance = geomConfig.coordinatePrecision;
 
             subpaths.forEach(segments => {
                 // Fallback for old point arrays (from polyline/polygon)
@@ -146,13 +146,12 @@
                 }
 
                 if (segments.length === 0) return;
-                
-                // This logic MUST be stateful to correctly build analytic traces
 
+                // This logic must be stateful to correctly build analytic traces
                 for (const seg of segments) {
-                    
+
                     if (seg.type === 'move') {
-                        // 'move' segments have no p0, just 'p'. We skip them for traces.
+                        // 'move' segments have no p0, just 'p'. Skip them for traces.
                         continue;
                     }
 
@@ -160,7 +159,7 @@
                         // Check for zero-length
                         const zeroTolerance = geomConfig.svgZeroLengthTolerance || 1e-6;
                         if (Math.hypot(seg.p1.x - seg.p0.x, seg.p1.y - seg.p0.y) < zeroTolerance) continue;
-                        
+
                         this.layers.objects.push({
                             type: 'trace',
                             start: seg.p0,
@@ -188,6 +187,7 @@
                                     j: seg.center.y - seg.p0.y
                                 }
                             });
+
                         } else {
                             // It's elliptical. Create a new analytic trace type.
                             this.layers.objects.push({
@@ -234,8 +234,8 @@
                 }
             });
         }
-
-        // Creates 'flash' objects compatible with the ParserPlotter.
+        
+        // Creates flash objects.
         _createFlash(geom) {
             const flash = { type: 'flash', polarity: 'dark', parameters: [] };
             switch(geom.type) {
@@ -245,6 +245,7 @@
                     flash.radius = geom.radius;
                     flash.parameters.push(geom.radius * 2);
                     break;
+
                 case 'rectangle':
                     flash.shape = 'rectangle';
                     flash.position = { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 };
@@ -252,6 +253,7 @@
                     flash.height = geom.height;
                     flash.parameters.push(geom.width, geom.height);
                     break;
+
                 case 'ellipse':
                     // Create an analytic ellipse flash. The plotter will be responsible for handling this shape.
                     flash.shape = 'ellipse';
@@ -261,6 +263,7 @@
                     // Pass rx/ry as parameters for compatibility
                     flash.parameters.push(geom.rx, geom.ry);
                     break;
+
                 case 'obround':
                     flash.shape = 'obround';
                     flash.position = { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 };
@@ -274,11 +277,11 @@
         }
 
         _createPolarityRegions(subpaths) {
-            
+
             const validSubpaths = subpaths.filter(segments => segments.length > 0);
 
             this.debug(`Received ${subpaths.length} subpaths. Found ${validSubpaths.length} valid subpaths to plot.`);
-            
+
             if (validSubpaths.length === 0) {
                 return;
             }
@@ -290,8 +293,8 @@
                     this.debug(`  - Subpath ${index}: ${subpath.length} segments.`);
                 });
             }
+
             // Create a single 'region' object. The plotter will be responsible for tessellating, nesting, and splitting this into multiple primitives if needed.
-            
             this.layers.objects.push({
                 type: 'region',
                 polarity: 'dark', // Plotter will determine final polarity based on nesting
@@ -320,7 +323,7 @@
             }
             return null;
         }
-        
+
         _applyTransformToGeometry(geom, m) {
             const determinant = m[0] * m[3] - m[1] * m[2];
             
@@ -343,7 +346,7 @@
                     height: Math.abs(p1.y - p2.y)
                 };
             }
-            
+
             // Handle transformed ellipses as general paths
             if (geom.type === 'ellipse' || (geom.type === 'rectangle' && (m[1] !== 0 || m[2] !== 0))) {
                 let subpath;
@@ -375,7 +378,7 @@
                 const pathGeom = { type: 'path', subpaths: [subpath] };
                 return this._applyTransformToGeometry(pathGeom, m);
             }
-            
+
             // Handle transformed obrounds as general paths
             if (geom.type === 'obround') {
                     // Simple axis-aligned scale
@@ -388,9 +391,9 @@
                             height: geom.height * Math.abs(m[3])
                         };
                     }
-                    
-                    // Rotated/skewed obround becomes an analytic path
-                    // We define the obround as two lines and two arcs
+
+                    // Rotated/skewed obround becomes an analytic path // Review - Why do this so early in the pipeline? System should support rotated obrounds.
+                    // Define the obround as two lines and two arcs
                     const { x, y, width, height } = geom;
                     const r = Math.min(width, height) / 2;
                     let p0, p1, p2, p3, c1, c2;
@@ -403,7 +406,7 @@
                         p1 = { x: x + width - r, y: y }; // Top-right point
                         p2 = { x: x + width - r, y: y + height }; // Bottom-right point
                         p3 = { x: x + r, y: y + height }; // Bottom-left point
-                        
+
                         subpath = [
                             { type: 'move', p: p0 },
                             { type: 'line', p0: p0, p1: p1 },
@@ -427,20 +430,20 @@
                             { type: 'arc',  p0: p3, p1: p0, center: c1, rx: r, ry: r, phi: 0, fA: 0, fS: 1, clockwise: true, startAngle: 0, endAngle: Math.PI }
                         ];
                     }
-                 
-                 // Create a new geometry object of type 'path'
+
+                 // Create a new geometry object of type path
                  const pathGeom = { type: 'path', subpaths: [subpath] };
-                 // Now, recursively call this function to transform the new path
+                 // Recursively call this function to transform the new path
                  return this._applyTransformToGeometry(pathGeom, m);
             }
 
             if (geom.type === 'path') {
                 const transformedSubpaths = geom.subpaths.map(segments => {
-                    // Fallback for old point arrays (from polyline/polygon)
+                    // Fallback for old point arrays (from polyline/polygon) // Review - Is this still necessary?
                     if (segments.length > 0 && segments[0].x !== undefined) {
                          return this._applyTransformToPoints(segments, m);
                     }
-                    
+
                     return segments.map(seg => {
                         if (seg.type === 'move') {
                             return { ...seg, p: this._applyTransformToPoint(seg.p, m) };
@@ -453,8 +456,8 @@
                             };
                         }
                         if (seg.type === 'arc') {
-                            // We must tessellate it, THEN transform the points as the geometry system doesn't handle elliptical arcs yet.
-                            // Use GeometryUtils to tessellate the original arc segment - Note: Tessellation should be at the plotter level? Also why is this  here? The system supports rounded arcs.
+                            // Tessellate it, then transform the points as the geometry system doesn't handle elliptical arcs yet.
+                            // Use GeometryUtils to tessellate the original arc segment - Note: Tessellation should be at the plotter level? Also why is this here? The system supports rounded arcs.
                             const tessellated = GeometryUtils.tessellateEllipticalArc(
                                 seg.p0, seg.p1, seg.rx, seg.ry,
                                 seg.phi, seg.fA, seg.fS
@@ -463,11 +466,11 @@
                             // Now transform the new points.
                             const arcPoints = tessellated.map(p => this._applyTransformToPoint(p, m));
 
-                            // We must convert this back into a series of line segments for the plotter. We return this as a "point_array" subpath.
+                            // Convert this back into a series of line segments for the plotter and return this as a "point_array" subpath.
                             return { type: 'point_array', points: arcPoints };
                         }
-                        
-                        // We must transform ALL control points
+
+                        // Transform ALL control points
                         if (seg.type === 'cubic') {
                             return {
                                 ...seg,
@@ -489,7 +492,7 @@
                         return seg; // Return unknown types as-is
                     });
                 }).flat(); // Flatten in case arc produced a point_array
-                
+
                 // Re-group segments into subpaths
                 const finalSubpaths = [];
                 let currentSubpath = [];
@@ -511,7 +514,7 @@
 
                 return { type: 'path', subpaths: finalSubpaths };
             }
-            
+
             return {
                 type: 'path',
                 points: this._applyTransformToPoints(points, m)
@@ -531,7 +534,7 @@
                 height
             } : null;
         }
-        
+
         _parseCircle(node) {
             const r = parseFloat(node.getAttribute('r') || 0);
             return r > 0 ? {
@@ -603,7 +606,7 @@
             styles.display = node.getAttribute('display') || styles.display;
             styles.visibility = node.getAttribute('visibility') || styles.visibility;
 
-            // 2. Apply 'style' attribute last
+            // 2. Apply style attribute last
             const styleAttr = node.getAttribute('style');
             if (styleAttr) {
                 styleAttr.split(';').forEach(s => {
@@ -617,7 +620,7 @@
                     else if (key === 'visibility') styles.visibility = value;
                 });
             }
-            
+
             return styles;
         }
 
@@ -680,7 +683,6 @@
             }
             return matrix;
         }
-
     }
 
     /**
@@ -703,7 +705,7 @@
 
         _parse() {
             let lastCmd, currentPoint = { x: 0, y: 0 }, controlPoint = { x: 0, y: 0 }, startPoint = { x: 0, y: 0 };
-            
+
             const commands = (this.d.match(/[a-df-z][^a-df-z]*/ig) || []);
 
             commands.forEach(cmdStr => {
@@ -719,7 +721,7 @@
                 let splitArgs = [];
                 const argsPerCmd = { m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0 };
                 const cmdType = cmdChar.toLowerCase();
-                
+
                 let innerLastCmd = cmdChar; 
 
                 if (cmdType in argsPerCmd && argsPerCmd[cmdType] > 0 && args.length > argsPerCmd[cmdType]) {
@@ -736,16 +738,16 @@
                 } else {
                     splitArgs.push(args);
                 }
-                
+
                 let isFirst = true;
                 splitArgs.forEach(argSet => {
                     const effectiveCmd = isFirst ? cmdChar : innerLastCmd;
-                    
+
                     // `lastCmd` is passed from the previous iteration.
                     [currentPoint, controlPoint, startPoint] = this._executeCommand(
                         effectiveCmd, argSet, currentPoint, controlPoint, startPoint, lastCmd
                     );
-                    
+
                     // Update `lastCmd` *inside* this loop so the next implicit command gets the correct preceding command type.
                     lastCmd = effectiveCmd; 
                     isFirst = false;
@@ -759,7 +761,7 @@
             const cmdLower = cmd.toLowerCase();
             // p0 is the state of currentPoint *before* the command
             let p0 = {...currentPoint};
-            
+
             switch (cmdLower) {
                 case 'm':
                     {
@@ -776,6 +778,7 @@
                         startPoint = {...currentPoint};
                     }
                     break;
+
                 case 'l':
                     {
                         const p1 = {
@@ -786,6 +789,7 @@
                         currentPoint = p1;
                     }
                     break;
+
                 case 'h':
                     {
                         const p1 = {
@@ -796,6 +800,7 @@
                         currentPoint = p1;
                     }
                     break;
+
                 case 'v':
                     {
                         const p1 = {
@@ -806,6 +811,7 @@
                         currentPoint = p1;
                     }
                     break;
+
                 case 'z':
                     if (this.currentSubPath) {
                         this.currentSubPath.closed = true;
@@ -813,6 +819,7 @@
                         currentPoint = {...startPoint};
                     }
                     break;
+
                 case 'c':
                     {
                         const p1 = { x: isRelative ? p0.x + args[0] : args[0], y: isRelative ? p0.y + args[1] : args[1] };
@@ -837,6 +844,7 @@
                         currentPoint = p3; controlPoint = p2;
                         break;
                     }
+                    
                 case 'q':
                     {
                         const p1 = { x: isRelative ? p0.x + args[0] : args[0], y: isRelative ? p0.y + args[1] : args[1] };
@@ -845,6 +853,7 @@
                         currentPoint = p2; controlPoint = p1;
                         break;
                     }
+
                 case 't':
                     {
                         let p1;
@@ -905,6 +914,7 @@
                 rx *= Math.sqrt(c);
                 ry *= Math.sqrt(c)
             }
+
             const l = (rx * rx * ry * ry - rx * rx * h * h - ry * ry * r * r) / (rx * rx * h * h + ry * ry * r * r),
                 d = (fA === fS ? -1 : 1) * Math.sqrt(Math.max(0, l)),
                 M = d * (rx * h / ry),
@@ -918,7 +928,7 @@
                 u = I([1, 0], [(r - M) / rx, (h - g) / ry]);
             let m = I([(r - M) / rx, (h - g) / ry], [(-r - M) / rx, (-h - g) / ry]);
             0 === fS && m > 0 ? m -= 2 * Math.PI : 1 === fS && m < 0 && (m += 2 * Math.PI);
-            
+
             return {
                 center: { x: x, y: y },
                 rx: rx, ry: ry, phi: phi,

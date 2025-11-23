@@ -1,6 +1,6 @@
 /**
  * @file        toolpath/toolpath-geometry-translator.js
- * @description Translates offset geometry into pure cutting path plans
+ * @description Translates offset geometry into pure toolpath plans
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -26,17 +26,23 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
     const debugConfig = config.debug;
-    
+
     /**
-     * Translates offset geometry primitives into pure cutting geometry plans.
+     * Translates offset geometry into pure toolpath plans
      * NO machine moves (RAPID/PLUNGE/RETRACT) - only LINEAR/ARC cutting commands.
      */
     class GeometryTranslator {
         constructor(core) {
             this.core = core;
+            // Initialize the tab planning module
+            if (typeof ToolpathTabPlanner !== 'undefined') {
+                this.tabPlanner = new ToolpathTabPlanner(this);
+            } else {
+                console.error("ToolpathTabPlanner module missing.");
+            }
         }
 
         /**
@@ -45,14 +51,13 @@
          */
         async translateAllOperations(operationContextPairs) {
             const allPlans = [];
-            
+
             for (const { operation, context } of operationContextPairs) {
                 if (!context) {
                     console.error(`[Translator] Missing context for operation ${operation.id}`);
                     continue;
                 }
-                
-                // Pass BOTH to translateOperation
+
                 const opPlans = await this.translateOperation(operation, context);
                 allPlans.push(...opPlans);
             }
@@ -60,195 +65,372 @@
             if (debugConfig.enabled) {
                 console.log(`[GeometryTranslator] Translated ${allPlans.length} pure geometry plans`);
             }
-            
+
             return allPlans;
         }
 
         /**
          * Translates a single operation.
+         * Iterates over contours within primitives.
          */
         async translateOperation(operation, ctx) {
             const { operationType, computed } = ctx;
             const depthLevels = computed.depthLevels;
             const plans = [];
+            const TOLERANCE = 0.001; 
 
-            // 2. Handle Drill Operations
+            // 1. Handle Drill Operations
             if (operationType === 'drill') {
                 const strategyPrimitives = operation.offsets[0]?.primitives || [];
-                // Pass the full context to the drill translator
                 const drillPlans = this.translateDrillOperation(ctx, strategyPrimitives, depthLevels);
                 plans.push(...drillPlans);
-                return plans; // Return early for drills
+                return plans;
             }
 
-            // 3. Handle Milling Operations (Isolation, Clear, Cutout)
+            // 2. Handle Milling Operations (Isolation, Clearing, Cutout)
             for (const offset of operation.offsets) {
-                // Get the computed offset distance for this specific pass
-                const passIndex = (offset.pass || 1) - 1; 
-                const offsetDistance = computed.offsetDistances[passIndex] || computed.offsetDistances[0] || 0; 
 
                 for (const primitive of offset.primitives) {
-                    // Handle multi-depth
-                    for (const depth of depthLevels) {
-                        // Create one plan per primitive, per depth level
-                        // We pass the full context to your existing createPurePlan
-                        const plan = this.createPurePlan(primitive, ctx, depth, offsetDistance);
-                        if (plan) {
-                            plans.push(plan);
+                    
+                    if (primitive.properties?.isCenterlinePath) {
+                        const centerlinePlans = this.translateCenterlinePath(primitive, ctx, depthLevels);
+                        plans.push(...centerlinePlans);
+                        continue;
+                    }
+
+                    // Handle non-path primitives (e.g., Circle in Clearing)
+                    if (primitive.type !== 'path') {
+                        for (const depth of depthLevels) {
+                            const plan = this.createPurePlan(primitive, ctx, depth, primitive.closed, primitive.properties.isHole || false);
+                            // Simple primitives (circles, obrounds) generate commands inside createPurePlan, so they are ready to push
+                            if (plan) plans.push(plan);
+                        }
+                        continue; 
+                    }
+
+                    if (!primitive.contours || primitive.contours.length === 0) {
+                        console.warn(`[Translator] PathPrimitive ${primitive.id} has no contours, skipping.`);
+                        continue;
+                    }
+
+                    // Iterate over the contours array (the "One Rule")
+                    for (const contour of primitive.contours) {
+                        const isHole = contour.isHole || false;
+                        const isCutout = ctx.operationType === 'cutout';
+
+                        // Path Generation (once per contour)
+                        let segmentedCommands = [];
+
+                        // Generate the original continuous path (used for shallow cuts/fallback)
+                        const tempPlan = new ToolpathPlan(operation.id);
+
+                        // Ensure tempPlan knows if the geometry is closed so translatePath loops correctly
+                        tempPlan.metadata.isClosed = primitive.closed; 
+
+                        this.translatePrimitiveToCutting(tempPlan, contour, 0, ctx.cutting.feedRate); 
+                        const unsegmentedCommands = tempPlan.commands.map(cmd => {
+                            cmd.metadata = cmd.metadata || {};
+                            cmd.metadata.isTab = false; 
+                            return cmd;
+                        });
+
+                        // Generate the path split at tab locations
+                        if (isCutout && this.tabPlanner && ctx.strategy.cutout.tabs > 0) {
+                            segmentedCommands = this.tabPlanner.calculateTabPositions(contour, ctx);
+                            if (debugConfig.enabled) {
+                                console.log(`Tab Planner output for ${contour.points.length} points: ${segmentedCommands.length} segments.`);
+                            }
+                        }
+
+                        if (unsegmentedCommands.length === 0) continue; 
+
+                        // Decision Z Calculation
+                        const finalDepth = ctx.strategy.cutDepth;
+                        const tabLiftAmount = ctx.strategy.cutout.tabHeight;
+                        const Z_top = finalDepth + tabLiftAmount; 
+
+                        // Create one plan per depth level
+                        for (const depth of depthLevels) {
+
+                            // Initialize plan metadata (entry/exit points)
+                            const plan = this.createPurePlan(contour, ctx, depth, primitive.closed, isHole, false); // Pass false to prevent command generation here
+
+                            if (plan) {
+                                const useTabbedPath = (segmentedCommands.length > 0) && (depth < Z_top - TOLERANCE);
+                                const commandsToSend = useTabbedPath ? segmentedCommands : unsegmentedCommands;
+
+                                // 1. Map the chosen XY commands to the current Z depth and set as plan.commands
+                                plan.commands = commandsToSend.map(cmd => {
+                                    const newCmd = { ...cmd };
+                                    newCmd.z = depth; 
+                                    return newCmd;
+                                });
+
+                                // 2. Attach necessary Z metadata for the Machine Processor
+                                if (useTabbedPath) {
+                                    plan.metadata.isTabbedPass = true;
+                                    plan.metadata.tabTopZ = Z_top;
+                                    plan.metadata.finalDepth = finalDepth; 
+                                } else {
+                                    plan.metadata.isTabbedPass = false;
+                                }
+
+                                // 3. Post-generation analysis and enforcement
+                                this.calculatePlanBounds(plan);
+
+                                // Winding Enforcement
+                                let actuallyClockwise = false;
+                                if (plan.commands && plan.commands.length > 0) {
+                                    const commandPoints = [];
+                                    let currentPos = { ...plan.metadata.entryPoint };
+
+                                    for (const cmd of plan.commands) {
+                                        if (cmd.x !== null) currentPos.x = cmd.x;
+                                        if (cmd.y !== null) currentPos.y = cmd.y;
+                                        commandPoints.push({ x: currentPos.x, y: currentPos.y });
+                                    }
+
+                                    if (commandPoints.length >= 3) {
+                                        actuallyClockwise = GeometryUtils.isClockwise(commandPoints);
+                                    }
+                                }
+
+                                const desiredClockwise = true; 
+                                if (actuallyClockwise !== desiredClockwise) {
+                                    this.reversePlan(plan);
+                                }
+
+                                plan.metadata.actualClockwise = actuallyClockwise;
+                                plans.push(plan); 
+                            }
                         }
                     }
                 }
             }
-            
             return plans;
         }
-        
+
         /**
-         * Create a pure cutting geometry plan from a primitive, using the ToolpathContext.
+         * New specialized translator for Centerline Slot Paths.
+         * Generates a single "Macro" plan that the MachineProcessor expands into a Zig-Zag pattern.
          */
-        createPurePlan(primitive, ctx, depth, offsetDistance) {
+        translateCenterlinePath(primitive, ctx, depthLevels) {
+            const plans = [];
+
+            const points = primitive.contours[0]?.points;
+            if (!points || points.length < 2) return [];
+
+            const startPoint = points[0];
+            const endPoint = points[points.length - 1];
+            const slotLength = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+
+            // Create one abstract plan for the entire slot operation
+            const plan = this.createPurePlan(primitive, ctx, depthLevels[0], false, false, false);
+
+            if (plan) {
+                plan.metadata.entryPoint = { ...startPoint, z: depthLevels[0] };
+                plan.metadata.exitPoint = { ...endPoint, z: depthLevels[depthLevels.length - 1] };
+
+                plan.metadata.primitiveType = 'centerline_slot';
+                plan.metadata.isCenterlinePath = true;
+                plan.metadata.isDrillMilling = true;
+                plan.metadata.toolDiameter = ctx.tool.diameter;
+                plan.metadata.slotLength = slotLength;
+
+                // Attach strategy for the processor
+                plan.metadata.strategy = {
+                    zigzag: true,
+                    cutDepth: ctx.strategy.cutDepth,
+                    depthPerPass: ctx.strategy.depthPerPass,
+                    feedRate: ctx.cutting.feedRate,
+                    plungeRate: ctx.cutting.plungeRate
+                };
+
+                // Add a single guide command (A -> B)
+                plan.commands.push(new MotionCommand(
+                    'LINEAR',
+                    { x: endPoint.x, y: endPoint.y, z: depthLevels[0] },
+                    { feed: ctx.cutting.feedRate }
+                ));
+
+                this.calculatePlanBounds(plan);
+                plans.push(plan);
+            }
+
+            return plans;
+        }
+
+        /**
+         * Create a pure cutting geometry plan from a contour or simple primitive.
+         */
+        createPurePlan(primitive, ctx, depth, isClosed, isHole, generateCommands = true) {
             // Get all settings from the context
             const { operationId, operationType, tool, cutting, strategy } = ctx;
 
-            const plan = new ToolpathPlan(operationId); // Correct class
+            const plan = new ToolpathPlan(operationId);
 
-            // Set metadata for later machine processing
+            // Set metadata
             plan.metadata.operationId = ctx.operationId;
             plan.metadata.operationType = ctx.operationType;
-            // Store only what's NOT in commands themselves
-            plan.metadata.cutDepth = depth; // Varies per plan
-            plan.metadata.feedRate = cutting.feedRate; // Needed by MachineProcessor
-            plan.metadata.plungeRate = cutting.plungeRate; // Needed by MachineProcessor
-            plan.metadata.entryType = strategy.entryType; // Needed by MachineProcessor
-            plan.metadata.direction = strategy.direction; // Needed by MachineProcessor
-            plan.metadata.depthPerPass = strategy.depthPerPass  // Needed by MachineProcessor
-            plan.metadata.spindleSpeed = cutting.spindleSpeed; // Needed by GCodeGenerator
-            plan.metadata.toolDiameter = tool.diameter; // Needed by Optimizer
-            plan.metadata.stepOver = strategy.stepOver; // Needed by Optimizer
-            // // Remove: context, tool object, direction, entryType (use context when needed)
+            plan.metadata.cutDepth = depth;
+            plan.metadata.finalDepth = strategy.cutDepth;
+            plan.metadata.feedRate = cutting.feedRate;
+            plan.metadata.plungeRate = cutting.plungeRate;
+            plan.metadata.entryType = strategy.entryType;
+            plan.metadata.depthPerPass = strategy.depthPerPass;
+            plan.metadata.spindleSpeed = cutting.spindleSpeed;
+            plan.metadata.toolDiameter = tool.diameter;
+            plan.metadata.stepOver = strategy.stepOver;
 
-            plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:${operationType}_Z:${depth.toFixed(3)}`;
-            plan.metadata.operationType = operationType;
-            plan.metadata.primitiveType = primitive.type;
-            
-            // For cutouts, check if tabs should be applied
-            if (operationType === 'cutout' && strategy.cutout.tabs > 0 && primitive.type === 'path') {
-                plan.metadata.hasTabs = true;
-                const pathLength = this.calculatePathLength(primitive); // Use existing helper
-                plan.metadata.tabPositions = this.calculateTabPositions(primitive, ctx, pathLength); // Pass ctx
+            const isDrillMilling = ctx._isDrillMilling || false;
+            const typeKey = isDrillMilling ? 'drill_mill' : 'mill';
+            plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:${ctx.operationId}_TYPE:${typeKey}`;
+
+            plan.metadata.primitiveType = primitive.type || 'path';
+            plan.metadata.isClosed = isClosed;
+            plan.metadata.isHole = isHole;
+
+            // Analyze primitive sets entry/exit points and metadata
+            this.analyzePrimitive(plan, primitive, depth);
+
+            // Generate commands only if explicitly requested (used for the base unsegmented path)
+            if (generateCommands) {
+                this.translatePrimitiveToCutting(plan, primitive, depth, cutting.feedRate);
             }
-            
-            this.analyzePrimitive(plan, primitive, depth); // Keep existing helper
-            
-            plan.metadata.optimization = { // Keep existing logic
+
+            // Drill Helix Validation
+            if (ctx.operationType === 'drill' && ctx.strategy.entryType === 'helix' && plan.commands.length === 0) {
+                // If the plan is empty but is a helix entry for drill milling, populate metadata
+                 if (plan.metadata.primitiveType === 'path' && primitive.arcSegments && primitive.arcSegments.length > 0) {
+                    const arc = primitive.arcSegments[0];
+                    const dist = Math.hypot(primitive.points[0].x - primitive.points[primitive.points.length-1].x, primitive.points[0].y - primitive.points[primitive.points.length-1].y);
+                    if(primitive.arcSegments.length === 1 && dist < 0.001) {
+                        plan.metadata.center = arc.center;
+                        plan.metadata.radius = arc.radius;
+                    }
+                }
+            }
+
+            plan.metadata.optimization = {
                 linkType: 'rapid',
                 optimizedEntryPoint: plan.metadata.entryPoint,
                 entryCommandIndex: 0
             };
-            
-            this.translatePrimitiveToCutting(plan, primitive, depth, cutting.feedRate); // Keep existing helper
-            this.calculatePlanBounds(plan); // Keep existing helper
-            
-            return plan.commands.length > 0 ? plan : null;
+
+            // Note: Bounds, winding and tab logic must be performed by the caller (translateOperation) after the final command set is chosen.
+
+            return plan;
         }
-        
+
         /**
-         * Analyze primitive to extract entry/exit points and metadata
+         * Analyze geometry to extract entry/exit points and metadata.
+         * @param {Object} geometry - The raw geometry object (Contour or Analytic Primitive)
          */
-        analyzePrimitive(plan, primitive, depth) {
+        analyzePrimitive(plan, geometry, depth) {
             const metadata = plan.metadata;
-            
-            if (primitive.type === 'circle') {
+
+            // Determine type. Contours have no 'type' property, so they default to 'path'.
+            const type = geometry.type || 'path';
+
+            if (type === 'circle') {
                 metadata.entryPoint = {
-                    x: primitive.center.x + primitive.radius,
-                    y: primitive.center.y,
+                    x: geometry.center.x + geometry.radius,
+                    y: geometry.center.y,
                     z: depth
                 };
                 metadata.exitPoint = { ...metadata.entryPoint };
                 metadata.isClosedLoop = true;
                 metadata.isSimpleCircle = true;
                 metadata.primitiveType = 'circle';
-                metadata.center = primitive.center;
-                metadata.radius = primitive.radius;
-                
-            } else if (primitive.type === 'obround') {
-                const slotRadius = Math.min(primitive.width, primitive.height) / 2;
-                const isHorizontal = primitive.width > primitive.height;
-                
+                metadata.center = geometry.center;
+                metadata.radius = geometry.radius;
+
+            } else if (type === 'obround') {
+                const isHorizontal = geometry.width > geometry.height;
                 const startAngle = isHorizontal ? (Math.PI / 2) : Math.PI;
-                const centerY = isHorizontal ? (primitive.position.y + primitive.height / 2) : (primitive.position.y + slotRadius);
-                const centerX = isHorizontal ? (primitive.position.x + slotRadius) : (primitive.position.x + primitive.width / 2);
+                const obroundData = this.getObroundData(geometry);
+
+                metadata.obroundData = obroundData;
 
                 metadata.entryPoint = {
-                    x: centerX + slotRadius * Math.cos(startAngle),
-                    y: centerY + slotRadius * Math.sin(startAngle),
+                    x: obroundData.startCapCenter.x + obroundData.slotRadius * Math.cos(startAngle),
+                    y: obroundData.startCapCenter.y + obroundData.slotRadius * Math.sin(startAngle),
                     z: depth
                 };
+
                 metadata.exitPoint = { ...metadata.entryPoint };
                 metadata.isClosedLoop = true;
                 metadata.isSimpleCircle = false;
                 metadata.primitiveType = 'obround';
-                
-            } else if (primitive.type === 'arc') {
-                metadata.entryPoint = { ...primitive.startPoint, z: depth };
-                metadata.exitPoint = { ...primitive.endPoint, z: depth };
+                metadata.obroundData = obroundData;
+                metadata.center = obroundData.startCapCenter;
+                metadata.radius = obroundData.slotRadius;
+
+            } else if (type === 'arc') {
+                metadata.entryPoint = { ...geometry.startPoint, z: depth };
+                metadata.exitPoint = { ...geometry.endPoint, z: depth };
                 metadata.isClosedLoop = false;
                 metadata.primitiveType = 'arc';
-                
-            } else if (primitive.type === 'path' && primitive.points) {
-                metadata.entryPoint = { ...primitive.points[0], z: depth };
-                metadata.exitPoint = { ...primitive.points[primitive.points.length - 1], z: depth };
-                
-                const dist = Math.hypot(
-                    metadata.exitPoint.x - metadata.entryPoint.x,
-                    metadata.exitPoint.y - metadata.entryPoint.y
-                );
-                metadata.isClosedLoop = dist < 0.01 || (primitive.closed === true);
-                metadata.primitiveType = 'path';
-                metadata.hasArcs = primitive.arcSegments && primitive.arcSegments.length > 0;
+
+            } else if (type === 'path') {
+                const points = geometry.points;
+
+                if (points && points.length > 0) {
+                    metadata.entryPoint = { ...points[0], z: depth };
+                    metadata.isClosedLoop = plan.metadata.isClosed; 
+
+                    if (metadata.isClosedLoop) {
+                        metadata.exitPoint = { ...metadata.entryPoint };
+                    } else {
+                        metadata.exitPoint = { ...points[points.length - 1], z: depth };
+                    }
+
+                    metadata.primitiveType = 'path';
+                    // Check for arc segments
+                    metadata.hasArcs = geometry.arcSegments && geometry.arcSegments.length > 0;
+                }
             }
         }
-        
+
         /**
          * Translate primitive to pure cutting commands
          */
-        translatePrimitiveToCutting(plan, primitive, depth, feedRate) {
-            const clockwise = plan.metadata.direction === 'conventional';
-            
-            if (primitive.type === 'circle') {
-                this.translateCircle(plan, primitive, depth, feedRate, clockwise);
-                
-            } else if (primitive.type === 'obround') {
-                this.translateObround(plan, primitive, depth, feedRate, clockwise);
-                
-            } else if (primitive.type === 'arc') {
-                this.translateArc(plan, primitive, depth, feedRate);
-                
-            } else if (primitive.type === 'path') {
-                this.translatePath(plan, primitive, depth, feedRate);
+        translatePrimitiveToCutting(plan, geometry, depth, feedRate) {
+            // Default to 'path' if no type (handles Contours)
+            const type = geometry.type || 'path'; 
+
+            if (type === 'circle') {
+                this.translateCircle(plan, geometry, depth, feedRate, false); 
+            } else if (type === 'obround') {
+                this.translateObround(plan, geometry, depth, feedRate, false);
+            } else if (type === 'arc') {
+                this.translateArc(plan, geometry, depth, feedRate);
+            } else if (type === 'path') {
+                // geometry is a Contour here
+                this.translatePath(plan, geometry, depth, feedRate);
             }
         }
-        
+
         /**
          * Translate circle to cutting commands
          */
         translateCircle(plan, primitive, depth, feedRate, clockwise) {
             const center = primitive.center;
             const radius = primitive.radius;
-            
+
             const startX = center.x + radius;
             const startY = center.y;
-            
+
             plan.addArc(startX, startY, depth, -radius, 0, clockwise, feedRate);
         }
-        
+
         /**
          * Translate obround to cutting commands (2 lines, 2 arcs)
          */
         translateObround(plan, primitive, depth, feedRate, clockwise) {
             const slotRadius = Math.min(primitive.width, primitive.height) / 2;
             const isHorizontal = primitive.width > primitive.height;
-            
+
             let startCapCenter, endCapCenter;
             if (isHorizontal) {
                 const centerY = primitive.position.y + primitive.height / 2;
@@ -264,7 +446,7 @@
             const endAngle1 = isHorizontal ? (3 * Math.PI / 2) : (2 * Math.PI);
             const startAngle2 = isHorizontal ? (-Math.PI / 2) : 0;
             const endAngle2 = isHorizontal ? (Math.PI / 2) : Math.PI;
-            
+
             const pA_x = startCapCenter.x + slotRadius * Math.cos(startAngle1);
             const pA_y = startCapCenter.y + slotRadius * Math.sin(startAngle1);
             const pB_x = startCapCenter.x + slotRadius * Math.cos(endAngle1);
@@ -273,7 +455,7 @@
             const pC_y = endCapCenter.y + slotRadius * Math.sin(startAngle2);
             const pD_x = endCapCenter.x + slotRadius * Math.cos(endAngle2);
             const pD_y = endCapCenter.y + slotRadius * Math.sin(endAngle2);
-            
+
             const i1 = startCapCenter.x - pA_x;
             const j1 = startCapCenter.y - pA_y;
             const i2 = endCapCenter.x - pC_x;
@@ -291,80 +473,128 @@
                 plan.addLinear(pA_x, pA_y, depth, feedRate);
             }
         }
-        
+
         /**
          * Translate arc to cutting commands
          */
         translateArc(plan, primitive, depth, feedRate) {
             const i = primitive.center.x - primitive.startPoint.x;
             const j = primitive.center.y - primitive.startPoint.y;
-            
+
             plan.addLinear(primitive.startPoint.x, primitive.startPoint.y, depth, feedRate);
-            
+
+            // Check for collapsed arc
+            const minArcChordLength = 0.01; // Use the same tolerance as the optimizer
+            const chordDistance = Math.hypot(
+                primitive.endPoint.x - primitive.startPoint.x, 
+                primitive.endPoint.y - primitive.startPoint.y
+            );
+
+            if (chordDistance < minArcChordLength) {
+                // Arc is tiny, replace with a straight line to be safe
+                plan.addLinear(
+                    primitive.endPoint.x,
+                    primitive.endPoint.y,
+                    depth,
+                    feedRate
+                );
+                return;
+            }
+
             plan.addArc(
                 primitive.endPoint.x,
                 primitive.endPoint.y,
                 depth,
                 i, j,
-                primitive.clockwise,
+                !primitive.clockwise, // Flipped back
                 feedRate
             );
         }
-        
-        /**
-         * Translate path to cutting commands
-         */
-        translatePath(plan, primitive, depth, feedRate) {
-            const points = primitive.points;
+
+        translatePath(plan, contour, depth, feedRate) {
+            const points = contour.points;
+
             if (!points || points.length < 2) return;
-            
-            const arcSegments = primitive.arcSegments || [];
-            const processedArcs = new Set();
-            
-            for (let i = 0; i < points.length - 1; i++) {
-                const arc = arcSegments.find(seg => 
-                    seg.startIndex === i && !processedArcs.has(seg)
-                );
-                
-                if (arc) {
-                    const startPoint = points[i];
-                    const endPoint = points[arc.endIndex];
-                    
-                    const dist = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
-                    if (dist < 0.001) {
-                        processedArcs.add(arc);
-                        i = arc.endIndex - 1;
-                        continue;
-                    }
-                    
-                    const i_val = arc.center.x - startPoint.x;
-                    const j_val = arc.center.y - startPoint.y;
-                    
-                    plan.addArc(
-                        endPoint.x, endPoint.y, depth,
-                        i_val, j_val,
-                        arc.clockwise,
-                        feedRate
-                    );
-                    
-                    processedArcs.add(arc);
-                    i = arc.endIndex - 1;
-                } else {
-                    plan.addLinear(points[i + 1].x, points[i + 1].y, depth, feedRate);
-                }
+
+            const isClosed = plan.metadata.isClosed;
+            const arcMap = new Map();
+            // Access arcSegments directly on the contour
+            for (const arc of (contour.arcSegments || [])) {
+                arcMap.set(arc.startIndex, arc);
             }
+
+            const minArcChordLength = 0.01; 
+            const minLinearLength = 0.001; // Filter tiny segments
+
+            // Determine exactly how many segments are needed
+            // If points are [A, B, C] and closed, segments needed: A->B, B->C, C->A
+            // If points are [A, B, C, A] and closed, segments needed: A->B, B->C, C->A
+            const isPhysicallyClosed = this._isClosedPoints(points);
+            const numPoints = points.length;
             
-            if (primitive.closed && points.length >= 2) {
-                const firstPt = points[0];
-                const lastPt = points[points.length - 1];
-                const distance = Math.hypot(lastPt.x - firstPt.x, lastPt.y - firstPt.y);
-                
-                if (distance > 0.001) {
-                    plan.addLinear(firstPt.x, firstPt.y, depth, feedRate);
+            // If physically closed, the array already contains the closing segment info
+            // If implicitly closed, add the wrap-around segment
+            const segmentsToDraw = (isClosed && !isPhysicallyClosed) ? numPoints : numPoints - 1;
+
+            let i = 0; 
+            let segmentsDrawn = 0;
+
+            while (segmentsDrawn < segmentsToDraw) {
+                const startPoint = points[i];
+                const arc = arcMap.get(i);
+
+                // Determine next index, wrapping around if needed for implicit closure
+                let nextIndex = i + 1;
+                if (nextIndex >= numPoints) {
+                    nextIndex = 0;
                 }
+
+                if (arc && arc.endIndex === nextIndex) {
+                    // Arc segment
+                    const endPoint = points[nextIndex];
+                    const chordDistance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+
+                    if (chordDistance >= minArcChordLength) {
+                        // I/J relative to the segment start point (points[i])
+                        const i_val = arc.center.x - startPoint.x;
+                        const j_val = arc.center.y - startPoint.y;
+                        const gcodeClockwise = !arc.clockwise; 
+
+                        plan.addArc(
+                            endPoint.x, endPoint.y, depth,
+                            i_val, j_val,
+                            gcodeClockwise,
+                            feedRate
+                        );
+                    } else {
+                        // Tiny arc, replace with line (avoid floating point errors collapsing arcs the wrong way)
+                        plan.addLinear(endPoint.x, endPoint.y, depth, feedRate);
+                    }
+
+                    // Advance loop state
+                    i = nextIndex;
+
+                } else {
+                    // Linear segment
+                    const endPoint = points[nextIndex];
+                    const dist = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+
+                    // Filter Zero-Length Segments (A->A) caused by explicit closure wrapping
+                    if (dist > minLinearLength) {
+                        plan.addLinear(
+                            endPoint.x, endPoint.y, depth,
+                            feedRate
+                        );
+                    }
+
+                    // Advance loop state
+                    i = nextIndex;
+                }
+
+                segmentsDrawn++;
             }
         }
-        
+
         /**
          * Handle drill operations specially, reading from context.
          */
@@ -372,13 +602,15 @@
             const plans = [];
             const { operationId, tool, cutting, strategy } = ctx;
             const finalDepth = depthLevels[depthLevels.length - 1];
-            
+
             for (const primitive of strategyPrimitives) {
                 const role = primitive.properties?.role;
-                
+
                 if (role === 'peck_mark') {
                     const plan = new ToolpathPlan(operationId);
-                    plan.metadata.context = ctx;
+
+                    // Must pass the full context so the peck mark processor can read machine/strategy settings.
+                    plan.metadata.context = ctx; 
                     plan.metadata.tool = tool;
                     plan.metadata.cutDepth = finalDepth;
                     plan.metadata.feedRate = cutting.feedRate;
@@ -387,7 +619,7 @@
                     plan.metadata.isPeckMark = true;
                     plan.metadata.entryPoint = { ...primitive.center, z: finalDepth };
                     plan.metadata.exitPoint = { ...primitive.center, z: finalDepth };
-                    plan.metadata.groupKey = `D${tool.diameter.toFixed(3)}`;
+                    plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:drill_TYPE:peck`;
 
                     plan.metadata.peckCycle = {
                         cannedCycle: strategy.drill.cannedCycle || 'none',
@@ -395,37 +627,72 @@
                         dwellTime: strategy.drill.dwellTime || 0,
                         retractHeight: strategy.drill.retractHeight || 0.5
                     };
-                    
+
                     plan.metadata.peckData = {
                         position: primitive.center,
                         ...primitive.properties
                     };
-                    
+
                     plan.metadata.optimization = {
                         linkType: 'rapid',
                         optimizedEntryPoint: plan.metadata.entryPoint,
                         entryCommandIndex: 0
                     };
+
+                    if (debugConfig.enabled && plan.commands.length > 0) {
+                        const windingStr = actuallyClockwise ? 'CW' : 'CCW';
+                        const desiredStr = desiredClockwise ? 'CW' : 'CCW';
+                        const flipped = actuallyClockwise !== desiredClockwise;
+                        console.log(`[Translator] Plan winding: ${windingStr} → ${desiredStr} (${flipped ? 'flipped' : 'no change'})`);
+                    }
+                    // Validate depth consistency
+                    if (Math.abs(plan.metadata.cutDepth - ctx.strategy.cutDepth) > 0.001) {
+                        this.debug(`Warning: cutDepth mismatch for peck mark: ${plan.metadata.cutDepth} vs ${ctx.strategy.cutDepth}`);
+                    }
                     plans.push(plan);
-                    
+
                 } else if (role === 'drill_milling_path') {
+                    // Check for centerline before regular drill milling
+                    // CenterLinePath handles its own Z-depths internally
+                    if (primitive.properties?.isCenterlinePath) {
+                        const centerlinePlans = this.translateCenterlinePath(primitive, ctx, depthLevels);
+                        plans.push(...centerlinePlans);
+                        continue; // Skip to next primitive
+                    }
+                    // Create a temporary context to flag this as drill-milling
+                    const drillMillCtx = { ...ctx, _isDrillMilling: true };
+
+                    // Identify the Geometry Entity
+                    let geometryEntity = null;
+                    
+                    if (primitive.type === 'path') {
+                        // Extract the contour because 'PathPrimitive' is a container.
+                        if (primitive.contours && primitive.contours.length > 0) {
+                            geometryEntity = primitive.contours[0];
+                        }
+                    } else {
+                        // Analytic primitives (Circle/Obround) are their own geometry
+                        geometryEntity = primitive;
+                    }
+
+                    if (!geometryEntity) continue;
+
+                    // Process the Geometry
                     if (strategy.entryType === 'helix') {
-                        const plan = this.createPurePlan(primitive, ctx, finalDepth, 0); 
+                        // Helix handles its own Z-depths internally
+                        // Note: Helix logic expects Analytic geometry (Circle/Obround)
+                        const plan = this.createPurePlan(geometryEntity, drillMillCtx, finalDepth, 0, true, false); 
                         if (plan) {
                             plan.metadata.isDrillMilling = true;
-                            if (primitive.type === 'obround') {
-                               plan.metadata.obroundData = this.getObroundData(primitive);
-                            }
                             plans.push(plan);
                         }
                     } else {
+                        // Standard Path Milling (Multi-depth)
                         for (const depth of depthLevels) {
-                            const plan = this.createPurePlan(primitive, ctx, depth, 0);
+                            // Pass the unwrapper geometry Entity (Contour or Analytic)
+                            const plan = this.createPurePlan(geometryEntity, drillMillCtx, depth, 0, true, false);
                             if (plan) {
                                 plan.metadata.isDrillMilling = true;
-                                if (primitive.type === 'obround') {
-                                    plan.metadata.obroundData = this.getObroundData(primitive);
-                                }
                                 plans.push(plan);
                             }
                         }
@@ -436,12 +703,88 @@
         }
 
         /**
+         * Reverses a toolpath plan in-place.
+         * Rebuilds the path from absolute points, correctly flipping arcs.
+         */
+        reversePlan(plan) {
+            if (!plan || !plan.commands || plan.commands.length === 0) return;
+
+            const commands = plan.commands;
+            const newCommands = [];
+
+            // 1. Build an absolute point list from the original path
+            // This list will have (commands.length + 1) points
+            const points = [{ ...plan.metadata.entryPoint }];
+            let currentPos = { ...plan.metadata.entryPoint };
+
+            for (const cmd of commands) {
+                const nextPos = {
+                    x: cmd.x !== null ? cmd.x : currentPos.x,
+                    y: cmd.y !== null ? cmd.y : currentPos.y,
+                    z: cmd.z !== null ? cmd.z : currentPos.z,
+                    feed: cmd.f,
+                    // Store the command info *on the point it leads to*
+                    cmdType: cmd.type,
+                    i: cmd.i,
+                    j: cmd.j
+                };
+                points.push(nextPos);
+                currentPos = nextPos;
+            }
+
+            // 2. Iterate the point list backwards to create new commands
+            // Start from the last point (new entry) and move to the first (new exit)
+            for (let i = points.length - 1; i > 0; i--) {
+                const startPos = points[i]; // The new start point
+                const endPos = points[i - 1]; // The new end point
+
+                // The command data is stored on the 'startPos' (original end point)
+                const cmdType = startPos.cmdType;
+                const feed = startPos.feed;
+
+                if (cmdType === 'ARC_CW' || cmdType === 'ARC_CCW') {
+                    // This command was an arc. Create its reverse.
+                    const newType = cmdType === 'ARC_CW' ? 'ARC_CCW' : 'ARC_CW';
+
+                    // The original 'i, j' was relative to the original start (endPos)
+                    // Set the center from that.
+                    const centerX = endPos.x + startPos.i;
+                    const centerY = endPos.y + startPos.j;
+
+                    // Calculate the new 'i, j' relative to the *new* start (startPos)
+                    const new_i = centerX - startPos.x;
+                    const new_j = centerY - startPos.y;
+
+                    newCommands.push(new MotionCommand(
+                        newType,
+                        { x: endPos.x, y: endPos.y, z: endPos.z },
+                        { i: new_i, j: new_j, feed: feed }
+                    ));
+                } else {
+                    // Default to Linear
+                    newCommands.push(new MotionCommand(
+                        'LINEAR',
+                        { x: endPos.x, y: endPos.y, z: endPos.z },
+                        { feed: feed }
+                    ));
+                }
+            }
+
+            plan.commands = newCommands;
+
+            // 3. Swap entry/exit points
+            const oldEntry = plan.metadata.entryPoint;
+            plan.metadata.entryPoint = plan.metadata.exitPoint;
+            plan.metadata.exitPoint = oldEntry;
+        }
+
+        /**
          * Calculate bounds for plan
          */
         calculatePlanBounds(plan) {
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
-            
+
             for (const cmd of plan.commands) {
                 if (cmd.x !== null) {
                     minX = Math.min(minX, cmd.x);
@@ -452,10 +795,10 @@
                     maxY = Math.max(maxY, cmd.y);
                 }
             }
-            
+
             plan.metadata.boundingBox = { minX, minY, maxX, maxY };
         }
-        
+
         getOperationType(operationId) {
             if (!this.core || !this.core.operations) return 'unknown';
             const op = this.core.operations.find(o => o.id === operationId);
@@ -463,197 +806,15 @@
         }
 
         /**
-         * Calculate tab positions avoiding corners and arcs when possible
-         */
-        calculateTabPositions(primitive, ctx, pathLength) {
-            const { strategy, tool, config } = ctx;
-            const params = strategy.cutout;
-            
-            if (!primitive.points || primitive.points.length < 3 || params.tabs <= 0) return [];
-
-            const tabConfig = config.tabs;
-            
-            const tabWidth = params.tabWidth;
-            const toolDiameter = tool.diameter;
-            const cornerMargin = Math.max(
-                toolDiameter * tabConfig.cornerMarginFactor, 
-                tabWidth
-            );
-            const minSegmentLength = tabWidth * tabConfig.minTabLengthFactor;
-
-            if (pathLength < cornerMargin * 2) return [];
-
-            const { straight: straightSections } = this.analyzePath(primitive, cornerMargin, minSegmentLength);
-            
-            if (straightSections.length === 0) {
-                 console.warn(`[Translator] No straight sections long enough for tabs.`);
-                 return [];
-            }
-
-            const idealSpacing = pathLength / params.count;
-            const tabPositions = [];
-            
-            for (let i = 0; i < params.count; i++) {
-                const targetLength = (i + 0.5) * idealSpacing;
-                let bestSection = null;
-                let minDiff = Infinity;
-                
-                for (const section of straightSections) {
-                    if (targetLength >= section.start && targetLength <= section.end) {
-                        bestSection = section;
-                        break;
-                    }
-                    const diff = Math.abs(targetLength - section.midpoint);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        bestSection = section;
-                    }
-                }
-                if (!bestSection) continue;
-                
-                const tabDistance = bestSection.midpoint; 
-                
-                // RE-USE existing 'getPointAtDistance' function
-                const pos = this.getPointAtDistance(primitive, tabDistance);
-                
-                if (pos) {
-                    tabPositions.push({
-                        position: pos,
-                        distance: tabDistance,
-                        width: tabWidth,
-                        height: params.tabHeight
-                    });
-                }
-            }
-            return tabPositions;
-        }
-
-        /**
-         * Analyze path to find straight and curved sections
-         */
-        analyzePath(primitive, cornerMargin, minLength) {
-            const points = primitive.points;
-            const arcSegments = primitive.arcSegments || [];
-            const sections = { straight: [], curved: [] };
-            let currentDistance = 0;
-            
-            for (let i = 0; i < points.length; i++) {
-                const nextI = (i + 1) % points.length;
-                const p1 = points[i];
-                const p2 = points[nextI];
-                
-                const isArc = arcSegments.some(seg => seg.startIndex === i);
-                
-                if (isArc) {
-                    const arc = arcSegments.find(seg => seg.startIndex === i);
-                    let sweep = arc.endAngle - arc.startAngle;
-                    if (arc.clockwise) {
-                        if (sweep > 1e-9) sweep -= 2 * Math.PI; 
-                    } else {
-                        if (sweep < -1e-9) sweep += 2 * Math.PI;
-                    }
-                    const startPt = points[arc.startIndex];
-                    const endPt = points[arc.endIndex];
-                    const dist = Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y);
-                    if (dist < 1e-6 && Math.abs(sweep) < 1e-6 && Math.abs(Math.abs(sweep) - 2 * Math.PI) > 1e-6) {
-                        sweep = arc.clockwise ? -2 * Math.PI : 2 * Math.PI;
-                    }
-                    const arcLength = Math.abs(sweep * arc.radius);
-
-                    if (arc.radius > minLength * 2) {
-                        const availableLength = arcLength - 2 * cornerMargin;
-                        if (availableLength >= minLength) {
-                            sections.curved.push({
-                                type: 'curved',
-                                start: currentDistance + cornerMargin,
-                                end: currentDistance + arcLength - cornerMargin,
-                                length: availableLength,
-                                midpoint: currentDistance + arcLength / 2
-                            });
-                        }
-                    }
-                    currentDistance += arcLength;
-                } else {
-                    const segLength = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                    const prevI = (i - 1 + points.length) % points.length;
-                    const prevWasArc = arcSegments.some(seg => seg.endIndex === i);
-                    let isCornerAtStart;
-                    
-                    if (prevWasArc) {
-                        isCornerAtStart = true;
-                    } else {
-                        const p0 = points[prevI];
-                        const angle1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
-                        const angle2 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                        let angleDiff = Math.abs(angle2 - angle1);
-                        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-                        isCornerAtStart = angleDiff > (Math.PI / 6);
-                    }
-
-                    const nextIsArc = arcSegments.some(seg => seg.startIndex === nextI);
-                    const isCornerAtEnd = nextIsArc;
-                    
-                    const availableStart = isCornerAtStart ? cornerMargin : 0;
-                    const availableEnd = segLength - (isCornerAtEnd ? cornerMargin : 0);
-                    const availableLength = availableEnd - availableStart;
-                    
-                    if (availableLength >= minLength) {
-                        sections.straight.push({
-                            type: 'straight',
-                            start: currentDistance + availableStart,
-                            end: currentDistance + availableEnd,
-                            length: availableLength,
-                            midpoint: currentDistance + (availableStart + availableEnd) / 2
-                        });
-                    }
-                    currentDistance += segLength;
-                }
-            }
-            return sections;
-        }
-
-        /**
-         */
-        calculatePathLength(primitive) {
-            let length = 0;
-            const points = primitive.points;
-            if (!points || points.length < 2) return 0;
-            
-            const arcSegments = primitive.arcSegments || [];
-            const processedArcs = new Set();
-            
-            for (let i = 0; i < points.length - 1; i++) {
-                const arc = arcSegments.find(seg => seg.startIndex === i && !processedArcs.has(seg));
-                
-                if (arc) {
-                    const radius = Math.hypot(arc.center.x - points[i].x, arc.center.y - points[i].y);
-                    const startAngle = Math.atan2(points[i].y - arc.center.y, points[i].x - arc.center.x);
-                    const endAngle = Math.atan2(points[arc.endIndex].y - arc.center.y, points[arc.endIndex].x - arc.center.x);
-                    
-                    let angle = arc.clockwise ? (startAngle - endAngle) : (endAngle - startAngle);
-                    if (angle < 0) angle += 2 * Math.PI;
-                    if (angle === 0) angle = 2 * Math.PI;
-                    
-                    length += radius * angle;
-                    processedArcs.add(arc);
-                    i = arc.endIndex - 1;
-                } else {
-                    length += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
-                }
-            }
-            return length;
-        }
-        
-        /**
          * Extracts dimensional data from an obround primitive.
          */
         getObroundData(primitive) {
             if (primitive.type !== 'obround') return null;
-            
+
             const slotRadius = Math.min(primitive.width, primitive.height) / 2;
             const isHorizontal = primitive.width > primitive.height;
             let startCapCenter, endCapCenter;
-            
+
             if (isHorizontal) {
                 const centerY = primitive.position.y + primitive.height / 2;
                 startCapCenter = { x: primitive.position.x + slotRadius, y: centerY };
@@ -674,59 +835,66 @@
             };
         }
 
-        getPointAtDistance(primitive, targetDistance) {
-            let currentDistance = 0;
-            const points = primitive.points;
-            if (!points || points.length < 2) return null;
-            
-            const arcSegments = primitive.arcSegments || [];
-            const processedArcs = new Set();
-            
-            for (let i = 0; i < points.length - 1; i++) {
-                const p1 = points[i];
-                const arc = arcSegments.find(seg => seg.startIndex === i && !processedArcs.has(seg));
-                
-                if (arc) {
-                    const p2 = points[arc.endIndex];
-                    const center = arc.center;
-                    const radius = Math.hypot(center.x - p1.x, center.y - p1.y);
-                    const startAngle = Math.atan2(p1.y - center.y, p1.x - center.x);
-                    const endAngle = Math.atan2(p2.y - center.y, p2.x - center.x);
-                    
-                    let angle = arc.clockwise ? (startAngle - endAngle) : (endAngle - startAngle);
-                    if (angle < 0) angle += 2 * Math.PI;
-                    if (angle === 0) angle = 2 * Math.PI;
-                    
-                    const segmentLength = radius * angle;
-                    
-                    if (currentDistance + segmentLength >= targetDistance) {
-                        const ratio = (targetDistance - currentDistance) / segmentLength;
-                        const finalAngle = startAngle + (angle * ratio * (arc.clockwise ? -1 : 1));
-                        return {
-                            x: center.x + radius * Math.cos(finalAngle),
-                            y: center.y + radius * Math.sin(finalAngle)
-                        };
-                    }
-                    currentDistance += segmentLength;
-                    processedArcs.add(arc);
-                    i = arc.endIndex - 1;
-                } else {
-                    const p2 = points[i + 1];
-                    const segmentLength = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                    
-                    if (currentDistance + segmentLength >= targetDistance) {
-                        const ratio = (targetDistance - currentDistance) / segmentLength;
-                        return {
-                            x: p1.x + ratio * (p2.x - p1.x),
-                            y: p1.y + ratio * (p2.y - p1.y)
-                        };
-                    }
-                    currentDistance += segmentLength;
+        /**
+         * Calculate the total length of a contour.
+         * Handles both linear segments and arc segments defined in metadata.
+         */
+        _calculatePathLength(contour) {
+            let length = 0;
+            const points = contour.points;
+            if (!points || points.length < 2) return 0;
+
+            // Create a map for fast arc lookup
+            const arcMap = new Map();
+            if (contour.arcSegments) {
+                for (const arc of contour.arcSegments) {
+                    arcMap.set(arc.startIndex, arc);
                 }
             }
-            return points[points.length - 1];
+
+            const numPoints = points.length;
+            // Cutouts are implicitly closed, so process the closing segment too
+            const limit = numPoints; 
+
+            for (let i = 0; i < limit; i++) {
+                const nextI = (i + 1) % numPoints;
+                
+                // Stop if it's an open path and at the last point (safety check)
+                if (nextI === 0 && !contour.closed && !this._isClosedPoints(points)) {
+                    break; 
+                }
+
+                const arc = arcMap.get(i);
+
+                if (arc && arc.endIndex === nextI) {
+                    // Arc Length
+                    let sweep = arc.endAngle - arc.startAngle;
+                    // Normalize sweep
+                    if (arc.clockwise) {
+                        if (sweep > 1e-9) sweep -= 2 * Math.PI;
+                    } else {
+                        if (sweep < -1e-9) sweep += 2 * Math.PI;
+                    }
+                    length += Math.abs(sweep * arc.radius);
+                } else {
+                    // Linear Length
+                    length += Math.hypot(
+                        points[nextI].x - points[i].x, 
+                        points[nextI].y - points[i].y
+                    );
+                }
+            }
+            return length;
         }
+
+        _isClosedPoints(points) {
+            if (points.length < 2) return false;
+            const first = points[0];
+            const last = points[points.length - 1];
+            return Math.hypot(first.x - last.x, first.y - last.y) < 0.001;
+        }  
+
     }
-    
+
     window.GeometryTranslator = GeometryTranslator;
 })();

@@ -1,6 +1,6 @@
 /**
  * @file        language/language-manager.js
- * @description Language & Translation manager
+ * @description Language & translation manager
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -39,9 +39,6 @@
          */
         async load(lang = 'en') {
             try {
-                // In the future, you could change this path:
-                // const response = await fetch(`lang/${lang}.json`);
-                
                 const response = await fetch(`language/${lang}.json`);
                 if (!response.ok) {
                     throw new Error(`Failed to load language/${lang}.json: ${response.statusText}`);
@@ -95,5 +92,4 @@
     }
 
     window.LanguageManager = LanguageManager;
-
 })();

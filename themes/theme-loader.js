@@ -26,7 +26,7 @@
 
 (function() {
     'use strict';
-    
+
     class ThemeLoader {
         constructor() {
             this.currentTheme = null;
@@ -34,7 +34,7 @@
             this.storageKey = 'pcbcam-theme';
             this.initialized = false;
         }
-        
+
         /**
          * Initialize theme system
          * @param {string} defaultTheme - Default theme ID ('dark' or 'light')
@@ -42,23 +42,23 @@
          */
         async init(defaultTheme = 'dark') {
             if (this.initialized) return true;
-            
+
             try {
                 // Load both themes
                 await Promise.all([
                     this.loadTheme('dark', 'themes/dark.json'),
                     this.loadTheme('light', 'themes/light.json')
                 ]);
-                
+
                 // Get saved theme or use default
                 const savedTheme = localStorage.getItem(this.storageKey) || defaultTheme;
-                
+
                 // Apply theme
                 await this.applyTheme(savedTheme);
-                
+
                 this.initialized = true;
                 return true;
-                
+
             } catch (error) {
                 console.error('Theme initialization failed:', error);
                 // Apply fallback theme from CSS
@@ -66,7 +66,7 @@
                 return false;
             }
         }
-        
+
         /**
          * Load theme from JSON file
          * @param {string} id - Theme ID
@@ -79,23 +79,23 @@
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                
+
                 const themeData = await response.json();
-                
+
                 // Validate theme structure
                 if (!this.validateTheme(themeData)) {
                     throw new Error(`Invalid theme structure in ${url}`);
                 }
-                
+
                 this.themes.set(id, themeData);
                 return themeData;
-                
+
             } catch (error) {
                 console.error(`Failed to load theme ${id} from ${url}:`, error);
                 throw error;
             }
         }
-        
+
         /**
          * Validate theme data structure
          * @param {Object} theme - Theme data
@@ -104,11 +104,11 @@
         validateTheme(theme) {
             if (!theme || typeof theme !== 'object') return false;
             if (!theme.id || !theme.colors) return false;
-            
+
             const requiredCategories = ['background', 'text', 'border', 'accent'];
             return requiredCategories.every(cat => theme.colors[cat]);
         }
-        
+
         /**
          * Apply theme to document
          * @param {string} themeId - Theme ID to apply
@@ -116,38 +116,38 @@
          */
         async applyTheme(themeId) {
             const theme = this.themes.get(themeId);
-            
+
             if (!theme) {
                 console.warn(`Theme ${themeId} not found`);
                 return false;
             }
-            
+
             // Set theme attribute on document
             document.documentElement.setAttribute('data-theme', themeId);
-            
+
             // Apply all color variables to :root
             this.applyColorVariables(theme.colors);
-            
+
             // Save preference
             localStorage.setItem(this.storageKey, themeId);
-            
+
             this.currentTheme = themeId;
-            
+
             // Dispatch theme change event
             window.dispatchEvent(new CustomEvent('themechange', {
                 detail: { themeId, theme }
             }));
-            
+
             return true;
         }
-        
+
         /**
          * Apply color variables to CSS
          * @param {Object} colors - Color definitions
          */
         applyColorVariables(colors) {
             const root = document.documentElement;
-            
+
             // Background colors
             if (colors.background) {
                 root.style.setProperty('--color-bg-primary', colors.background.primary);
@@ -156,7 +156,7 @@
                 root.style.setProperty('--color-bg-hover', colors.background.hover);
                 root.style.setProperty('--color-bg-active', colors.background.active);
             }
-            
+
             // Text colors
             if (colors.text) {
                 root.style.setProperty('--color-text-primary', colors.text.primary);
@@ -164,21 +164,21 @@
                 root.style.setProperty('--color-text-disabled', colors.text.disabled);
                 root.style.setProperty('--color-text-hint', colors.text.hint);
             }
-            
+
             // Border colors
             if (colors.border) {
                 root.style.setProperty('--color-border-primary', colors.border.primary);
                 root.style.setProperty('--color-border-secondary', colors.border.secondary);
                 root.style.setProperty('--color-border-focus', colors.border.focus);
             }
-            
+
             // Accent colors
             if (colors.accent) {
                 root.style.setProperty('--color-accent-primary', colors.accent.primary);
                 root.style.setProperty('--color-accent-hover', colors.accent.hover);
                 root.style.setProperty('--color-accent-active', colors.accent.active);
             }
-            
+
             // Semantic colors
             if (colors.semantic) {
                 root.style.setProperty('--color-success', colors.semantic.success);
@@ -186,16 +186,16 @@
                 root.style.setProperty('--color-error', colors.semantic.error);
                 root.style.setProperty('--color-info', colors.semantic.info);
             }
-            
+
             // Operation colors
             if (colors.operations) {
                 root.style.setProperty('--color-operation-isolation', colors.operations.isolation);
                 root.style.setProperty('--color-operation-drill', colors.operations.drill);
-                root.style.setProperty('--color-operation-clear', colors.operations.clear);
+                root.style.setProperty('--color-operation-clearing', colors.operations.clearing);
                 root.style.setProperty('--color-operation-cutout', colors.operations.cutout);
                 root.style.setProperty('--color-operation-toolpath', colors.operations.toolpath);
             }
-            
+
             // Canvas colors
             if (colors.canvas) {
                 root.style.setProperty('--color-canvas-bg', colors.canvas.background);
@@ -206,20 +206,20 @@
                 root.style.setProperty('--color-canvas-ruler', colors.canvas.ruler);
                 root.style.setProperty('--color-canvas-ruler-text', colors.canvas.rulerText);
             }
-            
+
             // Debug colors
             if (colors.debug) {
                 root.style.setProperty('--color-debug-hole', colors.debug.hole);
                 root.style.setProperty('--color-debug-wireframe', colors.debug.wireframe);
                 root.style.setProperty('--color-debug-bounds', colors.debug.bounds);
             }
-            
+
             // Geometry colors
             if (colors.geometry) {
                 if (colors.geometry.source) {
                     root.style.setProperty('--color-geometry-source-isolation', colors.geometry.source.isolation);
                     root.style.setProperty('--color-geometry-source-drill', colors.geometry.source.drill);
-                    root.style.setProperty('--color-geometry-source-clear', colors.geometry.source.clear);
+                    root.style.setProperty('--color-geometry-source-clearing', colors.geometry.source.clearing);
                     root.style.setProperty('--color-geometry-source-cutout', colors.geometry.source.cutout);
                 }
                 if (colors.geometry.offset) {
@@ -231,7 +231,7 @@
                 root.style.setProperty('--color-geometry-toolpath', colors.geometry.toolpath);
                 root.style.setProperty('--color-geometry-selection', colors.geometry.selection);
             }
-            
+
             // Primitive-specific colors
             if (colors.primitives) {
                 root.style.setProperty('--color-primitive-offset-internal', colors.primitives.offsetInternal);
@@ -246,7 +246,7 @@
                 root.style.setProperty('--color-primitive-debug-label-stroke', colors.primitives.debugLabelStroke);
             }
         }
-        
+
         /**
          * Apply fallback theme (uses CSS defaults)
          * @param {string} themeId - Theme ID
@@ -256,7 +256,7 @@
             localStorage.setItem(this.storageKey, themeId);
             this.currentTheme = themeId;
         }
-        
+
         /**
          * Toggle between light and dark themes
          * @returns {Promise<string>} New theme ID
@@ -266,7 +266,7 @@
             await this.applyTheme(newTheme);
             return newTheme;
         }
-        
+
         /**
          * Get current theme ID
          * @returns {string|null} Current theme ID
@@ -274,7 +274,7 @@
         getCurrentTheme() {
             return this.currentTheme;
         }
-        
+
         /**
          * Get theme data
          * @param {string} themeId - Theme ID
@@ -283,7 +283,7 @@
         getTheme(themeId) {
             return this.themes.get(themeId) || null;
         }
-        
+
         /**
          * Check if themes are loaded
          * @returns {boolean} Loaded status
@@ -292,10 +292,10 @@
             return this.initialized;
         }
     }
-    
+
     // Create global instance
     window.ThemeLoader = new ThemeLoader();
-    
+
     // Auto-initialize on DOM ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
@@ -304,5 +304,5 @@
     } else {
         window.ThemeLoader.init();
     }
-    
+
 })();

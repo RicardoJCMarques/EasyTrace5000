@@ -68,7 +68,7 @@
     /* Operation Colors */
     --color-operation-isolation: #ff8844;
     --color-operation-drill: #4488ff;
-    --color-operation-clear: #44ff88;
+    --color-operation-clearing: #44ff88;
     --color-operation-cutout: #ff00ff;
     --color-operation-toolpath: #00ffff;
     
@@ -146,8 +146,8 @@
     color: var(--color-operation-drill);
 }
 
-[data-op-type="clear"] .category-icon {
-    color: var(--color-operation-clear);
+[data-op-type="clearing"] .category-icon {
+    color: var(--color-operation-clearing);
 }
 
 [data-op-type="cutout"] .category-icon {

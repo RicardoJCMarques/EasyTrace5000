@@ -27,35 +27,52 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig || {};
-    const geomConfig = config.geometry || {};
-    const debugConfig = config.debug || {};
+    const config = window.PCBCAMConfig;
+    const geomConfig = config.geometry;
+    const debugConfig = config.debug;
 
     class GeometryOffsetter {
         constructor(options = {}) {
             this.options = {
-                precision: options.precision || geomConfig.coordinatePrecision || 0.001,
+                precision: options.precision || geomConfig.coordinatePrecision,
                 miterLimit: options.miterLimit
             };
             this.initialized = true;
             this.geometryProcessor = null;
         }
-        
+
         debug(message, data = null) {
             if (debugConfig.enabled) {
                 if (data) {
-                    console.log(`${message}`, data);
+                    console.log(`[Offsetter] ${message}`, data);
                 } else {
-                    console.log(`${message}`);
+                    console.log(`[Offsetter] ${message}`);
                 }
             }
         }
-        
+
         setGeometryProcessor(processor) {
             this.geometryProcessor = processor;
         }
-        
-        async offsetPrimitive(primitive, distance, options = {}) {
+
+        /**
+         * This function now correctly handles both:
+         * 1. Analytic Strokes (isStroke === true)
+         * 2. Analytic Fills (Circle, Rectangle, etc.)
+         * 3. Path Primitives (type === 'path')
+         */
+        async offsetPrimitive(primitive, distance) {
+            if (debugConfig.enabled) {
+                console.log('[Offsetter] Primitive properties:', {
+                    isCutout: primitive.properties?.isCutout,
+                    layerType: primitive.properties?.layerType,
+                    stroke: primitive.properties?.stroke,
+                    fill: primitive.properties?.fill,
+                    isTrace: primitive.properties?.isTrace,
+                    closed: primitive.properties?.closed
+                });
+            }
+
             if (!primitive || !primitive.type) return null;
             if (Math.abs(distance) < this.options.precision) return primitive;
 
@@ -63,119 +80,210 @@
             const isCutout = props.isCutout || props.layerType === 'cutout';
             const isStroke = !isCutout && ((props.stroke && !props.fill) || props.isTrace);
 
-            // Handle analytic stroke offsetting
             if (isStroke) {
-                const originalWidth = props.strokeWidth || 0;
-                // totalWidth is the original trace width PLUS the isolation offset on both sides
-                // Use (distance * 2) directly, preserving the sign.
-                // +distance (isolation) will grow the width.
-                // -distance (clear) will shrink the width.
+                this.debug(`Handling primitive ${primitive.id} as STROKE`);
+                const originalWidth = props.strokeWidth;
                 const totalWidth = originalWidth + (distance * 2);
-                
+
                 if (totalWidth < this.options.precision) {
                     this.debug(`Stroke width too small, skipping: ${totalWidth}`);
                     return null;
                 }
 
-                let polygonPoints;
-
+                // Handle ARC strokes
                 if (primitive.type === 'arc') {
                     this.debug(`Polygonizing ArcStroke ${primitive.id} with total width ${totalWidth}`);
-                    polygonPoints = GeometryUtils.arcToPolygon(primitive, totalWidth);
-                } else if (primitive.type === 'path' && primitive.points && primitive.points.length > 0) {
+
+                    // arcToPolygon returns a complete PathPrimitive with registered curves
+                    const pathPrimitive = GeometryUtils.arcToPolygon(primitive, totalWidth);
+
+                    if (!pathPrimitive) {
+                        if (debugConfig.enabled) console.warn(`Polygonization of arc stroke ${primitive.id} failed.`);
+                        return null;
+                    }
+
+                    // Add offset-specific properties
+                    Object.assign(pathPrimitive.properties, {
+                        ...props,
+                        fill: true,
+                        stroke: false,
+                        isOffset: true,
+                        offsetDistance: distance,
+                        offsetType: distance < 0 ? 'internal' : 'external',
+                        polygonized: true
+                    });
+
+                    return pathPrimitive;
+
+                // Handle path strokes (linear polylines)
+                } else if (primitive.type === 'path' && primitive.contours?.[0]?.points) {
+                    const points = primitive.contours[0].points;
                     this.debug(`Polygonizing PathStroke ${primitive.id} with total width ${totalWidth}`);
-                    // polylineToPolygon correctly handles single-segment (lineToPolygon) and multi-segment paths
-                    polygonPoints = GeometryUtils.polylineToPolygon(primitive.points, totalWidth);
+
+                    // Create array for curve IDs, pass to polylineToPolygon for mutation
+                    const polygonCurveIds = [];
+                    const polygonPoints = GeometryUtils.polylineToPolygon(points, totalWidth, polygonCurveIds);
+
+                    if (!polygonPoints || polygonPoints.length < 3) {
+                        if (debugConfig.enabled) console.warn(`Polygonization of path stroke ${primitive.id} failed.`);
+                        return null;
+                    }
+
+                    const isInternal = distance < 0;
+
+                    // Build contour with the mutated curve IDs
+                    const contour = {
+                        points: polygonPoints,
+                        isHole: false,
+                        nestingLevel: 0,
+                        parentId: null,
+                        arcSegments: [],
+                        curveIds: polygonCurveIds
+                    };
+
+                    return new PathPrimitive([contour], {
+                        ...props,
+                        fill: true,
+                        stroke: false,
+                        isOffset: true,
+                        offsetDistance: distance,
+                        offsetType: isInternal ? 'internal' : 'external',
+                        polygonized: true
+                    });
+
+                // Handle other unhandled stroke types
                 } else {
                     if (debugConfig.enabled) console.warn(`Unhandled stroke type: ${primitive.type}`);
                     return null;
                 }
+            }
 
-                if (!polygonPoints || polygonPoints.length < 3) {
-                    if (debugConfig.enabled) console.warn(`Polygonization of stroke ${primitive.id} failed to produce points.`);
-                    return null;
-                }
-                
-                const isInternal = distance < 0;
-                
-                // Create a new PathPrimitive from the resulting "sausage" polygon and pass curveIds and arcSegments from the utils to the new primitive
-                return new PathPrimitive(polygonPoints, {
-                    ...props,
-                    fill: true,
-                    stroke: false,
-                    isOffset: true,
-                    offsetDistance: distance,
-                    offsetType: isInternal ? 'internal' : 'external',
-                    polygonized: true,
-                    curveIds: polygonPoints.curveIds || [],
-                    arcSegments: polygonPoints.arcSegments || []
+            if (debugConfig.enabled) {
+                console.log('[Offsetter] offsetPrimitive called', {
+                    type: primitive.type,
+                    hasContours: !!primitive.contours,
+                    contourCount: primitive.contours?.length,
+                    firstContourArcs: primitive.contours?.[0]?.arcSegments?.length
                 });
             }
 
-            // If not a stroke, proceed with analytic/fill offset logic
+            // Normalize unsupported analytic primitives to PathPrimitive
+            if (primitive.type === 'arc' || 
+                primitive.type === 'elliptical_arc' || 
+                primitive.type === 'bezier') {
+
+                if (typeof GeometryUtils === 'undefined' || !GeometryUtils.primitiveToPath) {
+                    console.error(`[GeometryOffsetter] Cannot convert ${primitive.type}: GeometryUtils.primitiveToPath not available`);
+                    return null;
+                }
+
+                const convertedPrimitive = GeometryUtils.primitiveToPath(primitive);
+                if (!convertedPrimitive) {
+                    console.warn(`[GeometryOffsetter] Failed to convert ${primitive.type} to path`);
+                    return null;
+                }
+
+                // Preserve original type info for debugging
+                if (!convertedPrimitive.properties) convertedPrimitive.properties = {};
+                convertedPrimitive.properties.originalType = primitive.type;
+                convertedPrimitive.properties.wasConverted = true;
+
+                primitive = convertedPrimitive;
+            }
+
+            // Filled shapes - use hybrid offsetting for paths with arcs
             switch (primitive.type) {
+                case 'path':
+                    try {
+                    const hasArcs = primitive.contours?.some(c => 
+                        c.arcSegments && c.arcSegments.length > 0
+                    );
+
+                    if (hasArcs) {
+                        this.debug(`Using hybrid offset for path with ${primitive.contours[0].arcSegments.length} arcs`);
+                    } else {
+                        this.debug(`Using polygon offset for path (no arcs)`);
+                    }
+                    this.debug(`ABOUT TO CALL offsetPath (hasArcs=${hasArcs})`);
+                    const result = this.offsetPath(primitive, distance);
+                    this.debug('offsetPath returned:', result);
+                    return result;
+
+                } catch (error) {
+                    console.error('[Offsetter] ERROR in path case:', error);
+                    throw error;
+                }
+
+                case 'arc':
+                    return this.offsetArc(primitive, distance);
                 case 'circle':
                     return this.offsetCircle(primitive, distance);
                 case 'rectangle':
                     return this.offsetRectangle(primitive, distance);
-                case 'path':
-                    return this.offsetPath(primitive, distance);
-                case 'arc':
-                    return this.offsetArc(primitive, distance);
                 case 'obround':
                     return this.offsetObround(primitive, distance);
                 default:
-                    if (debugConfig.enabled) {
-                        console.warn(`Unknown type: ${primitive.type}`);
+                    // If it's not a known type or path with contours, it's invalid.
+                    if (primitive.type === 'path' && primitive.contours && primitive.contours.length > 0) {
+                        return this.offsetPath(primitive, distance);
                     }
+                    this.debug(`An invalid primitive fell-through without a corresponding offset geometry.`);
                     return null;
             }
         }
-        
+
         offsetCircle(circle, distance) {
             const newRadius = circle.radius + distance;  // Positive distance = external (grow)
-            this.debug(`Offsetting circle with ${circle.radius} radius`);
-            this.debug(`Offsetting circle with ${newRadius} new radius`);
-            
-            const isInternal = distance < 0;  // Negative = internal (shrink)
+            const isInternal = distance < 0;
 
-            // Register with proper metadata
-            const offsetCurveId = window.globalCurveRegistry?.register({
-                type: 'circle',
-                center: { ...circle.center },
-                radius: newRadius,
-                clockwise: isInternal,
-                isOffsetDerived: true,
-                offsetDirection: isInternal ? 'internal' : 'external',
-                sourceCurveId: circle.properties?.originalCurveId || null,
+            if (newRadius < this.options.precision) {
+                this.debug(`Offsetting circle with ${circle.radius} radius resulted in degenerate radius ${newRadius}, skipping.`);
+                return null; // Collapsed to nothing
+            }
+
+            this.debug(`Offsetting circle with ${circle.radius}r to new radius ${newRadius}r`);
+
+            // 1. Create a new, analytic CirclePrimitive for the offset
+            const offsetCirclePrimitive = new CirclePrimitive(
+                circle.center, 
+                newRadius, 
+                { ...circle.properties }
+            );
+
+            // 2. Convert this new analytic primitive into a "One Rule" PathPrimitive
+            const offsetPath = GeometryUtils.primitiveToPath(offsetCirclePrimitive);
+            
+            if (!offsetPath || !offsetPath.contours || offsetPath.contours.length === 0) {
+                this.debug(`Tessellation of offset circle failed`);
+                return null;
+            }
+
+            // 3. Add the required offset metadata to the final PathPrimitive.
+            offsetPath.properties = {
+                ...offsetPath.properties,
+                isOffset: true,
                 offsetDistance: distance,
-                source: 'circle_offset'
-            });
-            
-            // Create circle with metadata
-            const offsetCircle = {
-                type: 'circle',
-                center: { ...circle.center },
-                radius: newRadius,
-                properties: {
-                    ...circle.properties,
-                    isOffset: true,
-                    offsetDistance: distance,
-                    offsetType: isInternal ? 'internal' : 'external',
-                    expectedWinding: isInternal ? 'ccw' : 'cw',
-                    originalCurveId: offsetCurveId
-                },
-                getBounds: function() {
-                    return {
-                        minX: this.center.x - this.radius,
-                        minY: this.center.y - this.radius,
-                        maxX: this.center.x + this.radius,
-                        maxY: this.center.y + this.radius
-                    };
-                }
+                offsetType: isInternal ? 'internal' : 'external',
+                sourcePrimitiveId: circle.id,
             };
-            
-            return new CirclePrimitive(circle.center, newRadius, offsetCircle.properties);
+
+            // 4. Post-process the newly registered curve IDs to mark them as offset-derived.
+            const contour = offsetPath.contours[0];
+            if (window.globalCurveRegistry && contour.curveIds) {
+                contour.curveIds.forEach(id => {
+                    const curve = window.globalCurveRegistry.getCurve(id);
+                    if (curve) {
+                        curve.isOffsetDerived = true;
+                        curve.offsetDistance = distance;
+                        // Try to find the original curve ID from the source circle
+                        curve.sourceCurveId = circle.properties?.originalCurveId || (circle.curveIds ? circle.curveIds[0] : null); 
+                    }
+                });
+            }
+
+            this.debug(`Successfully created offset circle path with ${contour.points.length} points.`);
+
+            return offsetPath;
         }
 
         /**
@@ -196,188 +304,155 @@
             }
 
             const t_num = (p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x);
-            const u_num = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x));
-            
+            // const u_num = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x));
+
             const t = t_num / den;
-            
+
             return {
                 x: p1.x + t * (p2.x - p1.x),
                 y: p1.y + t * (p2.y - p1.y)
             };
         }
-        
+
         /**
-         * - Internal offsets (distance < 0) are TRIMMED (mitered/beveled).
-         * - External offsets (distance > 0) are ROUNDED at convex corners and TRIMMED at reflex (concave) corners.
+         * - Internal offsets (distance < 0) are trimmed (mitered/beveled). // Review - complex internal corners may need rounded joints?
+         * - External offsets (distance > 0) are rounded at convex corners and trimmed at reflex (concave) corners.
          */
-        offsetPath(path, distance, options = {}) {
-            if (!path.points || path.points.length < 2) {
-                this.debug('Insufficient points');
-                return null;
-            }
-            
-            const isInternal = distance < 0;
-            const offsetDist = Math.abs(distance);
-            const props = path.properties || {};
-
-            // 1. Check for analytic arc paths (no change to this logic)
-            const hasAnalyticArcs = (path.properties.arcSegments && path.properties.arcSegments.length > 0) ||
-                                    (path.contours && path.contours[0]?.arcSegments?.length > 0) ||
-                                    (path.arcSegments && path.arcSegments.length > 0);
-
-            if (hasAnalyticArcs) {
-                const arcCount = (path.properties.arcSegments?.length) || (path.contours && path.contours[0]?.arcSegments?.length) || path.arcSegments.length;
-                this.debug(`Path has ${arcCount} arc segments, attempting analytic offset`);
-                return this.offsetPathWithArcs(path, distance, options);
-            }
-            
-            // 2. Prepare polygon points
-            let polygonPoints = path.points.slice();
-            const first = polygonPoints[0];
-            const last = polygonPoints[polygonPoints.length - 1];
-            if (Math.hypot(first.x - last.x, first.y - last.y) < this.options.precision) {
-                polygonPoints.pop(); // Remove duplicate closing point
-            }
-
-            // De-noise the path before offsetting, ONLY for internal offsets.
-            const simplificationConfig = window.PCBCAMConfig?.geometry?.simplification;
-
-            if (isInternal && simplificationConfig?.enabled && polygonPoints.length > 10) {
-                // Read tolerance from the config file
-                const tolerance = simplificationConfig.tolerance || 0.001;
-                const sqTolerance = tolerance * tolerance;
-                
-                const originalCount = polygonPoints.length;
-                polygonPoints = this._simplifyDouglasPeucker(polygonPoints, sqTolerance);
-                const newCount = polygonPoints.length;
-
-                if (originalCount > newCount) {
-                    this.debug(`Simplified internal path from ${originalCount} to ${newCount} points.`);
-                }
-            }
-            
-            const n = polygonPoints.length;
-            if (n < 3) return null;
-            
-            // 3. Determine winding and normal direction
-            const isPathClockwise = GeometryUtils.isClockwise(polygonPoints);
-            let normalDirection = isInternal ? 1 : -1;
-            if (isPathClockwise) {
-                normalDirection *= -1;
-            }
-
-            // 4. Create offset line segments (Same as before)
-            const offsetSegments = [];
-            for (let i = 0; i < n; i++) {
-                const p1 = polygonPoints[i];
-                const p2 = polygonPoints[(i + 1) % n];
-                
-                const v = { x: p2.x - p1.x, y: p2.y - p1.y };
-                const len = Math.hypot(v.x, v.y);
-                if (len < this.options.precision) continue;
-                
-                const nx = normalDirection * (-v.y / len);
-                const ny = normalDirection * (v.x / len);
-
-                offsetSegments.push({
-                    p1: { x: p1.x + nx * offsetDist, y: p1.y + ny * offsetDist },
-                    p2: { x: p2.x + nx * offsetDist, y: p2.y + ny * offsetDist }
+        async offsetPath(path, distance) {
+            if (debugConfig.enabled) {
+                console.log('[Offsetter] offsetPath ENTERED', {
+                    hasContours: !!path.contours,
+                    contourCount: path.contours?.length,
+                    firstContourPoints: path.contours?.[0]?.points?.length,
+                    firstContourArcs: path.contours?.[0]?.arcSegments?.length
                 });
             }
 
-            // 5. Process joints between segments (Refactored Loop)
-            const finalPoints = [];
-            const numSegs = offsetSegments.length;
-            if (numSegs < 2) return null; // Need at least 2 segments to join
-
-            const miterLimit = (this.options.miterLimit) * offsetDist;
-
-            for (let i = 0; i < numSegs; i++) {
-                const seg1 = offsetSegments[i];
-                const seg2 = offsetSegments[(i + 1) % numSegs];
-                
-                // Add the start point of the first segment, once
-                if (finalPoints.length === 0) {
-                    finalPoints.push(seg1.p1);
-                }
-
-                // Get original corner geometry
-                const curr = polygonPoints[(i + 1) % n];
-                const prev = polygonPoints[i];
-                const next = polygonPoints[(i + 2) % n];
-
-                const v1_vec = { x: curr.x - prev.x, y: curr.y - prev.y };
-                const v2_vec = { x: next.x - curr.x, y: next.y - curr.y };
-
-                // Calculate cross product to determine corner type
-                const crossProduct = (v1_vec.x * v2_vec.y) - (v1_vec.y * v2_vec.x);
-                const isReflexCorner = isPathClockwise ? (crossProduct > 0) : (crossProduct < 0);
-
-                // Check for collinearity to handle tessellation noise
-                const len1 = Math.hypot(v1_vec.x, v1_vec.y);
-                const len2 = Math.hypot(v2_vec.x, v2_vec.y);
-                let dot = 0;
-
-                if (len1 > this.options.precision && len2 > this.options.precision) {
-                    // Normalized dot product: 1 = 0°, 0 = 90°, -1 = 180°
-                    dot = (v1_vec.x * v2_vec.x + v1_vec.y * v2_vec.y) / (len1 * len2);
-                }
-
-                // Segments are collinear (just noise) if dot is near 1 OR if segments are degenerate
-                const collinearThreshold = geomConfig.offsetting?.collinearDotThreshold || 0.995;
-                const isCollinear = (dot > collinearThreshold) || (len1 < this.options.precision) || (len2 < this.options.precision);
-
-                // Determine joint type
-                // Miter joint for internal offsets, reflex corners, OR collinear segments
-                const isMiterJoint = isInternal || isReflexCorner || isCollinear;
-
-                if (isMiterJoint) {
-                    // A. MITER / BEVEL JOINT
-                    // (Used for all internal, reflex, and collinear corners)
-                    const jointPoints = this._createMiterBevelJoint(
-                        seg1, seg2, curr, miterLimit
-                    );
-                    finalPoints.push(...jointPoints);
-
-                } else {
-                    // B. ROUND JOINT
-                    // (Used *only* for external, convex, NON-collinear corners)
-                    
-                    // Add the end of the straight segment
-                    finalPoints.push(seg1.p2);
-
-                    // Add the arc points for the joint
-                    const arcPoints = this._createRoundJoint(
-                        curr, v1_vec, v2_vec, normalDirection, offsetDist, distance
-                    );
-                    finalPoints.push(...arcPoints);
-                }
-            }
-            
-            if (finalPoints.length < 3) {
-                this.debug('Insufficient offset points generated');
+            if (!path.contours || path.contours.length === 0) {
+                this.debug('OffsetPath: Path has no contours, skipping.');
                 return null;
             }
-            
-            // 6. Close the final path (Same as before)
-            const firstFinal = finalPoints[0];
-            const lastFinal = finalPoints[finalPoints.length - 1];
-            if (Math.hypot(firstFinal.x - lastFinal.x, firstFinal.y - lastFinal.y) > this.options.precision) {
-                finalPoints.push(firstFinal);
+
+            if (path.contours.length > 1) {
+                this.debug(`Decomposing compound path with ${path.contours.length} contours for offset`);
+                const results = [];
+
+                for (const contour of path.contours) {
+                    if (!contour.points || contour.points.length < 2) continue;
+                    const contourDistance = contour.isHole ? -distance : distance;
+                    const hasArcs = contour.arcSegments && contour.arcSegments.length > 0;
+
+                    if (hasArcs) {
+                        const offsetResult = this._offsetHybridContour(contour, contourDistance);
+                        if (offsetResult) {
+                            results.push(new PathPrimitive([offsetResult], {
+                                ...path.properties,
+                                closed: true,
+                                fill: true,
+                                isOffset: true,
+                                offsetDistance: contourDistance,
+                                offsetType: contourDistance < 0 ? 'internal' : 'external',
+                                polarity: contour.isHole ? 'clear' : 'dark'
+                            }));
+                        }
+                    } else {
+                        const offsetPoints = this._offsetContourPoints(contour.points, contourDistance);
+                        if (offsetPoints && offsetPoints.length >= 3) {
+                            results.push(new PathPrimitive([{
+                                points: offsetPoints,
+                                isHole: false,
+                                nestingLevel: 0,
+                                parentId: null,
+                                arcSegments: [],
+                                curveIds: []
+                            }], {
+                                ...path.properties,
+                                closed: true,
+                                fill: true,
+                                isOffset: true,
+                                offsetDistance: contourDistance,
+                                offsetType: contourDistance < 0 ? 'internal' : 'external',
+                                polarity: contour.isHole ? 'clear' : 'dark'
+                            }));
+                        }
+                    }
+                }
+                return results.length > 0 ? results : null;
             }
-            
-            return new PathPrimitive(finalPoints, {
-                ...path.properties, originalType: 'filled_path', closed: true, fill: true, stroke: false,
-                isOffset: true, offsetDistance: distance, offsetType: isInternal ? 'internal' : 'external',
-                polygonized: true
-            });
+
+            const contour = path.contours[0];
+            if (!contour.points || contour.points.length < 2) return null;
+
+            const hasArcs = contour.arcSegments && contour.arcSegments.length > 0;
+
+            this.debug(`Processing contour: ${contour.points.length} points, ${contour.arcSegments?.length || 0} arcs, hasArcs=${hasArcs}`);
+
+            // Handle centerline paths (open paths with zero offset)
+            if (path.properties?.isCenterlinePath) {
+                // For centerline, return as-is with offset metadata
+                return new PathPrimitive(path.contours, {
+                    ...path.properties,
+                    isOffset: true,
+                    offsetDistance: distance,
+                    offsetType: 'on',
+                    closed: false
+                });
+            }
+
+            if (hasArcs) {
+                const offsetResult = this._offsetHybridContour(contour, distance);
+
+                if (!offsetResult) {
+                    this.debug(`Hybrid offset returned null`);
+                    return null;
+                }
+
+                this.debug(`Hybrid result: ${offsetResult.points.length} points, ${offsetResult.arcSegments.length} arcs`);
+
+                const primitive = new PathPrimitive([offsetResult], {
+                    ...path.properties,
+                    closed: true,
+                    fill: true,
+                    isOffset: true,
+                    offsetDistance: distance,
+                    offsetType: distance < 0 ? 'internal' : 'external'
+                });
+
+                this.debug(`Final primitive has ${primitive.contours[0].arcSegments?.length || 0} arcs in contour[0]`);
+
+                return primitive;
+            } else {
+                const offsetPoints = this._offsetContourPoints(contour.points, distance);
+                if (!offsetPoints || offsetPoints.length < 3) return null;
+
+                // Collect curve IDs from rounded joints
+                const collectedCurveIds = Array.from(
+                    new Set(offsetPoints.map(p => p.curveId).filter(Boolean))
+                );
+
+                return new PathPrimitive([{
+                    points: offsetPoints,
+                    isHole: false,
+                    nestingLevel: 0,
+                    parentId: null,
+                    arcSegments: [],
+                    curveIds: collectedCurveIds
+                }], {
+                    ...path.properties,
+                    closed: true,
+                    fill: true,
+                    isOffset: true,
+                    offsetDistance: distance,
+                    offsetType: distance < 0 ? 'internal' : 'external'
+                });
+            }
         }
 
         /**
          * Calculates the points for a miter or bevel joint.
          * @returns {Array<object>} An array containing 1 point (miter) or 2 points (bevel).
          */
-        _createMiterBevelJoint(seg1, seg2, originalCorner, miterLimit) {
+        _createMiterBevelJoint(seg1, seg2, miterLimit) {
             const intersection = this.lineLineIntersection(
                 seg1.p1, seg1.p2, // Line 1
                 seg2.p1, seg2.p2  // Line 2
@@ -385,11 +460,10 @@
 
             if (intersection) {
                 // Check miter length
-                const miterLength = Math.hypot(intersection.x - originalCorner.x, intersection.y - originalCorner.y);
+                const miterLength = Math.hypot(intersection.x - seg1.p2.x, intersection.y - seg1.p2.y);
 
                 if (miterLength > miterLimit) {
                     // Miter limit exceeded. BEVEL the joint.
-                    // Return the two endpoints of the parallel segments to create a flat cap.
                     return [seg1.p2, seg2.p1];
                 } else {
                     // Miter is within limit. Return the single intersection point.
@@ -397,7 +471,6 @@
                 }
             } else {
                 // Parallel lines (180 deg corner), just add the segment's end point.
-                // This will be joined to seg2.p1 by the next loop iteration.
                 return [seg1.p2];
             }
         }
@@ -432,14 +505,14 @@
                 startAngle: angle1, endAngle: angle2, clockwise: jointIsClockwise,
                 source: 'offset_joint', isOffsetDerived: true, offsetDistance: distance
             });
-            
+
             const fullCircleSegments = GeometryUtils.getOptimalSegments(offsetDist, 'circle');
             const proportionalSegments = fullCircleSegments * (Math.abs(angleDiff) / (2 * Math.PI));
             const minSegments = geomConfig.offsetting?.minRoundJointSegments || 2;
             const arcSegments = Math.max(minSegments, Math.ceil(proportionalSegments));
-            
+
             const arcPoints = [];
-            
+
             // Generate arc points, skipping the first (which is seg1.p2)
             for (let j = 1; j <= arcSegments; j++) {
                 const t = j / arcSegments;
@@ -454,245 +527,377 @@
                 };
                 arcPoints.push(point);
             }
-            
+
             return arcPoints;
         }
 
-        /**
-         * Offset a path with arc segments analytically
-         */
-        offsetPathWithArcs(path, distance, options = {}) {
-            const newPoints = [];
-            const newArcSegments = [];
-            const offsetDist = Math.abs(distance);
+        // Extract core offset logic
+        _offsetContourPoints(points, distance) {
             const isInternal = distance < 0;
+            const offsetDist = Math.abs(distance);
             
-            // Read from contours structure
-            const sourceArcSegments = (path.contours && path.contours[0]?.arcSegments) || 
-                                    path.arcSegments || [];
-            const sourcePoints = (path.contours && path.contours[0]?.points) || 
-                                path.points;
+            // Work directly with sparse points - NO flattening
+            let polygonPoints = points.slice();
             
-            if (!sourceArcSegments || sourceArcSegments.length === 0) {
-                return this.offsetPath(path, distance, options);
-            }
-            
-            const sortedArcs = sourceArcSegments.slice().sort((a, b) => a.startIndex - b.startIndex);
-
-            this.debug(`Input: ${sortedArcs.length} arcs, ${sourcePoints.length} points`);
-            sortedArcs.forEach((arc, i) => {
-                this.debug(`  Arc ${i}: [${arc.startIndex}->${arc.endIndex}], r=${arc.radius.toFixed(3)}, ${arc.clockwise ? 'CW' : 'CCW'}`);
-            });
-
-            let currentIdx = 0;
-            
-            for (const arcSeg of sortedArcs) {
-                // Process line segments before arc
-                while (currentIdx < arcSeg.startIndex) {
-                    const p1 = sourcePoints[currentIdx];
-                    const p2 = sourcePoints[currentIdx + 1];
-                    if (p2 && Math.hypot(p2.x - p1.x, p2.y - p1.y) > this.options.precision) {
-                        const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy);
-                        const nx = -dy / len, ny = dx / len;
-                        const sign = isInternal ? -1 : 1;
-                        if (currentIdx === 0) {
-                            newPoints.push({
-                                x: p1.x + nx * offsetDist * sign,
-                                y: p1.y + ny * offsetDist * sign
-                            });
-                        }
-                    }
-                    currentIdx++;
-                }
-                
-                // Offset the arc analytically
-                const newRadius = isInternal ? arcSeg.radius - offsetDist : arcSeg.radius + offsetDist;
-                
-                if (newRadius > this.options.precision) {
-                    const offsetClockwise = arcSeg.clockwise;
-
-                    const offsetCurveId = window.globalCurveRegistry?.register({
-                        type: 'arc',
-                        center: { ...arcSeg.center },
-                        radius: newRadius,
-                        startAngle: arcSeg.startAngle,
-                        endAngle: arcSeg.endAngle,
-                        clockwise: offsetClockwise,
-                        isOffsetDerived: true,
-                        offsetDistance: distance,
-                        source: 'analytic_offset'
-                    });
-                    
-                    const startPtIdx = newPoints.length;
-                    
-                    newPoints.push({
-                        x: arcSeg.center.x + newRadius * Math.cos(arcSeg.startAngle),
-                        y: arcSeg.center.y + newRadius * Math.sin(arcSeg.startAngle),
-                        curveId: offsetCurveId,
-                        segmentIndex: 0
-                    });
-                    newPoints.push({
-                        x: arcSeg.center.x + newRadius * Math.cos(arcSeg.endAngle),
-                        y: arcSeg.center.y + newRadius * Math.sin(arcSeg.endAngle),
-                        curveId: offsetCurveId,
-                        segmentIndex: 1
-                    });
-
-                    let sweepAngle = arcSeg.endAngle - arcSeg.startAngle;
-                    
-                    // Normalize to smallest absolute angle
-                    while (sweepAngle > Math.PI) sweepAngle -= 2 * Math.PI;
-                    while (sweepAngle < -Math.PI) sweepAngle += 2 * Math.PI;
-                    
-                    // Apply direction: CCW = positive, CW = negative
-                    if (!offsetClockwise && sweepAngle < 0) {
-                        sweepAngle += 2 * Math.PI;
-                    } else if (offsetClockwise && sweepAngle > 0) {
-                        sweepAngle -= 2 * Math.PI;
-                    }
-                    
-                    newArcSegments.push({
-                        startIndex: startPtIdx,
-                        endIndex: startPtIdx + 1,
-                        center: { ...arcSeg.center },
-                        radius: newRadius,
-                        startAngle: arcSeg.startAngle,
-                        endAngle: arcSeg.endAngle,
-                        clockwise: offsetClockwise,
-                        curveId: offsetCurveId,
-                        sweepAngle: sweepAngle
-                    });
-                }
-                currentIdx = arcSeg.endIndex;
+            const first = polygonPoints[0];
+            const last = polygonPoints[polygonPoints.length - 1];
+            if (Math.hypot(first.x - last.x, first.y - last.y) < this.options.precision) {
+                polygonPoints.pop();
             }
 
-            this.debug(`Output: ${newArcSegments.length} arcs, ${newPoints.length} points`);
-            newArcSegments.forEach((arc, i) => {
-                this.debug(`  Arc ${i}: [${arc.startIndex}->${arc.endIndex}], r=${arc.radius.toFixed(3)}`);
+            // Simplification for internal offsets only
+            const simplificationConfig = window.PCBCAMConfig?.geometry?.simplification;
+            if (isInternal && simplificationConfig?.enabled && polygonPoints.length > 10) {
+                const tolerance = simplificationConfig.tolerance || 0.001;
+                const sqTolerance = tolerance * tolerance;
+                const originalCount = polygonPoints.length;
+                polygonPoints = this._simplifyDouglasPeucker(polygonPoints, sqTolerance);
+                const newCount = polygonPoints.length;
+                if (originalCount > newCount) {
+                    this.debug(`Simplified internal path from ${originalCount} to ${newCount} points.`);
+                }
+            }
+
+            const n = polygonPoints.length;
+            if (n < 3) return null;
+
+            // Determine winding and normal direction
+            const isPathClockwise = GeometryUtils.isClockwise(polygonPoints);
+            let normalDirection = isInternal ? 1 : -1;
+            if (isPathClockwise) {
+                normalDirection *= -1;
+            }
+
+            // Create offset segments
+            const offsetSegments = [];
+            for (let i = 0; i < n; i++) {
+                const p1 = polygonPoints[i];
+                const p2 = polygonPoints[(i + 1) % n];
+
+                const v = { x: p2.x - p1.x, y: p2.y - p1.y };
+                const len = Math.hypot(v.x, v.y);
+                if (len < this.options.precision) continue;
+
+                const nx = normalDirection * (-v.y / len);
+                const ny = normalDirection * (v.x / len);
+
+                offsetSegments.push({
+                    p1: { x: p1.x + nx * offsetDist, y: p1.y + ny * offsetDist },
+                    p2: { x: p2.x + nx * offsetDist, y: p2.y + ny * offsetDist }
+                });
+            }
+
+            // Process joints
+            const finalPoints = [];
+            const numSegs = offsetSegments.length;
+            if (numSegs < 2) return null;
+
+            const miterLimit = (this.options.miterLimit || 2.0) * offsetDist;
+
+            for (let i = 0; i < numSegs; i++) {
+                const seg1 = offsetSegments[i];
+                const seg2 = offsetSegments[(i + 1) % numSegs];
+
+                const curr = polygonPoints[(i + 1) % n];
+                const prev = polygonPoints[i];
+                const next = polygonPoints[(i + 2) % n];
+
+                const v1_vec = { x: curr.x - prev.x, y: curr.y - prev.y };
+                const v2_vec = { x: next.x - curr.x, y: next.y - curr.y };
+
+                const crossProduct = (v1_vec.x * v2_vec.y) - (v1_vec.y * v2_vec.x);
+                const isReflexCorner = isPathClockwise ? (crossProduct > 0) : (crossProduct < 0);
+
+                const len1 = Math.hypot(v1_vec.x, v1_vec.y);
+                const len2 = Math.hypot(v2_vec.x, v2_vec.y);
+                let dot = 0;
+
+                if (len1 > this.options.precision && len2 > this.options.precision) {
+                    dot = (v1_vec.x * v2_vec.x + v1_vec.y * v2_vec.y) / (len1 * len2);
+                }
+
+                const collinearThreshold = geomConfig.offsetting?.collinearDotThreshold || 0.995;
+                const isCollinear = (dot > collinearThreshold) || (len1 < this.options.precision) || (len2 < this.options.precision);
+
+                const isMiterJoint = isInternal || isReflexCorner || isCollinear;
+
+                if (isMiterJoint) {
+                    // For miter joints (internal), only add the intersection point.
+                    const jointPoints = this._createMiterBevelJoint(seg1, seg2, miterLimit);
+                    finalPoints.push(...jointPoints);
+                } else {
+                    // For round joints (external), add the segment's end, then the arc.
+                    // Must include the very first segment's start point.
+                    if (finalPoints.length === 0) {
+                        finalPoints.push(seg1.p1);
+                    }
+                    finalPoints.push(seg1.p2);
+                    const arcPoints = this._createRoundJoint(curr, v1_vec, v2_vec, normalDirection, offsetDist, distance);
+                    finalPoints.push(...arcPoints);
+                }
+            }
+
+            if (finalPoints.length < 3) {
+                return null;
+            }
+
+            // Close path
+            const firstFinal = finalPoints[0];
+            const lastFinal = finalPoints[finalPoints.length - 1];
+            if (Math.hypot(firstFinal.x - lastFinal.x, firstFinal.y - lastFinal.y) > this.options.precision) {
+                finalPoints.push(firstFinal);
+            }
+
+            return finalPoints;
+        }
+
+        _offsetHybridContour(contour, distance) {
+            const isInternal = distance < 0;
+            const offsetDist = Math.abs(distance);
+
+            const points = contour.points;
+            const arcSegments = contour.arcSegments || [];
+
+            if (points.length < 2) return null;
+
+            // Build arc lookup by startIndex
+            const arcMap = new Map();
+            arcSegments.forEach(arc => {
+                arcMap.set(arc.startIndex, arc);
             });
-            
-            // Check if last arc wrapped to start (closes path)
-            const pathClosedByArc = (currentIdx === 0 && sortedArcs.length > 0);
-            
-            // Remaining line segments (skip if path closed by arc)
-            if (!pathClosedByArc) {
-                while (currentIdx < sourcePoints.length - 1) {
-                    const p1 = sourcePoints[currentIdx];
-                    const p2 = sourcePoints[currentIdx + 1];
-                    if (p2 && Math.hypot(p2.x - p1.x, p2.y - p1.y) > this.options.precision) {
-                        const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy);
-                        const nx = -dy / len, ny = dx / len;
-                        const sign = isInternal ? -1 : 1;
-                        newPoints.push({
-                            x: p1.x + nx * offsetDist * sign,
-                            y: p1.y + ny * offsetDist * sign
+
+            // Calculate normal direction for lines
+            const pathWinding = GeometryUtils.calculateWinding(points);
+            const pathIsCCW = pathWinding > 0;
+            let normalDirection = isInternal ? 1 : -1;
+            if (!pathIsCCW) normalDirection *= -1;
+
+            // These arrays will hold the non-welded path
+            const preWeldPoints = [];
+            const preWeldArcSegments = [];
+
+            // Iterate n times, processing one segment at a time (from point i to point i+1), checking if it's an arc or a line.
+            const n = points.length;
+            for (let i = 0; i < n; i++) {
+                const startIndex = i;
+                const endIndex = (i + 1) % n;
+
+                const arc = arcMap.get(startIndex);
+
+                // Check if an arc starts here AND ends at the next point
+                if (arc && arc.endIndex === endIndex) {
+                    // Arc segment
+                    const newRadius = arc.radius + (normalDirection * offsetDist);
+
+                    if (newRadius < this.options.precision) {
+                        this.debug(`Arc collapsed`);
+                        continue;
+                    }
+
+                    // Register first
+                    let curveId = null;
+                    if (window.globalCurveRegistry) {
+                        curveId = window.globalCurveRegistry.register({
+                            type: 'arc',
+                            center: arc.center,
+                            radius: newRadius,
+                            startAngle: arc.startAngle,
+                            endAngle: arc.endAngle,
+                            clockwise: arc.clockwise,
+                            isOffsetDerived: true,
+                            offsetDistance: distance,
+                            sourceCurveId: arc.curveId,
+                            source: 'hybrid_offset'
                         });
                     }
-                    currentIdx++;
+
+                    const newStartIndex = preWeldPoints.length;
+
+                    preWeldPoints.push({
+                        x: arc.center.x + newRadius * Math.cos(arc.startAngle),
+                        y: arc.center.y + newRadius * Math.sin(arc.startAngle),
+                        curveId: curveId
+                    });
+
+                    preWeldPoints.push({
+                        x: arc.center.x + newRadius * Math.cos(arc.endAngle),
+                        y: arc.center.y + newRadius * Math.sin(arc.endAngle),
+                        curveId: curveId
+                    });
+
+                    const newEndIndex = preWeldPoints.length - 1;
+
+                    preWeldArcSegments.push({
+                        startIndex: newStartIndex,
+                        endIndex: newEndIndex,
+                        center: arc.center,
+                        radius: newRadius,
+                        startAngle: arc.startAngle,
+                        endAngle: arc.endAngle,
+                        sweepAngle: arc.sweepAngle,
+                        clockwise: arc.clockwise,
+                        curveId: curveId
+                    });
+
+                } else {
+                    // Line segment
+                    const p1 = points[startIndex];
+                    const p2 = points[endIndex];
+
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const len = Math.hypot(dx, dy);
+
+                    if (len > this.options.precision) {
+                        const nx = normalDirection * (-dy / len);
+                        const ny = normalDirection * (dx / len);
+
+                        preWeldPoints.push({
+                            x: p1.x + nx * offsetDist,
+                            y: p1.y + ny * offsetDist
+                        });
+                        preWeldPoints.push({
+                            x: p2.x + nx * offsetDist,
+                            y: p2.y + ny * offsetDist
+                        });
+                    }
                 }
             }
-            
-            // Close path
-            if (newPoints.length > 2) {
-                const first = newPoints[0], last = newPoints[newPoints.length - 1];
-                if (Math.hypot(first.x - last.x, first.y - last.y) > this.options.precision) {
-                    newPoints.push({ ...first });
+
+            if (preWeldPoints.length < 3) return null;
+
+            // Welding logic
+            const finalPoints = [];
+            const finalArcSegments = [];
+
+            // This map stores [preWeldIndex -> finalIndex]
+            const indexMap = new Array(preWeldPoints.length);
+
+            if (preWeldPoints.length > 0) {
+                // Add the very first point
+                finalPoints.push(preWeldPoints[0]);
+                indexMap[0] = 0;
+
+                // Weld subsequent points
+                for (let j = 1; j < preWeldPoints.length; j++) {
+                    const p1 = finalPoints[finalPoints.length - 1];
+                    const p2 = preWeldPoints[j];
+                    const dx = p1.x - p2.x;
+                    const dy = p1.y - p2.y;
+
+                    // Use squared precision for efficiency
+                    if ((dx * dx + dy * dy) > (this.options.precision * this.options.precision)) {
+                        // Not a duplicate, add new point
+                        indexMap[j] = finalPoints.length;
+                        finalPoints.push(p2);
+                    } else {
+                        // Is a duplicate - merge metadata
+                        indexMap[j] = finalPoints.length - 1;
+                        // If p2 has curveId but p1 doesn't, copy it over
+                        if (p2.curveId && !p1.curveId) {
+                            p1.curveId = p2.curveId;
+                        }
+                    }
                 }
             }
-            
-            // Store in contour structure
-            const offsetContour = {
-                points: newPoints,
+
+            // Remap arc segments using the indexMap
+            for (const seg of preWeldArcSegments) {
+                const newStart = indexMap[seg.startIndex];
+                const newEnd = indexMap[seg.endIndex];
+
+                // Only add non-degenerate arcs
+                if (newStart !== newEnd) {
+                    finalArcSegments.push({
+                        ...seg,
+                        startIndex: newStart,
+                        endIndex: newEnd
+                    });
+                }
+            }
+
+            // Check if the last point is a duplicate of the first
+            if (finalPoints.length > 1) {
+                const first = finalPoints[0];
+                const last = finalPoints[finalPoints.length - 1];
+                const dx = first.x - last.x;
+                const dy = first.y - last.y;
+
+                // Use squared precision
+                if ((dx * dx + dy * dy) < (this.options.precision * this.options.precision)) {
+                    const oldEndIdx = finalPoints.length - 1;
+                    
+                    // Merge metadata before removing
+                    if (last.curveId && !first.curveId) {
+                        first.curveId = last.curveId;
+                    }
+                    
+                    finalPoints.pop();
+
+                    // Fix any arc segment indices that pointed to the deleted point
+                    finalArcSegments.forEach(seg => {
+                        if (seg.startIndex === oldEndIdx) seg.startIndex = 0;
+                        if (seg.endIndex === oldEndIdx) seg.endIndex = 0;
+                    });
+                }
+            }
+
+            this.debug(`Hybrid offset: ${points.length}pts/${arcSegments.length}arcs -> ${finalPoints.length}pts/${finalArcSegments.length}arcs`);
+
+            return {
+                points: finalPoints,
+                isHole: contour.isHole || false,
+                nestingLevel: 0,
+                parentId: null,
+                arcSegments: finalArcSegments,
+                curveIds: finalArcSegments.map(s => s.curveId).filter(Boolean)
+            };
+        }
+
+        offsetRectangle(rectangle, distance) {
+            const { x, y } = rectangle.position;
+            const w = rectangle.width;
+            const h = rectangle.height;
+
+            // Convert the rectangle into a standard closed Counter-Clockwise (CCW) path.
+            const rectPoints = [
+                { x: x,     y: y },
+                { x: x + w, y: y },
+                { x: x + w, y: y + h },
+                { x: x,     y: y + h },
+                { x: x,     y: y } // Explicitly close path
+            ];
+
+            const rectAsPath = new PathPrimitive([{
+                points: rectPoints,
                 isHole: false,
                 nestingLevel: 0,
                 parentId: null,
-                curveIds: newArcSegments.map(s => s.curveId).filter(Boolean),
-                arcSegments: newArcSegments
-            };
-            
-            return new PathPrimitive(newPoints, {
-                ...path.properties,
-                closed: true,
+                arcSegments: [],
+                curveIds: []
+            }], {
+                ...rectangle.properties,
                 fill: true,
-                isOffset: true,
-                offsetDistance: distance,
-                offsetType: isInternal ? 'internal' : 'external',
-                arcSegments: newArcSegments,
-                contours: [offsetContour]
+                closed: true
             });
+            return this.offsetPath(rectAsPath, distance);
         }
-        
-        offsetRectangle(rectangle, distance, options = {}) {
-            const { x, y } = rectangle.position;
-            const w = rectangle.width || 0;
-            const h = rectangle.height || 0;
 
-            // Convert the rectangle into a standard closed Counter-Clockwise (CCW) path.
-            const rectAsPath = new PathPrimitive(
-                [
-                    { x: x,     y: y },         // top-left
-                    { x: x,     y: y + h },     // bottom-left
-                    { x: x + w, y: y + h },     // bottom-right
-                    { x: x + w, y: y },         // top-right
-                    { x: x,     y: y }          // Explicitly close path
-                ],
-                {
-                    ...rectangle.properties,
-                    fill: true,
-                    closed: true
-                }
-            );
+        async offsetArc(arc, distance) {
+            // Convert to path primitive
+            const pathPrimitive = GeometryUtils.primitiveToPath(arc);
+            if (!pathPrimitive) return null;
 
-            // Delegate the actual offsetting work to the more robust offsetPath function.
-            return this.offsetPath(rectAsPath, distance, options);
+            return this.offsetPath(pathPrimitive, distance);
         }
-        
-        offsetArc(arc, distance) {
-            const newRadius = arc.radius + distance;
-            
-            const isInternal = distance < 0;
-            
-            const offsetArc = {
-                type: 'arc',
-                center: { ...arc.center },
-                radius: newRadius,
-                startAngle: arc.startAngle,
-                endAngle: arc.endAngle,
-                clockwise: arc.clockwise,
-                properties: {
-                    ...arc.properties,
-                    isOffset: true,
-                    offsetDistance: distance,
-                    offsetType: isInternal ? 'internal' : 'external',
-                    expectedWinding: isInternal ? 'ccw' : 'cw'
-                },
-                getBounds: function() {
-                    return {
-                        minX: this.center.x - this.radius,
-                        minY: this.center.y - this.radius,
-                        maxX: this.center.x + this.radius,
-                        maxY: this.center.y + this.radius
-                    };
-                }
-            };
-            
-                return new ArcPrimitive(
-                    arc.center, newRadius,
-                    arc.startAngle, arc.endAngle,
-                    arc.clockwise, offsetArc.properties
-                );
 
-        }
-        
         offsetObround(obround, distance) {
             this.debug(`Offsetting obround by ${distance.toFixed(3)}mm.`);
 
             // 1. Determine if the offset is internal (shrinking) or external (growing).
             const isInternal = distance < 0;
 
-            // 2. Calculate the dimensions and position of the new, offset obround.
-            // The offset is applied to all sides, so width/height change by 2*distance.
-            // The position is shifted by -distance on both axes to keep the shape centered.
+            // 2. Calculate the dimensions and position of the new offset obround.
             const newWidth = obround.width + (distance * 2);
             const newHeight = obround.height + (distance * 2);
             const newPosition = {
@@ -700,7 +905,7 @@
                 y: obround.position.y - distance
             };
 
-            // 3. Handle degenerate cases where an internal offset collapses the shape.
+            // 3. Handle degenerate cases
             if (newWidth < this.options.precision || newHeight < this.options.precision) {
                 if (debugConfig.enabled) {
                     const w = newWidth.toFixed(3);
@@ -710,16 +915,15 @@
                 return null;
             }
 
-            // 4. Create a new ObroundPrimitive using the calculated offset geometry.
+            // 4. Create a new ObroundPrimitive
             const offsetObroundPrimitive = new ObroundPrimitive(newPosition, newWidth, newHeight, {
                 ...obround.properties
             });
 
-            // 5. Convert this new analytic primitive into a polygon for the next processing stage.
+            // 5. Convert this new analytic primitive into a PathPrimitive
             const offsetPath = GeometryUtils.primitiveToPath(offsetObroundPrimitive);
             
-            // If polygon creation failed, return null.
-            if (!offsetPath || !offsetPath.points || offsetPath.points.length < 3) {
+            if (!offsetPath || !offsetPath.contours || offsetPath.contours.length === 0) {
                 return null;
             }
 
@@ -731,23 +935,23 @@
                 offsetType: isInternal ? 'internal' : 'external',
                 sourcePrimitiveId: obround.id,
             };
-            
+
             // 7. Post-process the newly registered curve IDs to mark them as offset-derived.
-            if (window.globalCurveRegistry && offsetPath.curveIds) {
-                offsetPath.curveIds.forEach(id => {
+            const contour = offsetPath.contours[0];
+            if (window.globalCurveRegistry && contour.curveIds) {
+                contour.curveIds.forEach(id => {
                     const curve = window.globalCurveRegistry.getCurve(id);
                     if (curve) {
                         curve.isOffsetDerived = true;
                         curve.offsetDistance = distance;
-                        // Associate it with the original obround's curves if possible
                         curve.sourceCurveId = obround.curveIds ? obround.curveIds[0] : null; 
                     }
                 });
             }
 
             if (debugConfig.enabled) {
-                const pointCount = offsetPath.points.length;
-                const curveCount = offsetPath.curveIds?.length || 0;
+                const pointCount = contour.points.length;
+                const curveCount = contour.curveIds?.length || 0;
                 console.log(`Successfully created offset obround path with ${pointCount} points and ${curveCount} registered curves.`);
             }
 
@@ -777,9 +981,6 @@
 
         /**
          * Simplifies a path using a non-recursive Douglas-Peucker algorithm.
-         * @param {Array<object>} points - The array of points to simplify.
-         * @param {number} sqTolerance - The squared simplification tolerance.
-         * @returns {Array<object>} The simplified array of points.
          */
         _simplifyDouglasPeucker(points, sqTolerance) {
             if (points.length < 3) {
@@ -810,7 +1011,7 @@
                     }
                 }
 
-                // If the max distance is greater than our tolerance, we need to keep this point
+                // If the max distance is greater than our tolerance, keep this point
                 if (maxSqDist > sqTolerance) {
                     markers[index] = 1; // Mark the point
                     // Push the two new sub-segments onto the stack
@@ -832,5 +1033,4 @@
     }
 
     window.GeometryOffsetter = GeometryOffsetter;
-
 })();

@@ -26,19 +26,19 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
     const iconConfig = config.ui.icons;
-    
-    class TreeManager {
+
+    class NavTreePanel {
         constructor(ui) {
             this.ui = ui;
             this.core = ui.core;
             this.lang = ui.lang;
             this.nodes = new Map();
             this.selectedNode = null;
-            this.expandedCategories = new Set(['isolation', 'drill', 'clear', 'cutout']);
-            
+            this.expandedCategories = new Set(['isolation', 'drill', 'clearing', 'cutout']);
+
             this.nextNodeId = 1;
 
             this.initialized = false;
@@ -61,17 +61,17 @@
 
             this.initialized = true;
 
-            this.debug('TreeManager initialized');
+            this.debug('NavTreePanel initialized');
         }
-        
+
         setupCategories() {
             const categories = document.querySelectorAll('.operation-category');
-            
+
             categories.forEach(category => {
                 const header = category.querySelector('.category-header');
                 const opType = category.dataset.opType;
                 const addBtn = category.querySelector('.add-file-btn');
-                
+
                 if (header) {
                     header.addEventListener('click', (e) => {
                         if (!e.target.closest('.add-file-btn')) {
@@ -79,26 +79,26 @@
                         }
                     });
                 }
-                
+
                 if (addBtn) {
                     addBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         this.ui.triggerFileInput(opType);
                     });
                 }
-                
+
                 if (this.expandedCategories.has(opType)) {
                     category.classList.add('expanded');
                 }
             });
         }
-        
+
         toggleCategory(opType) {
             const category = document.querySelector(`.operation-category[data-op-type="${opType}"]`);
             if (!category) return;
-            
+
             const isExpanded = category.classList.contains('expanded');
-            
+
             if (isExpanded) {
                 category.classList.remove('expanded');
                 this.expandedCategories.delete(opType);
@@ -107,7 +107,7 @@
                 this.expandedCategories.add(opType);
             }
         }
-        
+
         expandAll() {
             document.querySelectorAll('.operation-category').forEach(cat => {
                 cat.classList.add('expanded');
@@ -115,31 +115,31 @@
                 if (opType) this.expandedCategories.add(opType);
             });
         }
-        
+
         collapseAll() {
             document.querySelectorAll('.operation-category').forEach(cat => {
                 cat.classList.remove('expanded');
             });
             this.expandedCategories.clear();
         }
-        
+
         addFileNode(operation) {
             const category = document.querySelector(`.operation-category[data-op-type="${operation.type}"] .category-files`);
             if (!category) {
                 console.error(`[NavTreePanel] Category not found for operation type: ${operation.type}`);
                 return null;
             }
-            
+
             const fileId = `file_${this.nextNodeId++}`;
             const template = document.getElementById('file-node-template');
             if (!template) return null;
-            
+
             const fileNode = template.content.cloneNode(true);
             const nodeElement = fileNode.querySelector('.file-node');
-            
+
             nodeElement.dataset.fileId = fileId;
             nodeElement.dataset.operationId = operation.id;
-            
+
             const content = nodeElement.querySelector('.file-node-content');
             const label = nodeElement.querySelector('.file-label');
 
@@ -170,9 +170,9 @@
             if (content && window.TooltipManager) {
                 this.attachFileTooltip(content, operation);
             }
-            
+
             label.textContent = operation.file.name;
-            
+
             // Attach listener for the main content click
             content.addEventListener('click', (e) => {
                 if (!e.target.closest('.btn-icon')) {
@@ -188,7 +188,7 @@
                     this.ui.removeOperation(operation.id); 
                 });
             }
-            
+
             this.nodes.set(fileId, {
                 id: fileId,
                 type: 'file',
@@ -196,52 +196,52 @@
                 element: nodeElement,
                 geometries: new Map()
             });
-            
+
             category.appendChild(fileNode);
-            
+
             const categoryElement = category.closest('.operation-category');
             if (categoryElement && !categoryElement.classList.contains('expanded')) {
                 categoryElement.classList.add('expanded');
                 this.expandedCategories.add(operation.type);
             }
-            
+
             this.updateFileGeometries(fileId, operation);
-            
+
             return fileId;
         }
 
         attachFileTooltip(element, operation) {
             const bounds = operation.bounds || { width: 0, height: 0 };
-            const ctx = operation.geometricContext || {};
-            
+            const ctx = operation.geometricContext;
+
             // Check if operation.primitives exists before accessing it.
             // If it's null (because parsing isn't finished), show '...'
             const primitiveCount = operation.primitives ? operation.primitives.length : '...';
-            
+
             let statsText = `${operation.file.name}\n\n` +
                 `Type: ${operation.type}\n` +
                 `Primitives: ${primitiveCount}\n` +
                 `Size: ${(operation.file.size / 1024).toFixed(1)} KB\n` +
                 `Bounds: ${bounds.width?.toFixed(1) || 0} × ${bounds.height?.toFixed(1) || 0} mm`;
-            
+
             if (ctx.hasArcs) statsText += '\n✓ Contains arcs';
             if (ctx.hasCircles) statsText += '\n✓ Contains circles';
             if (ctx.analyticCount > 0) statsText += `\n✓ Analytic shapes: ${ctx.analyticCount}`;
             if (ctx.strokeCount > 0) statsText += `\n✓ Strokes: ${ctx.strokeCount}`;
-            
+
             // Also check if offsets/preview exist before trying to read them
             if (operation.offsets && operation.offsets.length > 0) {
                 const totalOffsetPrims = operation.offsets.reduce((sum, o) => sum + (o.primitives?.length || 0), 0);
                 statsText += `\n\nOffsets: ${operation.offsets.length} pass(es)`;
                 statsText += `\nOffset primitives: ${totalOffsetPrims}`;
             }
-            
+
             if (operation.preview && operation.preview.primitives) {
                 statsText += `\n\nPreview: ${operation.preview.primitives.length} primitives`;
             }
-            
+
             window.TooltipManager.attach(element, { text: statsText });
-            
+
             // Also check if warnings exist
             if (operation.warnings && operation.warnings.length > 0) {
                 const label = element.querySelector('.file-label');
@@ -249,27 +249,27 @@
                 warningIcon.className = 'warning-icon';
                 warningIcon.textContent = iconConfig.treeWarning;
                 warningIcon.title = `${operation.warnings.length} warning(s)`;
-                
+
                 const warningText = operation.warnings.map(w => w.message).join('\n');
                 window.TooltipManager.attach(warningIcon, { text: warningText });
-                
+
                 // Check if label exists before appending
                 if (label) {
                     label.appendChild(warningIcon);
                 }
             }
         }
-        
+
         updateFileGeometries(fileId, operation) {
             const fileData = this.nodes.get(fileId);
             if (!fileData) return;
-            
+
             const geometriesContainer = fileData.element.querySelector('.file-geometries');
             if (!geometriesContainer) return;
-            
+
             geometriesContainer.innerHTML = '';
             fileData.geometries.clear();
-            
+
             // Add offset nodes
             if (operation.offsets && operation.offsets.length > 0) {
                 if (operation.offsets[0]?.combined) {
@@ -291,7 +291,7 @@
                     });
                 }
             }
-            
+
             // Add preview node if exists
             if (operation.preview && operation.preview.primitives) {
                 this.addGeometryNode(fileId, 'preview', 'Preview',
@@ -300,7 +300,7 @@
                     sourceOffsets: operation.preview.metadata?.sourceOffsets || 0
                 });
             }
-            
+
             // Add toolpath nodes if exist
             const toolpaths = this.ui.core.toolpaths?.get(operation.id);
             if (toolpaths && toolpaths.paths) {
@@ -311,29 +311,29 @@
                 });
             }
         }
-        
+
         addGeometryNode(fileId, geometryType, label, count, extraData = {}) {
             const fileData = this.nodes.get(fileId);
             if (!fileData) return;
-            
+
             const template = document.getElementById('geometry-node-template');
             if (!template) return;
-            
+
             const geometryNode = template.content.cloneNode(true);
             const nodeElement = geometryNode.querySelector('.geometry-node');
             const geometryId = `geometry_${this.nextNodeId++}`;
-            
+
             nodeElement.dataset.geometryId = geometryId;
             nodeElement.dataset.geometryType = geometryType;
-            
+
             const content = nodeElement.querySelector('.geometry-node-content');
             const iconEl = nodeElement.querySelector('.geometry-icon');
             const labelEl = nodeElement.querySelector('.geometry-label');
             const infoEl = nodeElement.querySelector('.geometry-info');
             const visBtn = nodeElement.querySelector('.visibility-btn');
             const deleteBtn = nodeElement.querySelector('.delete-geometry-btn');
-            
-            const icons = {
+
+            const icons = { // Review icons
                 'offsets_combined': iconConfig.offsetCombined,
                 'offset': iconConfig.offsetPass,
                 'preview': iconConfig.preview,
@@ -344,17 +344,17 @@
                             geometryType === 'offsets_combined' ? 'offsets_combined' :
                             geometryType.startsWith('toolpath') ? 'toolpath' :
                             geometryType === 'preview' ? 'preview' : geometryType;
-            
+
             iconEl.textContent = icons[baseType] || iconConfig.defaultGeometry;
-            
+
             labelEl.textContent = label;
-            
+
             if (extraData.offset) {
                 infoEl.textContent = `${extraData.offset}mm`;
             } else {
                 infoEl.textContent = count > 0 ? `${count}` : '';
             }
-            
+
             content.addEventListener('click', (e) => {
                 if (!e.target.closest('.btn-icon')) {
                     this.selectGeometry(geometryId, fileData.operation, geometryType);
@@ -367,12 +367,12 @@
                     this.deleteGeometry(fileId, geometryId);
                 });
             }
-            
+
             if (visBtn) {
                 // Determine the exact layer name this button controls
                 const operationId = fileData.operation.id;
                 let layerName;
-                
+
                 if (geometryType === 'offsets_combined') {
                     layerName = `offset_${operationId}_combined`;
                 } else if (geometryType.startsWith('offset_')) {
@@ -381,7 +381,7 @@
                 } else if (geometryType === 'preview') {
                     layerName = `preview_${operationId}`;
                 }
-                
+
                 visBtn.dataset.layerName = layerName || '';
 
                 visBtn.addEventListener('click', (e) => {
@@ -395,9 +395,9 @@
                     if (geometryType.startsWith('offset')) {
                         // Check if the operation *has* a preview.
                         const hasPreview = fileData.operation.preview && fileData.operation.preview.ready;
-                        // Be visible *only if* there is no preview AND the global toggle is on.
+                        // Be visible only if there is no preview and the global toggle is on.
                         isVisible = !hasPreview && this.ui.renderer.options.showOffsets;
-                        
+
                     } else if (geometryType === 'preview') {
                         // Preview visibility is just the global toggle.
                         isVisible = this.ui.renderer.options.showPreviews;
@@ -412,25 +412,25 @@
                         }
                     }
                 }
-                
+
                 visBtn.classList.toggle('is-hidden', !isVisible);
             }
 
             const nodeContent = nodeElement.querySelector('.geometry-node-content');
             if (nodeContent && window.TooltipManager) {
                 let tooltipText = `${label}\nPrimitives: ${count}`;
-                
+
                 if (extraData.offset) {
                     tooltipText += `\nOffset: ${extraData.offset}mm`;
                 }
-                
+
                 if (extraData.combined) {
                     tooltipText += `\nPasses: ${extraData.passes}`;
                 }
-                
+
                 window.TooltipManager.attach(nodeContent, { text: tooltipText });
             }
-            
+
             fileData.geometries.set(geometryId, {
                 id: geometryId,
                 type: geometryType,
@@ -438,19 +438,19 @@
                 element: nodeElement,
                 extraData: extraData
             });
-            
+
             const container = fileData.element.querySelector('.file-geometries');
             if (container) {
                 container.appendChild(geometryNode);
             }
         }
-        
+
         selectFile(fileId, operation) {
-            // 1. Manage its own state
+            // Manage its own state
             document.querySelectorAll('.file-node-content.selected, .geometry-node.selected').forEach(el => {
                 el.classList.remove('selected');
             });
-            
+
             const fileData = this.nodes.get(fileId);
             if (fileData) {
                 const content = fileData.element.querySelector('.file-node-content');
@@ -458,17 +458,17 @@
                     content.classList.add('selected');
                 }
             }
-            
+
             this.selectedNode = { type: 'file', id: fileId, operation };
-            
-            // 2. Announce the selection to cam-ui.js
+
+            // Announce the selection to cam-ui.js
             if (this.ui.handleOperationSelection) {
                 this.ui.handleOperationSelection(operation, 'geometry');
             }
         }
-        
+
         selectGeometry(geometryId, operation, geometryType) {
-            // 1. Manage its own state
+            // Manage its own state
             document.querySelectorAll('.file-node-content.selected, .geometry-node.selected').forEach(el => {
                 el.classList.remove('selected');
             });
@@ -480,7 +480,7 @@
 
             this.selectedNode = { type: 'geometry', id: geometryId, operation, geometryType };
 
-            // 2. Determine geometry stage
+            // Determine geometry stage
             let stage = 'geometry';
             if (geometryType === 'preview') {
                 stage = 'machine';
@@ -488,21 +488,21 @@
                 stage = 'strategy';
             }
 
-            // 3. Announce the selection to cam-ui.js
+            // Announce the selection to cam-ui.js
             if (this.ui.handleOperationSelection) {
                 this.ui.handleOperationSelection(operation, stage);
             }
         }
 
         deleteGeometry(fileId, geometryId) {
-            // 1. Find the data associated with the click
+            // Find the data associated with the click
             const fileData = this.nodes.get(fileId);
             if (!fileData) return;
-            
+
             const geoData = fileData.geometries.get(geometryId);
             if (!geoData) return;
 
-            // 2. Announce the "intent to delete" to cam-ui.js
+            // Announce the "intent to delete" to cam-ui.js
             if (this.ui.handleDeleteGeometry) {
                 // Pass all the info cam-ui.js needs to do the job
                 this.ui.handleDeleteGeometry(fileId, fileData, geometryId, geoData);
@@ -512,20 +512,20 @@
         removeGeometryNode(fileId, geometryId) {
             const fileData = this.nodes.get(fileId);
             if (!fileData) return;
-            
+
             const geoData = fileData.geometries.get(geometryId);
             if (geoData && geoData.element) {
                 geoData.element.remove();
                 fileData.geometries.delete(geometryId);
             }
         }
-        
+
         toggleLayerVisibility(button, layerName) {
             if (!layerName || !this.ui.renderer) return;
 
             // Find the layer
             const layer = this.ui.renderer.layers.get(layerName);
-            
+
             if (layer) {
                 // Toggle only that layer
                 layer.visible = !layer.visible;
@@ -534,10 +534,10 @@
                 // Update the button's appearance
                 button.classList.toggle('is-hidden', !layer.visible);
             } else {
-                console.warn(`[TreeManager] Could not find layer to toggle: ${layerName}`);
+                console.warn(`[NavTreePanel] Could not find layer to toggle: ${layerName}`);
             }
         }
-        
+
         removeFileNode(operationId) {
             let nodeToRemove = null;
             this.nodes.forEach((node, id) => {
@@ -545,30 +545,30 @@
                     nodeToRemove = id;
                 }
             });
-            
+
             if (nodeToRemove) {
                 const nodeData = this.nodes.get(nodeToRemove);
                 if (nodeData && nodeData.element) {
                     nodeData.element.remove();
                 }
                 this.nodes.delete(nodeToRemove);
-                
+
                 if (this.selectedNode?.id === nodeToRemove) {
                     this.selectedNode = null;
-                    if (this.ui.propertyInspector) {
-                        this.ui.propertyInspector.clearProperties();
+                    if (this.ui.operationPanel) {
+                        this.ui.operationPanel.clearProperties();
                     }
                 }
             }
         }
-        
+
         refreshTree() {
             document.querySelectorAll('.category-files').forEach(container => {
                 container.innerHTML = '';
             });
             this.nodes.clear();
             this.nextNodeId = 1;
-            
+
             if (this.core && this.core.operations) {
                 this.core.operations.forEach(operation => {
                     if (operation.file) {
@@ -577,11 +577,11 @@
                 });
             }
         }
-        
+
         getSelectedOperation() {
             return this.selectedNode?.operation || null;
         }
-        
+
         updateNodeCounts() {
             this.nodes.forEach(fileData => {
                 if (fileData.type === 'file' && fileData.operation) {
@@ -597,6 +597,6 @@
         }
 
     }
-    
-    window.TreeManager = TreeManager;
+
+    window.NavTreePanel = NavTreePanel;
 })();

@@ -26,14 +26,14 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
     const debugConfig = config.debug;
     const textConfig = config.ui.text;
     const timingConfig = config.ui.timing;
     const storageKeys = config.storageKeys;
     const opsConfig = config.operations;
-    
+
     // PCB Example definitions
     const PCB_EXAMPLES = {
         'example1': {
@@ -41,7 +41,7 @@
             files: {
                 isolation: 'examples/example1/isolation.gbr',
                 drill: 'examples/example1/drill.drl',
-                clear: 'examples/example1/clear.gbr',
+                clearing: 'examples/example1/clearing.gbr',
                 cutout: 'examples/example1/cutout.gbr'
             }
         },
@@ -52,20 +52,20 @@
             }
         }
     };
-    
+
     class PCBCAMController {
         constructor() {
             this.core = null;
             this.ui = null;
-            
-            // Phase 1: State managers
+
+            // State managers
             this.parameterManager = null;
             this.modalManager = null;
-            
-            // Phase 2: Pipeline components (declare but don't instantiate yet)
+
+            // Pipeline components (declare but don't instantiate yet)
             this.gcodeGenerator = null
             this.toolpathOptimizer = null
-            
+
             // Track initialization state
             this.initState = {
                 coreReady: false,
@@ -74,33 +74,33 @@
                 fullyReady: false,
                 error: null
             };
-            
+
             // Pending operations queue
             this.pendingOperations = [];
-            
+
             // Upload modal file tracking - one per operation type
             this.uploadedFiles = {
                 isolation: null,
                 drill: null,
-                clear: null,
+                clearing: null,
                 cutout: null
             };
-            
+
             // Queued files for processing
             this.queuedFiles = [];
         }
-        
+
         async initialize() {
             console.log('EasyTrace5000 Workspace initializing...');
-            
+
             try {
                 // Initialize core with skip init flag to control WASM loading
                 this.core = new PCBCamCore({ skipInit: true });
-                
+
                 // Initialize managers before UI
                 this.parameterManager = new ParameterManager();
                 this.languageManager = new LanguageManager();
-                
+
                 // Load the language file beforethe UI
                 await this.languageManager.load();
 
@@ -110,55 +110,55 @@
                 this.geometryTranslator = new GeometryTranslator(this.core);
                 this.toolpathOptimizer = new ToolpathOptimizer();
                 this.machineProcessor = new MachineProcessor(this.core);                
-                
+
                 // Initialize UI with core and language manager
                 this.ui = new PCBCamUI(this.core, this.languageManager)
-                
+
                 // Initialize UI (pass parameter manager)
                 const uiReady = await this.ui.init(this.parameterManager);
                 this.initState.uiReady = uiReady;
-                
+
                 if (!uiReady) {
                     throw new Error('UI initialization failed');
                 }
 
                 // Initialize managers that DO depend on UI
                 this.modalManager = new ModalManager(this)
-                
+
                 // Pass tool library to core if using advanced UI
                 if (this.ui.toolLibrary) {
                     this.core.setToolLibrary(this.ui.toolLibrary);
                 }
-                
+
                 // Initialize WASM modules
                 const wasmReady = await this.initializeWASM();
                 this.initState.wasmReady = wasmReady;
-                
+
                 if (!wasmReady) {
                     console.warn('WASM modules failed to load - running in fallback mode');
                     this.ui?.updateStatus(textConfig.statusWarning || 'Warning: Clipper2 failed to load - fusion disabled', 'warning');
                 }
-                
+
                 // Setup global event handlers
                 this.setupGlobalHandlers();
-                
+
                 // Setup toolbar handlers
                 this.setupToolbarHandlers();
-                
+
                 // Expose controller globally for PropertyInspector
                 window.pcbcam = this;
                 window.pcbcam.modalManager = this.modalManager;
-                
+
                 // Process any pending operations
                 await this.processPendingOperations();
-                
+
                 // Hide loading overlay and show UI
                 this.hideLoadingOverlay();
-                
-               // Check for first-time user
+
+                // Check for first-time user
                 const key = storageKeys.hideWelcome;
                 const hideWelcome = localStorage.getItem(key);
-                
+
                 if (!hideWelcome) {
                     // Use the Modal Manager
                     this.modalManager.showModal('welcome', { examples: PCB_EXAMPLES });
@@ -166,14 +166,14 @@
                     // Ensure coordinate system is initialized
                     this.ensureCoordinateSystem();
                 }
-                
+
                 this.initState.fullyReady = true;
-                
+
                 console.log('PCB CAM ready');
-                
+
                 // Update status
                 this.ui?.updateStatus(textConfig.statusReady);
-                
+
             } catch (error) {
                 console.error('Initialization failed:', error);
                 this.initState.error = error.message;
@@ -181,30 +181,30 @@
                 this.hideLoadingOverlay();
             }
         }
-        
+
         async initializeWASM() {
             try {
                 if (!this.core || typeof this.core.initializeProcessors !== 'function') {
                     console.warn('Core processor initialization not available');
                     return false;
                 }
-                
+
                 this.debug('Loading Clipper2 WASM modules...');
-                
+
                 const result = await this.core.initializeProcessors();
-                
+
                 if (result) {
                     console.log('Clipper2 WASM modules loaded successfully');
                 }
-                
+
                 return result;
-                
+
             } catch (error) {
                 console.error('WASM initialization error:', error);
                 return false;
             }
         }
-        
+
         hideLoadingOverlay() {
             const overlay = document.getElementById('loading-overlay');
             if (overlay) {
@@ -213,22 +213,22 @@
                 setTimeout(() => {
                     overlay.style.display = 'none';
 
-                    // This function now also shows the main UI
+                    // This function also shows the main UI
                     const toolbar = document.getElementById('cam-toolbar');
                     const workspace = document.getElementById('cam-workspace');
-                    
+
                     if (toolbar) toolbar.style.display = 'flex';
                     if (workspace) workspace.style.display = 'grid';
-                    
+
                 }, duration);
             }
         }
-        
+
         setupToolbarHandlers() {
             // Quick Actions dropdown
             const quickActionsBtn = document.getElementById('quick-actions-btn');
             const quickActionsMenu = document.getElementById('quick-actions-menu');
-            
+
             if (quickActionsBtn && quickActionsMenu) {
                 quickActionsBtn.addEventListener('click', (e) => {
                     // Stop this click from being caught by the document listener below
@@ -236,27 +236,27 @@
                     quickActionsBtn.classList.toggle('active');
                     quickActionsMenu.classList.toggle('show');
                 });
-                
-                // 'click outside' listener
+
+                // click outside listener
                 document.addEventListener('click', (e) => {
                     // If the menu is not shown, do nothing
                     if (!quickActionsMenu.classList.contains('show')) {
                         return;
                     }
-                    
-                    // If the click was NOT on the button AND NOT inside the menu, close it
+
+                    // If the click was not on the button and not inside the menu, close it
                     if (!quickActionsBtn.contains(e.target) && !quickActionsMenu.contains(e.target)) {
                         quickActionsBtn.classList.remove('active');
                         quickActionsMenu.classList.remove('show');
                     }
                 });
-                
-                // Prevent clicks *inside* the menu from closing it
+
+                // Prevent clicks inside the menu from closing it
                 quickActionsMenu.addEventListener('click', (e) => {
                     e.stopPropagation();
                 });
             }
-            
+
             // Toolbar action buttons
             const addFilesBtn = document.getElementById('toolbar-add-files');
             if (addFilesBtn) {
@@ -266,7 +266,7 @@
                     quickActionsMenu.classList.remove('show');
                 });
             }
-            
+
             const manageToolpathsBtn = document.getElementById('toolbar-manage-toolpaths');
             if (manageToolpathsBtn) {
                 manageToolpathsBtn.addEventListener('click', () => {
@@ -289,7 +289,7 @@
                         this.ui?.updateStatus('SVG exporter not available', 'error');
                         return;
                     }
-                    
+
                     try {
                         this.ui.svgExporter.exportSVG();
                         this.ui?.updateStatus('SVG exported successfully', 'success');
@@ -297,13 +297,13 @@
                         console.error('SVG export error:', error);
                         this.ui?.updateStatus('SVG export failed: ' + error.message, 'error');
                     }
-                    
+
                     quickActionsBtn.classList.remove('active');
                     quickActionsMenu.classList.remove('show');
                 });
             }
         }
-        
+
         setupGlobalHandlers() {
             // Handle resize
             window.addEventListener('resize', () => {
@@ -312,12 +312,12 @@
                     this.ui.renderer.render();
                 });
             });
-            
+
             // Handle file drops on entire window
             window.addEventListener('dragover', (e) => {
                 e.preventDefault();
             });
-            
+
             window.addEventListener('drop', async (e) => {
                 e.preventDefault();
                 // Only handle if not over a specific drop zone
@@ -325,49 +325,49 @@
                     await this.handleGlobalFileDrop(e.dataTransfer.files);
                 }
             });
-            
-            // Keyboard shortcuts
+
+            // Keyboard shortcuts // Review - remove/add more shorcuts?
             document.addEventListener('keydown', (e) => {
                 // Skip if typing in input field
                 if (e.target.matches('input, textarea, select')) return;
-                
+
                 // Ctrl/Cmd + O: Open files
                 if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
                     e.preventDefault();
                     this.showFileModal();
                 }
-                
+
                 // Ctrl/Cmd + S: Export SVG
                 if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                     e.preventDefault();
                     this.exportSVG();
                 }
-                
+
                 // F: Fit to view (when not in input)
                 if (e.key === 'f') {
                     e.preventDefault();
                     this.ui.renderer.core.zoomFit();
                 }
-                
+
                 // W: Toggle wireframe
                 if (e.key === 'w') {
                     e.preventDefault();
                     this.ui?.toggleWireframe();
                 }
-                
+
                 // G: Toggle grid (when not using Ctrl/Cmd)
                 if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
                     e.preventDefault();
                     this.ui?.toggleGrid();
                 }
-                
+
                 // Delete: Remove selected operation
                 if (e.key === 'Delete') {
                     e.preventDefault();
                     this.removeSelectedOperation();
                 }
             });
-            
+
             // Theme toggle button
             const themeToggle = document.getElementById('theme-toggle');
             if (themeToggle) {
@@ -381,7 +381,7 @@
                 });
             }
         }
-        
+
         ensureCoordinateSystem() {
             if (this.core?.coordinateSystem && !this.core.coordinateSystem.initialized) {
                 // Initialize with empty bounds if no operations
@@ -389,28 +389,28 @@
                 this.ui.updateOriginDisplay();
             }
         }
-        
+
         async processUploadedFiles() {
             for (const [type, file] of Object.entries(this.uploadedFiles)) {
                 if (file) {
                     await this.processFile(file, type);
                 }
             }
-            
+
             // Reset
             this.uploadedFiles = {
                 isolation: null,
                 drill: null,
-                clear: null,
+                clearing: null,
                 cutout: null
             };
-            
+
             // Ensure coordinate system is initialized after file upload
             this.ensureCoordinateSystem();
-            
+
             // Update UI
-            if (this.ui?.treeManager) {
-                this.ui.treeManager.expandAll();
+            if (this.ui?.navTreePanel) {
+                this.ui.navTreePanel.expandAll();
             }
 
             // Auto-fit to show all loaded geometry
@@ -420,52 +420,38 @@
                 }, 100); // Small delay to ensure rendering is complete
             }
         }
-        
+
         async loadExample(exampleId) {
             if (!exampleId) {
-                // If no ID provided, try to get from welcome modal select
+                // If no ID provided, try to get from welcome modal select // Review - is this a Fallback?
                 const select = document.getElementById('pcb-example-select');
                 exampleId = select ? select.value : 'xiao';
             }
-            
+
             const example = PCB_EXAMPLES[exampleId];
             if (!example) {
                 console.error(`Example ${exampleId} not found`);
                 this.ui?.updateStatus(`Example not found: ${exampleId}`, 'error');
                 return;
             }
-            
+
             this.ui?.updateStatus(`Loading example: ${example.name}...`, 'info');
-            
+
             // Clear existing operations
             if (this.core) {
                 this.core.operations = [];
                 this.core.toolpaths.clear();
                 this.core.isToolpathCacheValid = false;
             }
-            
+
             // Clear UI
-            if (this.ui?.treeManager) {
-                this.ui.treeManager.refreshTree();
+            if (this.ui?.navTreePanel) {
+                this.ui.navTreePanel.refreshTree();
             }
-            
+
             // Load all files serially
             for (const [type, filepath] of Object.entries(example.files)) {
-                try {
-                    // Map 'clear' in examples to 'clearing' if that's what exists in config
-                    let actualType = type;
-                    if (type === 'clear') {
-                        // If config has 'clearing' but not 'clear', use 'clearing'
-                        if (config.operations.clearing && !config.operations.clear) {
-                            actualType = 'clearing';
-                        }
-                    } else if (type === 'clearing') {
-                        // If config has 'clear' but not 'clearing', use 'clear'
-                        if (config.operations.clear && !config.operations.clearing) {
-                            actualType = 'clear';
-                        }
-                    }
-                    
+                try {                    
                     const response = await fetch(filepath);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -473,41 +459,41 @@
                     const content = await response.text();
                     const fileName = filepath.split('/').pop();
                     const file = new File([content], fileName, { type: 'text/plain' });
-                    
+
                     // Process the file with corrected type
-                    await this.processFile(file, actualType);
-                    
+                    await this.processFile(file, type);
+
                 } catch (e) {
                     console.error(`Failed to load example file ${filepath}:`, e);
                     this.ui?.updateStatus(`Failed to load ${filepath.split('/').pop()}`, 'error');
                     this.ui?.showOperationMessage?.(type, `Failed to load ${filepath.split('/').pop()}`, 'error');
                 }
             }
-            
+
             // Force coordinate system initialization after loading
             if (this.core?.coordinateSystem) {
                 this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
             }
-            
+
             this.ui?.updateStatus(`Example '${example.name}' loaded successfully.`, 'success');
-            
+
             // Update renderer and fit view
             await this.ui.updateRendererAsync();
             this.ui.renderer.core.zoomFit();
             this.ui.renderer.render();
-            
+
             // Expand operations after loading
-            if (this.ui.treeManager) {
-                this.ui.treeManager.expandAll();
+            if (this.ui.navTreePanel) {
+                this.ui.navTreePanel.expandAll();
             }
         }
-        
+
         async processFile(file, type) {
             if (!file || !type) {
                 console.error('Invalid file or type provided');
                 return;
             }
-            
+
             // Validate file type
             const validation = this.core?.validateFileType(file.name, type);
             if (validation && !validation.valid) {
@@ -515,46 +501,46 @@
                 this.ui?.updateStatus(validation.message, 'error');
                 return;
             }
-            
+
             // Create operation
             const operation = this.core?.createOperation(type, file);
             if (!operation) {
                 console.error('Failed to create operation');
                 return;
             }
-            
+
             // Add to UI tree if using advanced UI
-            if (this.ui?.treeManager) {
-                this.ui.treeManager.addFileNode(operation);
+            if (this.ui?.navTreePanel) {
+                this.ui.navTreePanel.addFileNode(operation);
             }
-            
+
             // Render in operations manager if using basic UI
             if (this.ui?.renderOperations) {
                 this.ui.renderOperations(type);
             }
-            
+
             // Show loading status
             this.ui?.updateStatus(`${textConfig.statusLoading} ${file.name}...`);
-            
+
             // Read and parse file
             const reader = new FileReader();
-            
+
             return new Promise((resolve) => {
                 reader.onload = async (e) => {
                     operation.file.content = e.target.result;
-                    
+
                     const success = await this.core.parseOperation(operation);
-                    
+
                     if (success) {
                         const count = operation.primitives.length;
-                        
+
                         if (operation.parsed?.hasArcs && debugConfig.enabled) {
                             console.log(`Preserved ${operation.originalArcs?.length || 0} arcs for potential reconstruction`);
                         }
-                        
+
                         this.ui?.showOperationMessage?.(type, `Successfully loaded ${count} primitives`, 'success');
                         this.ui?.updateStatus(`Loaded ${operation.file.name}: ${count} primitives`, 'success');
-                        
+
                         // Update coordinate system after successful parse
                         if (this.core?.coordinateSystem) {
                             this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
@@ -563,21 +549,21 @@
                         this.ui?.showOperationMessage?.(type, `Error: ${operation.error}`, 'error');
                         this.ui?.updateStatus(`Error processing ${operation.file.name}: ${operation.error}`, 'error');
                     }
-                    
+
                     // Update UI
                     if (this.ui?.renderOperations) {
                         this.ui.renderOperations(type);
                     }
-                    
+
                     // Update tree with geometry info if using advanced UI
-                    if (this.ui?.treeManager) {
-                        const fileNode = Array.from(this.ui.treeManager.nodes.values())
+                    if (this.ui?.navTreePanel) {
+                        const fileNode = Array.from(this.ui.navTreePanel.nodes.values())
                             .find(n => n.operation?.id === operation.id);
                         if (fileNode) {
-                            this.ui.treeManager.updateFileGeometries(fileNode.id, operation);
+                            this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
                         }
                     }
-                    
+
                     // Update renderer to show new geometry
                     if (this.ui?.updateRendererAsync) {
                         await this.ui.updateRendererAsync();
@@ -590,27 +576,27 @@
                     if (!hasMultipleOps && this.ui?.renderer) {
                         this.ui.renderer.core.zoomFit();
                     }
-                    
+
                     // Update statistics
                     this.ui?.updateStatistics?.();
                     
                     resolve();
                 };
-                
+
                 reader.onerror = () => {
                     operation.error = 'Failed to read file';
                     this.ui?.showOperationMessage?.(type, 'Failed to read file', 'error');
                     this.ui?.updateStatus(`Failed to read ${file.name}`, 'error');
                     resolve();
                 };
-                
+
                 reader.readAsText(file);
             });
         }
-        
+
         async handleGlobalFileDrop(files) {
             if (!this.ui) return;
-            
+
             // Process files serially to avoid race conditions
             for (let file of files) {
                 const ext = file.name.toLowerCase().split('.').pop();
@@ -624,14 +610,14 @@
                     }
                 }
             }
-            
-            // Auto-fit *after* all files are loaded
+
+            // Auto-fit after all files are loaded
             if (this.pendingOperations.length === 0 && this.initState.fullyReady) {
                 // Ensure coordinate system updates
                 if (this.core?.coordinateSystem) {
                     this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
                 }
-                
+
                 // Force renderer update and zoom
                 if (this.ui?.updateRendererAsync) {
                     await this.ui.updateRendererAsync();
@@ -639,12 +625,12 @@
                     this.ui.renderer.render();
                 }
             }
-            
+
             if (this.pendingOperations.length > 0 && !this.initState.fullyReady) {
                 this.ui?.updateStatus(textConfig.statusLoading);
             }
         }
-        
+
         getOperationTypeFromExtension(ext) {
             const operations = config.operations;
             for (let [type, op] of Object.entries(operations)) {
@@ -654,7 +640,7 @@
             }
             return null;
         }
-        
+
         async processPendingOperations() {
             if (this.pendingOperations.length === 0) return;
             
@@ -666,15 +652,15 @@
             
             this.pendingOperations = [];
         }
-        
+
         removeSelectedOperation() {
             // Try advanced UI first
-            const selectedNode = this.ui?.treeManager?.selectedNode;
+            const selectedNode = this.ui?.navTreePanel.selectedNode;
             if (selectedNode?.type === 'file' && selectedNode.operation) {
                 this.ui.removeOperation(selectedNode.operation.id);
                 return;
             }
-            
+
             // Fall back to basic UI selection method if needed
             const selectedOp = this.ui?.getSelectedOperation?.();
             if (selectedOp) {
@@ -688,9 +674,9 @@
                 return { gcode: "; Generation Failed", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
             }
 
-            // STAGE 1: Build Contexts and Attach to Operations"
+            // Build Contexts and Attach to Operations
 
-            this.debug(`Stage 1: Building contexts for ${options.operationIds.length} operations...`);
+            this.debug(`Building contexts for ${options.operationIds.length} operations...`);
 
             // Create pairs instead of mutating operations
             const operationContextPairs = [];
@@ -699,7 +685,7 @@
                     const operation = this.core.operations.find(o => o.id === opId);
                     if (!operation) throw new Error(`Operation ${opId} not found.`);
 
-                    // Commit any "live" UI changes to the operation object before building the context from it.
+                    // Commit any live UI changes to the operation object before building the context from it.
                     if (this.parameterManager.hasUnsavedChanges(opId)) {
                         this.parameterManager.commitToOperation(operation);
                         this.debug(`Committed unsaved parameters for ${opId}`);
@@ -707,7 +693,7 @@
 
                     const ctx = this.core.buildToolpathContext(opId, this.parameterManager);
                     
-                    // Pass as a pair - no mutation
+                    // Pass as a pair
                     operationContextPairs.push({ operation, context: ctx });
 
                 } catch (error) {
@@ -716,37 +702,81 @@
             }
 
             if (operationContextPairs.length === 0) {
-                return { gcode: "; No valid operations to process", /* ... */ };
+                return { gcode: "; No valid operations to process", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
             }
 
-            // STAGE 2: Translate
-            this.debug(`Stage 2: Translating ${operationContextPairs.length} operations...`);
+            this.debug(`Batching ${operationContextPairs.length} operations by instance...`);
+            const operationSuperBatches = [];
 
-            // Pass pairs directly
-            const plans = await this.geometryTranslator.translateAllOperations(operationContextPairs);
+            // Create one batch per operation instance (not by type)
+            for (const { operation, context } of operationContextPairs) {
+                operationSuperBatches.push({
+                    type: operation.type,
+                    operationId: operation.id,
+                    pairs: [{ operation, context }] // Single operation per batch
+                });
+            }
+
+            this.debug(`Created ${operationSuperBatches.length} super-batches (one per operation).`);
+
+            // Loop through the super-batches
+            const allMachineReadyPlans = [];
+            const firstContext = operationContextPairs[0].context; // Get global context
             
-            if (!plans || plans.length === 0) {
-                 return { gcode: "; No toolpath geometry generated", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
+            // This is the persistent machine position that tracks between batches
+            let currentMachinePos = { x: 0, y: 0, z: firstContext.machine.safeZ };
+
+            for (const superBatch of operationSuperBatches) {
+                this.debug(`--- Processing Super-Batch: ${superBatch.type} (${superBatch.pairs.length} op/s) ---`);
+
+                // Translate (for this super-batch only)
+                const batchPlans = await this.geometryTranslator.translateAllOperations(superBatch.pairs);
+
+                if (!batchPlans || batchPlans.length === 0) {
+                    this.debug(`--- Super-Batch ${superBatch.type} produced no plans. Skipping. ---`);
+                    continue;
+                }
+
+                // Optimize (for this super-batch only)
+                let plansToProcess = batchPlans;
+                if (options.optimize === true) {
+                    this.debug(`Optimizing ${batchPlans.length} plans for batch ${superBatch.type}...`);
+
+                    // Pass the machine's current position to the optimizer
+                    // The optimizer will group by tool (groupKey) within this batch
+                    plansToProcess = this.toolpathOptimizer.optimize(batchPlans, currentMachinePos);
+                }
+
+                if (plansToProcess.length === 0) {
+                    this.debug(`--- Super-Batch ${superBatch.type} had no plans after optimization. Skipping. ---`);
+                    continue;
+                }
+
+                // Add machine operations (for this batch only)
+                this.debug('Adding machine operations...');
+
+                // Pass the first context of this batch to the machine processor
+                const batchContext = superBatch.pairs[0].context;
+
+                // Pass the current position, and get the new position back
+                const { plans: machineReadyPlans, endPos } = this.machineProcessor.processPlans(
+                    plansToProcess, 
+                    batchContext, 
+                    currentMachinePos // Pass the starting position
+                );
+
+                allMachineReadyPlans.push(...machineReadyPlans);
+
+                // The returned endPos is the new starting position for the NEXT batch
+                currentMachinePos = endPos; 
+
+                this.debug(`--- Super-Batch ${superBatch.type} complete. New machine pos: (${endPos.x.toFixed(2)}, ${endPos.y.toFixed(2)}, ${endPos.z.toFixed(2)}) ---`);
             }
 
-            // STAGE 3: Optimize
-            this.debug(`Stage 3: Entered optimizer stage, checking for user set flag`);
-            let plansToProcess = plans;
-            if (options.optimize === true) {
-                this.debug(`Stage 3: Optimized ${plans.length} plans...`);
-                plansToProcess = this.toolpathOptimizer.optimize(plans);
-            }
-            
-            // STAGE 4: Add machine operations
-            this.debug('Stage 4: Adding machine operations...');
-            const firstContext = operationContextPairs[0].context; // Get context from pairs
-            const machineReadyPlans = this.machineProcessor.processPlans(plansToProcess, firstContext);
-            this.debug(`Stage 4: ${machineReadyPlans.length} machine-ready plans`);
-
-            // STAGE 5: Generate G-code
-            this.debug('Stage 5: Generating G-code...');
-            const gcodeConfig = operationContextPairs[0].context.gcode;
-            const machineConfig = operationContextPairs[0].context.machine;
+            // Generate G-code (from all combined machine-ready plans)
+            this.debug('Generating G-code...');
+            const gcodeConfig = firstContext.gcode;
+            const machineConfig = firstContext.machine;
 
             const genOptions = {
                 postProcessor: options.postProcessor,
@@ -761,33 +791,35 @@
                 coolant: machineConfig.coolant,
                 vacuum: machineConfig.vacuum
             };
-            const gcode = this.gcodeGenerator.generate(machineReadyPlans, genOptions);
 
-            // STAGE 6: Calculate metrics
-            this.debug('Stage 6: Calculating metrics...');
-            const { estimatedTime, totalDistance } = this.machineProcessor.calculatePathMetrics(machineReadyPlans);
+            // Generate G-code from the final, complete list of plans
+            const gcode = this.gcodeGenerator.generate(allMachineReadyPlans, genOptions);
+
+            // Calculate metrics
+            this.debug('Calculating metrics...');
+            // Pass context to metrics to get machine settings
+            const { estimatedTime, totalDistance } = this.machineProcessor.calculatePathMetrics(allMachineReadyPlans, firstContext); 
 
             return {
                 gcode: gcode,
                 lineCount: gcode.split('\n').length,
-                planCount: machineReadyPlans.length,
+                planCount: allMachineReadyPlans.length,
                 estimatedTime: estimatedTime,
                 totalDistance: totalDistance
             };
         }
-        
+
         async exportSVG() {
             if (this.ui?.exportSVG) {
                 await this.ui.exportSVG();
                 return;
             }
-            
-            // Fallback implementation
+
             if (!this.ui?.svgExporter || !this.ui?.renderer) {
                 this.ui?.updateStatus('SVG export not available', 'error');
                 return;
             }
-            
+
             try {
                 const svgString = this.ui.svgExporter.exportSVG({
                     precision: 2,
@@ -796,7 +828,7 @@
                     includeMetadata: true,
                     includeArcReconstructionStats: this.ui.fusionStats?.arcReconstructionEnabled
                 });
-                
+
                 if (svgString) {
                     // Create download
                     const blob = new Blob([svgString], { type: 'image/svg+xml' });
@@ -806,7 +838,7 @@
                     a.download = 'pcb-export.svg';
                     a.click();
                     URL.revokeObjectURL(url);
-                    
+
                     this.ui.updateStatus('SVG exported successfully', 'success');
                 } else {
                     this.ui.updateStatus('SVG export failed - no content to export', 'warning');
@@ -816,20 +848,20 @@
                 this.ui?.updateStatus('SVG export failed: ' + error.message, 'error');
             }
         }
-        
+
         // API for external access
         getCore() {
             return this.core;
         }
-        
+
         getUI() {
             return this.ui;
         }
-        
+
         isReady() {
             return this.initState.fullyReady;
         }
-        
+
         getStats() {
             return {
                 initialization: this.initState,
@@ -858,12 +890,12 @@
             debugConfig.enabled = true;
             console.log('Debug mode enabled');
         }
-        
+
         disableDebug() {
             debugConfig.enabled = false;
             console.log('Debug mode disabled');
         }
-        
+
         logState() {
             console.group('PCB CAM State');
             console.log('Initialization:', this.initState);
@@ -872,47 +904,47 @@
             console.groupEnd();
         }
     }
-    
+
     // Initialize application
     let controller = null;
-    
+
     async function startApplication() {
         if (controller) {
             console.warn('Application already initialized');
             return;
         }
-        
-        // Check for required core classes
+
+        // Check for required core classes // Review  - they all always load.
         const requiredClasses = [
             'PCBCamCore',
             'PCBCamUI',
             'LayerRenderer'
         ];
-        
+
         // Check for optional UI components (may not exist in basic mode) They are all required now though, Review this check system.
         const optionalClasses = [
-            'TreeManager',
-            'PropertyInspector',
+            'NavTreePanel',
+            'OperationPanel',
             'VisibilityPanel',
             'ToolLibrary',
             'StatusManager',
             'UIControls'
         ];
-        
+
         const missing = requiredClasses.filter(cls => typeof window[cls] === 'undefined');
-        
+
         if (missing.length > 0) {
             console.error('Missing required classes:', missing);
-            
+
             // Update loading text
             const loadingText = document.getElementById('loading-text');
             if (loadingText) {
                 loadingText.textContent = 'Loading error - missing modules';
             }
-            
+
             return false;
         }
-        
+
         // Check optional classes
         if (this.debugEnabled) { 
             console.log('[Controller] Checking optional classes:');
@@ -921,19 +953,19 @@
                 console.log(`  ${available ? '✓' : '○'} ${cls}`);
             });
         }
-        
+
         controller = new PCBCAMController();
         await controller.initialize();
-        
+
         // Expose to global scope for debugging
         window.pcbcam = controller;
-        
+
         return true;
     }
 
     // Expose startApplication to the global scope so index.html can call it
     window.startApplication = startApplication;
-    
+
     // Public API functions
     window.showPCBStats = function() {
         if (!controller) {
@@ -942,23 +974,23 @@
         }
         controller.logState();
     };
-    
-    window.showCamStats = window.showPCBStats; // Alias for compatibility
-    
+
+    window.showCamStats = window.showPCBStats; // Alias for compatibility // Review - stats system
+
     window.enablePCBDebug = function() {
         debugConfig.enabled = true;
         console.log('Debug mode enabled');
     };
-    
+
     window.disablePCBDebug = function() {
         debugConfig.enabled = false;
         console.log('Debug mode disabled');
     };
-    
+
     // Global function for HTML compatibility
     window.addFile = function(type) {
-        this.debug(`🎯 addFile('${type}') called`);
-        
+        this.debug(`🎯 addFile('${type}') called`); // Review - emojis and icons
+
         if (controller?.ui) {
             // Try to use the UI's file input trigger if available
             if (controller.ui.triggerFileInput) {
@@ -969,7 +1001,7 @@
                                  document.getElementById('file-input-hidden');
                 if (fileInput) {
                     fileInput.setAttribute('data-type', type);
-                    
+
                     const opConfig = opsConfig[type];
                     if (opConfig) {
                         const extensions = [...opConfig.extensions];
@@ -978,7 +1010,7 @@
                         }
                         fileInput.setAttribute('accept', extensions.join(','));
                     }
-                    
+
                     fileInput.onchange = async (e) => {
                         const file = e.target.files[0];
                         if (file) {
@@ -986,7 +1018,7 @@
                         }
                         fileInput.value = '';
                     };
-                    
+
                     fileInput.click();
                 } else {
                     console.error('File input element not found');
@@ -996,7 +1028,7 @@
             console.error('Controller not initialized');
         }
     };
-    
+
     // Arc reconstruction registry inspector
     window.getReconstructionRegistry = function() {
         if (!controller?.core?.geometryProcessor) {
@@ -1010,5 +1042,4 @@
         }
         return registry;
     };
-
 })();

@@ -26,34 +26,36 @@
 
 (function() {
     'use strict';
-    
+
     const config = window.PCBCAMConfig;
-    const primitivesConfig = config.renderer?.primitives;
-    
+    const primitivesConfig = config.renderer?.primitives; // Review - useless config?
+
     class LayerRenderer {
         constructor(canvasId, core) {
             this.canvas = document.getElementById(canvasId);
             if (!this.canvas) {
                 throw new Error(`Canvas element '${canvasId}' not found`);
             }
-            
+
             this.core = new RendererCore(this.canvas);
             this.pcbCore = core;
-            this.camCore = core; // Alias for compatibility // Review if it's worth keeping
-            
+            this.camCore = core; // Alias // Review - Only used in getToolDiameterForPrimitive, delete this and update getToolDiameterForPrimitive?
+
             this.primitiveRenderer = new PrimitiveRenderer(this.core);
             this.overlayRenderer = new OverlayRenderer(this.core);
             this.interactionHandler = new InteractionHandler(this.core, this);
-            
+
             this.debugPrimitives = [];
+            this.debugPrimitivesScreen = []; // Store screen-space data
             this._renderQueued = false;
             this._renderHandle = null;
-            
+
             this.core.resizeCanvas();
             this.interactionHandler.init();
         }
-        
-        // Property accessors for compatibility
+
+        // Property accessors
+
         get layers() { return this.core.layers; }
         get options() { return this.core.options; }
         get viewScale() { return this.core.viewScale; }
@@ -61,60 +63,55 @@
         get ctx() { return this.core.ctx; }
         get bounds() { return this.core.bounds; }
         get renderStats() { return this.core.renderStats; }
-        
+
         setOptions(options) {
             this.core.setOptions(options);
             this.render();
         }
-        
+
         setCoordinateSystem(coordinateSystem) {
             this.core.setCoordinateSystem(coordinateSystem);
         }
-        
+
         addLayer(name, primitives, options = {}) {
             this.core.addLayer(name, primitives, options);
         }
-        
+
         removeLayer(name) {
             this.core.removeLayer(name);
         }
-        
+
         clearLayers() {
             this.core.clearLayers();
         }
-        
-        // Rendering (Optimized)
-        
+
+        // Rendering
+
         render() {
             if (this._renderQueued) return;
-            
+
             this._renderQueued = true;
             this._renderHandle = requestAnimationFrame(() => {
                 this._renderQueued = false;
                 this._actualRender();
             });
         }
-        
+
        _actualRender() {
             const startTime = this.core.beginRender();
-
             this.core.clearCanvas();
-
             this.debugPrimitives = [];
-
-            this.core.setupTransform(); // <-- Sets pan/zoom
-
-            // Save the simple pan/zoom transform
+            this.core.setupTransform(); // Sets pan/zoom
             this.ctx.save();
 
-            // Apply object rotation if it exists
+            // Apply object rotation
             if (this.core.currentRotation !== 0 && this.core.rotationCenter) {
                 this.ctx.translate(this.core.rotationCenter.x, this.core.rotationCenter.y);
                 this.ctx.rotate((this.core.currentRotation * Math.PI) / 180);
                 this.ctx.translate(-this.core.rotationCenter.x, -this.core.rotationCenter.y);
             }
 
-            // 1. RENDER GEOMETRY (inside rotation)
+            // 1. Render Geometry (inside rotation)
             if (this.options.showWireframe) {
                 this.layers.forEach(layer => {
                     if (layer.visible) {
@@ -122,24 +119,21 @@
                     }
                 });
             } else {
-                // This renders all PCB layers *inside* the rotated transform
                 this.renderVisibleLayers();
             }
 
-            // 2. RESTORE FROM ROTATION
-            // Restore from the object rotation
+            // 2. Restore from rotation
             this.ctx.restore();
 
-            // 3. RENDER WORLD-SPACE OVERLAYS (outside rotation)
-            // (Grid, Bounds, Origin are now drawn with pan/zoom, but NOT rotated)
+            // 3. Render world-space overlays (outside rotation)
             if (this.options.showGrid) { this.overlayRenderer.renderGrid(); }
             if (this.options.showBounds) { this.overlayRenderer.renderBounds(); }
             if (this.options.showOrigin) { this.overlayRenderer.renderOrigin(); }
 
-            // 4. RESET ALL TRANSFORMS (to screen space)
+            // 4. Reset all transforms (to screen space)
             this.core.resetTransform();
 
-            // 5. RENDER SCREEN-SPACE OVERLAYS (rulers, stats)
+            // 5. Render screen-space overlays
             if (this.options.showRulers) { this.overlayRenderer.renderRulers(); }
             this.overlayRenderer.renderScaleIndicator();
             if (this.options.showStats) { this.overlayRenderer.renderStats(); }
@@ -148,166 +142,138 @@
             if ((this.options.debugPoints || this.options.debugPaths) &&
                 this.debugPrimitives.length > 0) {
 
-                // This mapping logic needs to handle arcSegments correctly [!!!]
                 this.debugPrimitivesScreen = this.debugPrimitives.map(prim => {
                     const screenData = {
                         type: prim.type,
                         properties: prim.properties,
-                        // Add other necessary top-level properties if needed
-                        center: prim.center, // For circles/arcs original center (world)
-                        radius: prim.radius, // For circles/arcs original radius (world)
-                        startAngle: prim.startAngle, // For arcs
-                        endAngle: prim.endAngle,     // For arcs
-                        clockwise: prim.clockwise    // For arcs
+                        center: prim.center,
+                        radius: prim.radius,
+                        startAngle: prim.startAngle,
+                        endAngle: prim.endAngle,
+                        clockwise: prim.clockwise
                     };
 
-                    // Transform points if they exist
+                    // Transform points (for curve debug)
                     if (prim.points) {
                         screenData.screenPoints = prim.points.map(p => {
                             const s = this.core.worldToScreen(p.x, p.y);
-                            return { ...s, ...p }; // Combine screen coords with original point metadata
+                            return { ...s, ...p }; // Combine screen coords + original metadata
                         });
                     }
 
-                    // Transform arc segments if they exist
-                    if (prim.arcSegments) {
-                        screenData.arcSegments = prim.arcSegments.map(seg => {
-                            const centerScreen = this.core.worldToScreen(seg.center.x, seg.center.y);
-                            return {
-                                ...seg, // Keep original arc data (angles, radius, etc.)
-                                centerScreen: centerScreen, // Add screen center
-                                radiusScreen: seg.radius * this.core.viewScale // Add screen radius
-                            };
-                        });
-                    }
-
-                    // Transform contours if they exist
+                    // Transform contours (for path/arc debug)
                     if (prim.contours) {
                         screenData.contours = prim.contours.map(c => ({
-                            ...c, // Keep original contour data (nesting, isHole)
-                            // Transform points within the contour
-                            screenPoints: c.points.map(p => this.core.worldToScreen(p.x, p.y))
+                            ...c, // Keep original contour data
+                            // Transform points *within* the contour
+                            screenPoints: c.points.map(p => this.core.worldToScreen(p.x, p.y)),
+                            // Transform arc segments *within* the contour
+                            arcSegments: c.arcSegments ? c.arcSegments.map(seg => {
+                                const centerScreen = this.core.worldToScreen(seg.center.x, seg.center.y);
+                                return {
+                                    ...seg, // Keep original arc data
+                                    centerScreen: centerScreen,
+                                    radiusScreen: seg.radius * this.core.viewScale
+                                };
+                            }) : []
                         }));
                     }
-
                     return screenData;
                 });
-
                 this.renderDebugOverlay();
             }
-            
             this.core.endRender(startTime);
         }
-        
-        // Layer Rendering (With Proper Context)
-        
-        renderVisibleLayers() {
-            // Separate layers by type for proper rendering order
-            const sourceLayers = [];
-            const fusedLayers = [];
-            const offsetLayers = [];
-            const previewLayers = [];
-            const toolpathLayers = [];
 
+        // Layer Rendering
+
+        renderVisibleLayers() {
+            const sourceLayers = [], fusedLayers = [], offsetLayers = [],
+                previewLayers = [], toolpathLayers = [];
+
+            // 1. Categorize Layers
             this.layers.forEach((layer, name) => {
                 if (!layer.visible) return;
-
                 switch (layer.type) {
-                    case 'offset':
-                        offsetLayers.push({ name, layer });
-                        break;
-                    case 'preview':
-                        previewLayers.push({ name, layer });
-                        break;
-                    case 'toolpath': // Assuming 'toolpath' is a type // Note: toolpath doesn't exist?
-                        toolpathLayers.push({ name, layer });
-                        break;
-                    case 'fused':
-                        fusedLayers.push({ name, layer });
-                        break;
-                    case 'isolation':
-                    case 'clear':
-                    case 'drill':
-                    case 'cutout':
-                    default: // All other source types
-                        sourceLayers.push({ name, layer });
-                        break;
-                }
-            });
-            
-            // Separate source layers into cutouts, drills, and others
-            const cutoutLayers = [];
-            const drillLayers = [];
-            const otherSourceLayers = [];
-            
-            sourceLayers.forEach(({ name, layer }) => {
-                if (layer.type === 'cutout') {
-                    cutoutLayers.push({ name, layer });
-                } else if (layer.type === 'drill') {
-                    drillLayers.push({ name, layer });
-                } else {
-                    otherSourceLayers.push({ name, layer });
+                    case 'offset': offsetLayers.push({ name, layer }); break;
+                    case 'preview': previewLayers.push({ name, layer }); break;
+                    case 'toolpath': toolpathLayers.push({ name, layer }); break;
+                    case 'fused': fusedLayers.push({ name, layer }); break;
+                    default: sourceLayers.push({ name, layer }); break;
                 }
             });
 
-            // 1. Render Cutouts (Bottom)
+            const cutoutLayers = [], drillLayers = [], otherSourceLayers = [];
+            sourceLayers.forEach(({ name, layer }) => {
+                if (layer.type === 'cutout') cutoutLayers.push({ name, layer });
+                else if (layer.type === 'drill') drillLayers.push({ name, layer });
+                else otherSourceLayers.push({ name, layer });
+            });
+
+            // 2. HELPER: Sort function to force Drills to top within their category
+            // Returns: -1 (A first/bottom), 1 (B first/bottom), 0 (Same)
+            const sortByOpType = (a, b) => {
+                const isDrillA = a.layer.operationType === 'drill' || a.layer.type === 'drill';
+                const isDrillB = b.layer.operationType === 'drill' || b.layer.type === 'drill';
+                if (isDrillA && !isDrillB) return 1;  // Drill (A) goes after Non-Drill (B)
+                if (!isDrillA && isDrillB) return -1; // Non-Drill (A) goes before Drill (B)
+                return 0;
+            };
+
+            // 3. Apply Sort to Processed Layers
+            offsetLayers.sort(sortByOpType);
+            previewLayers.sort(sortByOpType);
+
+            // Render Stack
+
+            // 1. Source Geometry (Bottom)
+            // Cutouts first (lowest), then Traces, then Drills (highest source)
             cutoutLayers.forEach(({ layer }) => this.renderLayer(layer));
-            
-            // 2. Render normal source geometry
             otherSourceLayers.forEach(({ layer }) => this.renderLayer(layer));
-            
-            // 3. Render Fused (replaces normal source)
+            drillLayers.forEach(({ layer }) => this.renderLayer(layer)); // FIX: Moved back here
+
+            // 2. Fused Geometry
             fusedLayers.forEach(({ layer }) => this.renderLayer(layer));
             
-            // 4. Render Drills (on top of copper)
-            drillLayers.forEach(({ layer }) => this.renderLayer(layer));
-            
-            // 5. Render Offsets
+            // 3. Processed Geometry (Top)
+            // The sort above ensures Drill Offsets > Isolation Offsets
             offsetLayers.forEach(({ layer }) => this.renderOffsetLayer(layer));
-            
-            // 6. Render Previews
             previewLayers.forEach(({ layer }) => this.renderPreviewLayer(layer));
             
-            // 7. Render Toolpaths (Top)
+            // 4. Toolpaths (Very Top)
             toolpathLayers.forEach(({ layer }) => this.renderLayer(layer));
         }
-        
-        // Layer Rendering (With Culling and Context)
-        
+
         renderLayer(layer) {
             let layerColor = this.core.getLayerColorSettings(layer);    
-            
             if (this.options.blackAndWhite) {
                 layerColor = this.core.colors.text.primary;
             }
-
             const viewBounds = this.core.getViewBounds();
             this.renderLayerPrimitives(layer, viewBounds, layerColor, layerColor);
         }
-        
+
         renderLayerPrimitives(layer, viewBounds, fillColor, strokeColor = null) {
             const vb = viewBounds || this.core.getViewBounds();
             const isRotated = this.core.currentRotation !== 0;
 
-            // Get the layer's axis-aligned bounding box, accounting for rotation
             const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
-            
-            // If the layer's entire display bounds are outside the view, skip it.
+
             if (!displayBounds || !this.core.boundsIntersect(displayBounds, vb)) {
                 this.core.renderStats.primitives += layer.primitives.length;
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
                 return;
             }
-            
-            // Set common layer state ONCE
+
             this.ctx.fillStyle = fillColor;
             if (strokeColor) this.ctx.strokeStyle = strokeColor;
-            
+
             let simpleFlashBatch = null;
 
             const flushFlashBatch = () => {
                 if (simpleFlashBatch) {
-                    this.ctx.fill(simpleFlashBatch, 'nonzero');
+                    // Use 'evenodd' for batched fills
+                    this.ctx.fill(simpleFlashBatch, 'evenodd');
                     this.core.renderStats.drawCalls++;
                     simpleFlashBatch = null;
                 }
@@ -315,38 +281,40 @@
 
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
-                
+
                 const primBounds = primitive.getBounds();
-                
+
                 if (!this.core.boundsIntersect(primBounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
-                
-                // LOD/Type check is always safe
+
                 if (!this.core.shouldRenderPrimitive(primitive, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
-                
-                // Store all debug points before culling
+
                 if (this.shouldCollectDebugPoints(primitive)) {
                     this.debugPrimitives.push(primitive);
                 }
-                
+
                 this.core.renderStats.renderedPrimitives++;
-                
-                // Check if this primitive has a role that prevents batching
+
+                // These must be rendered individually
                 const role = primitive.properties?.role;
+                const isCenterline = primitive.properties?.isCenterlinePath;
+
                 const cannotBatch = (
                     role === 'drill_hole' ||
                     role === 'drill_slot' ||
                     role === 'peck_mark' ||
+                    role === 'drill_milling_path' ||
+                    isCenterline ||
                     primitive.type === 'path'
                 );
 
                 if (cannotBatch) {
-                    flushFlashBatch();
+                    flushFlashBatch(); // Flush anything pending
                     this.ctx.save();
                     this.primitiveRenderer.renderPrimitive(
                         primitive, fillColor, strokeColor, layer.isPreprocessed, 
@@ -356,7 +324,7 @@
                     this.core.renderStats.drawCalls++;
                     return;
                 }
-                
+
                 // Batch simple shapes
                 if (primitive.type === 'circle' || primitive.type === 'rectangle' || primitive.type === 'obround') {
                     if (!simpleFlashBatch) {
@@ -375,13 +343,10 @@
                     this.core.renderStats.drawCalls++;
                 }
             });
-
-            flushFlashBatch();
+            flushFlashBatch(); // Flush any remaining batched items
         }
-
         
         // Specialized Layer Batch Renderers
-
         renderOffsetLayer(layer) {
             const viewBounds = this.core.getViewBounds();
             const isRotated = this.core.currentRotation !== 0;
@@ -394,14 +359,16 @@
             }
 
             const offsetColor = this.core.getLayerColorSettings(layer);
-            
-            // Separate peck marks from normal geometry
+
+            // 1. Buckets for Internal Sorting (Z-Index)
+            const standardGeometry = [];
+            const drillMillingPaths = []; // Undersized slots, Centerlines
             const peckMarks = [];
-            const normalPrimitives = [];
-            
+
+            // 2. Distribute
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
-                
+
                 const primBounds = primitive.getBounds();
                 if (!isRotated && !this.core.boundsIntersect(primBounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
@@ -412,55 +379,42 @@
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
-                
-                if (this.shouldCollectDebugPoints(primitive)) {
-                    this.debugPrimitives.push(primitive);
-                }
-                
                 this.core.renderStats.renderedPrimitives++;
-                
-                // Separate drill peck marks from normal offset geometry
-                 if (primitive.properties?.role === 'peck_mark' || 
-                    primitive.properties?.isToolPeckMark || 
-                    primitive.properties?.isDrillPreview) {
+
+                // Categorize
+                if (primitive.properties?.role === 'peck_mark' || 
+                    primitive.properties?.isToolPeckMark) {
                     peckMarks.push(primitive);
+                } else if (primitive.properties?.role === 'drill_milling_path' || 
+                        primitive.properties?.isCenterlinePath) {
+                    drillMillingPaths.push(primitive);
                 } else {
-                    normalPrimitives.push(primitive);
+                    standardGeometry.push(primitive);
                 }
             });
-            
-            // Batch render normal geometry
-            if (normalPrimitives.length > 0) {
-                const batchesByPass = new Map();
-                normalPrimitives.forEach(primitive => {
-                    const pass = primitive.properties?.pass || 1;
-                    if (!batchesByPass.has(pass)) {
-                        batchesByPass.set(pass, new Path2D());
-                    }
-                    this.primitiveRenderer.addPrimitiveToPath2D(primitive, batchesByPass.get(pass));
-                });
 
-                // Render each pass batch
-                this.ctx.strokeStyle = offsetColor;
-                this.ctx.lineWidth = (primitivesConfig.offsetStrokeWidth || 2) / this.core.viewScale;
-                this.ctx.setLineDash([]);
-
-                batchesByPass.forEach((batch) => {
-                    this.ctx.stroke(batch);
-                    this.core.renderStats.drawCalls++;
-                });
-            }
+            // 3. Render Stack (Bottom to Top)
             
-            // Render drill peck marks as filled circles with warning colors
-            peckMarks.forEach(primitive => {
+            // Level 1: Standard Offsets (Isolation traces, etc.)
+            standardGeometry.forEach(prim => {
                 this.ctx.save();
-                this.primitiveRenderer.renderPrimitive(
-                    primitive, 
-                    null,
-                    null, 
-                    false,
-                    { layer: layer }
-                );
+                this.primitiveRenderer.renderOffsetPrimitive(prim, offsetColor, { layer: layer });
+                this.ctx.restore();
+                this.core.renderStats.drawCalls++;
+            });
+
+            // Level 2: Drill Milling Paths (Yellow/Red slots)
+            drillMillingPaths.forEach(prim => {
+                this.ctx.save();
+                this.primitiveRenderer.renderOffsetPrimitive(prim, offsetColor, { layer: layer });
+                this.ctx.restore();
+                this.core.renderStats.drawCalls++;
+            });
+
+            // Level 3: Peck Marks (Crosshairs)
+            peckMarks.forEach(prim => {
+                this.ctx.save();
+                this.primitiveRenderer.renderPeckMark(prim, { layer: layer });
                 this.ctx.restore();
                 this.core.renderStats.drawCalls++;
             });
@@ -476,16 +430,16 @@
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
                 return;
             }
-            
-            // Drill operations get distinct color
-            const isDrill = layer.operationType === 'drill' || layer.metadata?.isDrillPreview;
 
             const previewColor = this.core.getLayerColorSettings(layer);
-            
-            // Separate peck marks from normal geometry
-            const peckMarks = [];
-            const batchesByTool = new Map();
 
+            // 1. Buckets for Internal Sorting
+            // Note: Standard geometry uses a Map for batching, others use arrays
+            const standardBatch = new Map();
+            const drillMillingPaths = []; 
+            const peckMarks = [];
+
+            // 2. Distribute
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
                 
@@ -494,61 +448,76 @@
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
-
                 if (!this.core.shouldRenderPrimitive(primitive, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     return;
                 }
-                
-                if (this.shouldCollectDebugPoints(primitive)) {
-                    this.debugPrimitives.push(primitive);
-                }
-                
                 this.core.renderStats.renderedPrimitives++;
-                
-                // Separate drill peck marks
+
+                // Categorize
                 if (primitive.properties?.role === 'peck_mark') {
                     peckMarks.push(primitive);
                     return;
                 }
-                
-                // Normal preview batching
+
+                if (primitive.properties?.isCenterlinePath || 
+                    primitive.properties?.toolRelation ||
+                    primitive.properties?.role === 'drill_milling_path') {
+                    
+                    drillMillingPaths.push(primitive);
+                    return;
+                }
+
+                // Standard Batching
                 const toolDiameter = layer.metadata?.toolDiameter || 
                                     primitive.properties?.toolDiameter ||
-                                    this.getToolDiameterForPrimitive(primitive);
-                
-                if (!batchesByTool.has(toolDiameter)) {
-                    batchesByTool.set(toolDiameter, new Path2D());
+                                    this.getToolDiameterForPrimitive(primitive); 
+
+                if (!standardBatch.has(toolDiameter)) {
+                    standardBatch.set(toolDiameter, new Path2D());
                 }
-                const batch = batchesByTool.get(toolDiameter);
-                this.primitiveRenderer.addPrimitiveToPath2D(primitive, batch);
+                this.primitiveRenderer.addPrimitiveToPath2D(primitive, standardBatch.get(toolDiameter));
             });
 
-            // Render batched milling paths
+            // 3. Render Stack (Bottom to Top)
+
+            // Level 1: Standard Geometry (Batched Strokes)
             this.ctx.strokeStyle = previewColor;
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
-            
-            batchesByTool.forEach((batch, toolDiameter) => {
+
+            standardBatch.forEach((batch, toolDiameter) => {
                 this.ctx.lineWidth = toolDiameter;
                 this.ctx.stroke(batch);
                 this.core.renderStats.drawCalls++;
             });
-            
-            // Render drill peck marks with warning colors from offset stage
-            peckMarks.forEach(primitive => {
+
+            // Level 2: Drill Milling Paths (Solid Fills)
+            drillMillingPaths.forEach(primitive => {
                 this.ctx.save();
-                this.primitiveRenderer.renderPrimitive(
-                    primitive, 
-                    null, 
-                    null, 
-                    false,
-                    { layer: layer }
-                );
+                if (primitive.properties?.isCenterlinePath) {
+                    this.primitiveRenderer.renderCenterlineSlot(primitive, { 
+                        layer, toolDiameter: primitive.properties.toolDiameter 
+                    });
+                } else {
+                    // Standard Milling Preview (Blue Stroke) automatically includes Yellow marks if undersized
+                    const toolDia = primitive.properties.toolDiameter || layer.metadata?.toolDiameter;
+                    this.primitiveRenderer.renderToolPreview(primitive, previewColor, {
+                        layer, toolDiameter: toolDia
+                    });
+                }
                 this.ctx.restore();
                 this.core.renderStats.drawCalls++;
             });
-        }
+
+            // Level 3: Peck Marks
+            peckMarks.forEach(primitive => {
+                this.ctx.save();
+                this.primitiveRenderer.renderPeckMark(primitive, { layer: layer });
+                this.ctx.restore();
+                this.core.renderStats.drawCalls++;
+            });
+    }
 
         renderWireframeLayer(layer) {
             const viewBounds = this.core.getViewBounds();
@@ -567,7 +536,7 @@
             });
 
             // Perform a single stroke operation for the entire layer
-            this.ctx.strokeStyle = this.core.colors.debug?.wireframe || '#00ff00';
+            this.ctx.strokeStyle = this.core.colors.debug.wireframe;
             this.ctx.lineWidth = this.core.getWireframeStrokeWidth();
             this.ctx.fillStyle = 'transparent'; // Ensure no fill
             this.ctx.setLineDash([]);
@@ -580,19 +549,15 @@
         
         getToolDiameterForPrimitive(primitive) {
             const opId = primitive.properties?.operationId;
-            
             if (!opId || !this.camCore || !this.camCore.operations) {
                 return null;
             }
-            
             const operation = this.camCore.operations.find(op => op.id === opId);
             const diameterStr = operation?.settings?.toolDiameter;
-            
             if (diameterStr !== undefined) {
                 const diameter = parseFloat(diameterStr);
                 return isNaN(diameter) ? null : diameter;
             }
-            
             return null;
         }
 
@@ -601,16 +566,12 @@
             if (!bounds || this.core.currentRotation === 0) {
                 return bounds;
             }
-
-            // Get the four corners of the layer's original bounds
             const corners = [
                 { x: bounds.minX, y: bounds.minY },
                 { x: bounds.maxX, y: bounds.minY },
                 { x: bounds.maxX, y: bounds.maxY },
                 { x: bounds.minX, y: bounds.maxY }
             ];
-
-            // Rotate each corner around the rotation center
             const rotationCenter = this.core.rotationCenter || { x: 0, y: 0 };
             const angle = (this.core.currentRotation * Math.PI) / 180;
             const cos = Math.cos(angle);
@@ -619,44 +580,37 @@
             const rotatedCorners = corners.map(corner => {
                 const dx = corner.x - rotationCenter.x;
                 const dy = corner.y - rotationCenter.y;
-                
                 return {
                     x: rotationCenter.x + (dx * cos - dy * sin),
                     y: rotationCenter.y + (dx * sin + dy * cos)
                 };
             });
 
-            // Find the new axis-aligned bounding box (aabb)
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
-
             rotatedCorners.forEach(corner => {
                 minX = Math.min(minX, corner.x);
                 minY = Math.min(minY, corner.y);
                 maxX = Math.max(maxX, corner.x);
                 maxY = Math.max(maxY, corner.y);
             });
-
             return { minX, minY, maxX, maxY };
         }
         
         shouldCollectDebugPoints(primitive) {
             const anyDebugEnabled = this.options.debugPoints || this.options.debugPaths;
             if (!anyDebugEnabled) return false;
-            
-            // Collect paths with points or contours
             if (primitive.type === 'path') {
-                if ((primitive.points && primitive.points.length > 0) || 
-                    (primitive.contours && primitive.contours.length > 0)) {
+                if (primitive.contours && primitive.contours.length > 0) {
                     return true;
                 }
             }
-            
+
             // Collect circles/arcs for property display
             if (primitive.type === 'circle' || primitive.type === 'arc') {
                 return true;
             }
-            
+
             return false;
         }
         
@@ -664,20 +618,23 @@
         
         renderDebugOverlay() {
             if (!this.debugPrimitivesScreen || this.debugPrimitivesScreen.length === 0) return;
-            
+
             this.ctx.save();
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
             
             this.debugPrimitivesScreen.forEach(primitive => {
                 this.primitiveRenderer.renderDebugInfo(primitive, this.options);
             });
-            
+
             this.ctx.restore();
         }
 
         destroy() {
             if (this.interactionHandler) {
                 this.interactionHandler.destroy();
+            }
+            if (this._renderHandle) {
+                cancelAnimationFrame(this._renderHandle);
             }
         }
     }

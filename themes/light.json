@@ -45,7 +45,7 @@
     "operations": {
       "isolation": "#cc6600",
       "drill": "#0066cc",
-      "clear": "#008844",
+      "clearing": "#008844",
       "cutout": "#444444",
       "toolpath": "#ff8844"
     },
@@ -62,7 +62,7 @@
       "source": {
         "isolation": "#ff8844",
         "drill": "#4488ff",
-        "clear": "#44ff88",
+        "clearing": "#44ff88",
         "cutout": "#444444"
       },
       "offset": {

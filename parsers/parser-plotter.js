@@ -26,25 +26,25 @@
 
 (function() {
     'use strict';
-    
-    const config = window.PCBCAMConfig || {};
-    const debugConfig = config.debug || {};
-    const geomConfig = config.geometry || {};
-    
+
+    const config = window.PCBCAMConfig;
+    const debugConfig = config.debug;
+    const geomConfig = config.geometry;
+
     /**
      * Smart translator from parser analytic objects to primitives.
-     * Tessellates only when necessary for unsupported curve types.
+     * Tessellates only unsupported curve types.
      */
     class ParserPlotter {
         constructor(options = {}) {
             this.options = {
-                debug: options.debug || false,
+                debug: options.debug,
                 markStrokes: options.markStrokes || false,
                 ...options
             };
             this.reset();
         }
-        
+
         plot(parserData) {
             if (parserData.layers) {
                 return this.plotGerberData(parserData);
@@ -53,16 +53,16 @@
             }
             return { success: false, error: 'Invalid parser data format', primitives: [] };
         }
-        
+
         plotGerberData(gerberData) {
             this.debug('Starting Gerber plotting')
             this.reset();
-            
+
             this.apertures = new Map();
             if (gerberData.layers.apertures) {
                 gerberData.layers.apertures.forEach(ap => this.apertures.set(ap.code, ap));
             }
-            
+
             gerberData.layers.objects.forEach((obj, index) => {
                 try {
                     const primitiveOrPrimitives = this.plotObject(obj);
@@ -80,10 +80,10 @@
                     console.error(`Error plotting object ${index} (${obj.type}):`, error);
                 }
             });
-            
+
             this.calculateBounds();
             this.logStatistics();
-            
+
             return {
                 success: true,
                 primitives: this.primitives,
@@ -92,59 +92,69 @@
                 creationStats: this.creationStats
             };
         }
-        
+
         plotExcellonData(excellonData) {
             this.debug('Starting Excellon plotting');
             this.reset();
-            
+
             const drillData = excellonData.drillData;
+            
             if (drillData.holes) {
-                drillData.holes.forEach(item => {
+                drillData.holes.forEach((item, index) => {
                     let primitive = null;
                     const properties = { 
                         tool: item.tool, 
                         plated: item.plated, 
-                        polarity: 'dark' 
+                        polarity: 'dark',
+                        diameter: item.diameter
                     };
-                    const tolerance = geomConfig.coordinatePrecision || 0.001;
-
-                    if (item.type === 'slot') {
-                        const slotLength = Math.hypot(
-                            item.end.x - item.start.x, 
-                            item.end.y - item.start.y
-                        );
-                        if (slotLength < tolerance) {
-                            primitive = new CirclePrimitive(
-                                item.start, 
-                                item.diameter / 2,
-                                { ...properties, role: 'drill_hole', diameter: item.diameter }
-                            );
-                        } else {
-                            const halfD = item.diameter / 2;
-                            const minX = Math.min(item.start.x, item.end.x) - halfD;
-                            const minY = Math.min(item.start.y, item.end.y) - halfD;
-                            const maxX = Math.max(item.start.x, item.end.x) + halfD;
-                            const maxY = Math.max(item.start.y, item.end.y) + halfD;
-                            primitive = new ObroundPrimitive(
-                                { x: minX, y: minY }, 
-                                maxX - minX, 
-                                maxY - minY,
-                                { 
-                                    ...properties, 
-                                    role: 'drill_slot', 
-                                    diameter: item.diameter, 
-                                    originalSlot: { start: item.start, end: item.end }
-                                }
-                            );
-                        }
-                    } else {
-                        primitive = new CirclePrimitive(
-                            item.position, 
-                            item.diameter / 2,
-                            { ...properties, role: 'drill_hole', diameter: item.diameter }
-                        );
-                    }
                     
+                    if (!item.start || !item.end) {
+                         // Handle hole type which may only have 'position' if old parser version was used
+                         item.start = item.position || { x: 0, y: 0 };
+                         item.end = item.position || { x: 0, y: 0 };
+                    }
+
+                    // Calculate distance between start and end
+                    const dx = item.end.x - item.start.x;
+                    const dy = item.end.y - item.start.y;
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    const radius = item.diameter / 2;
+
+                    // Tolerance for floating point zero checks
+                    const slotTolerance = 0.005; // 5 microns // Review - epsilon values in the config
+
+                    this.debug(`Plotter Input [${index}]: type=${item.type}, start=(${item.start.x.toFixed(3)}, ${item.start.y.toFixed(3)}), end=(${item.end.x.toFixed(3)}, ${item.end.y.toFixed(3)}), diameter=${item.diameter.toFixed(3)}, calculated length=${length.toFixed(5)}`);
+
+                    if (length < slotTolerance) {
+                        // It's a hole
+                        properties.role = 'drill_hole';
+                        primitive = new CirclePrimitive(
+                            item.start, 
+                            radius,
+                            properties
+                        );
+                        this.debug(`Plotter Output [${index}]: Creating drill_hole (length < ${slotTolerance}mm)`);
+                    } else {
+                        // It's a slot
+                        properties.role = 'drill_slot';
+                        properties.originalSlot = { start: item.start, end: item.end };
+
+                        // Calculate Bounding Box for Obround Primitive
+                        const minX = Math.min(item.start.x, item.end.x) - radius;
+                        const minY = Math.min(item.start.y, item.end.y) - radius;
+                        const maxX = Math.max(item.start.x, item.end.x) + radius;
+                        const maxY = Math.max(item.start.y, item.end.y) + radius;
+
+                        primitive = new ObroundPrimitive(
+                            { x: minX, y: minY }, // Position (bottom-left)
+                            maxX - minX,          // Width
+                            maxY - minY,          // Height
+                            properties
+                        );
+                        this.debug(`Plotter Output [${index}]: Creating drill_slot (length >= ${slotTolerance}mm)`);
+                    }
+
                     if (primitive) {
                         this.primitives.push(primitive);
                         this.creationStats.primitivesCreated++;
@@ -152,7 +162,7 @@
                     }
                 });
             }
-            
+
             this.calculateBounds();
             return {
                 success: true,
@@ -162,7 +172,7 @@
                 creationStats: { drillHolesCreated: this.primitives.length }
             };
         }
-        
+
         plotObject(obj) {
             switch (obj.type) {
                 case 'region':
@@ -180,49 +190,51 @@
         }
 
         /**
-         * Polarity is determined by winding ONLY for compound paths (regions with >1 subpath).
-         * Single subpaths are ALWAYS 'dark', regardless of winding.
-         * Winding is normalized: 'dark' primitives are forced CW, 'clear' are forced CCW.
+         * Creates a single PathPrimitive with a full hierarchical contour list.
+         * Winding determines polarity.
          */
         plotRegion(region) {
             const analyticSubpaths = region.analyticSubpaths;
 
-            // This log is critical. If you see "1" for a shape that should be an outer, the logic inside will handle it. If you see "2" for an "O", it will also handle it.
             this.debug(`Received region with ${analyticSubpaths ? analyticSubpaths.length : 0} analytic subpaths.`);
 
             // Fallback for simple Gerber regions (no analytic data)
             if (!analyticSubpaths || analyticSubpaths.length === 0) {
                 if (region.points && region.points.length > 0) {
-                    const contours = region.contours || [{
-                        points: region.points,
-                        nestingLevel: 0,
-                        isHole: false,
-                        parentId: null
-                    }];
-                    
+
                     // Winding normalization for Gerber fallbacks
                     const isCW = GeometryUtils.isClockwise(region.points);
-                    if (!isCW) { // Gerbers regions should be dark (outer) = CW
+                    if (!isCW) {
                         region.points.reverse();
                         this.debug(`Normalized Gerber fallback region to CW.`);
                     }
 
-                    const primitive = new PathPrimitive(region.points, {
+                    const contour = {
+                        points: region.points,
+                        nestingLevel: 0,
+                        isHole: false,
+                        parentId: null,
+                        arcSegments: [],
+                        curveIds: []
+                    };
+
+                    const primitive = new PathPrimitive([contour], {
                         isRegion: true,
                         fill: true,
                         polarity: region.polarity || 'dark',
-                        closed: true,
-                        contours: contours
+                        closed: true
                     });
+
                     this.creationStats.regionsCreated++;
-                    return primitive; // Return single primitive
+                    return primitive;
                 }
                 this.debug('Region object has no points or analytic subpaths', region);
                 return null;
             }
 
-            const tolerance = geomConfig.coordinatePrecision || 1e-9;
-            const primitives = []; 
+            // Main Analytic Subpath Processing
+            const tolerance = geomConfig.coordinatePrecision;
+            const contours = []; // This will be the final list of contours
 
             // Process each analytic subpath (contour)
             analyticSubpaths.forEach((segments, subpathIndex) => {
@@ -230,27 +242,36 @@
                 const points = [];
                 const arcSegments = [];
 
-                // Handle simple point arrays (from polygon/polyline or transformed arcs)
+                // Handle simple point arrays (from polygon/polyline)
                 if (segments.length > 0 && segments[0].x !== undefined) {
-                    primitives.push(new PathPrimitive(segments, {
-                        isRegion: true,
-                        fill: true,
-                        polarity: 'dark', // Simple point arrays are always dark
-                        closed: true
-                    }));
-                    return;
+                    // This is a simple point array, treat as one contour
+                    const isCW = GeometryUtils.isClockwise(segments);
+                    const isHole = (analyticSubpaths.length > 1) ? !isCW : false;
+                    const finalPolarity = (analyticSubpaths.length > 1) ? (isCW ? 'dark' : 'clear') : 'dark';
+
+                    if ((finalPolarity === 'dark' && !isCW) || (finalPolarity === 'clear' && isCW)) {
+                        segments.reverse(); // Normalize winding
+                    }
+
+                    contours.push({
+                        points: segments,
+                        isHole: isHole,
+                        nestingLevel: isHole ? 1 : 0, // Simple nesting
+                        parentId: isHole ? 0 : null,
+                        arcSegments: [],
+                        curveIds: []
+                    });
+                    return; // Done with this subpath
                 }
 
                 if (segments.length === 0) return;
 
-                // Process analytic segments (Stitching logic)
+                // Stitch analytic segments (line, arc, bezier)
                 segments.forEach((seg, segIndex) => {
                     if (seg.type === 'move') {
                         if (points.length > 0) {
-                            primitives.push(new PathPrimitive(points, {
-                                isRegion: true, fill: true, polarity: 'dark',
-                                closed: false, arcSegments: [...arcSegments]
-                            }));
+                            // This case should ideally not happen in a single subpath
+                            console.warn("[Plotter] Found 'move' inside a subpath, data may be lost.");
                             points.length = 0;
                             arcSegments.length = 0;
                         }
@@ -277,15 +298,16 @@
                             break;
                         case 'arc':
                             if (Math.abs(seg.rx - seg.ry) < tolerance && Math.abs(seg.phi) < tolerance) {
+                                // This is a circular arc
                                 arcSegments.push({
                                     startIndex: points.length - 1,
-                                    endIndex: points.length,
                                     center: seg.center, radius: seg.rx,
                                     startAngle: seg.startAngle, endAngle: seg.endAngle,
                                     clockwise: seg.clockwise
                                 });
                                 points.push(seg.p1);
                             } else {
+                                // This is an elliptical arc, tessellate it
                                 const tessellated = GeometryUtils.tessellateEllipticalArc(
                                     p0, seg.p1, seg.rx, seg.ry,
                                     seg.phi, seg.fA, seg.fS
@@ -308,57 +330,67 @@
                     }
                 });
 
-                // Polarity and Normalization logic
                 if (points.length > 0) {
-                    
+
                     let isCW = GeometryUtils.isClockwise(points);
                     let finalPolarity;
-                    let isHole; // For logging
-                    
-                    // Check if this subpath is part of a compound path.
+                    let isHole;
+
                     if (analyticSubpaths.length > 1) {
-                        // COMPOUND PATH (e.g., an "O"): Trust the winding
-                        // Y-flip means CW is OUTER ('dark') and CCW is HOLE ('clear')
+                        // Compound path (e.g., an "O"): Trust the winding
                         isHole = !isCW;
                         finalPolarity = isCW ? 'dark' : 'clear';
                     } else {
-                        // SINGLE PATH (e.g., a "C"): It is *always* an OUTER.
+                        // Single path (e.g., a "C"): Is always an outer perimeter.
                         isHole = false;
                         finalPolarity = 'dark';
                     }
 
                     // Normalization step - enforce winding
                     if (finalPolarity === 'dark' && !isCW) {
-                        // If it's supposed to be dark (outer), but it's CCW. Fix it.
                         points.reverse();
-                        isCW = true; // Update state
+                        isCW = true;
                         this.debug(`Normalizing standalone path to CW (dark).`);
                     } else if (finalPolarity === 'clear' && isCW) {
-                        // If it's supposed to be clear (hole), but it's CW. Fix it.
                         points.reverse();
-                        isCW = false; // Update state
+                        isCW = false;
                         this.debug(`Normalizing hole path to CCW (clear).`);
                     }
 
                     this.debug(`Processed subpath #${subpathIndex} (of ${analyticSubpaths.length}): ${points.length} pts. Winding: ${isCW ? 'CW' : 'CCW'}. Polarity set to: ${finalPolarity}. Set as: ${isHole ? 'HOLE' : 'OUTER'}`);
 
-                    // Create a new primitive for THIS subpath
-                    primitives.push(new PathPrimitive(points, {
-                        isRegion: true,
-                        fill: true,
-                        polarity: finalPolarity, // Use the new conditional polarity
-                        closed: true, // Assume closed for filled regions
-                        arcSegments: arcSegments
-                    }));
+                    // Add finished subpath as a contour
+                    contours.push({
+                        points: points,
+                        isHole: isHole,
+                        nestingLevel: isHole ? 1 : 0, // Simple nesting // Review - data structure can handle more, but better to limit hierarchy levels?
+                        parentId: isHole ? 0 : null,  // Assume nested in first contour
+                        arcSegments: arcSegments,
+                        curveIds: []
+                    });
                 }
-
             }); 
-            
-            this.creationStats.regionsCreated += primitives.length;
-            // Return the flat array of primitives, as expected by the fusion engine
-            return primitives; 
+
+            if (contours.length === 0) {
+                return null; // No valid contours found
+            }
+
+            // Sort contours: outer (isHole: false) first
+            contours.sort((a, b) => a.isHole - b.isHole);
+
+            // Create a single PathPrimitive with the full contours list
+            const finalPrimitive = new PathPrimitive(contours, { // Pass null for points
+                isRegion: true,
+                fill: true,
+                polarity: 'dark', // The primitive itself is dark
+                closed: true,
+            });
+
+            this.creationStats.regionsCreated++;
+            // Return the single, complex primitive
+            return finalPrimitive; 
         }
-        
+
         /**
          * Creates analytic primitives for traces
          */
@@ -378,7 +410,7 @@
             if (this.options.markStrokes && width > 0) {
                 properties.isStroke = true;
             }
-            
+
             const interp = trace.interpolation;
 
             if (interp === 'bezier_cubic') {
@@ -398,7 +430,7 @@
                 return new EllipticalArcPrimitive(
                     trace.start, trace.end, trace.params, properties
                 );
-                
+
             } else if (interp === 'cw_arc' || interp === 'ccw_arc') {
                 try {
                     const center = {
@@ -414,111 +446,123 @@
                         trace.end.y - center.y,
                         trace.end.x - center.x
                     );
-                    const clockwise = trace.interpolation === 'cw_arc' || 
-                                     trace.clockwise === true;
+
+                    // Gerber uses Y-up coordinates, renderer expects Y-down after transform
+                    // The scale(1, -1) in renderer-core.js flips Y, which inverts arc direction
+                    // This pre-inversion ensures arcs render correctly after Y-flip
+                    const gerberClockwise = trace.interpolation === 'cw_arc' || 
+                                             trace.clockwise === true;
                     
+                    const clockwise = !gerberClockwise;
+
                     this.creationStats.arcTraces++;
                     return new ArcPrimitive(
                         center, radius, startAngle, endAngle, clockwise, properties
                     );
                 } catch (error) {
                     console.error('[Plotter] Failed to create ArcPrimitive:', error);
-                    return new PathPrimitive([trace.start, trace.end], properties);
+                    const contour = {
+                        points: [trace.start, trace.end],
+                        isHole: false,
+                        nestingLevel: 0,
+                        parentId: null,
+                        arcSegments: [],
+                        curveIds: []
+                    };
+                    return new PathPrimitive([contour], properties);
                 }
-                
+
             } else if (interp === 'linear_path') {
                 // From polygon/polyline stroke
                 this.creationStats.tracesCreated++;
-                return new PathPrimitive(trace.points, properties);
-                
+                const contour = {
+                    points: trace.points,
+                    isHole: false,
+                    nestingLevel: 0,
+                    parentId: null,
+                    arcSegments: [],
+                    curveIds: []
+                };
+                return new PathPrimitive([contour], properties);
             } else {
                 // Default: linear trace
                 this.creationStats.tracesCreated++;
-                return new PathPrimitive([trace.start, trace.end], properties);
+                const contour = {
+                    points: [trace.start, trace.end],
+                    isHole: false,
+                    nestingLevel: 0,
+                    parentId: null,
+                    arcSegments: [],
+                    curveIds: []
+                };
+                return new PathPrimitive([contour], properties);
             }
         }
-        
+
+        /**
+         * Creates analytic primitives for flashes
+         */
         plotFlash(flash) {
             const properties = {
                 isFlash: true,
                 isPad: true,
                 fill: true,
                 stroke: false,
-                polarity: flash.polarity || 'dark',
+                polarity: flash.polarity,
                 aperture: flash.aperture,
                 shape: flash.shape
             };
-            
-            let primitive = null;
-            
+
             switch (flash.shape) {
                 case 'circle':
-                    primitive = new CirclePrimitive(
-                        flash.position, flash.radius, properties
-                    );
-                    break;
-                    
+                    this.creationStats.flashesCreated++;
+                    return new CirclePrimitive(flash.position, flash.radius, properties);
+
                 case 'rectangle':
-                    primitive = new RectanglePrimitive(
-                        { 
-                            x: flash.position.x - flash.width / 2,
-                            y: flash.position.y - flash.height / 2
-                        },
+                    this.creationStats.flashesCreated++;
+                    return new RectanglePrimitive(
+                        { x: flash.position.x - flash.width / 2, y: flash.position.y - flash.height / 2 },
                         flash.width, flash.height, properties
                     );
-                    break;
-                    
+
                 case 'obround':
-                    // Check if the obround is actually a circle
                     const tolerance = geomConfig.coordinatePrecision || 0.001;
                     if (Math.abs(flash.width - flash.height) < tolerance) {
-                        // It's a circle. Create a CirclePrimitive instead.
-                        this.debug(`Converted round obround (aperture ${flash.aperture}) to CirclePrimitive.`);
-                        // Update shape property for clarity downstream
-                        properties.shape = 'circle'; 
-                        primitive = new CirclePrimitive(
-                            flash.position, // Use center position directly
-                            flash.width / 2,  // Use width/2 as radius
-                            properties
-                        );
-                        this.creationStats.circularObrounds++; // Optional: for stats
-                    } else {
-                        // It's a true obround. Create an ObroundPrimitive.
-                        primitive = new ObroundPrimitive(
-                            { 
-                                x: flash.position.x - flash.width / 2,
-                                y: flash.position.y - flash.height / 2
-                            },
-                            flash.width, flash.height, properties
-                        );
-                        this.creationStats.strokedObrounds++; // Optional: for stats
+                        this.creationStats.circularObrounds++;
+                        this.creationStats.flashesCreated++;
+                        return new CirclePrimitive(flash.position, flash.width / 2, properties);
                     }
-                    break;
-                    
+                    this.creationStats.strokedObrounds++;
+                    this.creationStats.flashesCreated++;
+                    return new ObroundPrimitive(
+                        { x: flash.position.x - flash.width / 2, y: flash.position.y - flash.height / 2 },
+                        flash.width, flash.height, properties
+                    );
+
                 case 'polygon':
-                    primitive = new PathPrimitive(flash.points, {
-                        ...properties,
-                        closed: true,
-                        isPolygon: true
-                    });
-                    break;
-                    
+                    const contour = {
+                        points: flash.points,
+                        isHole: false,
+                        nestingLevel: 0,
+                        parentId: null,
+                        arcSegments: [],
+                        curveIds: []
+                    };
+                    this.creationStats.flashesCreated++;
+                    return new PathPrimitive([contour], { ...properties, closed: true });
+
                 default:
-                    console.warn(`Unknown flash shape: ${flash.shape}, using circle`);
-                    primitive = new CirclePrimitive(flash.position, 0.1, properties);
+                    console.warn(`Unknown flash shape: ${flash.shape}`);
+                    this.creationStats.flashesCreated++;
+                    return new CirclePrimitive(flash.position, 0.1, properties);
             }
-            
-            if (primitive) {
-                this.creationStats.flashesCreated++;
-            }
-            return primitive;
         }
-        
+
         plotDraw(draw) {
             if (!draw.aperture) return null;
             const aperture = this.apertures.get(draw.aperture);
             if (!aperture) return null;
-            
+
             const trace = {
                 type: 'trace',
                 start: draw.start,
@@ -528,7 +572,7 @@
                 polarity: draw.polarity,
                 interpolation: draw.interpolation
             };
-            
+
             if (draw.center) {
                 trace.arc = {
                     i: draw.center.x - draw.start.x,
@@ -536,13 +580,13 @@
                 };
                 trace.clockwise = draw.interpolation === 'G02';
             }
-            
+
             return this.plotTrace(trace);
         }
-        
+
         validatePrimitive(primitive) {
             if (!debugConfig.validation?.validateGeometry) return true;
-            
+
             try {
                 if (typeof primitive.getBounds !== 'function') return false;
                 const bounds = primitive.getBounds();
@@ -550,46 +594,57 @@
                     !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
                     return false;
                 }
-                
-                if (primitive.type === 'path' && 
-                    (!primitive.points || primitive.points.length === 0)) {
-                    return false;
+
+                if (primitive.type === 'path') {
+                    // A path is invalid if:
+                    // 1. The contours array itself is missing or empty.
+                    if (!primitive.contours || primitive.contours.length === 0) {
+                        return false;
+                    }
+
+                    // 2. Not a *single* contour in the array has any points.
+                    const hasAnyPoints = primitive.contours.some(
+                        c => c.points && c.points.length > 0
+                    );
+                    if (!hasAnyPoints) {
+                        return false;
+                    }
                 }
-                
+
                 if (primitive.type === 'circle' && 
                     (!primitive.center || !isFinite(primitive.radius) || 
                      primitive.radius <= 0)) {
                     return false;
                 }
-                
+
                 return true;
             } catch (error) {
                 return false;
             }
         }
-        
+
         calculateBounds() {
             if (this.primitives.length === 0) {
                 this.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
                 return;
             }
-            
+
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
-            
+
             this.primitives.forEach(primitive => {
                 const bounds = primitive.getBounds();
                 if (!isFinite(bounds.minX)) return;
-                
+
                 minX = Math.min(minX, bounds.minX);
                 minY = Math.min(minY, bounds.minY);
                 maxX = Math.max(maxX, bounds.maxX);
                 maxY = Math.max(maxY, bounds.maxY);
             });
-            
+
             this.bounds = { minX, minY, maxX, maxY };
         }
-        
+
         reset() {
             this.primitives = [];
             this.bounds = null;
@@ -606,10 +661,10 @@
                 arcTraces: 0
             };
         }
-        
+
         logStatistics() {
             if (!this.debug) return;
-            
+
             this.debug('Plotting Statistics:');
             this.debug(`  Regions: ${this.creationStats.regionsCreated}`);
             this.debug(`  Traces: ${this.creationStats.tracesCreated}`);
@@ -618,7 +673,7 @@
             this.debug(`  Drills: ${this.creationStats.drillsCreated}`);
             this.debug(`  Total primitives: ${this.creationStats.primitivesCreated}`);
         }
-        
+
         debug(message, data = null) {
             if (debugConfig.enabled) {
                 if (data) {
@@ -629,6 +684,6 @@
             }
         }
     }
-    
+
     window.ParserPlotter = ParserPlotter;
 })();
