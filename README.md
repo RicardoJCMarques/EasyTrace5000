@@ -234,7 +234,7 @@ window.getReconstructionRegistry()      // Inspect arc metadata
 - Automatic tool change (M6) support
 - Improved toolpath optimization
 - Multi-sided PCB support
-- Cloud project storage
+- Service Worker for offline caching
 
 ## ❤️ Support the Project
 

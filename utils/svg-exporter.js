@@ -1,5 +1,5 @@
 /**
- * @file        export/svg-exporter.js
+ * @file        utils/svg-exporter.js
  * @description Logic for exporting the current canvas contents as an SVG
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}

@@ -1,8 +1,16 @@
 # Enable rewrite engine
 RewriteEngine On
 
-# Exclude the extras folder from URL rewriting
-RewriteCond %{REQUEST_URI} !^/extras/ [NC]
+# Set WASM MIME type
+AddType application/wasm .wasm
+
+# Enable compression for text-based files
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json image/svg+xml application/wasm
+</IfModule>
+
+# Exclude the clipper2 folder from URL rewriting
+RewriteCond %{REQUEST_URI} !^/clipper2/ [NC]
 
 # Remove .html extension from URLs
 RewriteCond %{REQUEST_FILENAME} !-d

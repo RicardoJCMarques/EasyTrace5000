@@ -1,5 +1,5 @@
 /**
- * @file        export/processors/base-processor.js
+ * @file        gcode/processors/base-processor.js
  * @description Base post-processing orchestrator
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}

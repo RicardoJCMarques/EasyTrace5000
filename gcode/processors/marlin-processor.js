@@ -1,6 +1,6 @@
 /**
- * @file        export/processors/grbl-processor.js
- * @description GRBL post-processing module
+ * @file        gcode/processors/marlin-processor.js
+ * @description Marlin post-processing module
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -27,10 +27,10 @@
 (function() {
     'use strict';
 
-    class GRBLPostProcessor extends BasePostProcessor {
+    class MarlinPostProcessor extends BasePostProcessor {
         constructor() {
-            super('GRBL', {
-                fileExtension: '.nc',
+            super('Marlin', {
+                fileExtension: '.gcode',
                 supportsToolChange: false,
                 supportsArcCommands: true,
                 supportsCannedCycles: false,
@@ -39,7 +39,7 @@
                 feedPrecision: 0,
                 spindlePrecision: 0,
                 modalCommands: true,
-                maxSpindleSpeed: 30000, // in config?
+                maxSpindleSpeed: 255, // PWM range
                 maxRapidRate: 1000
             });
         }
@@ -49,51 +49,34 @@
             const safeZ = options.safeZ || this.config.safetyHeight;
 
             lines.push('');
+            lines.push(`; Tool change: ${tool.name || tool.id}`);
+            lines.push(`; Diameter: ${tool.diameter}mm`);
 
-            // Call the silent setSpindle(0)
-            const stopGcode = this.setSpindle(0); 
-            if (stopGcode) {
-                lines.push(stopGcode);
-            } else if (this.currentSpindle > 0) {
-                lines.push('M5 ; Spindle Stop'); // Failsafe
-                this.currentSpindle = 0;
+            if (options.useM3) {
+                lines.push('M5 ; Stop spindle');
+            } else {
+                lines.push('M107 ; Stop fan');
             }
 
-            lines.push(`G0 Z${this.formatCoordinate(safeZ)}`);
+            lines.push(`G0 Z${this.formatCoordinate(safeZ)} ; Retract to safe Z`);
             this.currentPosition.z = safeZ;
-            lines.push('M0'); // Pause
+            lines.push('M0 ; Pause for manual tool change');
             lines.push('');
 
-            const spindleSpeed = tool.spindleSpeed || 12000;
+            const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
+            const pwmValue = Math.min(255, Math.round((spindleSpeed / 30000) * 255));
 
-            // Call the silent setSpindle(newSpeed)
-            const startGcode = this.setSpindle(spindleSpeed);
-            if (startGcode) {
-                lines.push(startGcode);
+            if (options.useM3) {
+                lines.push(`M3 S${pwmValue} ; Restart spindle`);
+            } else {
+                lines.push(`M106 S${pwmValue} ; Restart fan`);
             }
-
+            lines.push('G4 P1000 ; Wait for spindle');
             lines.push('');
 
             return lines.join('\n');
         }
-        
-        // GRBL-specific: validate command safety
-        validateCommand(cmd) {
-            const warnings = [];
-            
-            // Check spindle speed limits
-            if (cmd.type === 'SPINDLE' && cmd.speed > this.config.maxSpindleSpeed) {
-                warnings.push(`Spindle speed ${cmd.speed} exceeds maximum ${this.config.maxSpindleSpeed}`);
-            }
-            
-            // Check for unsupported features
-            if (cmd.type && cmd.type.includes('CANNED')) {
-                warnings.push('Canned cycles not supported by GRBL - will be expanded');
-            }
-            
-            return warnings;
-        }
     }
 
-    window.GRBLPostProcessor = GRBLPostProcessor;
+    window.MarlinPostProcessor = MarlinPostProcessor;
 })();

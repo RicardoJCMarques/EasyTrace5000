@@ -1,6 +1,6 @@
 /**
  * @file        parser/parser-plotter.js
- * @description Converts parser objects into geometric primitives
+ * @description Converts parsed objects into geometric primitives
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -506,8 +506,9 @@
             const properties = {
                 isFlash: true,
                 isPad: true,
-                fill: true,
-                stroke: false,
+                fill: flash.fill !== false,
+                stroke: flash.stroke || false,
+                strokeWidth: flash.strokeWidth,
                 polarity: flash.polarity,
                 aperture: flash.aperture,
                 shape: flash.shape

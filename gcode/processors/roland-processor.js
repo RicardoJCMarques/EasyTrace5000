@@ -1,5 +1,5 @@
 /**
- * @file        export/processors/roland-processor.js
+ * @file        gcode/processors/roland-processor.js
  * @description ROLAND post-processing module
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}

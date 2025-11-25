@@ -1,5 +1,5 @@
 /**
- * @file        export/gcode-generator.js
+ * @file        gcode/gcode-generator.js
  * @description Complete G-code generation from toolpath plans
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}

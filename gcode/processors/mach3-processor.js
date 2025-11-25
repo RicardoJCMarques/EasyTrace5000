@@ -1,6 +1,6 @@
 /**
- * @file        export/processors/linuxcnc-processor.js
- * @description LinuxCNC post-processing module
+ * @file        gcode/processors/mach3-processor.js
+ * @description Mach3 post-processing module
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -27,10 +27,10 @@
 (function() {
     'use strict';
 
-    class LinuxCNCPostProcessor extends BasePostProcessor {
+    class Mach3PostProcessor extends BasePostProcessor {
         constructor() {
-            super('LinuxCNC', {
-                fileExtension: '.ngc',
+            super('Mach3', {
+                fileExtension: '.tap',
                 supportsToolChange: true,
                 supportsArcCommands: true,
                 supportsCannedCycles: true,
@@ -47,48 +47,37 @@
 
         generateToolChange(tool, options) {
             const lines = [];
-            const safeZ = options.safeZ || this.config.safetyHeight; // Review all fallbacks
+            const safeZ = options.safeZ || this.config.safetyHeight;
 
             lines.push('');
             lines.push(`(Tool change: ${tool.name || tool.id})`);
             lines.push(`(Diameter: ${tool.diameter}mm)`);
             lines.push('');
 
-            // Turn off spindle and coolant
-            lines.push('M5 (Stop spindle)');
-            if (options.coolant) {
-                lines.push('M9 (Coolant off)');
-            }
+            // Stop spindle
+            lines.push('M5');
 
             // Retract to safe Z
-            lines.push(`G0 Z${this.formatCoordinate(safeZ)} (Retract to safe Z)`);
+            lines.push(`G0 Z${this.formatCoordinate(safeZ)}`);
             this.currentPosition.z = safeZ;
 
-            // Tool change
+            // Tool change with pause
             const toolNumber = tool.number || options.toolNumber || 1;
-            lines.push(`T${toolNumber} M6 (Load tool ${toolNumber})`);
-            lines.push(`G43 H${toolNumber} (Tool length compensation)`);
+            lines.push(`T${toolNumber} M6`);
+            lines.push(`G43 H${toolNumber}`)
+            lines.push('M0 (Tool change pause - press cycle start to continue)');
             lines.push('');
 
             // Restart spindle
             const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
-            lines.push(`M3 S${this.formatSpindle(spindleSpeed)} (Restart spindle)`);
-            lines.push('G4 P1 (Wait for spindle)');
-
-            // Restart coolant if needed
-            if (options.coolant) {
-                if (options.coolant === 'mist') {
-                    lines.push('M7 (Mist coolant on)');
-                } else if (options.coolant === 'flood') {
-                    lines.push('M8 (Flood coolant on)');
-                }
-            }
+            lines.push(`M3 S${this.formatSpindle(spindleSpeed)}`);
+            lines.push('G4 P1');
             lines.push('');
 
             return lines.join('\n');
         }
 
-        // LinuxCNC supports canned drilling cycles
+        // Mach3 supports canned drilling cycles (similar to LinuxCNC)
         generatePeckDrill(position, depth, retract, peckDepth, feedRate) {
             const lines = [];
 
@@ -110,12 +99,12 @@
             }
 
             return lines.join('\n');
-        } // What about g73?
+        } // What about G73?
 
         cancelCannedCycle() {
-            return 'G80 (Cancel canned cycle)';
+            return 'G80';
         }
     }
 
-    window.LinuxCNCPostProcessor = LinuxCNCPostProcessor;
+    window.Mach3PostProcessor = Mach3PostProcessor;
 })();

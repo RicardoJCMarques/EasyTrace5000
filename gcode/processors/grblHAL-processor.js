@@ -1,6 +1,6 @@
 /**
- * @file        export/processors/mach3-processor.js
- * @description Mach3 post-processing module
+ * @file        gcode/processors/grblHAL-processor.js
+ * @description grblHAL post-processing module
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
@@ -27,20 +27,20 @@
 (function() {
     'use strict';
 
-    class Mach3PostProcessor extends BasePostProcessor {
+    // grblHAL is a superset of GRBL but adds M6 tool change and canned cycle support, making it similar to LinuxCNC.
+    class GrblHALPostProcessor extends BasePostProcessor {
         constructor() {
-            super('Mach3', {
-                fileExtension: '.tap',
+            super('grblHAL', {
+                fileExtension: '.nc',
                 supportsToolChange: true,
                 supportsArcCommands: true,
                 supportsCannedCycles: true,
                 arcFormat: 'IJ',
-                coordinatePrecision: 4,
-                feedPrecision: 1,
+                coordinatePrecision: 3,
+                feedPrecision: 0,
                 spindlePrecision: 0,
                 modalCommands: true,
-                lineNumbering: false,
-                maxSpindleSpeed: 24000,
+                maxSpindleSpeed: 30000,
                 maxRapidRate: 5000
             });
         }
@@ -50,55 +50,52 @@
             const safeZ = options.safeZ || this.config.safetyHeight;
 
             lines.push('');
-            lines.push(`(Tool change: ${tool.name || tool.id})`);
-            lines.push(`(Diameter: ${tool.diameter}mm)`);
-            lines.push('');
 
-            // Stop spindle
-            lines.push('M5');
+            // Call the silent setSpindle(0) from BasePostProcessor
+            const stopGcode = this.setSpindle(0); 
+            if (stopGcode) {
+                lines.push(stopGcode);
+            } else if (this.currentSpindle > 0) {
+                lines.push('M5'); // Safety Stop Fallback
+                this.currentSpindle = 0;
+            }
 
-            // Retract to safe Z
             lines.push(`G0 Z${this.formatCoordinate(safeZ)}`);
             this.currentPosition.z = safeZ;
 
-            // Tool change with pause
+            // grblHAL uses M6 Tx for tool changes
             const toolNumber = tool.number || options.toolNumber || 1;
             lines.push(`T${toolNumber} M6`);
-            lines.push(`G43 H${toolNumber}`)
-            lines.push('M0 (Tool change pause - press cycle start to continue)');
+            lines.push('M0 (Tool change pause - press cycle start)');
             lines.push('');
 
-            // Restart spindle
-            const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
-            lines.push(`M3 S${this.formatSpindle(spindleSpeed)}`);
-            lines.push('G4 P1');
+            const spindleSpeed = tool.spindleSpeed || 12000;
+
+            // Call the silent setSpindle(newSpeed)
+            const startGcode = this.setSpindle(spindleSpeed);
+            if (startGcode) {
+                lines.push(startGcode);
+            }
+
             lines.push('');
 
             return lines.join('\n');
         }
 
-        // Mach3 supports canned drilling cycles (similar to LinuxCNC)
+        // grblHAL supports canned cycles
         generatePeckDrill(position, depth, retract, peckDepth, feedRate) {
-            const lines = [];
-
             // G83 - Peck drilling cycle
-            lines.push(`G83 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} Q${this.formatCoordinate(peckDepth)} F${this.formatFeed(feedRate)}`);
-
-            return lines.join('\n');
+            return `G83 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} Q${this.formatCoordinate(peckDepth)} F${this.formatFeed(feedRate)}`;
         }
 
         generateSimpleDrill(position, depth, retract, feedRate, dwell) {
-            const lines = [];
-
             if (dwell > 0) {
                 // G82 - Drilling cycle with dwell
-                lines.push(`G82 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} P${dwell} F${this.formatFeed(feedRate)}`);
+                return `G82 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} P${dwell} F${this.formatFeed(feedRate)}`;
             } else {
                 // G81 - Simple drilling cycle
-                lines.push(`G81 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} F${this.formatFeed(feedRate)}`);
+                return `G81 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} F${this.formatFeed(feedRate)}`;
             }
-
-            return lines.join('\n');
         } // What about G73?
 
         cancelCannedCycle() {
@@ -106,5 +103,5 @@
         }
     }
 
-    window.Mach3PostProcessor = Mach3PostProcessor;
+    window.GrblHALPostProcessor = GrblHALPostProcessor;
 })();

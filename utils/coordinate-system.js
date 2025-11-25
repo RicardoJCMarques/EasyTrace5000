@@ -1,5 +1,5 @@
 /**
- * @file        coordinate/coordinate-system.js
+ * @file        utils/coordinate-system.js
  * @description Manages coordinate translations / rotations
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}

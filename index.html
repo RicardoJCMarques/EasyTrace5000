@@ -825,13 +825,7 @@
             'renderer/renderer-overlay.js',
             'renderer/renderer-interaction.js',
             'renderer/renderer-layer.js',
-            
-            // Exports
-            'export/svg-exporter.js',
-            
-            // Coordinate system
-            'coordinate/coordinate-system.js',
-            
+
             // UI Components
             'ui/ui-tooltip.js',
             'ui/tool-library.js',
@@ -850,14 +844,19 @@
             'toolpath/toolpath-geometry-translator.js',
             
             // G-code generation
-            "export/processors/base-processor.js",
-            "export/processors/grbl-processor.js",
-            "export/processors/grblHAL-processor.js",
-            "export/processors/roland-processor.js",
-            "export/processors/marlin-processor.js",
-            "export/processors/mach3-processor.js",
-            "export/processors/linuxcnc-processor.js",
-            "export/gcode-generator.js",
+            "gcode/processors/base-processor.js",
+            "gcode/processors/grbl-processor.js",
+            "gcode/processors/grblHAL-processor.js",
+            "gcode/processors/roland-processor.js",
+            "gcode/processors/marlin-processor.js",
+            "gcode/processors/mach3-processor.js",
+            "gcode/processors/linuxcnc-processor.js",
+            "gcode/gcode-generator.js",
+
+            // Utils
+            'utils/coordinate-system.js',
+            'utils/unit-converter.js',
+            'utils/svg-exporter.js',
             
             // Core application
             'cam-core.js',
