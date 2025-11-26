@@ -245,6 +245,12 @@
                 root.style.setProperty('--color-primitive-debug-label', colors.primitives.debugLabel);
                 root.style.setProperty('--color-primitive-debug-label-stroke', colors.primitives.debugLabelStroke);
             }
+
+            // Black and White
+            if (colors.bw) {
+                root.style.setProperty('--color-bw-white', colors.bw.white);
+                root.style.setProperty('--color-bw-black', colors.bw.black);
+            }
         }
 
         /**

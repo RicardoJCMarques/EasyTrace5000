@@ -166,6 +166,7 @@ Exported from the current canvas view.
 
             const isWireframe = this.core.options.showWireframe;
             const wireframeColor = (debugColors && debugColors.wireframe) ? debugColors.wireframe : '#00ff00';
+            const isBlackAndWhite = this.core.options.blackAndWhite;
 
             this.debug(`Generating styles. isWireframe = ${isWireframe}`);
 
@@ -178,8 +179,25 @@ Exported from the current canvas view.
 
             let css = '';
 
-           if (isWireframe) {
-                // WIREFRAME MODE
+            if (isBlackAndWhite) {
+                // Photomask style: black background, white features
+                const white = this.core.colors.bw.white;
+                const black = this.core.colors.bw.black;
+                css = `
+                    svg { background: ${black}; }
+                    .pcb-source-isolation,
+                    .pcb-source-drill,
+                    .pcb-fused,
+                    .pcb-preprocessed-dark,
+                    .pcb-offset,
+                    .pcb-preview,
+                    .pcb-trace { fill: ${white}; stroke: none; }
+                    .pcb-fused { fill-rule: evenodd; }
+                    .pcb-cutout { fill: none; stroke: ${white}; stroke-width: 0.1; }
+                    .pcb-preprocessed-clear { fill: ${black}; stroke: none; }
+                `;
+            } else if (isWireframe) {
+                // Wireframe Mode
                 css = `
                     .pcb-source-isolation,
                     .pcb-source-drill,
@@ -193,7 +211,7 @@ Exported from the current canvas view.
                     .pcb-cutout { ${cutoutStyles} }
                 `;
             } else {
-                // SOLID FILL MODE
+                // Solid fill mode
                 const solidFill = 'stroke: none;';
                 const bgColor = (canvasColors && canvasColors.background) ? canvasColors.background : '#0f0f0f';
 
@@ -205,8 +223,8 @@ Exported from the current canvas view.
                     .pcb-preprocessed-clear { fill: ${bgColor}; ${solidFill} }
                     .pcb-trace { ${traceStyles} }
                     .pcb-cutout { ${cutoutStyles} }
-                    .pcb-offset { fill: none; stroke-linecap: round; line-join: round; }
-                    .pcb-preview { fill: none; stroke-linecap: round; line-join: round; }
+                    .pcb-offset { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+                    .pcb-preview { fill: none; stroke-linecap: round; stroke-linejoin: round; }
                 `;
             }
 
@@ -357,6 +375,16 @@ Exported from the current canvas view.
                 return;
             }
 
+            // Offset layer styling
+            if (layer.isOffset) {
+                element.setAttribute('class', 'pcb-offset');
+            }
+
+            // Preview layer styling
+            if (layer.isPreview) {
+                element.setAttribute('class', 'pcb-preview');
+            }
+
             // Fused check
             if (isFused) {
                 element.setAttribute('class', 'pcb-fused');
@@ -396,16 +424,15 @@ Exported from the current canvas view.
 
         _createPathElement(primitive, config) {
             const path = document.createElementNS(this.svgNS, 'path');
-            
-            // Build the 'd' attribute string
             const d = this._buildPathData(primitive, config);
             path.setAttribute('d', d);
-
-            // Handle holes for fused/preprocessed geometry
-            if (primitive.holes && primitive.holes.length > 0) {
+            
+            // Multi-contour paths need evenodd for proper hole rendering
+            const hasHoles = primitive.contours?.some(c => c.isHole);
+            if (hasHoles) {
                 path.setAttribute('fill-rule', 'evenodd');
             }
-
+            
             return path;
         }
 
@@ -417,32 +444,38 @@ Exported from the current canvas view.
          */
         _buildPathData(primitive, config) {
             const precision = config.precision;
-            let d = '';
-
-            // 1. Build the main outer path
-            if (config.preserveArcs && primitive.arcSegments?.length > 0) {
-                d = this._buildPathWithArcs(primitive, precision);
-            } else if (primitive.type === 'obround' && config.preserveArcs) {
-                d = this._buildObroundPathData(primitive, precision);
-            } else if (primitive.type === 'arc' && config.preserveArcs) {
-                d = this._buildArcPathData(primitive, precision);
-            } else {
-                // Fallback for simple paths, or when arcs are disabled
-                let points = primitive.points;
-                if (primitive.type === 'obround') points = primitive.toPolygon().points;
-                if (primitive.type === 'arc') points = primitive.toPolygon().points;
-                
-                d = this._buildSimplePathData(points, primitive.closed, precision);
+            
+            // Handle non-path types that got routed here
+            if (primitive.type === 'obround' && config.preserveArcs) {
+                return this._buildObroundPathData(primitive, precision);
             }
-
-            // 2. Append all holes
-            if (primitive.holes && primitive.holes.length > 0) {
-                primitive.holes.forEach(hole => {
-                    d += ' ' + this._buildSimplePathData(hole, true, precision);
-                });
+            if (primitive.type === 'arc' && config.preserveArcs) {
+                return this._buildArcPathData(primitive, precision);
             }
             
-            return d;
+            // Path primitives - iterate contours
+            if (!primitive.contours || primitive.contours.length === 0) {
+                return '';
+            }
+            
+            const pathParts = [];
+            
+            for (const contour of primitive.contours) {
+                if (!contour.points || contour.points.length === 0) continue;
+                
+                let contourPath;
+                if (config.preserveArcs && contour.arcSegments?.length > 0) {
+                    contourPath = this._buildContourWithArcs(contour, precision);
+                } else {
+                    contourPath = this._buildSimplePathData(contour.points, true, precision);
+                }
+                
+                if (contourPath) {
+                    pathParts.push(contourPath);
+                }
+            }
+            
+            return pathParts.join(' ');
         }
 
         /**
@@ -464,61 +497,54 @@ Exported from the current canvas view.
         }
 
         /**
-         * Builds a complex SVG path string from a PathPrimitive containing both lines and arcs.
+         * Builds a complex SVG path string from a .contour
          */
-        _buildPathWithArcs(primitive, precision) {
-            const points = primitive.points;
+        _buildContourWithArcs(contour, precision) {
+            const points = contour.points;
+            const arcSegments = contour.arcSegments || [];
+            
             if (!points || points.length === 0) return '';
-
+            
             const p = (val) => this._formatNumber(val, precision);
             const pathParts = [];
-            const sortedArcs = [...primitive.arcSegments].sort((a, b) => a.startIndex - b.startIndex);
-
+            const sortedArcs = [...arcSegments].sort((a, b) => a.startIndex - b.startIndex);
+            
             pathParts.push(`M${p(points[0].x)},${p(points[0].y)}`);
             let currentIndex = 0;
-
+            
             for (const arc of sortedArcs) {
                 // Draw lines up to the arc start
                 for (let i = currentIndex + 1; i <= arc.startIndex; i++) {
                     pathParts.push(`L${p(points[i].x)},${p(points[i].y)}`);
                 }
-
+                
                 const endPointOfArc = points[arc.endIndex];
-
-                // Use the pre-calculated sweep angle from the stitcher
                 let angleSpan = arc.sweepAngle;
-
-                // Fallback if sweepAngle is missing (shouldn't happen with fixed stitcher)
+                
                 if (angleSpan === undefined) {
-                    console.warn('[SVGExporter] arc.sweepAngle not found, recalculating...');
                     angleSpan = arc.endAngle - arc.startAngle;
                     if (arc.clockwise && angleSpan > 0) angleSpan -= 2 * Math.PI;
                     if (!arc.clockwise && angleSpan < 0) angleSpan += 2 * Math.PI;
                 }
-
-                const largeArc = Math.abs(angleSpan) > Math.PI ? 1 : 0;
-                const sweep = !arc.clockwise ? 1 : 0;  // Inverted mapping for Y-flip
-
-                pathParts.push(`A${p(arc.radius)},${p(arc.radius)} 0 ${largeArc} ${sweep} ${p(endPointOfArc.x)},${p(endPointOfArc.y)}`);
                 
+                const largeArc = Math.abs(angleSpan) > Math.PI ? 1 : 0;
+                const sweep = arc.clockwise ? 1 : 0;
+                
+                pathParts.push(`A${p(arc.radius)},${p(arc.radius)} 0 ${largeArc} ${sweep} ${p(endPointOfArc.x)},${p(endPointOfArc.y)}`);
                 currentIndex = arc.endIndex;
             }
-
-            // Check if last arc wrapped to index 0 (closes path)
+            
+            // Remaining lines
             const lastArc = sortedArcs[sortedArcs.length - 1];
-            const pathClosedByArc = (lastArc && lastArc.endIndex === 0 && lastArc.startIndex > 0);
-
-            // Only add remaining lines if path NOT closed by wrap-around arc
+            const pathClosedByArc = lastArc && lastArc.endIndex === 0 && lastArc.startIndex > 0;
+            
             if (!pathClosedByArc) {
                 for (let i = currentIndex + 1; i < points.length; i++) {
                     pathParts.push(`L${p(points[i].x)},${p(points[i].y)}`);
                 }
             }
-
-            if (primitive.closed !== false) {
-                pathParts.push('Z');
-            }
-
+            
+            pathParts.push('Z');
             return pathParts.join(' ');
         }
 

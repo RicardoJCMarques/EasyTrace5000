@@ -515,6 +515,11 @@
             return primitives;
         }
 
+        getPreprocessedPrimitives() {
+            if (!this.geometryProcessor) return [];
+            return this.geometryProcessor.getCachedState('preprocessedGeometry') || [];
+        }
+
         getFuseablePrimitives() {
             const primitives = [];
             this.operations.forEach(op => {

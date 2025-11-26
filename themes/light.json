@@ -93,6 +93,10 @@
       "hole": "#ff00ff",
       "wireframe": "#00aa00",
       "bounds": "#ff0000"
+    },
+    "bw":{
+      "black": "#000000",
+      "white": "#ffffff"
     }
   }
 }

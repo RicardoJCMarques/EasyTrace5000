@@ -407,6 +407,20 @@
         }
 
         standardizePrimitive(primitive, curveIds) {
+            const props = primitive.properties;
+            const isStroke = (props.stroke && !props.fill) || props.isTrace;
+
+            // Strokes need conversion to filled polygons regardless of primitive type
+            if (isStroke && props.strokeWidth > 0) {
+                if (typeof GeometryUtils !== 'undefined' && GeometryUtils.primitiveToPath) {
+                    const converted = GeometryUtils.primitiveToPath(primitive, curveIds || []);
+                    if (converted) {
+                        return converted;
+                    }
+                    // Fall through if conversion fails
+                }
+            }
+
             // If it's already a path, validate it has contours
             if (primitive.type === 'path') {
                 if (!primitive.contours || primitive.contours.length === 0) {

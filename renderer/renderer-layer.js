@@ -115,7 +115,15 @@
             if (this.options.showWireframe) {
                 this.layers.forEach(layer => {
                     if (layer.visible) {
-                        this.renderWireframeLayer(layer); 
+                        this.renderWireframeLayer(layer);
+                        // Collect debug primitives even in wireframe mode
+                        if (this.options.debugPoints || this.options.debugPaths) {
+                            layer.primitives.forEach(p => {
+                                if (this.shouldCollectDebugPoints(p)) {
+                                    this.debugPrimitives.push(p);
+                                }
+                            });
+                        }
                     }
                 });
             } else {
@@ -165,17 +173,14 @@
                     if (prim.contours) {
                         screenData.contours = prim.contours.map(c => ({
                             ...c, // Keep original contour data
-                            // Transform points *within* the contour
+                            // Transform points within the contour
                             screenPoints: c.points.map(p => this.core.worldToScreen(p.x, p.y)),
-                            // Transform arc segments *within* the contour
-                            arcSegments: c.arcSegments ? c.arcSegments.map(seg => {
-                                const centerScreen = this.core.worldToScreen(seg.center.x, seg.center.y);
-                                return {
-                                    ...seg, // Keep original arc data
-                                    centerScreen: centerScreen,
-                                    radiusScreen: seg.radius * this.core.viewScale
-                                };
-                            }) : []
+                            // Transform arc segments within the contour
+                            arcSegments: c.arcSegments ? c.arcSegments.map(seg => ({
+                                ...seg,
+                                centerScreen: this.core.worldToScreen(seg.center.x, seg.center.y),
+                                radiusScreen: seg.radius * this.core.viewScale
+                            })) : []
                         }));
                     }
                     return screenData;
@@ -191,7 +196,7 @@
             const sourceLayers = [], fusedLayers = [], offsetLayers = [],
                 previewLayers = [], toolpathLayers = [];
 
-            // 1. Categorize Layers
+            // Categorize Layers
             this.layers.forEach((layer, name) => {
                 if (!layer.visible) return;
                 switch (layer.type) {
@@ -210,7 +215,7 @@
                 else otherSourceLayers.push({ name, layer });
             });
 
-            // 2. HELPER: Sort function to force Drills to top within their category
+            // Sort function to force Drills to top within their category
             // Returns: -1 (A first/bottom), 1 (B first/bottom), 0 (Same)
             const sortByOpType = (a, b) => {
                 const isDrillA = a.layer.operationType === 'drill' || a.layer.type === 'drill';
@@ -220,34 +225,39 @@
                 return 0;
             };
 
-            // 3. Apply Sort to Processed Layers
+            // Apply Sort to Processed Layers
             offsetLayers.sort(sortByOpType);
             previewLayers.sort(sortByOpType);
 
             // Render Stack
 
-            // 1. Source Geometry (Bottom)
+            // Source Geometry (Bottom)
             // Cutouts first (lowest), then Traces, then Drills (highest source)
             cutoutLayers.forEach(({ layer }) => this.renderLayer(layer));
             otherSourceLayers.forEach(({ layer }) => this.renderLayer(layer));
-            drillLayers.forEach(({ layer }) => this.renderLayer(layer)); // FIX: Moved back here
+            drillLayers.forEach(({ layer }) => this.renderLayer(layer));
 
-            // 2. Fused Geometry
+            // Fused Geometry
             fusedLayers.forEach(({ layer }) => this.renderLayer(layer));
             
-            // 3. Processed Geometry (Top)
+            // Processed Geometry (Top)
             // The sort above ensures Drill Offsets > Isolation Offsets
             offsetLayers.forEach(({ layer }) => this.renderOffsetLayer(layer));
             previewLayers.forEach(({ layer }) => this.renderPreviewLayer(layer));
             
-            // 4. Toolpaths (Very Top)
+            // Toolpaths (Very Top)
             toolpathLayers.forEach(({ layer }) => this.renderLayer(layer));
         }
 
         renderLayer(layer) {
             let layerColor = this.core.getLayerColorSettings(layer);    
             if (this.options.blackAndWhite) {
-                layerColor = this.core.colors.text.primary;
+                // Cutouts render as black (board outline), everything else white
+                if (layer.type === 'cutout') {
+                    layerColor = this.core.colors.bw.black;
+                } else {
+                    layerColor = this.core.colors.bw.white;
+                }
             }
             const viewBounds = this.core.getViewBounds();
             this.renderLayerPrimitives(layer, viewBounds, layerColor, layerColor);
@@ -600,16 +610,24 @@
         shouldCollectDebugPoints(primitive) {
             const anyDebugEnabled = this.options.debugPoints || this.options.debugPaths;
             if (!anyDebugEnabled) return false;
+            
+            // Reconstructed circles
+            if (primitive.type === 'circle' && primitive.properties?.reconstructed) {
+                return true;
+            }
+
+            // Reconstructed paths
             if (primitive.type === 'path') {
                 if (primitive.contours && primitive.contours.length > 0) {
                     return true;
                 }
             }
 
-            // Collect circles/arcs for property display
-            if (primitive.type === 'circle' || primitive.type === 'arc') {
-                return true;
-            }
+            // Review - Possibly redundant?
+            // Reconstructed arcs
+            // if (primitive.type === 'arc' && primitive.properties?.reconstructed) {
+            //     return true;
+            // }
 
             return false;
         }
@@ -621,10 +639,76 @@
 
             this.ctx.save();
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            
-            this.debugPrimitivesScreen.forEach(primitive => {
-                this.primitiveRenderer.renderDebugInfo(primitive, this.options);
-            });
+
+            const pointColor = this.core.colors.debug.wireframe || '#00ff00';
+            const arcColor = this.core.colors.primitives.reconstructed || '#00ffff';
+            const pointSize = 3;
+            const arcStrokeWidth = 2;
+
+            // Batch all points
+            if (this.options.debugPoints) {
+                this.ctx.fillStyle = pointColor;
+                this.ctx.beginPath();
+
+                for (const prim of this.debugPrimitivesScreen) {
+                    if (!prim.contours) continue;
+                    for (const contour of prim.contours) {
+                        if (!contour.screenPoints) continue;
+                        for (const p of contour.screenPoints) {
+                            this.ctx.moveTo(p.x + pointSize, p.y);
+                            this.ctx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
+                        }
+                    }
+                }
+                this.ctx.fill();
+            }
+
+            // Batch all reconstructed arcs
+            if (this.options.debugPaths) {
+                this.ctx.strokeStyle = arcColor;
+                this.ctx.lineWidth = arcStrokeWidth;
+                this.ctx.beginPath();
+
+                for (const prim of this.debugPrimitivesScreen) {
+                    if (!prim.contours) continue;
+                    for (const contour of prim.contours) {
+                        if (!contour.arcSegments || contour.arcSegments.length === 0) continue;
+                        for (const arc of contour.arcSegments) {
+                            if (!arc.centerScreen) continue;
+                            this.ctx.moveTo(
+                                arc.centerScreen.x + arc.radiusScreen * Math.cos(arc.startAngle),
+                                arc.centerScreen.y - arc.radiusScreen * Math.sin(arc.startAngle)
+                            );
+                            this.ctx.arc(
+                                arc.centerScreen.x,
+                                arc.centerScreen.y,
+                                arc.radiusScreen,
+                                -arc.startAngle,  // Negate for screen Y-down
+                                -arc.endAngle,
+                                arc.clockwise
+                            );
+                        }
+                    }
+                }
+                this.ctx.stroke();
+            }
+
+            // Batch reconstructed full circles
+            if (this.options.debugPaths) {
+                this.ctx.strokeStyle = arcColor;
+                this.ctx.lineWidth = arcStrokeWidth;
+                this.ctx.beginPath();
+
+                for (const prim of this.debugPrimitivesScreen) {
+                    if (prim.type === 'circle' && prim.properties?.reconstructed) {
+                        const screenCenter = this.core.worldToScreen(prim.center.x, prim.center.y);
+                        const screenRadius = prim.radius * this.core.viewScale;
+                        this.ctx.moveTo(screenCenter.x + screenRadius, screenCenter.y);
+                        this.ctx.arc(screenCenter.x, screenCenter.y, screenRadius, 0, Math.PI * 2);
+                    }
+                }
+                this.ctx.stroke();
+            }
 
             this.ctx.restore();
         }

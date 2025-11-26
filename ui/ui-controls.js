@@ -194,6 +194,21 @@
                     }
                 }
 
+                if (option === 'showPreprocessed' && isChecked) {
+                    const arcToggle = document.getElementById('enable-arc-reconstruction');
+                    if (arcToggle && arcToggle.checked) {
+                        arcToggle.checked = false;
+                        this.renderer.setOptions({ enableArcReconstruction: false });
+                    }
+                }
+                if (option === 'enableArcReconstruction' && isChecked) {
+                    const prepToggle = document.getElementById('show-preprocessed');
+                    if (prepToggle && prepToggle.checked) {
+                        prepToggle.checked = false;
+                        this.renderer.setOptions({ showPreprocessed: false });
+                    }
+                }
+
                 // 4. Perform Action
                 switch (action) {
                     case 'render':

@@ -85,6 +85,10 @@
     --color-debug-hole: #ff00ff;
     --color-debug-wireframe: #00ff00;
     --color-debug-bounds: #ff0000;
+
+    /* B&W Colors */
+    --color-bw-black: #000000;
+    --color-bw-white: #ffffff;
 }
 
 /* ============================================================================

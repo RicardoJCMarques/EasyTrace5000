@@ -579,6 +579,10 @@
                     wireframe: read('--color-debug-wireframe'),
                     bounds: read('--color-debug-bounds'),
                     hole: read('--color-debug-hole')
+                },
+                bw: {
+                    black: read('--color-bw-black'),
+                    white: read('--color-bw-white')
                 }
             };
 
