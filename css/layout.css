@@ -254,11 +254,11 @@
 .status-log-panel {
     position: fixed;
     bottom: var(--status-bar-height); /* Sits right on top of the footer */
-    
+
     /* Aligns to the canvas area */
     left: var(--sidebar-left-width);
     right: var(--sidebar-right-width);
-    
+
     height: 0; /* Hidden by default */
     background: var(--color-bg-primary); /* Darker background for contrast */
     border-top: 1px solid var(--color-border-primary);

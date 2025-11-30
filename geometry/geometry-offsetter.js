@@ -204,7 +204,7 @@
                     } else {
                         this.debug(`Using polygon offset for path (no arcs)`);
                     }
-                    this.debug(`ABOUT TO CALL offsetPath (hasArcs=${hasArcs})`);
+                    this.debug(`Calling offsetPath() (hasArcs=${hasArcs})`);
                     const result = this.offsetPath(primitive, distance);
                     this.debug('offsetPath returned:', result);
                     return result;
@@ -243,22 +243,22 @@
 
             this.debug(`Offsetting circle with ${circle.radius}r to new radius ${newRadius}r`);
 
-            // 1. Create a new, analytic CirclePrimitive for the offset
+            // Create a new, analytic CirclePrimitive for the offset
             const offsetCirclePrimitive = new CirclePrimitive(
                 circle.center, 
                 newRadius, 
                 { ...circle.properties }
             );
 
-            // 2. Convert this new analytic primitive into a "One Rule" PathPrimitive
+            // Convert this new analytic primitive into a "One Rule" PathPrimitive
             const offsetPath = GeometryUtils.primitiveToPath(offsetCirclePrimitive);
-            
+
             if (!offsetPath || !offsetPath.contours || offsetPath.contours.length === 0) {
                 this.debug(`Tessellation of offset circle failed`);
                 return null;
             }
 
-            // 3. Add the required offset metadata to the final PathPrimitive.
+            // Add the required offset metadata to the final PathPrimitive.
             offsetPath.properties = {
                 ...offsetPath.properties,
                 isOffset: true,
@@ -267,7 +267,7 @@
                 sourcePrimitiveId: circle.id,
             };
 
-            // 4. Post-process the newly registered curve IDs to mark them as offset-derived.
+            // Post-process the newly registered curve IDs to mark them as offset-derived.
             const contour = offsetPath.contours[0];
             if (window.globalCurveRegistry && contour.curveIds) {
                 contour.curveIds.forEach(id => {
@@ -626,9 +626,9 @@
                     const jointPoints = this._createMiterBevelJoint(seg1, seg2, miterLimit);
                     finalPoints.push(...jointPoints);
                 } else {
-                    // For round joints (external), add the segment's end, then the arc.
-                    // Must include the very first segment's start point.
+                    // For round joints (external), add the segment's end, then the arc
                     if (finalPoints.length === 0) {
+                        // Must include the start point from the first segment
                         finalPoints.push(seg1.p1);
                     }
                     finalPoints.push(seg1.p2);
@@ -684,7 +684,7 @@
 
                 const arc = arcMap.get(startIndex);
 
-                // Check if an arc starts here AND ends at the next point
+                // Check if an arc starts here and ends at the next point
                 if (arc && arc.endIndex === endIndex) {
                     // Arc segment
                     const newRadius = arc.radius + (normalDirection * offsetDist);

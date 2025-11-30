@@ -234,22 +234,22 @@
 
                 // Note: Explicit lineTo is safer for clean shapes than relying on corner points in arcs. // Review - What now? What does this even mean?
 
-                // 1. Move to Top-Left of the straight part
+                // Move to Top-Left of the straight part
                 path2d.moveTo(pTL.x, pTL.y);
 
-                // 2. Line to Top-Right
+                // Line to Top-Right
                 path2d.lineTo(pTR.x, pTR.y);
 
-                // 3. Right Cap (Center cRight, start -PI/2, end PI/2)
+                // Right Cap (Center cRight, start -PI/2, end PI/2)
                 // Add rotation to angles
                 path2d.arc(cRight.x, cRight.y, r, -Math.PI/2 + rad, Math.PI/2 + rad);
 
-                // 4. Bottom Line is drawn automatically by connecting to next arc start? 
+                // Bottom Line is drawn automatically by connecting to next arc start? 
                 // Standard arc() connects previous point to start point but be explicit for the Bottom-Left corner.
                 const pBL = rot(-iw, r);
                 path2d.lineTo(pBL.x, pBL.y);
 
-                // 5. Left Cap (Center cLeft, start PI/2, end 3PI/2)
+                // Left Cap (Center cLeft, start PI/2, end 3PI/2)
                 path2d.arc(cLeft.x, cLeft.y, r, Math.PI/2 + rad, -Math.PI/2 + rad);
 
             } else {
@@ -295,21 +295,21 @@
         renderToolPreview(primitive, color, context) {
             this.ctx.save();
 
-            // A. Handle Strategy Layer Peck Marks
+            // Handle Strategy Layer Peck Marks
             if (primitive.properties?.role === 'peck_mark') {
                 this.renderPeckMark(primitive, context);
                 this.ctx.restore();
                 return;
             }
 
-            // B. Special Case: Centerline Slot Path (New Accessory Method)
+            // Special Case: Centerline Slot Path
             if (primitive.properties?.isCenterlinePath) {
                 this.renderCenterlineSlot(primitive, context);
                 this.ctx.restore();
                 return;
             }
 
-            // C. Standard Tool Preview
+            // Standard Tool Preview
             const toolDiameter = context.toolDiameter || 
                                 context.layer?.metadata?.toolDiameter || 
                                 primitive.properties?.toolDiameter; 
@@ -321,9 +321,9 @@
             this.ctx.restore();
         }
 
-        // Main Offset Renderer (The Geometry Lines)
+        // Main Offset Renderer (Base offset geometry lines)
         renderOffsetPrimitive(primitive, color, context) {
-            // A. Handle Strategy Layer Peck Marks
+            // Handle Strategy Layer Peck Marks
             if (primitive.properties?.isToolPeckMark || primitive.properties?.role === 'peck_mark') {
                 this.renderPeckMark(primitive, context);
                 return;
@@ -332,7 +332,7 @@
             const markSize = (window.PCBCAMConfig.renderer.primitives.sourceDrillMarkSize || 0.5);
             const lineWidth = (window.PCBCAMConfig.renderer.primitives.offsetStrokeWidth || 2) / this.core.viewScale;
 
-            // B. Special Case: Centerline Slot Path (Wireframe View)
+            // Special Case: Centerline Slot Path (Wireframe View)
             if (primitive.properties?.isCenterlinePath) {
                 const pts = primitive.contours[0].points;
                 const start = pts[0];
@@ -380,7 +380,7 @@
                 return;
             }
 
-            // C. Special Case: Undersized Milling Path (Internal Yellow Offset)
+            // Special Case: Undersized Milling Path (Internal Yellow Offset)
             if (primitive.properties?.role === 'drill_milling_path') {
                 const toolRelation = primitive.properties.toolRelation || 'exact';
                 const statusColor = this._getStatusColor(toolRelation, color);
@@ -406,7 +406,7 @@
                 return;
             }
 
-            // D. Standard Offsets (Default Logic)
+            // Standard Offsets (Default Logic)
             const offsetDistance = context.distance || primitive.properties?.offsetDistance || 0;
             const isInternal = offsetDistance < 0;
             const primColors = this.core.colors.primitives;
@@ -431,31 +431,31 @@
         renderToolPreview(primitive, color, context) {
         this.ctx.save();
 
-        // A. Handle Strategy Layer Peck Marks
+        // Handle Strategy Layer Peck Marks
         if (primitive.properties?.role === 'peck_mark') {
             this.renderPeckMark(primitive, context);
             this.ctx.restore();
             return;
         }
 
-        // B. Special Case: Centerline Slot Path Preview
+        // Special Case: Centerline Slot Path Preview
         if (primitive.properties?.isCenterlinePath) {
             this.renderCenterlineSlot(primitive, context);
             this.ctx.restore();
             return;
         }
 
-        // C. Standard Tool Preview (Generic Milling/Cutout/Undersized Drill)
+        // Standard Tool Preview (Generic Milling/Cutout/Undersized Drill)
         const toolDiameter = context.toolDiameter || 
                             context.layer?.metadata?.toolDiameter || 
                             primitive.properties?.toolDiameter; 
 
-        // 1. Draw the Blue Preview Stroke
+        // Draw the Blue Preview Stroke
         this._setStrokeState(color, toolDiameter);
         this._drawPrimitivePath(primitive);
         this.ctx.stroke();
 
-        // 2. Draw Yellow Center Marks for Undersized Drill Ops (Integrated)
+        // Draw Yellow Center Marks for Undersized Drill Ops (Integrated)
         if (primitive.properties?.toolRelation === 'undersized') {
             const warnColor = this.core.colors.primitives.peckMarkWarn;
             const markSize = (window.PCBCAMConfig.renderer.primitives.sourceDrillMarkSize || 0.5);
@@ -482,7 +482,7 @@
         this.ctx.restore();
     }
 
-        // Helper: Consolidated Path Drawing Logic (Does not stroke/fill, just defines path)
+        // Consolidated Path Drawing Logic (Does not stroke/fill, just defines path)
         _drawPrimitivePath(primitive) {
             this.ctx.beginPath();
             
@@ -800,7 +800,7 @@
             if (primitive.type === 'circle') {
                 this.ctx.strokeStyle = accentColor;
                 this.ctx.lineWidth = (primitivesConfig.reconstructedStrokeWidth) / this.core.viewScale;
-                this.ctx.fillStyle = fillColor + '40';
+                this.ctx.fillStyle = fillColor;
 
                 this.ctx.beginPath();
                 this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, 2 * Math.PI);
@@ -828,7 +828,7 @@
                 const dash = primitivesConfig.reconstructedPathDash;
                 this.ctx.setLineDash([dash[0] / this.core.viewScale, dash[1] / this.core.viewScale]);
 
-                this.renderPrimitiveNormal(primitive, fillColor + '40', primColors.reconstructedPath);
+                this.renderPrimitiveNormal(primitive, fillColor, primColors.reconstructedPath);
             }
 
             this.ctx.restore();
@@ -1112,7 +1112,7 @@
             if (!primitive) return;
 
             // Read from contours
-            if (options.debugPaths && primitive.contours) {
+            if (options.debugArcs && primitive.contours) {
                 for (const contour of primitive.contours) {
                     this.renderArcSegmentDebug(contour);
                 }
@@ -1122,7 +1122,7 @@
                 this.renderCurveDebugPoints(primitive);
             }
 
-            if (options.debugPaths && primitive.contours) {
+            if (options.debugArcs && primitive.contours) {
                 this.renderContourDebug(primitive);
             }
         }
@@ -1188,11 +1188,6 @@
                 this.ctx.arc(centerScreen.x, centerScreen.y, radiusScreen,
                             startAngle, endAngle, anticlockwise);
                 this.ctx.stroke();
-
-                this.ctx.fillStyle = color;
-                this.ctx.beginPath();
-                this.ctx.arc(centerScreen.x, centerScreen.y, primitivesConfig.debugArcCenterSize);
-                this.ctx.fill();
 
                 this.ctx.fillStyle = this.core.colors.primitives.debugLabel;
                 this.ctx.strokeStyle = this.core.colors.primitives.debugLabelStroke;

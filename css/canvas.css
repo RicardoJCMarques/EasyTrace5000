@@ -105,14 +105,14 @@
     --color-op-clearing: var(--color-operation-clearing, #44ff88);
     --color-op-cutout: var(--color-operation-cutout, #ff00ff);
     --color-op-toolpath: var(--color-operation-toolpath, #00ffff);
-    
+
     /* Canvas-specific colors */
     --color-canvas-origin: var(--color-canvas-origin, #ffffff);
     --color-canvas-origin-outline: var(--color-canvas-origin-outline, #000000);
     --color-canvas-bounds: var(--color-canvas-bounds, #ff0000);
     --color-canvas-ruler: var(--color-canvas-ruler, #888888);
     --color-canvas-ruler-text: var(--color-canvas-ruler-text, #cccccc);
-    
+
     /* Wireframe settings */
     --wireframe-thickness-base: 0.08;
     --wireframe-thickness-min: 0.02;

@@ -542,7 +542,7 @@
          * Converts an arc to a polygon, returning a structured object containing points, arcSegments, and curveIds.
          */
         arcToPolygon(arc, width) {
-            this.debug(`[GeoUtils] arcToPolygon called for Arc ${arc.id}, r=${arc.radius.toFixed(3)}, width=${width.toFixed(3)}`);
+            this.debug(`arcToPolygon called for Arc ${arc.id}, r=${arc.radius.toFixed(3)}, width=${width.toFixed(3)}`);
             const points = [];
             const halfWidth = width / 2;
             const innerR = arc.radius - halfWidth;
@@ -569,7 +569,7 @@
                     });
                 }
 
-                this.debug(`[GeoUtils] arcToPolygon fallback to circle. Points: ${points.length}, ID: ${curveId}`);
+                this.debug(`arcToPolygon fallback to circle. Points: ${points.length}, ID: ${curveId}`);
                 // Return structured object
                 const contour = {
                     points: points,

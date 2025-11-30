@@ -619,8 +619,8 @@
                 return [];
             }
 
-            // Determine Direction and Mode based on Operation AND Cut Side
-            let isInternal = operation.type === 'clearing'; // Default clearing is Inside
+            // Determine Direction and Mode based on Operation and Cut Side
+            let isInternal = operation.type === 'clearing';
             let isOnLine = false;
 
             if (operation.type === 'cutout') {
@@ -630,7 +630,7 @@
                 } else if (settings.cutSide === 'on') {
                     isOnLine = true;
                 }
-                // 'outside' leaves isInternal as false (default)
+                // 'outside' leaves isInternal as false
             }
 
             let offsetDistances;
@@ -1177,7 +1177,7 @@
                 throw new Error(`Operation ${operationId} not found.`);
             }
 
-            // Get ALL parameters from manager
+            // Get all parameters from manager
             const params = parameterManager.getAllParameters(operationId);
 
             // Get global settings

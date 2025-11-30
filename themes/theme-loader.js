@@ -209,7 +209,8 @@
 
             // Debug colors
             if (colors.debug) {
-                root.style.setProperty('--color-debug-hole', colors.debug.hole);
+                root.style.setProperty('--color-debug-points', colors.debug.points);
+                root.style.setProperty('--color-debug-arcs', colors.debug.arcs);
                 root.style.setProperty('--color-debug-wireframe', colors.debug.wireframe);
                 root.style.setProperty('--color-debug-bounds', colors.debug.bounds);
             }

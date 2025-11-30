@@ -88,7 +88,7 @@ Exported from the current canvas view.
 
             this.debug(`Exporting current canvas view to SVG: ${filename}`);
 
-            // 1. Calculate bounds from all visible layers
+            // Calculate bounds from all visible layers
             this.core.calculateOverallBounds();
             const bounds = this.core.bounds;
 
@@ -100,24 +100,24 @@ Exported from the current canvas view.
                 return null;
             }
 
-            // 2. Create root <svg> element
+            // Create root <svg> element
             const svg = this._createSVGRoot(bounds, exportConfig);
 
-            // 3. Add metadata
+            // Add metadata
             if (exportConfig.includeMetadata) {
                 svg.appendChild(this._createExportComment());
             }
 
-            // 4. Create <defs> with <style>
+            // Create <defs> with <style>
             if (exportConfig.embedStyles) {
                 svg.appendChild(this._createDefs(exportConfig));
             }
 
-            // 5. Create main <g> with transforms
+            // Create main <g> with transforms
             const mainGroup = this._createMainGroup(exportConfig);
             svg.appendChild(mainGroup);
 
-            // 6. Serialize and download
+            // Serialize and download
             return this._serializeAndDownload(svg, filename, exportConfig);
         }
 
@@ -160,71 +160,81 @@ Exported from the current canvas view.
             const style = document.createElementNS(this.svgNS, 'style');
             style.setAttribute('type', 'text/css');
 
-            const colors = this.core.colors.operations; 
+            const colors = this.core.colors.operations;
             const canvasColors = this.core.colors.canvas;
             const debugColors = this.core.colors.debug;
+            const geometryColors = this.core.colors.geometry;
 
             const isWireframe = this.core.options.showWireframe;
-            const wireframeColor = (debugColors && debugColors.wireframe) ? debugColors.wireframe : '#00ff00';
+            const wireframeColor = debugColors?.wireframe || '#00ff00';
             const isBlackAndWhite = this.core.options.blackAndWhite;
 
             this.debug(`Generating styles. isWireframe = ${isWireframe}`);
 
-            const wireframeStroke = `fill: none; stroke: ${wireframeColor}; stroke-width: 0.05;`;
-
-            // Fallback colors added for safety
-            const traceStyles = `fill: none; stroke: ${colors.isolation}; stroke-linecap: round; line-join: round;`;
-            // Use 6-digit.
-            const cutoutStyles = `fill: none; stroke: ${colors.cutout.substring(0, 7)}; stroke-width: 0.1;`;
+            const wireframeStroke = `fill: none; stroke: ${wireframeColor}; stroke-width: 0.025;`;
+            const roundCaps = 'stroke-linecap: round; stroke-linejoin: round;';
 
             let css = '';
 
             if (isBlackAndWhite) {
-                // Photomask style: black background, white features
                 const white = this.core.colors.bw.white;
                 const black = this.core.colors.bw.black;
                 css = `
                     svg { background: ${black}; }
                     .pcb-source-isolation,
                     .pcb-source-drill,
+                    .pcb-source-clearing,
                     .pcb-fused,
-                    .pcb-preprocessed-dark,
-                    .pcb-offset,
-                    .pcb-preview,
-                    .pcb-trace { fill: ${white}; stroke: none; }
+                    .pcb-preprocessed-dark { fill: ${white}; stroke: none; }
                     .pcb-fused { fill-rule: evenodd; }
-                    .pcb-cutout { fill: none; stroke: ${white}; stroke-width: 0.1; }
+                    .pcb-source-cutout { fill: none; stroke: ${white}; stroke-width: 0.1; }
                     .pcb-preprocessed-clear { fill: ${black}; stroke: none; }
+                    .pcb-offset-external,
+                    .pcb-offset-internal,
+                    .pcb-offset-on { fill: none; stroke: ${white}; ${roundCaps} }
+                    .pcb-preview { fill: none; stroke: ${white}; ${roundCaps} }
                 `;
             } else if (isWireframe) {
-                // Wireframe Mode
                 css = `
                     .pcb-source-isolation,
                     .pcb-source-drill,
+                    .pcb-source-clearing,
+                    .pcb-source-cutout,
                     .pcb-fused,
                     .pcb-preprocessed-dark,
                     .pcb-preprocessed-clear,
-                    .pcb-offset,
+                    .pcb-offset-external,
+                    .pcb-offset-internal,
+                    .pcb-offset-on,
                     .pcb-preview,
                     .pcb-trace { ${wireframeStroke} }
                     .pcb-fused { fill-rule: evenodd; }
-                    .pcb-cutout { ${cutoutStyles} }
                 `;
             } else {
-                // Solid fill mode
-                const solidFill = 'stroke: none;';
-                const bgColor = (canvasColors && canvasColors.background) ? canvasColors.background : '#0f0f0f';
+                const bgColor = canvasColors.background;
+                const offsetColors = geometryColors.offset;
+                const previewColor = geometryColors.preview;
 
                 css = `
-                    .pcb-source-isolation { fill: ${colors.isolation}; ${solidFill} }
-                    .pcb-source-drill { fill: ${colors.drill}; ${solidFill} }
-                    .pcb-fused { fill: ${colors.fused || colors.isolation}; ${solidFill} fill-rule: evenodd; }
-                    .pcb-preprocessed-dark { fill: ${colors.isolation}; ${solidFill} }
-                    .pcb-preprocessed-clear { fill: ${bgColor}; ${solidFill} }
-                    .pcb-trace { ${traceStyles} }
-                    .pcb-cutout { ${cutoutStyles} }
-                    .pcb-offset { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-                    .pcb-preview { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+                    .pcb-source-isolation { fill: ${colors.isolation}; stroke: none; }
+                    .pcb-source-drill { fill: ${colors.drill}; stroke: none; }
+                    .pcb-source-clearing { fill: ${colors.clearing}; stroke: none; }
+                    .pcb-source-cutout { fill: ${colors.cutout}; stroke: none; }
+                    .pcb-fused { fill: ${colors.fused || colors.isolation}; stroke: none; fill-rule: evenodd; }
+                    .pcb-preprocessed-dark { fill: ${colors.isolation}; stroke: none; }
+                    .pcb-preprocessed-clear { fill: ${bgColor}; stroke: none; }
+                    .pcb-trace { fill: none; stroke: ${colors.isolation}; ${roundCaps} }
+                    .pcb-offset-external { fill: none; stroke: ${offsetColors.external}; ${roundCaps} }
+                    .pcb-offset-internal { fill: none; stroke: ${offsetColors.internal}; ${roundCaps} }
+                    .pcb-offset-on { fill: none; stroke: ${offsetColors.on}; ${roundCaps} }
+                    .pcb-preview { fill: none; stroke: ${previewColor}; ${roundCaps} }
+                    .pcb-peck-mark { fill: none; stroke: ${this.core.colors.primitives.peckMarkGood}; }
+                    .pcb-drill-hole { fill: none; stroke: ${colors.drill}; }
+                    .pcb-drill-slot { fill: none; stroke: ${colors.drill}; }
+                    .pcb-drill-milling { fill: none; stroke: ${this.core.colors.primitives.peckMarkWarn}; ${roundCaps} }
+                    .pcb-peck-good { fill: ${this.core.colors.primitives.peckMarkGood}; stroke: ${this.core.colors.primitives.peckMarkGood}; }
+                    .pcb-peck-warn { fill: ${this.core.colors.primitives.peckMarkWarn}; stroke: ${this.core.colors.primitives.peckMarkWarn}; }
+                    .pcb-peck-error { fill: ${this.core.colors.primitives.peckMarkError}; stroke: ${this.core.colors.primitives.peckMarkError}; }
                 `;
             }
 
@@ -247,7 +257,7 @@ Exported from the current canvas view.
 
             if (viewState.rotation !== 0) {
                 const center = this.core.rotationCenter;
-                // Note: SVG rotation is clockwise, but Y-flip inverts it. Apply the *same* rotation angle as the canvas.
+                // Note: SVG rotation is clockwise, but Y-flip inverts it. Apply the same rotation angle as the canvas.
                 transform += ` rotate(${viewState.rotation} ${this._formatNumber(center.x, config.precision)} ${this._formatNumber(center.y, config.precision)})`;
             }
 
@@ -260,15 +270,46 @@ Exported from the current canvas view.
         }
 
         /**
-         * Iterates visible layers and populates the main group.
-         * @param {SVGElement} parentGroup - The main <g> to append to.
-         * @param {object} config - The export configuration.
+         * Iterates visible layers in proper z-order and populates the main group.
          */
         _exportVisibleLayers(parentGroup, config) {
             const visibleLayers = this.core.getVisibleLayers();
             const isWireframe = this.core.options.showWireframe;
 
-            visibleLayers.forEach((layer, name) => {
+            // Define z-order: bottom to top
+            const layerOrder = [
+                'cutout',       // Board outline at bottom
+                'source',       // Source geometry
+                'fused',        // Fused geometry
+                'preprocessed', // Preprocessed
+                'clearing',     // Clearing operations
+                'isolation',    // Isolation routing
+                'drill',        // Drill holes
+                'offset',       // Offset paths
+                'preview',      // Tool previews on top
+            ];
+
+            // Sort layers by z-order
+            const sortedLayers = Array.from(visibleLayers.entries()).sort((a, b) => {
+                const layerA = a[1];
+                const layerB = b[1];
+                
+                const getOrder = (layer) => {
+                    if (layer.isPreview) return layerOrder.indexOf('preview');
+                    if (layer.isOffset) return layerOrder.indexOf('offset');
+                    if (layer.isFused) return layerOrder.indexOf('fused');
+                    if (layer.isPreprocessed) return layerOrder.indexOf('preprocessed');
+                    if (layer.type === 'cutout') return layerOrder.indexOf('cutout');
+                    if (layer.type === 'drill') return layerOrder.indexOf('drill');
+                    if (layer.type === 'clearing') return layerOrder.indexOf('clearing');
+                    if (layer.type === 'isolation') return layerOrder.indexOf('isolation');
+                    return layerOrder.indexOf('source');
+                };
+                
+                return getOrder(layerA) - getOrder(layerB);
+            });
+
+            for (const [name, layer] of sortedLayers) {
                 const layerGroup = document.createElementNS(this.svgNS, 'g');
                 layerGroup.setAttribute('id', `layer-${name}`);
                 layerGroup.setAttribute('data-layer-type', layer.type);
@@ -287,7 +328,7 @@ Exported from the current canvas view.
                 if (layerGroup.hasChildNodes()) {
                     parentGroup.appendChild(layerGroup);
                 }
-            });
+            }
         }
 
         /**
@@ -326,79 +367,109 @@ Exported from the current canvas view.
 
         /**
          * Applies the correct semantic CSS class and dynamic styles.
-         * @param {SVGElement} element - The SVG element to style.
-         * @param {object} primitive - The geometry primitive.
-         * @param {object} layer - The layer this primitive belongs to.
          */
         _applySemanticClass(element, primitive, layer, isWireframe) {
-            const props = primitive.properties;
-            // Get the layer state flags
-            const isPreprocessed = layer.isPreprocessed;
-            const isFused = layer.isFused;
+            const props = primitive.properties || {};
 
-            // Check for Preprocessed state
-            if (isPreprocessed) {
-                // Preprocessed geometry *always* uses fill, based on polarity
+            // Preview layers
+            if (layer.isPreview) {
+                element.setAttribute('class', 'pcb-preview');
+                if (!isWireframe && layer.metadata?.toolDiameter) {
+                    element.setAttribute('stroke-width', layer.metadata.toolDiameter);
+                }
+                return;
+            }
+
+            // Offset layers
+            if (layer.isOffset) {
+                const offsetType = layer.offsetType || 'external';
+                element.setAttribute('class', `pcb-offset-${offsetType}`);
+                if (!isWireframe) {
+                    // Use a thin stroke for offset outlines
+                    element.setAttribute('stroke-width', '0.025');
+                }
+                return;
+            }
+
+            // Preprocessed geometry
+            if (layer.isPreprocessed) {
                 const polarity = props.polarity || 'dark';
                 element.setAttribute('class',
                     polarity === 'clear' ? 'pcb-preprocessed-clear' : 'pcb-preprocessed-dark'
                 );
-                // Ensure no stroke attributes are added later
-                element.removeAttribute('stroke');
-                element.removeAttribute('stroke-width');
-                return; // Styling is complete for preprocessed
+                return;
             }
 
-            // If not preprocessed, continue with other checks...
-            const isStrokedPath = (props.isTrace || props.stroke === true) && layer.type !== 'cutout';
+            // Fused geometry
+            if (layer.isFused) {
+                element.setAttribute('class', 'pcb-fused');
+                return;
+            }
 
+            // Stroked paths (traces)
+            const isStrokedPath = (props.isTrace || props.stroke === true) && layer.type !== 'cutout';
             if (isStrokedPath) {
                 element.setAttribute('class', 'pcb-trace');
-                // Apply inline stroke-width ONLY if not in wireframe
-                if (!isWireframe) {
-                    const strokeWidthValue = props.strokeWidth;
-                    let widthToSet; // Fallback
-                    if (typeof strokeWidthValue === 'number' && isFinite(strokeWidthValue) && strokeWidthValue > 0) {
-                        widthToSet = strokeWidthValue.toString();
-                    }
-                    // Use setAttribute('style', ...) OR individual stroke attributes
-                    element.setAttribute('stroke-width', widthToSet);
-                    // Ensure fill is none if setting stroke explicitly
+                if (!isWireframe && props.strokeWidth) {
+                    element.setAttribute('stroke-width', props.strokeWidth);
                     element.setAttribute('fill', 'none');
                 }
                 return;
             }
 
-            // Cutout check
-            if (layer.type === 'cutout') {
-                element.setAttribute('class', 'pcb-cutout');
+            // Peck marks
+            if (props.role === 'peck_mark') {
+                element.setAttribute('class', 'pcb-peck-mark');
                 return;
             }
 
-            // Offset layer styling
-            if (layer.isOffset) {
-                element.setAttribute('class', 'pcb-offset');
+            // Drill-specific roles
+            const role = props.role;
+            if (role) {
+                switch (role) {
+                    case 'drill_hole':
+                        element.setAttribute('class', 'pcb-drill-hole');
+                        if (!isWireframe && props.diameter) {
+                            element.setAttribute('stroke-width', '0.05');
+                        }
+                        return;
+                    case 'drill_slot':
+                        element.setAttribute('class', 'pcb-drill-slot');
+                        if (!isWireframe) {
+                            element.setAttribute('stroke-width', '0.05');
+                        }
+                        return;
+                    case 'drill_milling_path':
+                        element.setAttribute('class', 'pcb-drill-milling');
+                        if (!isWireframe) {
+                            element.setAttribute('stroke-width', '0.05');
+                        }
+                        return;
+                    case 'peck_mark':
+                        const relation = props.toolRelation || 'exact';
+                        const peckClass = relation === 'oversized' ? 'pcb-peck-error' :
+                                        relation === 'undersized' ? 'pcb-peck-warn' : 'pcb-peck-good';
+                        element.setAttribute('class', peckClass);
+                        return;
+                }
             }
 
-            // Preview layer styling
-            if (layer.isPreview) {
-                element.setAttribute('class', 'pcb-preview');
+            // Source geometry by operation type
+            switch (layer.type) {
+                case 'cutout':
+                    element.setAttribute('class', 'pcb-source-cutout');
+                    break;
+                case 'drill':
+                    element.setAttribute('class', 'pcb-source-drill');
+                    break;
+                case 'clearing':
+                    element.setAttribute('class', 'pcb-source-clearing');
+                    break;
+                case 'isolation':
+                default:
+                    element.setAttribute('class', 'pcb-source-isolation');
+                    break;
             }
-
-            // Fused check
-            if (isFused) {
-                element.setAttribute('class', 'pcb-fused');
-                return;
-            }
-
-            // Drill check
-            if (layer.type === 'drill' || props.role === 'drill_hole' || props.role === 'peck_mark') {
-                element.setAttribute('class', 'pcb-source-drill');
-                return;
-            }
-
-            // Default (Source Isolation, etc.)
-            element.setAttribute('class', 'pcb-source-isolation');
         }
 
         // Geometry Converters

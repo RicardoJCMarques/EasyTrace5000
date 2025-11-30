@@ -44,7 +44,7 @@
     --sidebar-right-width: 380px;
     --status-bar-height: 44px;
     --section-header-height: 36px;
-    
+
     /* Spacing Scale */
     --spacing-xs: 4px;
     --spacing-sm: 8px;
@@ -52,18 +52,18 @@
     --spacing-lg: 16px;
     --spacing-xl: 24px;
     --spacing-xxl: 32px;
-    
+
     /* Border Radius */
     --radius-sm: 2px;
     --radius: 4px;
     --radius-md: 6px;
     --radius-lg: 8px;
-    
+
     /* Shadows */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
-    
+
     /* Typography */
     --font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
     --font-mono: 'SF Mono', Consolas, 'Courier New', monospace;
@@ -76,7 +76,7 @@
     --line-height-tight: 1.25;
     --line-height-base: 1.6;
     --line-height-relaxed: 1.75;
-    
+
     /* Z-Index Scale */
     --z-base: 1;
     --z-dropdown: 100;
@@ -84,7 +84,7 @@
     --z-overlay: 800;
     --z-modal: 1000;
     --z-tooltip: 10000;
-    
+
     /* Touch Targets */
     --touch-target-min: 44px;
     --touch-target-compact: 36px;

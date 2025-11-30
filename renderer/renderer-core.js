@@ -80,10 +80,14 @@
                 showDrills: defaultconfig.showDrills,
                 showCutouts: defaultconfig.showCutouts,
                 fuseGeometry: defaultconfig.fuseGeometry,
-                showPreprocessed: false,
+                showOffsets: defaultconfig.showOffsets,
+                showPreviews: defaultconfig.showPreviews,
+                showPreprocessed: defaultconfig.showPreprocessed,
+                enableArcReconstruction: defaultconfig.enableArcReconstruction,
                 blackAndWhite: defaultconfig.blackAndWhite,
                 debugPoints: defaultconfig.debugPoints,
-                debugPaths: defaultconfig.debugPaths,
+                debugArcs: defaultconfig.debugArcs,
+                showToolPreview: defaultconfig.showToolPreview,
                 theme: defaultconfig.theme,
                 showStats: defaultconfig.showStats,
                 showToolPreview: false
@@ -578,7 +582,8 @@
                 debug: {
                     wireframe: read('--color-debug-wireframe'),
                     bounds: read('--color-debug-bounds'),
-                    hole: read('--color-debug-hole')
+                    points: read('--color-debug-points'),
+                    arcs: read('--color-debug-arcs')
                 },
                 bw: {
                     black: read('--color-bw-black'),

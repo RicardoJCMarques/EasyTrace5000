@@ -141,6 +141,7 @@
                     fuseGeometry: config.rendering.defaultOptions.fuseGeometry,
                     blackAndWhite: config.rendering.defaultOptions.blackAndWhite,
                     debugPoints: config.rendering.defaultOptions.debugPoints,
+                    debugArcs: config.rendering.defaultOptions.debugArcs,
                     theme: document.documentElement.getAttribute('data-theme')
                 });
 

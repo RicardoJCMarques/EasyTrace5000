@@ -126,7 +126,7 @@
       "preprocessed": "Preprocessed",
       "arcReconstruction": "Arc Reconstruction",
       "debugPoints": "Debug Points",
-      "debugPaths": "Debug Paths",
+      "debugArcs": "Debug Arcs",
       "bwMode": "B&W Mode",
       "verboseDebug": "Verbose Debug",
       "tooltips": {
@@ -351,7 +351,7 @@
         "safeZ": "Maximum safe height for rapid moves and tool changes (G0). Must clear all clamps and fixtures.",
         "travelZ": "Height above the board (Z=0) where the tool travels between cutting paths.",
         "rapidFeed": "The feed rate (mm/min) for G0 rapid movements (travel and safe Z moves).",
-        "postProcessor": "Selects the G-code dialect for your specific CNC controller (e.g., GRBL, Marlin).",
+        "postProcessor": "Selects the G-code dialect for your specific CNC controller (Non-Grbl modules need more testing, use with caution).",
         "gcodeUnits": "Sets the units for the exported G-code file (G21 for mm, G20 for inches)."
       },
       "vizPanel": {
@@ -364,8 +364,8 @@
         "fusionMode": "Merge all overlapping isolation/clearing geometry. Required for Arc Reconstruction.",
         "preprocessed": "Shows the geometry *after* fusion but *before* arc reconstruction. Requires Fusion Mode.",
         "arcReconstruction": "Attempt to rebuild arcs from line segments in fused geometry. Requires Fusion Mode.",
-        "debugPoints": "Show the individual vertices (points) for all paths.",
-        "debugPaths": "Show extra debugging information on paths, like winding direction.",
+        "debugPoints": "Show all individual points in all geometry.",
+        "debugArcs": "Show all successfully reconstructed arcs/circles",
         "bwMode": "Render the canvas in black and white, ignoring layer colors.",
         "verboseDebug": "Show 'debug' level messages in the status log panel. Requires a page reload to see startup messages."
       },

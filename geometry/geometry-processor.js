@@ -86,7 +86,7 @@
 
         // Main fusion pipeline with arc reconstruction
         async fuseGeometry(primitives, options = {}) {
-            this.debug('fuseGeometry() - Entered fuseGeometry. Received options:', options);
+            this.debug('Entered fuseGeometry(). Received options:', options);
 
             await this.ensureInitialized();
 
@@ -99,26 +99,26 @@
 
             this.debug(`=== FUSION PIPELINE START ===`);
             this.debug(`Input: ${primitives.length} primitives`);
-            this.debug(`Arc reconstruction: ${fusionOptions.enableArcReconstruction ? 'ENABLED' : 'DISABLED'}`);
+            this.debug(`Arc reconstruction: ${fusionOptions.enableArcReconstruction ? 'Enabled' : 'Disabled'}`);
 
-            // Step 1: Cache originals with indices
+            // Cache originals with indices
             primitives.forEach((p, idx) => {
                 p._originalIndex = idx;
             });
             this.cachedStates.originalPrimitives = primitives;
 
-            // Step 2: Count registered curves from global registry
+            // Count registered curves from global registry
             if (fusionOptions.enableArcReconstruction && window.globalCurveRegistry) {
                 const registryStats = window.globalCurveRegistry.getStats();
                 this.stats.curvesRegistered = registryStats.registrySize;
-                
+
                 this.debug(`Global registry has ${registryStats.registrySize} curves`);
                 this.debug(`  Circles: ${registryStats.circles}`);
                 this.debug(`  Arcs: ${registryStats.arcs}`);
                 this.debug(`  End caps: ${registryStats.endCaps}`);
             }
 
-            // Step 3: Preprocess primitives (convert to polygons with metadata)
+            // Preprocess primitives (convert to polygons with metadata)
             const preprocessed = this._preprocessPrimitives(
                 this.cachedStates.originalPrimitives
             );
@@ -134,7 +134,7 @@
                 this.verifyMetadataPropagation(preprocessed, 'After preprocessing');
             }
 
-            // Step 4: Perform boolean fusion
+            // Perform boolean fusion
             const fused = await this._performFusion(preprocessed);
 
             // Verify metadata survival
@@ -147,8 +147,8 @@
 
         this.debug('About to check if (fusionOptions.enableArcReconstruction).');
         if (fusionOptions.enableArcReconstruction) {
-            this.debug('Entered Step 5 - Reconstruction - Received options:', options);
             this.debug(`=== RECONSTRUCTION PHASE ===`);
+            this.debug('Received options:', options);
 
             const preReconstructionCount = fused.length;
 
@@ -157,7 +157,7 @@
 
             const stats = this.arcReconstructor.getStats();
             this.stats.curvesReconstructed = stats.reconstructed;
-            
+
             this.debug(`Reconstruction complete:`);
             this.debug(`  Primitives: ${preReconstructionCount} → ${finalGeometry.length}`);
             this.debug(`  Full circles reconstructed: ${stats.fullCircles}`);
@@ -171,7 +171,7 @@
 
         } else {
             // If reconstruction is disabled, the fused geometry is the final geometry.
-            console.log('[GeometryProcessor] Arc reconstruction is DISABLED, skipping block.');
+            this.debug('Arc reconstruction is Disabled, skipping block.');
             finalGeometry = fused;
         }
 

@@ -42,36 +42,36 @@
     --color-bg-tertiary: #242424;
     --color-bg-hover: #2a2a2a;
     --color-bg-active: #333333;
-    
+
     /* Text Colors */
     --color-text-primary: #e5e5e5;
     --color-text-secondary: #a0a0a0;
     --color-text-disabled: #606060;
     --color-text-hint: #666666;
-    
+
     /* Border Colors */
     --color-border-primary: #2a2a2a;
     --color-border-secondary: #3a3a3a;
     --color-border-focus: #4080ff;
-    
+
     /* Accent Colors */
     --color-accent-primary: #3b82f6;
     --color-accent-hover: #2563eb;
     --color-accent-active: #1d4ed8;
-    
+
     /* Semantic Colors */
     --color-success: #22c55e;
     --color-warning: #f59e0b;
     --color-error: #ef4444;
     --color-info: #06b6d4;
-    
+
     /* Operation Colors */
     --color-operation-isolation: #ff8844;
     --color-operation-drill: #4488ff;
     --color-operation-clearing: #44ff88;
     --color-operation-cutout: #ff00ff;
     --color-operation-toolpath: #00ffff;
-    
+
     /* Canvas Colors */
     --color-canvas-bg: #0f0f0f;
     --color-canvas-grid: #333333;
@@ -80,9 +80,10 @@
     --color-canvas-bounds: #ff0000;
     --color-canvas-ruler: #888888;
     --color-canvas-ruler-text: #cccccc;
-    
+
     /* Debug Colors */
-    --color-debug-hole: #ff00ff;
+    --color-debug-points: #ff00ff;
+    --color-debug-arcs: #00ffff;
     --color-debug-wireframe: #00ff00;
     --color-debug-bounds: #ff0000;
 
@@ -95,14 +96,14 @@
    THEME TOGGLE BUTTON
    ============================================================================ */
 
-   /* Icon switching */
+/* Icon switching */
 .theme-toggle svg {
     position: absolute;
     width: 24x;
     height: 24px;
 }
 
-/* Default (Dark Mode): Show SUN icon */
+/* Dark theme (default): Show sun icon */
 .theme-toggle .sun-icon {
     opacity: 1;
     transform: rotate(0deg) scale(1);
@@ -113,7 +114,7 @@
     transform: rotate(-180deg) scale(0.8);
 }
 
-/* Light theme active: Show MOON icon */
+/* Light theme: Show moon icon */
 [data-theme="light"] .theme-toggle .sun-icon {
     opacity: 0;
     transform: rotate(180deg) scale(0.8);

@@ -132,7 +132,7 @@
             attachTo('show-preprocessed', 'tooltips.vizPanel.preprocessed');
             attachTo('enable-arc-reconstruction', 'tooltips.vizPanel.arcReconstruction');
             attachTo('debug-points', 'tooltips.vizPanel.debugPoints');
-            attachTo('debug-paths', 'tooltips.vizPanel.debugPaths');
+            attachTo('debug-arcs', 'tooltips.vizPanel.debugArcs');
             attachTo('black-and-white', 'tooltips.vizPanel.bwMode');
             attachTo('debug-log-toggle', 'tooltips.vizPanel.verboseDebug');
         }

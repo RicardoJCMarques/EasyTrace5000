@@ -90,7 +90,8 @@
       "debugLabelStroke": "#000000"
     },
     "debug": {
-      "hole": "#ff00ff",
+      "points": "#ff00ff",
+      "arcs": "#00ffff",
       "wireframe": "#00aa00",
       "bounds": "#ff0000"
     },

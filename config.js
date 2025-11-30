@@ -257,7 +257,8 @@ window.PCBCAMConfig = {
             holeRenderMode: 'proper',
             debugHoleWinding: false,
             showStats: false,
-            debugCurvePoints: false,
+            debugPoints: false,
+            debugArcs: false,
             showOffsets: true,                      // [ADDED] Default visibility for offset layers
             showPreviews: true,                     // [ADDED] Default visibility for preview layers
             showPreprocessed: false,                // [ADDED] Default visibility for pre-processed geometry
@@ -340,39 +341,39 @@ window.PCBCAMConfig = {
             statsBGWidth: 200,
             statsFont: '12px monospace'
         },
-        primitives: {                                // [ADDED] [HARDCODED in renderer-primitives.js]
-            offsetStrokeWidth: 2,
-            centerMarkStrokeWidth: 3,
-            sourceDrillStrokeWidth: 3,
-            sourceDrillMarkSize: 0.2,
-            sourceDrillMarkRatio: 0.4,
-            peckMarkStrokeWidth: 3,
-            peckMarkMarkSize: 0.2,
-            peckMarkMarkRatio: 0.4,
-            peckMarkDash: [0.15, 0.15],
-            peckMarkRingFactor: 1.3,
-            peckMarkLabelOffset: 0.3,
-            reconstructedStrokeWidth: 2,
-            reconstructedCenterSize: 2,
-            reconstructedPathDash: [5, 5],
-            defaultStrokeWidth: 0.1,
-            debugPointSize: 4,
-            debugPointFont: '10px monospace',
-            debugLabelLineWidth: 2,
-            debugArcStrokeWidth: 3,
-            debugArcCenterSize: 4,
-            debugArcFont: 'bold 12px monospace',
-            debugContourStrokeWidth: 2,
-            debugContourDash: [5, 5],
-            debugContourFont: '12px monospace'
-        },
+        // primitives: {                                // [ADDED] [HARDCODED in renderer-primitives.js] Review - Redundant?
+        //     offsetStrokeWidth: 2,
+        //     centerMarkStrokeWidth: 3,
+        //     sourceDrillStrokeWidth: 3,
+        //     sourceDrillMarkSize: 0.2,
+        //     sourceDrillMarkRatio: 0.4,
+        //     peckMarkStrokeWidth: 3,
+        //     peckMarkMarkSize: 0.2,
+        //     peckMarkMarkRatio: 0.4,
+        //     peckMarkDash: [0.15, 0.15],
+        //     peckMarkRingFactor: 1.3,
+        //     peckMarkLabelOffset: 0.3,
+        //     reconstructedStrokeWidth: 2,
+        //     reconstructedCenterSize: 2,
+        //     reconstructedPathDash: [5, 5],
+        //     defaultStrokeWidth: 0.1,
+        //     debugPointSize: 4,
+        //     debugPointFont: '10px monospace',
+        //     debugLabelLineWidth: 2,
+        //     debugArcStrokeWidth: 3,
+        //     debugArcCenterSize: 4,
+        //     debugArcFont: 'bold 12px monospace',
+        //     debugContourStrokeWidth: 2,
+        //     debugContourDash: [5, 5],
+        //     debugContourFont: '12px monospace'
+        // },
         interaction: {                               // [ADDED] [HARDCODED in renderer-interaction.js]
             cursorGrabbing: 'grabbing',
             cursorGrab: 'grab',
             coordPrecision: 2,
             zoomPrecision: 0
         },
-        primitives: {                                
+        primitives: {                                // [ADDED] [HARDCODED in renderer-primitives.js]
             offsetStrokeWidth: 2,
             centerMarkStrokeWidth: 3,
             sourceDrillStrokeWidth: 3,
@@ -883,11 +884,11 @@ window.PCBCAMConfig = {
             ],
             postProcessor: [
                 { value: 'grbl', label: 'Grbl' },
-                { value: 'roland', label: 'Roland (RML)' },
-                { value: 'mach3', label: 'Mach3' },
-                { value: 'linuxcnc', label: 'LinuxCNC' },
-                { value: 'grblHAL', label: 'grblHAL' },
-                { value: 'marlin', label: 'Marlin' }
+                { value: 'roland', label: 'Roland (RML) (Experimental)' },
+                { value: 'mach3', label: 'Mach3 (Experimental)' },
+                { value: 'linuxcnc', label: 'LinuxCNC (Experimental)' },
+                { value: 'grblHAL', label: 'grblHAL (Experimental)' },
+                { value: 'marlin', label: 'Marlin (Experimental)' }
             ],
             workOffset: [
                 { value: 'G54', label: 'G54' },

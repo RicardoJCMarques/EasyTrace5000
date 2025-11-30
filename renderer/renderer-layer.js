@@ -39,7 +39,6 @@
 
             this.core = new RendererCore(this.canvas);
             this.pcbCore = core;
-            this.camCore = core; // Alias // Review - Only used in getToolDiameterForPrimitive, delete this and update getToolDiameterForPrimitive?
 
             this.primitiveRenderer = new PrimitiveRenderer(this.core);
             this.overlayRenderer = new OverlayRenderer(this.core);
@@ -117,7 +116,7 @@
                     if (layer.visible) {
                         this.renderWireframeLayer(layer);
                         // Collect debug primitives even in wireframe mode
-                        if (this.options.debugPoints || this.options.debugPaths) {
+                        if (this.options.debugPoints || this.options.debugArcs) {
                             layer.primitives.forEach(p => {
                                 if (this.shouldCollectDebugPoints(p)) {
                                     this.debugPrimitives.push(p);
@@ -147,7 +146,7 @@
             if (this.options.showStats) { this.overlayRenderer.renderStats(); }
 
             // Pre-transform debug primitives to screen space
-            if ((this.options.debugPoints || this.options.debugPaths) &&
+            if ((this.options.debugPoints || this.options.debugArcs) &&
                 this.debugPrimitives.length > 0) {
 
                 this.debugPrimitivesScreen = this.debugPrimitives.map(prim => {
@@ -279,13 +278,27 @@
             if (strokeColor) this.ctx.strokeStyle = strokeColor;
 
             let simpleFlashBatch = null;
+            const strokeBatches = new Map();
 
             const flushFlashBatch = () => {
                 if (simpleFlashBatch) {
-                    // Use 'evenodd' for batched fills
                     this.ctx.fill(simpleFlashBatch, 'evenodd');
                     this.core.renderStats.drawCalls++;
                     simpleFlashBatch = null;
+                }
+            };
+
+            const flushStrokeBatches = () => {
+                if (strokeBatches.size > 0) {
+                    this.ctx.strokeStyle = strokeColor || fillColor;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.lineJoin = 'round';
+                    strokeBatches.forEach((batch, width) => {
+                        this.ctx.lineWidth = width;
+                        this.ctx.stroke(batch);
+                        this.core.renderStats.drawCalls++;
+                    });
+                    strokeBatches.clear();
                 }
             };
 
@@ -310,21 +323,21 @@
 
                 this.core.renderStats.renderedPrimitives++;
 
-                // These must be rendered individually
                 const role = primitive.properties?.role;
                 const isCenterline = primitive.properties?.isCenterlinePath;
+                const isStroke = primitive.properties?.stroke && !primitive.properties?.fill;
 
                 const cannotBatch = (
                     role === 'drill_hole' ||
                     role === 'drill_slot' ||
                     role === 'peck_mark' ||
                     role === 'drill_milling_path' ||
-                    isCenterline ||
-                    primitive.type === 'path'
+                    isCenterline
                 );
 
                 if (cannotBatch) {
-                    flushFlashBatch(); // Flush anything pending
+                    flushFlashBatch();
+                    flushStrokeBatches();
                     this.ctx.save();
                     this.primitiveRenderer.renderPrimitive(
                         primitive, fillColor, strokeColor, layer.isPreprocessed, 
@@ -335,15 +348,25 @@
                     return;
                 }
 
-                // Batch simple shapes
+                // Batch strokes by width (traces)
+                if (isStroke && primitive.properties?.strokeWidth) {
+                    const width = primitive.properties.strokeWidth;
+                    if (!strokeBatches.has(width)) {
+                        strokeBatches.set(width, new Path2D());
+                    }
+                    this.primitiveRenderer.addPrimitiveToPath2D(primitive, strokeBatches.get(width));
+                    return;
+                }
+
+                // Batch simple filled shapes
                 if (primitive.type === 'circle' || primitive.type === 'rectangle' || primitive.type === 'obround') {
                     if (!simpleFlashBatch) {
                         simpleFlashBatch = new Path2D();
                     }
                     this.primitiveRenderer.addPrimitiveToPath2D(primitive, simpleFlashBatch);
                 } else {
-                    // Unknown type, render individually
                     flushFlashBatch();
+                    flushStrokeBatches();
                     this.ctx.save();
                     this.primitiveRenderer.renderPrimitive(
                         primitive, fillColor, strokeColor, layer.isPreprocessed,
@@ -353,7 +376,9 @@
                     this.core.renderStats.drawCalls++;
                 }
             });
-            flushFlashBatch(); // Flush any remaining batched items
+
+            flushFlashBatch();
+            flushStrokeBatches();
         }
         
         // Specialized Layer Batch Renderers
@@ -370,12 +395,12 @@
 
             const offsetColor = this.core.getLayerColorSettings(layer);
 
-            // 1. Buckets for Internal Sorting (Z-Index)
+            // Buckets for Internal Sorting (Z-Index)
             const standardGeometry = [];
             const drillMillingPaths = []; // Undersized slots, Centerlines
             const peckMarks = [];
 
-            // 2. Distribute
+            // Distribute
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
 
@@ -403,9 +428,8 @@
                 }
             });
 
-            // 3. Render Stack (Bottom to Top)
-            
-            // Level 1: Standard Offsets (Isolation traces, etc.)
+            // Render Stack (Bottom to Top)
+            // Standard Offsets (Isolation traces, etc.)
             standardGeometry.forEach(prim => {
                 this.ctx.save();
                 this.primitiveRenderer.renderOffsetPrimitive(prim, offsetColor, { layer: layer });
@@ -413,7 +437,7 @@
                 this.core.renderStats.drawCalls++;
             });
 
-            // Level 2: Drill Milling Paths (Yellow/Red slots)
+            // Drill Milling Paths (Yellow/Red slots)
             drillMillingPaths.forEach(prim => {
                 this.ctx.save();
                 this.primitiveRenderer.renderOffsetPrimitive(prim, offsetColor, { layer: layer });
@@ -421,7 +445,7 @@
                 this.core.renderStats.drawCalls++;
             });
 
-            // Level 3: Peck Marks (Crosshairs)
+            // Peck Marks (Crosshairs)
             peckMarks.forEach(prim => {
                 this.ctx.save();
                 this.primitiveRenderer.renderPeckMark(prim, { layer: layer });
@@ -443,16 +467,16 @@
 
             const previewColor = this.core.getLayerColorSettings(layer);
 
-            // 1. Buckets for Internal Sorting
+            // Buckets for Internal Sorting
             // Note: Standard geometry uses a Map for batching, others use arrays
             const standardBatch = new Map();
             const drillMillingPaths = []; 
             const peckMarks = [];
 
-            // 2. Distribute
+            // Distribute
             layer.primitives.forEach((primitive) => {
                 this.core.renderStats.primitives++;
-                
+
                 const primBounds = primitive.getBounds();
                 if (!isRotated && !this.core.boundsIntersect(primBounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
@@ -489,9 +513,8 @@
                 this.primitiveRenderer.addPrimitiveToPath2D(primitive, standardBatch.get(toolDiameter));
             });
 
-            // 3. Render Stack (Bottom to Top)
-
-            // Level 1: Standard Geometry (Batched Strokes)
+            // Render Stack (Bottom to Top)
+            // tandard Geometry (Batched Strokes)
             this.ctx.strokeStyle = previewColor;
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
@@ -502,7 +525,7 @@
                 this.core.renderStats.drawCalls++;
             });
 
-            // Level 2: Drill Milling Paths (Solid Fills)
+            // Drill Milling Paths (Solid Fills)
             drillMillingPaths.forEach(primitive => {
                 this.ctx.save();
                 if (primitive.properties?.isCenterlinePath) {
@@ -510,7 +533,7 @@
                         layer, toolDiameter: primitive.properties.toolDiameter 
                     });
                 } else {
-                    // Standard Milling Preview (Blue Stroke) automatically includes Yellow marks if undersized
+                    // Standard Milling Preview (Blue Stroke) includes Yellow marks because it's always undersized
                     const toolDia = primitive.properties.toolDiameter || layer.metadata?.toolDiameter;
                     this.primitiveRenderer.renderToolPreview(primitive, previewColor, {
                         layer, toolDiameter: toolDia
@@ -520,14 +543,14 @@
                 this.core.renderStats.drawCalls++;
             });
 
-            // Level 3: Peck Marks
+            // Peck Marks
             peckMarks.forEach(primitive => {
                 this.ctx.save();
                 this.primitiveRenderer.renderPeckMark(primitive, { layer: layer });
                 this.ctx.restore();
                 this.core.renderStats.drawCalls++;
             });
-    }
+        }
 
         renderWireframeLayer(layer) {
             const viewBounds = this.core.getViewBounds();
@@ -554,15 +577,12 @@
             this.core.renderStats.drawCalls++;
         }
 
-        
-        // Helper Methods
-        
         getToolDiameterForPrimitive(primitive) {
             const opId = primitive.properties?.operationId;
-            if (!opId || !this.camCore || !this.camCore.operations) {
+            if (!opId || !this.pcbCore || !this.pcbCore.operations) {
                 return null;
             }
-            const operation = this.camCore.operations.find(op => op.id === opId);
+            const operation = this.pcbCore.operations.find(op => op.id === opId);
             const diameterStr = operation?.settings?.toolDiameter;
             if (diameterStr !== undefined) {
                 const diameter = parseFloat(diameterStr);
@@ -608,11 +628,11 @@
         }
         
         shouldCollectDebugPoints(primitive) {
-            const anyDebugEnabled = this.options.debugPoints || this.options.debugPaths;
+            const anyDebugEnabled = this.options.debugPoints || this.options.debugArcs;
             if (!anyDebugEnabled) return false;
             
             // Reconstructed circles
-            if (primitive.type === 'circle' && primitive.properties?.reconstructed) {
+            if (primitive.type === 'circle') {
                 return true;
             }
 
@@ -623,11 +643,10 @@
                 }
             }
 
-            // Review - Possibly redundant?
             // Reconstructed arcs
-            // if (primitive.type === 'arc' && primitive.properties?.reconstructed) {
-            //     return true;
-            // }
+            if (primitive.type === 'arc') {
+                return true;
+            }
 
             return false;
         }
@@ -640,8 +659,8 @@
             this.ctx.save();
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-            const pointColor = this.core.colors.debug.wireframe || '#00ff00';
-            const arcColor = this.core.colors.primitives.reconstructed || '#00ffff';
+            const pointColor = this.core.colors.debug.points;
+            const arcColor = this.core.colors.debug.arcs;
             const pointSize = 3;
             const arcStrokeWidth = 2;
 
@@ -651,12 +670,30 @@
                 this.ctx.beginPath();
 
                 for (const prim of this.debugPrimitivesScreen) {
-                    if (!prim.contours) continue;
-                    for (const contour of prim.contours) {
-                        if (!contour.screenPoints) continue;
-                        for (const p of contour.screenPoints) {
-                            this.ctx.moveTo(p.x + pointSize, p.y);
-                            this.ctx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
+                    // Circle primitive centers
+                    if (prim.type === 'circle' && prim.center) {
+                        const screenCenter = this.core.worldToScreen(prim.center.x, prim.center.y);
+                        this.ctx.moveTo(screenCenter.x + pointSize, screenCenter.y);
+                        this.ctx.arc(screenCenter.x, screenCenter.y, pointSize, 0, Math.PI * 2);
+                    }
+
+                    // Contour points and arc centers
+                    if (prim.contours) {
+                        for (const contour of prim.contours) {
+                            if (contour.screenPoints) {
+                                for (const p of contour.screenPoints) {
+                                    this.ctx.moveTo(p.x + pointSize, p.y);
+                                    this.ctx.arc(p.x, p.y, pointSize, 0, Math.PI * 2);
+                                }
+                            }
+                            if (contour.arcSegments) {
+                                for (const arc of contour.arcSegments) {
+                                    if (arc.centerScreen) {
+                                        this.ctx.moveTo(arc.centerScreen.x + pointSize, arc.centerScreen.y);
+                                        this.ctx.arc(arc.centerScreen.x, arc.centerScreen.y, pointSize, 0, Math.PI * 2);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -664,7 +701,7 @@
             }
 
             // Batch all reconstructed arcs
-            if (this.options.debugPaths) {
+            if (this.options.debugArcs) {
                 this.ctx.strokeStyle = arcColor;
                 this.ctx.lineWidth = arcStrokeWidth;
                 this.ctx.beginPath();
@@ -694,7 +731,7 @@
             }
 
             // Batch reconstructed full circles
-            if (this.options.debugPaths) {
+            if (this.options.debugArcs) {
                 this.ctx.strokeStyle = arcColor;
                 this.ctx.lineWidth = arcStrokeWidth;
                 this.ctx.beginPath();

@@ -914,18 +914,13 @@
             return;
         }
 
-        // Check for required core classes // Review  - they all always load.
+        // Check for required core classes // Review - add all classes
         const requiredClasses = [
             'PCBCamCore',
             'PCBCamUI',
-            'LayerRenderer'
-        ];
-
-        // Check for optional UI components (may not exist in basic mode) They are all required now though, Review this check system.
-        const optionalClasses = [
+            'LayerRenderer',
             'NavTreePanel',
             'OperationPanel',
-            'VisibilityPanel',
             'ToolLibrary',
             'StatusManager',
             'UIControls'
@@ -934,7 +929,7 @@
         const missing = requiredClasses.filter(cls => typeof window[cls] === 'undefined');
 
         if (missing.length > 0) {
-            console.error('Missing required classes:', missing);
+            console.error('Missing classes:', missing);
 
             // Update loading text
             const loadingText = document.getElementById('loading-text');
@@ -943,15 +938,6 @@
             }
 
             return false;
-        }
-
-        // Check optional classes
-        if (this.debugEnabled) { 
-            console.log('[Controller] Checking optional classes:');
-            optionalClasses.forEach(cls => {
-                const available = typeof window[cls] !== 'undefined';
-                console.log(`  ${available ? '✓' : '○'} ${cls}`);
-            });
         }
 
         controller = new PCBCAMController();
