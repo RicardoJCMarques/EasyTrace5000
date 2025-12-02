@@ -39,7 +39,7 @@
    ============================================================================ */
 :root {
     /* Layout Dimensions */
-    --toolbar-height: 48px;
+    --toolbar-height: 54px;
     --sidebar-left-width: 320px;
     --sidebar-right-width: 380px;
     --status-bar-height: 44px;

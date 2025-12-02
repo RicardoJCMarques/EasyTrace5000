@@ -1,0 +1,758 @@
+<!--
+/**
+ * @file        cnc.html
+ * @description CNC Guide
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+-->
+
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNC Guide - EasyTrace5000</title>
+    <link rel="stylesheet" href="css/doc.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/theme.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="doc-header">
+        <h1><a href="/">EasyTrace5000</a></h1>
+        <nav class="doc-nav">
+            <a href="/">← Application</a>
+            <a href="doc">Docs</a>
+            <a href="cnc" class="active">CNC Guide</a>
+            <a href="laser">Laser Guide</a>
+            <span class="separator"></span>
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank">GitHub</a>
+            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+        </nav>
+    </header>
+
+    <div class="doc-wrapper has-sidebar">
+        <!-- Sidebar TOC -->
+        <nav class="doc-sidebar" id="toc">
+            <h2>Contents <span class="doc-badge doc-badge--stable">Stable</span></h2>
+            <ol>
+                <li><a href="#interface">Interface Overview</a></li>
+                <li>
+                    <a href="#workflow">The Workflow</a>
+                    <ol>
+                        <li><a href="#workflow-loading">Loading Files</a></li>
+                        <li><a href="#workflow-coordinates">Setting Up Coordinates</a></li>
+                        <li><a href="#workflow-machine">Machine Settings</a></li>
+                        <li><a href="#workflow-offsets">Generating Offsets</a></li>
+                        <li><a href="#workflow-preview">Generating Preview</a></li>
+                        <li><a href="#workflow-export">Exporting G-code</a></li>
+                    </ol>
+                </li>
+                <li>
+                    <a href="#operations">Operation Types</a>
+                    <ol>
+                        <li><a href="#op-isolation">Isolation Routing</a></li>
+                        <li><a href="#op-drilling">Drilling</a></li>
+                        <li><a href="#op-clearing">Copper Clearing</a></li>
+                        <li><a href="#op-cutout">Board Cutout</a></li>
+                    </ol>
+                </li>
+                <li><a href="#machine-settings">Machine Settings Reference</a></li>
+                <li><a href="#visualization">Visualization Options</a></li>
+                <li><a href="#tips">Tips &amp; Troubleshooting</a></li>
+            </ol>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="doc-main">
+            <section class="hero hero--compact">
+                <h1>CNC Milling Guide</h1>
+                <p class="tagline">G-code generation for PCB isolation routing</p>
+            </section>
+
+            <!-- INTERFACE OVERVIEW -->
+            <section id="interface">
+                <h2>Interface Overview</h2>
+                <p>
+                    EasyTrace5000's interface is organized around a central canvas with sidebars for navigation 
+                    and configuration. Understanding this layout will help you work efficiently.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/800x500/1a1a1a/666666?text=Annotated+Interface+Screenshot%0A%0A1.+Toolbar+%7C+2.+Left+Sidebar+%7C+3.+Canvas%0A4.+Right+Sidebar+%7C+5.+Footer" alt="EasyTrace5000 Interface Overview">
+                    <figcaption>The main interface: (1) Toolbar, (2) Operations Tree, (3) Canvas, (4) Properties Panel, (5) Status Bar</figcaption>
+                </figure>
+
+                <h3 id="interface-toolbar">Top Toolbar</h3>
+                <p>
+                    The toolbar spans the top of the window. On the left, the <strong>Actions</strong> menu 
+                    provides access to file loading, toolpath management, and SVG export. The center displays 
+                    the workspace title. On the right, you'll find zoom controls (fit, in, out) and the theme toggle.
+                </p>
+
+                <h3 id="interface-left-sidebar">Left Sidebar: Operations Tree</h3>
+                <p>
+                    The left sidebar organizes your loaded files into four operation categories:
+                </p>
+                <dl>
+                    <dt>Isolation Routing</dt>
+                    <dd>Copper layer files (Gerber) for trace isolation</dd>
+                    <dt>Drilling</dt>
+                    <dd>Drill files (Excellon) for through-holes and vias</dd>
+                    <dt>Copper Clearing</dt>
+                    <dd>Gerber files for ground plane or keepout removal</dd>
+                    <dt>Board Cutout</dt>
+                    <dd>Outline files for the final board shape</dd>
+                </dl>
+
+                <figure>
+                    <img src="https://placehold.co/400x350/1a1a1a/666666?text=Operations+Tree%0A%0A▶+Isolation+Routing%0A+++└+board.gtl%0A++++++├+Pass+1%0A++++++└+Preview%0A▶+Drilling%0A▶+Copper+Clearing%0A▶+Board+Cutout" alt="Operations Tree">
+                    <figcaption>The operations tree with an expanded isolation file showing offset passes and preview</figcaption>
+                </figure>
+
+                <p>
+                    Each category can be expanded or collapsed by clicking its header. Use the <strong>+</strong> button 
+                    next to each category to add files specifically for that operation type. When you click on a loaded file, 
+                    it becomes selected (highlighted), and its properties appear in the right sidebar.
+                </p>
+
+                <h3 id="interface-canvas">Center Canvas</h3>
+                <p>
+                    The main canvas displays your geometry. This is where you'll see source files, generated offsets, 
+                    and toolpath previews.
+                </p>
+                <h4>Navigation</h4>
+                <p>
+                    <strong>Pan:</strong> Click and drag anywhere on the canvas to move the view.<br>
+                    <strong>Zoom:</strong> Use the mouse scroll wheel, or the toolbar buttons (+, −, fit).<br>
+                    <strong>Fit to View:</strong> Press <kbd>F</kbd> or click the fit button to automatically 
+                    zoom and center on all loaded geometry.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/700x400/1a1a1a/666666?text=Canvas+View%0A%0APCB+Geometry+with+Grid%0ACoordinate+Display:+X:+25.40+Y:+12.70%0AZoom:+150%25" alt="Canvas with geometry">
+                    <figcaption>Canvas showing PCB traces with grid overlay and coordinate display</figcaption>
+                </figure>
+
+                <h4>Coordinate Display</h4>
+                <p>
+                    The bottom-left corner shows real-time cursor coordinates (X, Y) in millimeters, plus the 
+                    current zoom level. This helps you verify positions and measure distances visually.
+                </p>
+
+                <h3 id="interface-right-sidebar">Right Sidebar: Properties &amp; Settings</h3>
+                <p>The right sidebar contains three collapsible sections:</p>
+
+                <h4>Origin &amp; Rotation</h4>
+                <p>
+                    Controls where the machine's coordinate origin sits relative to your geometry, plus board rotation. 
+                    The "Board Size" display shows the dimensions of all loaded geometry.
+                </p>
+
+                <h4>Machine Settings</h4>
+                <p>
+                    Global parameters that affect G-code output: post-processor selection, start/end G-code blocks, 
+                    units, PCB thickness, safe heights, and rapid feed rate.
+                </p>
+
+                <h4>Properties</h4>
+                <p>
+                    Context-sensitive panel that shows parameters for the currently selected operation. This is where 
+                    you configure tool diameter, passes, depths, and feeds, then trigger offset/preview generation.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/380x500/1a1a1a/666666?text=Properties+Panel%0A%0ATool+Selection%0ATool+Diameter:+0.2mm%0APasses:+2%0AStep+Over:+50%25%0ACut+Depth:+-0.1mm%0A%0A[+Generate+Offsets+]" alt="Properties Panel">
+                    <figcaption>The properties panel showing isolation routing parameters</figcaption>
+                </figure>
+
+                <h3 id="interface-footer">Footer: Status &amp; Visualization</h3>
+                <p>The footer bar at the bottom serves two purposes:</p>
+                
+                <h4>Visualization Panel</h4>
+                <p>
+                    Click the eye icon to expand the visualization settings. Here you can toggle display elements 
+                    (grid, rulers, wireframe), control layer visibility (traces, pads, drills, offsets, previews), 
+                    and enable advanced debug features. See the <a href="#visualization">Visualization Options</a> 
+                    section for details.
+                </p>
+
+                <h4>Status Bar</h4>
+                <p>
+                    Shows status messages and progress for operations like file loading, offset generation, and export. 
+                    Click the status bar to expand a log history showing recent messages—useful for troubleshooting.
+                </p>
+            </section>
+
+            <!-- THE WORKFLOW -->
+            <section id="workflow">
+                <h2>The Workflow</h2>
+                <p>
+                    EasyTrace5000 follows a non-destructive, staged workflow. Each stage builds on the previous one, 
+                    and you can always go back to adjust parameters and regenerate. The stages are:
+                </p>
+                <ol>
+                    <li><strong>Load</strong> your source files (Gerber, Excellon, SVG)</li>
+                    <li><strong>Position</strong> your geometry (origin, rotation)</li>
+                    <li><strong>Configure</strong> machine settings (heights, speeds, post-processor)</li>
+                    <li><strong>Generate Offsets</strong> for each operation</li>
+                    <li><strong>Generate Previews</strong> to simulate tool paths</li>
+                    <li><strong>Export</strong> G-code for your CNC machine</li>
+                </ol>
+
+                <figure>
+                    <img src="https://placehold.co/800x200/1a1a1a/666666?text=Workflow+Pipeline%0A%0A[Source]+→+[Coordinates]+→+[Offsets]+→+[Preview]+→+[G-code]%0A+Gerber+++++Origin/Rot++++++Tool+paths++++Simulation+++Export" alt="Workflow Pipeline">
+                    <figcaption>The five-stage workflow from source files to G-code export</figcaption>
+                </figure>
+
+                <h3 id="workflow-loading">Stage 1: Loading Files</h3>
+                <p>There are several ways to load files into EasyTrace5000:</p>
+
+                <h4>Using the Welcome Modal</h4>
+                <p>
+                    When you first open the application (and haven't checked "Don't show this again"), you'll see 
+                    the Welcome modal. From here you can load a built-in example project, click "Open Files" to 
+                    access the file upload modal, or click "Start Empty" to begin with a blank workspace.
+                </p>
+
+                <h4>Using the File Upload Modal</h4>
+                <p>
+                    Access this via Actions → Add Files, or the "Open Files" button in the Welcome modal. 
+                    The modal shows four drop zones, one for each operation type. Drop files onto the appropriate 
+                    zone, or click a zone to browse.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/600x400/1a1a1a/666666?text=File+Upload+Modal%0A%0A┌──────────┐+┌──────────┐%0A│+Isolation+│+│+Drilling+│%0A│+Drop+zone+│+│+Drop+zone│%0A└──────────┘+└──────────┘%0A┌──────────┐+┌──────────┐%0A│+Clearing+│+│++Cutout++│%0A│+Drop+zone+│+│+Drop+zone│%0A└──────────┘+└──────────┘" alt="File Upload Modal">
+                    <figcaption>The file upload modal with four operation-specific drop zones</figcaption>
+                </figure>
+
+                <h4>Drag and Drop</h4>
+                <p>
+                    You can drag files directly onto the main application window. EasyTrace5000 will auto-detect 
+                    the file type by extension and assign it to the appropriate operation category.
+                </p>
+
+                <h4>Category Add Buttons</h4>
+                <p>
+                    In the left sidebar, each operation category has a small <strong>+</strong> button. 
+                    Click it to open a file browser filtered for that operation's accepted file types.
+                </p>
+
+                <h3 id="workflow-coordinates">Stage 2: Setting Up Coordinates</h3>
+                <p>
+                    Before generating toolpaths, verify that your coordinate origin is positioned correctly for 
+                    your CNC setup.
+                </p>
+                
+                <h4>Origin Offset</h4>
+                <p>
+                    The Origin &amp; Rotation panel in the right sidebar shows "Origin Offset" X and Y fields. 
+                    These values shift where (0,0) sits relative to your geometry. By default, the origin is at 
+                    the geometry's lower-left corner.
+                </p>
+                <p>
+                    Two quick-set buttons are provided: <strong>Center</strong> places the origin at the 
+                    geometry's center point, and <strong>Bottom-Left</strong> resets it to the lower-left corner.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/600x300/1a1a1a/666666?text=Origin+Positioning%0A%0A[+Board+Geometry+]+++Origin+Offset%0A+++++⊕+←+origin+++++X:+0.00+mm%0A++++++++++++++++++++Y:+0.00+mm%0A%0A[Center]+[Bottom-Left]+[Apply]" alt="Origin Controls">
+                    <figcaption>Origin controls showing the current offset position on the board</figcaption>
+                </figure>
+
+                <h4>Board Rotation</h4>
+                <p>
+                    If your PCB needs to be rotated (perhaps to fit your stock material orientation), enter a 
+                    rotation angle in degrees. Click <strong>Apply Rotation</strong> to rotate all geometry 
+                    around its center. <strong>Reset Rotation</strong> returns to 0°.
+                </p>
+
+                <h4>Why Origin Matters</h4>
+                <p>
+                    The origin you set here becomes (0,0) in your G-code output. Most CNC workflows involve 
+                    homing the machine, then jogging to a known position on your stock and setting the work 
+                    coordinate system origin there. Your origin setting in EasyTrace5000 should match that 
+                    physical position—typically a corner or the center of the board.
+                </p>
+
+                <h3 id="workflow-machine">Stage 3: Machine Settings</h3>
+                <p>
+                    The Machine Settings panel contains global parameters that affect all G-code output. 
+                    Configure these before generating toolpaths.
+                </p>
+
+                <h4>Post-Processor</h4>
+                <p>
+                    Select the G-code dialect your machine expects. GRBL is the default and most common for 
+                    hobbyist CNC routers. Other options (GrblHAL, Marlin, LinuxCNC, Mach3, Roland RML) are 
+                    experimental—test carefully before running on your machine.
+                </p>
+
+                <h4>Start/End G-code</h4>
+                <p>
+                    These text areas contain G-code that runs at the very beginning and end of your program. 
+                    Typical start code includes units setting (G21 for mm), absolute positioning mode (G90), 
+                    and spindle start (M3). End code typically stops the spindle (M5), lifts the tool, and 
+                    moves to a safe position.
+                </p>
+
+                <h4>Heights</h4>
+                <p>
+                    <strong>Safe Z:</strong> The height the tool moves to at program start/end, for maximum 
+                    clearance (typically 5-15mm above the work surface).<br>
+                    <strong>Travel Z:</strong> The height for rapid moves between cutting operations. This can 
+                    be lower than Safe Z for faster operation, but must still clear any clamps or high points 
+                    (typically 2-5mm).
+                </p>
+
+                <h3 id="workflow-offsets">Stage 4: Generating Offsets</h3>
+                <p>
+                    With files loaded and coordinates set, you're ready to generate the actual toolpath geometry. 
+                    This is the core of CAM processing.
+                </p>
+
+                <h4>Selecting an Operation</h4>
+                <p>
+                    Click on a file in the Operations Tree (left sidebar). The Properties panel (right sidebar) 
+                    updates to show that operation's parameters.
+                </p>
+
+                <h4>Setting Parameters</h4>
+                <p>The Properties panel shows parameters appropriate for the operation type. Common parameters include:</p>
+                <dl>
+                    <dt>Tool</dt>
+                    <dd>Select from the tool library dropdown. The tool diameter auto-fills based on your selection.</dd>
+                    <dt>Tool Diameter</dt>
+                    <dd>The cutting diameter in mm. This determines offset distance and preview stroke width.</dd>
+                    <dt>Passes</dt>
+                    <dd>Number of offset passes to generate. More passes = wider isolation zone.</dd>
+                    <dt>Step Over</dt>
+                    <dd>Percentage of tool diameter for each subsequent pass. 50% = 50% overlap between passes.</dd>
+                    <dt>Cut Depth</dt>
+                    <dd>Target Z depth below the surface (entered as a negative value or positive—the system handles both).</dd>
+                    <dt>Depth Per Pass</dt>
+                    <dd>If Multi-Depth is enabled, how much to cut per Z-level pass.</dd>
+                </dl>
+
+                <h4>Generate Offsets</h4>
+                <p>
+                    Click the <strong>Generate Offsets</strong> button (or "Generate Drill Strategy" for drill operations). 
+                    The geometry engine processes your source geometry and creates offset paths.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/800x350/1a1a1a/666666?text=Offset+Generation%0A%0A[+Source+Traces+]+++→+++[+Offset+Paths+]%0A++Orange+fills+++++++++++Red+outlines%0A++(copper)++++++++++++(tool+centerline)" alt="Offset Generation">
+                    <figcaption>Before and after: Source geometry (left) and generated offset paths (right)</figcaption>
+                </figure>
+
+                <p>
+                    When complete, new items appear under the file in the Operations Tree: "Pass 1", "Pass 2", etc. 
+                    The canvas updates to show the offset geometry as thin colored lines.
+                </p>
+
+                <h3 id="workflow-preview">Stage 5: Generating Preview</h3>
+                <p>
+                    After generating offsets, you can create a preview that simulates what your tool will actually cut.
+                </p>
+
+                <h4>Preview vs. Offset</h4>
+                <p>
+                    <strong>Offsets</strong> show the centerline path the tool will follow—where the spindle axis travels.<br>
+                    <strong>Previews</strong> show the full width of the tool's cutting envelope—what material will be removed.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/700x300/1a1a1a/666666?text=Offset+vs+Preview%0A%0A[Thin+red+line]+++vs+++[Thick+blue+stroke]%0A++Centerline+++++++++++Tool+width+simulation" alt="Offset vs Preview">
+                    <figcaption>Offset (centerline) vs Preview (full tool width simulation)</figcaption>
+                </figure>
+
+                <h4>Generating the Preview</h4>
+                <p>
+                    After offsets exist, the action button changes to <strong>Generate Toolpath Preview</strong>. 
+                    Click it to create the preview layer. A new "Preview" item appears under the file in the tree, 
+                    and the canvas shows thick strokes representing the tool's cutting area.
+                </p>
+
+                <h3 id="workflow-export">Stage 6: Exporting G-code</h3>
+                <p>With previews generated, you're ready to export machine-ready G-code.</p>
+                
+                <h4>Opening the Operations Manager</h4>
+                <p>
+                    Go to Actions menu → <strong>Manage Toolpaths</strong>, or click the <strong>Operations &amp; 
+                    G-Code</strong> button in the Properties panel (shown when viewing preview stage).
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/700x450/1a1a1a/666666?text=G-code+Export+Modal%0A%0A☑+Isolation:+board.gtl%0A☑+Drilling:+board.drl%0A%0AOutput+Options:%0A☑+Single+file+☑+Comments%0A%0AG-code+Preview:%0AG21+G90...%0A%0A[Calculate]+[Export]" alt="G-code Export Modal">
+                    <figcaption>The Operations Manager modal with operation selection and G-code preview</figcaption>
+                </figure>
+
+                <h4>Selecting and Ordering Operations</h4>
+                <p>
+                    Each operation appears as a checkbox item. Check the operations you want to include. 
+                    Drag items to reorder them. A typical order: Isolation → Drilling → Clearing → Cutout 
+                    (cutout last so the board stays attached during other operations).
+                </p>
+
+                <h4>Output Options</h4>
+                <dl>
+                    <dt>Export as single file</dt>
+                    <dd>Combines all selected operations into one G-code file.</dd>
+                    <dt>Include operation comments</dt>
+                    <dd>Adds descriptive comments in the G-code identifying each operation.</dd>
+                    <dt>Optimize toolpaths</dt>
+                    <dd>Applies path optimization to reduce travel moves. Experimental feature.</dd>
+                    <dt>Output Filename</dt>
+                    <dd>The filename for the downloaded G-code file.</dd>
+                </dl>
+
+                <h4>Calculate and Export</h4>
+                <p>
+                    Click <strong>Calculate Toolpaths</strong> to process the selected operations. The preview 
+                    area shows the generated G-code, along with statistics: line count, operation count, estimated 
+                    time, and total travel distance. Click <strong>Export G-code</strong> to download the file.
+                </p>
+            </section>
+
+            <!-- OPERATION TYPES -->
+            <section id="operations">
+                <h2>Operation Types</h2>
+                <p>
+                    Each operation type has specific parameters and behaviors optimized for its purpose. 
+                    Understanding these will help you get the best results.
+                </p>
+
+                <h3 id="op-isolation">Isolation Routing</h3>
+                <p>
+                    Isolation routing cuts trenches around your PCB traces, electrically separating them from 
+                    the surrounding copper. The tool follows paths offset outward from the trace edges.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/600x300/1a1a1a/666666?text=Isolation+Routing%0A%0A[+Copper+Trace+]%0A++++↓+offset%0A[+Tool+Path+]+(Pass+1)%0A[+Tool+Path+]+(Pass+2)" alt="Isolation Routing">
+                    <figcaption>Isolation passes around a copper trace, showing multiple offset distances</figcaption>
+                </figure>
+
+                <h4>Key Parameters</h4>
+                <dl>
+                    <dt>Tool Diameter</dt>
+                    <dd>Smaller tools (0.1-0.2mm) allow tighter trace spacing but are fragile. V-bits with small tip angles can achieve very fine isolation.</dd>
+                    <dt>Passes</dt>
+                    <dd>Number of concentric offset paths. One pass creates a single trench at (tool diameter / 2) distance from traces. Two passes doubles the isolation width.</dd>
+                    <dt>Step Over (%)</dt>
+                    <dd>Distance between passes as percentage of tool diameter. 50% gives good overlap and clean cutting. Higher percentages are faster but may leave ridges.</dd>
+                    <dt>Cut Depth</dt>
+                    <dd>For standard 35µm (1oz) copper on FR4, a depth of 0.1-0.15mm is typical. Deeper cuts ensure complete isolation but wear tools faster.</dd>
+                </dl>
+
+                <div class="callout callout--info">
+                    <h4>Tip</h4>
+                    <p>Run a test cut on scrap material to verify your depth setting. Too shallow leaves copper bridges; too deep accelerates tool wear.</p>
+                </div>
+
+                <h3 id="op-drilling">Drilling</h3>
+                <p>
+                    Drilling operations process Excellon files containing hole and slot definitions. 
+                    EasyTrace5000 analyzes each feature against your tool diameter and selects an appropriate strategy.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/600x300/1a1a1a/666666?text=Drill+Strategy+Selection%0A%0A●+Green+=+Exact+fit+(peck)%0A●+Yellow+=+Undersized+tool+(mill)%0A●+Red+=+Oversized+tool+(warning)" alt="Drill Strategy Indicators">
+                    <figcaption>Color-coded drill holes showing strategy selection based on tool/hole size comparison</figcaption>
+                </figure>
+
+                <h4>Strategy Selection</h4>
+                <p>The system compares each hole/slot diameter to your tool diameter:</p>
+                <dl>
+                    <dt>Exact Fit (green indicators)</dt>
+                    <dd>Hole diameter equals tool diameter. Uses simple peck/plunge drilling.</dd>
+                    <dt>Undersized Tool (yellow indicators)</dt>
+                    <dd>Tool is smaller than the hole. If "Mill Holes" is enabled and the difference is sufficient, uses helical or circular milling to achieve the correct diameter.</dd>
+                    <dt>Oversized Tool (red indicators)</dt>
+                    <dd>Tool is larger than the hole. Cannot mill; will peck at center (hole will be oversize). Consider using a smaller tool.</dd>
+                </dl>
+
+                <h4>Key Parameters</h4>
+                <dl>
+                    <dt>Mill Holes</dt>
+                    <dd>Enable to use helical/circular milling for undersized holes. This produces accurate hole sizes but takes longer than simple drilling.</dd>
+                    <dt>Peck Depth</dt>
+                    <dd>For peck drilling cycles: depth of each peck before retracting to clear chips.</dd>
+                    <dt>Dwell Time</dt>
+                    <dd>Pause at the bottom of each peck/plunge (in seconds). Helps clear chips and improves hole quality.</dd>
+                </dl>
+
+                <h3 id="op-clearing">Copper Clearing</h3>
+                <p>
+                    Copper clearing removes large areas of unwanted copper, such as ground plane sections 
+                    or keepout zones. Unlike isolation (which offsets outward), clearing offsets inward 
+                    to pocket out the interior.
+                </p>
+
+                <h4>Key Parameters</h4>
+                <dl>
+                    <dt>Passes</dt>
+                    <dd>Number of inward offset passes. More passes clear more area.</dd>
+                    <dt>Step Over (%)</dt>
+                    <dd>Critical for clearing operations. 40-50% provides good material removal with clean results.</dd>
+                </dl>
+
+                <h3 id="op-cutout">Board Cutout</h3>
+                <p>
+                    Cutout operations generate the path to separate your finished PCB from the stock material. 
+                    The tool follows the board outline, offset by half the tool diameter.
+                </p>
+
+                <figure>
+                    <img src="https://placehold.co/600x300/1a1a1a/666666?text=Board+Cutout+with+Tabs%0A%0A┌────────────────────┐%0A│++++++++++++++++++++│%0A├─┤++++++++++++++++├─┤++←+Tabs%0A│++++++++++++++++++++│%0A└────────────────────┘%0A+++++Cut+path+around+board" alt="Cutout with Tabs">
+                    <figcaption>Board cutout path showing holding tabs that keep the board attached during cutting</figcaption>
+                </figure>
+
+                <h4>Cut Side</h4>
+                <p>Determines which side of the outline the tool cuts:</p>
+                <dl>
+                    <dt>Outside</dt>
+                    <dd>Tool cuts outside the outline. Board will match the outline exactly.</dd>
+                    <dt>Inside</dt>
+                    <dd>Tool cuts inside the outline. Useful for pockets or cutouts within the board.</dd>
+                    <dt>On</dt>
+                    <dd>Tool centers on the outline. Board will be smaller by tool diameter.</dd>
+                </dl>
+
+                <h4>Tabs</h4>
+                <p>
+                    Tabs are small bridges of material left connecting the board to the stock. They prevent 
+                    the board from coming loose during the final cut.
+                </p>
+                <dl>
+                    <dt>Number of Tabs</dt>
+                    <dd>How many tabs to place around the perimeter. 4-6 is typical for small boards.</dd>
+                    <dt>Tab Width</dt>
+                    <dd>Width of each tab in mm. 2-3mm is usually sufficient.</dd>
+                    <dt>Tab Height</dt>
+                    <dd>How much material to leave in the tab. 0.3-0.5mm is typical—enough to hold the board but easy to cut or sand off after removal.</dd>
+                </dl>
+            </section>
+
+            <!-- MACHINE SETTINGS REFERENCE -->
+            <section id="machine-settings">
+                <h2>Machine Settings Reference</h2>
+                <p>
+                    This section provides detailed information about each machine setting and typical values.
+                </p>
+
+                <h3>Post-Processor</h3>
+                <table>
+                    <thead>
+                        <tr><th>Processor</th><th>Status</th><th>Notes</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>GRBL</td><td><span class="doc-badge doc-badge--stable">Stable</span></td><td>Standard G-code for GRBL-based controllers. Most compatible option.</td></tr>
+                        <tr><td>GrblHAL</td><td><span class="doc-badge doc-badge--dev">Exp</span></td><td>Extended GRBL dialect with additional features.</td></tr>
+                        <tr><td>Marlin</td><td><span class="doc-badge doc-badge--dev">Exp</span></td><td>For Marlin-based CNC/3D printer conversions.</td></tr>
+                        <tr><td>LinuxCNC</td><td><span class="doc-badge doc-badge--dev">Exp</span></td><td>For LinuxCNC-controlled machines.</td></tr>
+                        <tr><td>Mach3</td><td><span class="doc-badge doc-badge--dev">Exp</span></td><td>For Mach3-controlled machines.</td></tr>
+                        <tr><td>Roland RML</td><td><span class="doc-badge doc-badge--dev">Exp</span></td><td>Roland Modela command language (not standard G-code).</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="callout callout--warning">
+                    <h4>Warning</h4>
+                    <p>Experimental post-processors should be tested carefully on air (spindle off, tool removed) before running actual cuts.</p>
+                </div>
+
+                <h3>Height Settings</h3>
+                <dl>
+                    <dt>Safe Z (typical: 5-15mm)</dt>
+                    <dd>Maximum clearance height. Used at program start/end. Should clear all clamps, fixtures, and the highest point of your workpiece.</dd>
+                    <dt>Travel Z (typical: 2-5mm)</dt>
+                    <dd>Height for rapid moves between cutting operations. Lower than Safe Z for faster operation, but must still clear the workpiece surface and any chips/debris.</dd>
+                </dl>
+
+                <h3>Speed Settings</h3>
+                <dl>
+                    <dt>Rapid Feed (typical: 1000-3000 mm/min)</dt>
+                    <dd>Speed for G0 positioning moves. Some controllers ignore this (moving at max speed), while others respect it.</dd>
+                    <dt>Feed Rate (per-operation, typical: 100-400 mm/min for PCB work)</dt>
+                    <dd>Cutting speed during milling. Lower = cleaner cuts but slower. Higher = faster but risks tool breakage or poor cut quality.</dd>
+                    <dt>Plunge Rate (per-operation, typical: 30-100 mm/min)</dt>
+                    <dd>Speed for downward (Z-axis) cutting moves. Usually much slower than XY feed rate because plunging loads the tool differently.</dd>
+                    <dt>Spindle Speed (per-operation, typical: 10000-24000 RPM)</dt>
+                    <dd>Rotation speed of the spindle/tool. PCB routing typically uses high speeds with low feed rates.</dd>
+                </dl>
+            </section>
+
+            <!-- VISUALIZATION OPTIONS -->
+            <section id="visualization">
+                <h2>Visualization Options</h2>
+                <p>
+                    The Visualization panel (footer, left side—click the eye icon) controls what appears 
+                    on the canvas.
+                </p>
+
+                <h3>Display Options</h3>
+                <dl>
+                    <dt>Grid</dt>
+                    <dd>Shows a reference grid on the canvas. Grid spacing adapts to zoom level.</dd>
+                    <dt>Wireframe</dt>
+                    <dd>Renders all geometry as outlines only (no fills). Useful for seeing overlapping shapes.</dd>
+                    <dt>Board Bounds</dt>
+                    <dd>Shows a rectangle indicating the overall bounds of all loaded geometry.</dd>
+                    <dt>Rulers</dt>
+                    <dd>Displays measurement rulers along the canvas edges with tick marks in mm.</dd>
+                </dl>
+
+                <h3>Layer Visibility</h3>
+                <dl>
+                    <dt>Regions</dt>
+                    <dd>Filled areas (copper pours, pads) from source geometry.</dd>
+                    <dt>Traces</dt>
+                    <dd>Line/stroke elements (traces, routes) from source geometry.</dd>
+                    <dt>Pads</dt>
+                    <dd>Individual pad flashes from source geometry.</dd>
+                    <dt>Drills</dt>
+                    <dd>Drill holes and slots from source geometry.</dd>
+                    <dt>Cutouts</dt>
+                    <dd>Board outline geometry.</dd>
+                    <dt>Offsets</dt>
+                    <dd>Generated offset geometry (thin lines showing toolpath centerlines).</dd>
+                    <dt>Previews</dt>
+                    <dd>Generated preview geometry (thick strokes showing tool cutting area).</dd>
+                </dl>
+
+                <h3>Advanced Options</h3>
+                <dl>
+                    <dt>Fusion Mode</dt>
+                    <dd>Enables boolean fusion of overlapping geometry. When multiple shapes overlap, they're merged into unified polygons.</dd>
+                    <dt>Arc Reconstruction</dt>
+                    <dd>Attempts to recover true circular arcs from polygonized geometry after boolean operations. Results in G2/G3 arc commands instead of many small line segments.</dd>
+                    <dt>Debug Points / Debug Arcs</dt>
+                    <dd>Shows diagnostic overlays for geometry debugging.</dd>
+                    <dt>B&amp;W Mode</dt>
+                    <dd>Renders geometry in black and white only.</dd>
+                </dl>
+
+                <h3>Verbose Debug</h3>
+                <p>
+                    At the bottom of the Visualization panel is a "Verbose Debug" toggle. When enabled, 
+                    detailed logging information appears in the browser's developer console and in the 
+                    status log history. Useful for troubleshooting issues.
+                </p>
+            </section>
+
+            <!-- TIPS & TROUBLESHOOTING -->
+            <section id="tips">
+                <h2>Tips &amp; Troubleshooting</h2>
+
+                <h3>Best Practices</h3>
+                <h4>Start with an Example</h4>
+                <p>Before processing your own files, load the built-in example and walk through the complete workflow. This helps you understand what to expect at each stage.</p>
+
+                <h4>Verify Origin Before Export</h4>
+                <p>Always double-check your origin setting before generating final G-code. The origin in EasyTrace5000 must match where you'll set your work coordinate origin on the machine.</p>
+
+                <h4>Test on Scrap Material</h4>
+                <p>Your first run should always be on scrap material identical to your PCB substrate. This verifies depth settings, feed rates, and overall machine behavior.</p>
+
+                <h4>Process Operations in Order</h4>
+                <p>When exporting G-code, consider the logical order of operations:</p>
+                <ol>
+                    <li>Drilling (small tools, less material displacement)</li>
+                    <li>Isolation routing (creates the trace boundaries)</li>
+                    <li>Copper clearing (removes unwanted copper)</li>
+                    <li>Cutout (last, so the board stays attached during other operations)</li>
+                </ol>
+
+                <h3>Common Issues</h3>
+                <h4>Files Won't Load</h4>
+                <p><strong>Cause:</strong> File extension doesn't match expected type.<br>
+                <strong>Solution:</strong> Use the correct drop zone/category, or rename the file with a recognized extension.</p>
+
+                <h4>Geometry Appears Rotated or Mirrored</h4>
+                <p><strong>Cause:</strong> Your EDA software may use different coordinate conventions.<br>
+                <strong>Solution:</strong> Use the Rotation setting to correct orientation. For mirroring, flip the design in your EDA before export.</p>
+
+                <h4>Offsets Don't Generate</h4>
+                <p><strong>Cause:</strong> Invalid parameters or degenerate geometry.<br>
+                <strong>Solution:</strong> Check that tool diameter is greater than zero. Ensure the source geometry has valid shapes. Review the status bar for errors.</p>
+
+                <h4>Preview Shows Gaps</h4>
+                <p><strong>Cause:</strong> Tool diameter or stepover settings leave uncovered areas.<br>
+                <strong>Solution:</strong> Increase number of passes or decrease stepover percentage.</p>
+
+                <h4>Drill Holes Wrong Size</h4>
+                <p><strong>Cause:</strong> Tool doesn't match hole diameter and milling is disabled.<br>
+                <strong>Solution:</strong> Enable "Mill Holes" for undersized tools, or use a drill bit matching your hole sizes.</p>
+
+                <h3>Performance Tips</h3>
+                <h4>Large Files Load Slowly</h4>
+                <p>Complex Gerber files with thousands of primitives take time to parse. Consider simplifying your design or breaking it into multiple files.</p>
+
+                <h4>Offset Generation Takes Long</h4>
+                <p>Boolean operations on complex geometry are computationally intensive. Disabling Fusion Mode speeds up offset generation at the cost of potentially overlapping geometry.</p>
+
+                <h4>Canvas Responds Slowly</h4>
+                <p>If panning/zooming feels sluggish, try disabling some visualization options (rulers, grid) or switching to wireframe mode.</p>
+            </section>
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="doc-footer">
+        <p>
+            <a href="#toc">Back to Top</a> |
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank">GitHub</a> |
+            <a href="https://ko-fi.com/eltryus" target="_blank">Support Development</a> |
+            <a href="LICENSE" target="_blank">AGPLv3 Licensed</a>
+        </p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="themes/theme-loader.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggle = document.getElementById('theme-toggle');
+            if (toggle && window.ThemeLoader) {
+                toggle.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+            }
+        });
+    </script>
+</body>
+</html>

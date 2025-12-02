@@ -30,10 +30,10 @@
 
 /* Base button - all buttons inherit from this */
 .btn {
-    min-width: var(--touch-target-min);
-    min-height: var(--touch-target-min);
-    padding: var(--spacing-sm) var(--spacing-lg);
-    border: none;
+    min-width: var(--touch-target-compact);
+    min-height: var(--touch-target-compact);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 1px solid var(--color-border-secondary);
     border-radius: var(--radius);
     font-family: var(--font-family);
     font-size: var(--font-size-sm);
@@ -44,17 +44,17 @@
     justify-content: center;
     gap: var(--spacing-xs);
     user-select: none;
-    background: var(--color-bg-tertiary);
+    background: transparent;
     color: var(--color-text-primary);
 }
 
 .btn:hover:not(:disabled) {
+    border-color: var(--color-accent-primary);
     background: var(--color-bg-hover);
-    box-shadow: var(--shadow-sm);
 }
 
 .btn:active:not(:disabled) {
-    transform: translateY(0);
+    background: var(--color-bg-active);
 }
 
 .btn:disabled {
@@ -65,52 +65,57 @@
 /* Button Variants */
 .btn--primary {
     background: var(--color-accent-primary);
+    border-color: var(--color-accent-primary);
     color: white;
 }
 
 .btn--primary:hover:not(:disabled) {
     background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
 }
 
 .btn--secondary {
-    background: var(--color-bg-tertiary);
+    background: transparent;
     border: 1px solid var(--color-border-secondary);
 }
 
 .btn--secondary:hover:not(:disabled) {
     border-color: var(--color-accent-primary);
+    background: var(--color-bg-hover);
 }
 
 /* Icon-only buttons */
-.btn--icon {
-    padding: var(--spacing-sm);
+.btn--icon{
+    padding: var(--spacing-xs);
+    min-width: 36px;
+    min-height: 36px;
     background: transparent;
-    min-width: var(--touch-target-min);
-    min-height: var(--touch-target-min);
+    border: 1px solid transparent;
 }
 
 .btn--icon:hover:not(:disabled) {
+    border-color: var(--color-border-secondary);
     background: var(--color-bg-hover);
-    transform: none;
 }
 
 /* Toolbar buttons */
-.btn--toolbar {
-    min-width: 40px;
-    min-height: 40px;
+.btn--tool {
+    min-width: 36px;
+    min-height: 36px;
     padding: var(--spacing-xs);
-    background: var(--color-bg-primary);
-    border: 1px solid var(--color-border-secondary);
+    background: transparent;
+    border: 1px solid transparent;
 }
 
-.btn--toolbar:hover:not(:disabled) {
-    border-color: var(--color-accent-primary);
+.btn--tool:hover:not(:disabled) {
+    border-color: var(--color-border-secondary);
+    background: var(--color-bg-hover);
 }
 
 /* Compact size for dense layouts */
 .btn--compact {
-    min-width: var(--touch-target-compact);
-    min-height: var(--touch-target-compact);
+    min-width: 28px;
+    min-height: 28px;
     padding: var(--spacing-xs);
     font-size: var(--font-size-xs);
 }
@@ -122,19 +127,14 @@
 
 /* Button icon sizing */
 .btn svg {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
 }
 
-.btn--icon svg {
-    width: 18px;
-    height: 18px;
-}
-
 .btn--compact svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
 /* Menu button with dropdown */
@@ -143,7 +143,7 @@
     align-items: center;
     gap: var(--spacing-xs);
     padding: var(--spacing-xs) var(--spacing-md);
-    background: var(--color-bg-tertiary);
+    background: transparent;
     border: 1px solid var(--color-border-secondary);
 }
 
@@ -151,14 +151,41 @@
     border-color: var(--color-accent-primary);
 }
 
-.btn--menu.active {
+.btn--menu.active{
     background: var(--color-bg-active);
     border-color: var(--color-accent-primary);
 }
 
-/* ============================================================================
-   VISIBILITY TOGGLE ICON
-   ============================================================================ */
+/* Theme toggle */
+.theme-toggle {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--color-border-secondary);
+    border-radius: var(--radius);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+
+.theme-toggle:hover {
+    border-color: var(--color-accent-primary);
+    color: var(--color-text-primary);
+}
+
+.theme-toggle svg {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+}
+
+/* Visibility toggle icon */
 
 /* By default (no .is-hidden), the layer is VISIBLE */
 /* Show the standard eye icon, hide the slash icon */

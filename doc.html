@@ -1,0 +1,240 @@
+<!--
+/**
+ * @file        doc.html
+ * @description EasyTrace5000 Documentation
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+-->
+
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyTrace5000 Documentation</title>
+    <link rel="stylesheet" href="css/doc.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/theme.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="doc-header">
+        <h1><a href="/">EasyTrace5000</a></h1>
+        <nav class="doc-nav">
+            <a href="/">← Application</a>
+            <a href="doc" class="active">Docs</a>
+            <a href="cnc">CNC Guide</a>
+            <a href="laser">Laser Guide</a>
+            <span class="separator"></span>
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank">GitHub</a>
+            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+        </nav>
+    </header>
+
+    <div class="doc-wrapper">
+        <main class="doc-main doc-main--wide">
+            <!-- Hero -->
+            <section class="hero">
+                <h1>EasyTrace5000 Documentation</h1>
+                <p class="tagline">Browser-based CAM for PCB prototyping</p>
+
+                <figure>
+                    <img src="https://placehold.co/800x400/1a1a1a/666666?text=EasyTrace5000%0AWorkspace+Screenshot" alt="EasyTrace5000 Workspace">
+                    <figcaption>The EasyTrace5000 workspace with loaded PCB geometry</figcaption>
+                </figure>
+
+                <div class="hero-actions">
+                    <a href="/" class="btn btn--primary">Launch Application</a>
+                    <a href="#pipelines" class="btn btn--secondary">Choose Your Pipeline</a>
+                </div>
+            </section>
+
+            <!-- Introduction -->
+            <section id="introduction">
+                <h2>What is EasyTrace5000?</h2>
+                <p>
+                    EasyTrace5000 is an open-source, browser-based CAM (Computer-Aided Manufacturing) tool 
+                    for PCB prototyping. It processes your design files (Gerber, Excellon, SVG) and generates 
+                    output for your manufacturing equipment—whether that's a CNC router or a laser system.
+                </p>
+                <p>
+                    Everything runs locally in your browser. No installation, no cloud uploads, no accounts. 
+                    Your files stay on your machine.
+                </p>
+            </section>
+
+            <!-- Pipelines -->
+            <section id="pipelines">
+                <h2>Processing Pipelines</h2>
+                <p>
+                    EasyTrace5000 supports multiple manufacturing methods. Choose the pipeline that matches your equipment:
+                </p>
+
+                <div class="pipeline-grid">
+                    <div class="pipeline-card pipeline-card--stable">
+                        <h3>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                            </svg>
+                            CNC Milling
+                            <span class="status-badge">Stable</span>
+                        </h3>
+                        <p>
+                            Generate G-code for isolation routing, drilling, copper clearing, and board cutout. 
+                            Supports GRBL and other common controllers.
+                        </p>
+                        <a href="cnc" class="btn btn--primary btn--block">CNC Guide →</a>
+                    </div>
+
+                    <div class="pipeline-card pipeline-card--dev">
+                        <h3>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M12 2v8"/>
+                                <path d="M12 14v8"/>
+                                <circle cx="12" cy="12" r="2"/>
+                                <path d="M4.93 4.93l4.24 4.24"/>
+                                <path d="M14.83 14.83l4.24 4.24"/>
+                            </svg>
+                            Laser Processing
+                            <span class="status-badge">In Development</span>
+                        </h3>
+                        <p>
+                            Export optimized vectors and rasters for fiber, UV, and diode laser systems. 
+                            Direct ablation, photoresist exposure, and stencil workflows.
+                        </p>
+                        <a href="laser" class="btn btn--secondary btn--block">Learn More →</a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Supported Formats -->
+            <section id="supported-formats">
+                <h2>Supported File Formats</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h3>Gerber (RS-274X)</h3>
+                        <p>Standard PCB copper layer and outline files. Supports <code>.gbr</code>, <code>.ger</code>, <code>.gtl</code>, <code>.gbl</code>, <code>.gko</code>.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Excellon</h3>
+                        <p>Drill files containing hole positions and sizes. Supports <code>.drl</code>, <code>.xln</code>, <code>.txt</code>.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>SVG</h3>
+                        <p>Scalable Vector Graphics for custom outlines or designs. Supports arcs and Bézier curves.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Start -->
+            <section id="quick-start">
+                <h2>Quick Start</h2>
+                <ol>
+                    <li><strong>Launch:</strong> Open the application. Use the Welcome modal to load "Example 1".</li>
+                    <li><strong>Explore:</strong> See the PCB geometry in the center canvas.</li>
+                    <li><strong>Select:</strong> Click a file in the "Isolation Routing" tree (left sidebar).</li>
+                    <li><strong>Generate:</strong> In the right sidebar, click <em>Generate Offsets</em>.</li>
+                    <li><strong>Preview:</strong> Click <em>Generate Toolpath Preview</em> to see the cut path.</li>
+                    <li><strong>Export:</strong> Actions Menu → <em>Manage Toolpaths</em> → <em>Export G-code</em>.</li>
+                </ol>
+            </section>
+
+            <!-- Keyboard Shortcuts -->
+            <section id="keyboard-shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+                <table>
+                    <thead>
+                        <tr><th>Shortcut</th><th>Action</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><kbd>Ctrl</kbd> + <kbd>O</kbd></td><td>Open file dialog</td></tr>
+                        <tr><td><kbd>Ctrl</kbd> + <kbd>S</kbd></td><td>Export SVG</td></tr>
+                        <tr><td><kbd>F</kbd></td><td>Fit view to geometry</td></tr>
+                        <tr><td><kbd>G</kbd></td><td>Toggle grid</td></tr>
+                        <tr><td><kbd>W</kbd></td><td>Toggle wireframe</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Sponsors -->
+            <section id="sponsors" class="sponsors-section">
+                <h2>Supported By</h2>
+                <p>EasyTrace5000 is an open-source project made possible by our community and sponsors.</p>
+
+                <div class="sponsor-grid">
+                    <a href="#" class="sponsor-logo" title="Your Company Here">
+                        <span class="sponsor-placeholder">Sponsor</span>
+                    </a>
+                    <a href="#" class="sponsor-logo" title="Your Company Here">
+                        <span class="sponsor-placeholder">Sponsor</span>
+                    </a>
+                    <a href="#" class="sponsor-logo" title="Your Company Here">
+                        <span class="sponsor-placeholder">Sponsor</span>
+                    </a>
+                </div>
+
+                <p>Interested in supporting open-source CAM development? <a href="https://ko-fi.com/eltryus" target="_blank">Become a sponsor</a>.</p>
+            </section>
+
+            <!-- Footer -->
+            <footer class="doc-footer">
+                <p>
+                    <a href="#introduction">Back to Top</a> |
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank">GitHub</a> |
+                    <a href="https://ko-fi.com/eltryus" target="_blank">Support Development</a> |
+                    <a href="LICENSE" target="_blank">AGPLv3 Licensed</a>
+                </p>
+            </footer>
+        </main>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="themes/theme-loader.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggle = document.getElementById('theme-toggle');
+            if (toggle && window.ThemeLoader) {
+                toggle.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+            }
+        });
+    </script>
+</body>
+</html>

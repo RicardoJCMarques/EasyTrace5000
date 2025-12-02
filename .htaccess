@@ -4,25 +4,34 @@ RewriteEngine On
 # Set WASM MIME type
 AddType application/wasm .wasm
 
-# Enable compression for text-based files
+# Enable compression
 <IfModule mod_deflate.c>
     AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json image/svg+xml application/wasm
 </IfModule>
 
-# Exclude the clipper2 folder from URL rewriting
-RewriteCond %{REQUEST_URI} !^/clipper2/ [NC]
-
-# Remove .html extension from URLs
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule ^([^\.]+)$ $1.html [NC,L]
-
-# Redirect .html to clean URLs (optional, prevents duplicate content)
-RewriteCond %{THE_REQUEST} \s/+([^/]+)\.html[\s?] [NC]
-RewriteRule ^(.+)\.html$ /$1 [R=301,L]
+# Force LICENSE file to display as text
+<Files "LICENSE">
+    ForceType text/plain
+</Files>
 
 # Set index.html as directory index
 DirectoryIndex index.html
 
 # Disable MultiViews to prevent conflicts
 Options -MultiViews
+
+# --- REMOVING EXTENSIONS ---
+
+# 1. External Redirect (The "prettifier")
+# If someone types/links to "page.html", redirect them to "page"
+# (Skips if it's a directory like /clipper2/)
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{THE_REQUEST} \s/+([^/]+)\.html[\s?] [NC]
+RewriteRule ^(.+)\.html$ /$1 [R=301,L]
+
+# 2. Internal Rewrite (The "worker")
+# If they ask for "page", silently serve "page.html"
+# (Skips if "page" is actually a real directory)
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^([^\.]+)$ $1.html [NC,L]

@@ -39,7 +39,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 var(--spacing-lg);
+    padding: 0 var(--spacing-xl);
     z-index: var(--z-sticky);
 }
 
@@ -61,13 +61,15 @@
 .toolbar-right {
     flex: 1;
     justify-content: flex-end;
+    gap: var(--spacing-xs);
 }
 
-.workspace-title {
-    font-size: var(--font-size-lg);
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    opacity: 0.8;
+.toolbar-separator,
+.toolbar .separator {
+    width: 1px;
+    height: 20px;
+    background: var(--color-border-secondary);
+    margin: 0 var(--spacing-sm);
 }
 
 /* ============================================================================
@@ -112,11 +114,15 @@
 .sidebar-section {
     display: flex;
     flex-direction: column;
-    border-bottom: 1px solid var(--color-border-primary);
+    border-bottom: 2px solid var(--color-border-primary);
 }
 
 .sidebar-section:last-child {
     border-bottom: none;
+}
+
+.sidebar-section + .sidebar-section .section-header {
+    border-top: 1px solid var(--color-bg-hover);
 }
 
 /* Section Headers */
@@ -124,10 +130,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: var(--section-header-height);
-    padding: 0 var(--spacing-md);
+    min-height: var(--section-header-height);
+    padding: var(--spacing-sm) var(--spacing-md);
     background: var(--color-bg-tertiary);
     border-bottom: 1px solid var(--color-border-primary);
+    flex-shrink: 0;
 }
 
 .section-header h2 {
@@ -169,6 +176,20 @@
 
 .section-content.collapsed {
     display: none;
+}
+
+/* End of section highlights */
+
+/* Collapsed State: Standard border
+.sidebar-section.coordinate-section,
+.sidebar-section.machine-section {
+    border: 0px;
+} */
+
+/* Expanded State: Highlight Color */
+.sidebar-section.coordinate-section:has(.section-content:not(.collapsed)),
+.sidebar-section.machine-section:has(.section-content:not(.collapsed)) {
+    border-bottom: 2px solid var(--color-accent-primary);
 }
 
 /* ============================================================================
@@ -516,6 +537,16 @@
 .inspector-section {
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.inspector-section .section-header {
+    flex-shrink: 0;
+}
+
+.inspector-section .property-form {
+    flex: 1;
 }
 
 .property-form {
