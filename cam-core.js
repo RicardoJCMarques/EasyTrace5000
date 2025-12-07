@@ -213,7 +213,7 @@
                     showTooltips: config.ui?.showTooltips !== false
                 },
                 geometry: {
-                    preserveArcs: geomConfig.preserveArcs !== false,
+                    preserveArcs: geomConfig.fusion.preserveArcs,
                     adaptiveSegmentation: geomConfig.segments.adaptiveSegmentation !== false,
                     targetSegmentLength: geomConfig.segments.targetLength
                 }

@@ -32,6 +32,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EasyTrace5000 - Advanced Workspace</title>
+    <link rel="icon" type="image/x-icon" href="images/favicon.png">
     
     <!-- Modular CSS Architecture -->
     <link rel="stylesheet" href="css/base.css">
@@ -230,12 +231,6 @@
                     <div class="loading-spinner spinner"></div>
                     <div id="canvas-loading-message" class="loading-message"></div>
                 </div>
-
-                <div class="coordinate-display" id="coordinate-display">
-                    <span>X: <span id="coord-x">0.00</span></span>
-                    <span>Y: <span id="coord-y">0.00</span></span>
-                    <span>Zoom: <span id="zoom-level">100%</span></span>
-                </div>
             </div>
         </main>
 
@@ -398,6 +393,12 @@
                     <circle cx="10" cy="10" r="3" stroke="currentColor" fill="none" stroke-width="1.5"/>
                 </svg>
             </button>
+
+            <div class="coordinate-display" id="coordinate-display">
+                <span>X: <span id="coord-x">0.00</span></span>
+                <span>Y: <span id="coord-y">0.00</span></span>
+                <span>Zoom: <span id="zoom-level">100%</span></span>
+            </div>
 
             <div class="viz-panel collapsed" id="viz-panel">
                 <header class="section-header" id="viz-panel-header">

@@ -46,7 +46,7 @@
       "isolation": "#ff8844",
       "drill": "#4488ff",
       "clearing": "#44ff88",
-      "cutout": "#333333",
+      "cutout": "#ff00ff",
       "toolpath": "#00ffff"
     },
     "canvas": {

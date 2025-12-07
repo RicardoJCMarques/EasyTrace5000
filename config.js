@@ -186,7 +186,7 @@ window.PCBCAMConfig = {
     },
 
     // ============================================================================
-    // STORAGE KEYS (ADD THIS BLOCK)
+    // STORAGE KEYS
     // ============================================================================
     storageKeys: {
         theme: 'pcbcam-theme',
@@ -201,32 +201,6 @@ window.PCBCAMConfig = {
         sidebarRightWidth: 380,                      // [USED IN: base.css --sidebar-right-width] [MOVE TO: settings.js]
         statusBarHeight: 32,                         // [USED IN: base.css --status-bar-height] [MOVE TO: settings.js]
         sectionHeaderHeight: 36,                     // [USED IN: base.css --section-header-height] [MOVE TO: settings.js]
-        defaultTheme: 'dark',                        // [USED IN: cam-ui.js, theme-loader.js] [MOVE TO: settings.js]
-        
-        treeView: {                                  // [UNUSED] [AUDIT-NEEDED] [MOVE TO: settings.js]
-            indentSize: 16,
-            nodeHeight: 28,
-            showIcons: true,
-            animateExpansion: true
-        },
-        
-        canvas: {                                    // [USED IN: cam-ui.js, ui-controls.js, renderer-interaction.js] [MOVE TO: settings.js]
-            defaultZoom: 10,
-            minZoom: 0.01,
-            maxZoom: 1000,
-            zoomStep: 1.2,
-            panSensitivity: 1.0,
-            wheelZoomSpeed: 0.002                    // [USED IN: renderer-interaction.js]
-        },
-        
-        visibility: {                                // [UNUSED - replaced by rendering.defaultOptions] [MOVE TO: settings.js]
-            defaultLayers: {
-                source: true,
-                fused: true,
-                toolpath: false,
-                preview: false
-            }
-        },
 
         ui: {                                        // [USED IN: cam-controller.js, ui-operation-panel.js] [MOVE TO: settings.js]
             autoTransition: true,
@@ -252,7 +226,6 @@ window.PCBCAMConfig = {
             showTraces: true,
             showDrills: true,
             showCutouts: true,
-            theme: 'dark',
             showHoles: true,
             holeRenderMode: 'proper',
             debugHoleWinding: false,
@@ -268,10 +241,11 @@ window.PCBCAMConfig = {
         
         canvas: {                                    // [USED IN: renderer-core.js, renderer-overlay.js] [MOVE TO: settings.js]
             minZoom: 0.01,
-            maxZoom: 1000,
+            maxZoom: 3000,
             defaultZoom: 10,
             zoomStep: 1.2,
             panSensitivity: 1.0,
+            wheelZoomSpeed: 0.002,
             rulerSize: 20,                           // [USED IN: renderer-overlay.js]
             rulerTickLength: 5,                      // [USED IN: renderer-overlay.js]
             originMarkerSize: 10,                    // [USED IN: renderer-overlay.js]
@@ -287,13 +261,6 @@ window.PCBCAMConfig = {
             enabled: true,
             minPixelSpacing: 40,
             steps: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100]
-        },
-        
-        toolpath: {                                  // [USED IN: layer-renderer.js (not provided)] [MOVE TO: settings.js]
-            strokeWidth: 1.5,
-            showDirection: true,
-            showStartPoint: true,
-            animatePreview: false
         }
     },
 
@@ -311,7 +278,7 @@ window.PCBCAMConfig = {
             fitPadding: 1.1,                         // [ADDED] [HARDCODED in renderer-core.js]
             factor: 1.2,                             // [ADDED] [HARDCODED in renderer-core.js]
             min: 0.01,                               // [ADDED] [HARDCODED in renderer-core.js, layout.canvas.minZoom]
-            max: 1000                                // [ADDED] [HARDCODED in renderer-core.js, layout.canvas.maxZoom]
+            max: 3000                                // [ADDED] [HARDCODED in renderer-core.js, layout.canvas.maxZoom]
         },
         overlay: {                                   // [ADDED] [HARDCODED in renderer-overlay.js]
             gridLineWidth: 0.1,
@@ -341,32 +308,6 @@ window.PCBCAMConfig = {
             statsBGWidth: 200,
             statsFont: '12px monospace'
         },
-        // primitives: {                                // [ADDED] [HARDCODED in renderer-primitives.js] Review - Redundant?
-        //     offsetStrokeWidth: 2,
-        //     centerMarkStrokeWidth: 3,
-        //     sourceDrillStrokeWidth: 3,
-        //     sourceDrillMarkSize: 0.2,
-        //     sourceDrillMarkRatio: 0.4,
-        //     peckMarkStrokeWidth: 3,
-        //     peckMarkMarkSize: 0.2,
-        //     peckMarkMarkRatio: 0.4,
-        //     peckMarkDash: [0.15, 0.15],
-        //     peckMarkRingFactor: 1.3,
-        //     peckMarkLabelOffset: 0.3,
-        //     reconstructedStrokeWidth: 2,
-        //     reconstructedCenterSize: 2,
-        //     reconstructedPathDash: [5, 5],
-        //     defaultStrokeWidth: 0.1,
-        //     debugPointSize: 4,
-        //     debugPointFont: '10px monospace',
-        //     debugLabelLineWidth: 2,
-        //     debugArcStrokeWidth: 3,
-        //     debugArcCenterSize: 4,
-        //     debugArcFont: 'bold 12px monospace',
-        //     debugContourStrokeWidth: 2,
-        //     debugContourDash: [5, 5],
-        //     debugContourFont: '12px monospace'
-        // },
         interaction: {                               // [ADDED] [HARDCODED in renderer-interaction.js]
             cursorGrabbing: 'grabbing',
             cursorGrab: 'grab',
@@ -374,7 +315,7 @@ window.PCBCAMConfig = {
             zoomPrecision: 0
         },
         primitives: {                                // [ADDED] [HARDCODED in renderer-primitives.js]
-            offsetStrokeWidth: 2,
+            offsetStrokeWidth: 1,
             centerMarkStrokeWidth: 3,
             sourceDrillStrokeWidth: 3,
             sourceDrillMarkSize: 0.2,
@@ -484,9 +425,7 @@ window.PCBCAMConfig = {
             enabled: true,
             tolerance: 0.001 
         },
-        
-        simplifyTolerance: 0.01,                     // [DUPLICATE of simplification.tolerance] [AUDIT-NEEDED]
-        preserveArcs: true,                          // [DUPLICATE of fusion.preserveArcs] [AUDIT-NEEDED]
+
         edgeKeyPrecision: 3,                         // [ADDED] [HARDCODED in parser-core.js]
         zeroLengthTolerance: 0.0001,                 // [ADDED] [HARDCODED in parser-gerber.js]
         svgPointMatchTolerance: 1e-2,                // [ADDED] [HARDCODED in parser-svg.js]
@@ -500,10 +439,17 @@ window.PCBCAMConfig = {
     // ============================================================================
 
     precision: {
-        // Geometric comparison thresholds
-        pointEquality: 1e-6,           // Two points are "same" if closer than this
-        zeroLength: 1e-9,              // Segment length considered zero
-        collinear: 1e-12,              // Perpendicular distance for collinearity
+        // Geometric comparisons (pure math)
+        epsilon: 1e-9,              // Near-zero for floating point
+        collinear: 1e-12,           // Dot product threshold
+        
+        // Coordinate space (mm)
+        coordinate: 0.001,          // General coordinate precision
+        pointMatch: 0.01,           // Two points are "same location"
+        closedPath: 0.01,           // Path closure detection
+        
+        // Display (output formatting)
+        display: 3,                  // Decimal places for UI/export
         
         // Toolpath thresholds
         xyMatch: 0.01,                 // XY position matching for multi-depth detection

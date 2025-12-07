@@ -65,6 +65,12 @@
     --color-error: #ef4444;
     --color-info: #06b6d4;
 
+    /* Source Geometry Colors */
+    --color-geometry-source-isolation: #ff8844;
+    --color-geometry-source-drill: #4488ff;
+    --color-geometry-source-clearing: #44ff88;
+    --color-geometry-source-cutout: #333333;
+
     /* Operation Colors */
     --color-operation-isolation: #ff8844;
     --color-operation-drill: #4488ff;

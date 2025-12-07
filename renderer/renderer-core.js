@@ -55,10 +55,7 @@
             this.originPosition = { x: 0, y: 0 };
             this.currentRotation = 0;
             this.rotationCenter = { x: 0, y: 0 };
-            this.rotation = {
-                angle: 0,
-                center: { x: 0, y: 0 }
-            };
+            this.rotation = { angle: 0, center: { x: 0, y: 0 } };
 
             // Bounds
             this.bounds = null;
@@ -66,6 +63,9 @@
 
             // Layers storage
             this.layers = new Map();
+
+            // Device pixel ratio
+            this.devicePixelRatio = 1;
 
             // Render options
             this.options = {
@@ -89,20 +89,19 @@
                 debugArcs: defaultconfig.debugArcs,
                 showToolPreview: defaultconfig.showToolPreview,
                 theme: defaultconfig.theme,
-                showStats: defaultconfig.showStats,
-                showToolPreview: false
+                showStats: defaultconfig.showStats
             };
 
-            // Color schemes
-            this.colors = {}; // Initialize empty
-            this._updateThemeColors(); // Populate from CSS
+            // LOD threshold (screen pixels)
+            this.lodThreshold = config.renderer.lodThreshold || 0.5;
 
-            // Listen for theme changes from theme-loader.js
+            // Color schemes
+            this.colors = {};
+            this._updateThemeColors();
+
             window.addEventListener('themechange', () => {
                 this._updateThemeColors();
-                // Set a flag for external render() method
                 this.renderStats.lastSignificantChange = 'theme-changed';
-                // When main LayerRenderer calls render() it'll check this variable for changes
             });
 
             // Statistics
@@ -112,22 +111,30 @@
                 primitives: 0,
                 renderedPrimitives: 0,
                 skippedPrimitives: 0,
+                culledViewport: 0,
+                culledLOD: 0,
                 drawCalls: 0,
                 lastSignificantChange: null
             };
 
-            // Coordinate system reference
+            // Frame cache for per-frame calculations
+            this.frameCache = {
+                invScale: 1,
+                minWorldWidth: 1,
+                viewBounds: null
+            };
+
             this.coordinateSystem = null;
             this.rendererType = 'canvas2d';
-
-            // Track mouse position for zoom center
-            this.lastMouseCanvasPos = { x: 0, y: 0 }; 
+            this.lastMouseCanvasPos = { x: 0, y: 0 };
         }
 
+        // ========================================================================
         // Layer Management
+        // ========================================================================
 
         addLayer(name, primitives, options = {}) {
-            this.layers.set(name, {
+            const layer = {
                 name: name,
                 primitives: primitives,
                 type: options.type,
@@ -142,11 +149,96 @@
                 offsetType: options.offsetType,
                 distance: options.distance,
                 metadata: options.metadata,
-                bounds: this.calculateLayerBounds(primitives)
-            });
+                bounds: this.calculateLayerBounds(primitives),
+                // Lightweight cache
+                renderCache: null
+            };
 
+            this.layers.set(name, layer);
+            this._buildLayerBoundsCache(layer);
             this.calculateOverallBounds();
             this.renderStats.lastSignificantChange = 'layer-added';
+        }
+
+        /**
+         * Builds lightweight bounds cache for culling
+         * This is the key optimization: cache bounds for fast culling, but don't pay the Path2D allocation cost.
+         */
+        _buildLayerBoundsCache(layer) {
+            if (!layer.primitives || layer.primitives.length === 0) {
+                layer.renderCache = { entries: [], bounds: null, valid: true };
+                return;
+            }
+
+            const entries = [];
+            // Cache global layer tool diameter if available
+            const layerToolDia = layer.metadata?.toolDiameter || 0;
+
+            for (const prim of layer.primitives) {
+                let bounds;
+                try {
+                    bounds = prim.getBounds();
+                    if (!bounds || !isFinite(bounds.minX)) continue;
+                } catch (e) { continue; }
+
+                let width = bounds.maxX - bounds.minX;
+                let height = bounds.maxY - bounds.minY;
+
+                const props = prim.properties || {};
+                let inflation = 0;
+
+                // Peck Marks & Centerline Slots (Critical Operational Data)
+                // These contain crosshairs or drill hits that must remain visible even if the geometry itself is a tiny dot.
+                if (props.role === 'peck_mark' || 
+                    props.isToolPeckMark || 
+                    props.isCenterlinePath || 
+                    props.role === 'drill_milling_path') {
+
+                    // Set to Infinity to effectively disable LOD culling for these items.
+                    // They will still be culled by Viewport (off-screen), but never by size.
+                    inflation = Infinity; 
+                }
+                // Previews & Thick Traces
+                // If it's a tool preview, the visual size is Geometry + ToolDiameter
+                else if (layer.isPreview || layer.type === 'preview') {
+                    inflation = props.toolDiameter || layerToolDia || 0;
+                }
+                // Stroked Primitives (Standard)
+                else if (props.stroke && props.strokeWidth) {
+                    inflation = props.strokeWidth;
+                }
+
+                // Apply Inflation - If Infinity, screenSize becomes Infinity (always passes LOD)
+                const screenSize = (inflation === Infinity) 
+                    ? Infinity 
+                    : Math.max(width, height) + inflation;
+
+                entries.push({
+                    primitive: prim,
+                    bounds: bounds, // Keep geometric bounds for Viewport Culling (accurate)
+                    screenSize: screenSize // Use Inflated bounds for LOD Culling (visual)
+                });
+            }
+
+            layer.renderCache = {
+                entries: entries,
+                bounds: layer.bounds,
+                valid: true
+            };
+        }
+
+        invalidateLayerCache(layerName) {
+            const layer = this.layers.get(layerName);
+            if (layer && layer.renderCache) {
+                layer.renderCache.valid = false;
+            }
+        }
+
+        rebuildLayerCache(layerName) {
+            const layer = this.layers.get(layerName);
+            if (layer) {
+                this._buildLayerBoundsCache(layer);
+            }
         }
 
         removeLayer(name) {
@@ -165,33 +257,31 @@
         getVisibleLayers() {
             const visible = new Map();
             this.layers.forEach((layer, name) => {
-                if (layer.visible) {
-                    visible.set(name, layer);
-                }
+                if (layer.visible) visible.set(name, layer);
             });
             return visible;
         }
 
-        // View bounds & Culling
+        // ========================================================================
+        // View Bounds & Culling Helpers
+        // ========================================================================
 
         getViewBounds() {
-            // Get the 4 corners of the canvas in world space
             const corners = [
-                this.canvasToWorld(0, 0),                       // Top-left
-                this.canvasToWorld(this.canvas.width, 0),       // Top-right
-                this.canvasToWorld(this.canvas.width, this.canvas.height), // Bottom-right
-                this.canvasToWorld(0, this.canvas.height)        // Bottom-left
+                this.canvasToWorld(0, 0),
+                this.canvasToWorld(this.canvas.width, 0),
+                this.canvasToWorld(this.canvas.width, this.canvas.height),
+                this.canvasToWorld(0, this.canvas.height)
             ];
 
-            // Find the Axis Adjusted Bounding Box that encloses those 4 world points
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
 
-            corners.forEach(corner => {
-                minX = Math.min(minX, corner.x);
-                minY = Math.min(minY, corner.y);
-                maxX = Math.max(maxX, corner.x);
-                maxY = Math.max(maxY, corner.y);
+            corners.forEach(c => {
+                minX = Math.min(minX, c.x);
+                minY = Math.min(minY, c.y);
+                maxX = Math.max(maxX, c.x);
+                maxY = Math.max(maxY, c.y);
             });
 
             return { minX, minY, maxX, maxY };
@@ -204,12 +294,20 @@
                      b2.maxY < b1.minY);
         }
 
-        // Level Of Detail & Visibility
+        /**
+         * LOD culling check - rejects sub-pixel primitives.
+         */
+        passesLODCull(screenSize, viewScale, threshold) {
+            const dpr = this.devicePixelRatio || 1;
+            const screenSizeCSS = (screenSize * viewScale) / dpr;
+            return screenSizeCSS >= threshold;
+        }
 
+        /**
+         * Visibility check based on primitive properties and render options.
+         */
         shouldRenderPrimitive(primitive, layerType) {
-            if (primitive.properties?.isFused) {
-                return true;
-            }
+            if (primitive.properties?.isFused) return true;
 
             const role = primitive.properties?.role;
             if (role === 'drill_slot' || role === 'drill_milling_path' || role === 'peck_mark') {
@@ -219,39 +317,27 @@
             if (primitive.properties?.isCutout || layerType === 'cutout') {
                 return this.options.showCutouts;
             }
-
             if (primitive.properties?.isRegion) {
                 return this.options.showRegions;
             }
-
             if (primitive.properties?.isPad || primitive.properties?.isFlash) {
                 return this.options.showPads;
             }
-
             if (primitive.properties?.isTrace || primitive.properties?.stroke) {
                 return this.options.showTraces;
-            }
-
-            // LOD check - skip sub-pixel primitives
-            const bounds = primitive.getBounds();
-            const screenWidth = (bounds.maxX - bounds.minX) * this.viewScale;
-            const screenHeight = (bounds.maxY - bounds.minY) * this.viewScale;
-
-            const lodThreshold = config.renderer.lodThreshold;
-            if (screenWidth < lodThreshold && screenHeight < lodThreshold) {
-                return false;
             }
 
             return true;
         }
 
+        // ========================================================================
         // Coordinate Transforms
+        // ========================================================================
 
         setupTransform() {
             this.ctx.save();
             this.ctx.translate(this.viewOffset.x, this.viewOffset.y);
-            this.ctx.scale(this.viewScale, -this.viewScale);  // Y-FLIP: Canvas Y-down → World Y-up
-
+            this.ctx.scale(this.viewScale, -this.viewScale);
             this.ctx.lineCap = 'round';
             this.ctx.lineJoin = 'round';
         }
@@ -260,7 +346,6 @@
             this.ctx.restore();
         }
 
-        // World to canvas coordinate conversion
         worldToCanvasX(worldX) {
             return this.viewOffset.x + worldX * this.viewScale;
         }
@@ -269,7 +354,6 @@
             return this.viewOffset.y - worldY * this.viewScale;
         }
 
-        // Canvas to world coordinate conversion
         canvasToWorld(canvasX, canvasY) {
             return {
                 x: (canvasX - this.viewOffset.x) / this.viewScale,
@@ -277,7 +361,6 @@
             };
         }
 
-        // World to screen coordinate conversion (for debug overlays)
         worldToScreen(worldX, worldY) {
             return {
                 x: this.worldToCanvasX(worldX),
@@ -285,7 +368,9 @@
             };
         }
 
+        // ========================================================================
         // Bounds Calculations
+        // ========================================================================
 
         calculateLayerBounds(primitives) {
             if (!primitives || primitives.length === 0) {
@@ -298,40 +383,23 @@
 
             primitives.forEach((primitive, index) => {
                 try {
-                    if (typeof primitive.getBounds !== 'function') {
-                        if (debugConfig.enabled) {
-                            console.warn(`[RendererCore] Primitive ${index} missing getBounds()`);
-                        }
-                        return;
-                    }
-
+                    if (typeof primitive.getBounds !== 'function') return;
                     const bounds = primitive.getBounds();
-
-                    if (!bounds || !isFinite(bounds.minX) || !isFinite(bounds.minY) ||
-                        !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
-                        if (debugConfig.enabled) {
-                            console.warn(`[RendererCore] Primitive ${index} invalid bounds:`, bounds);
-                        }
-                        return;
-                    }
+                    if (!bounds || !isFinite(bounds.minX)) return;
 
                     minX = Math.min(minX, bounds.minX);
                     minY = Math.min(minY, bounds.minY);
                     maxX = Math.max(maxX, bounds.maxX);
                     maxY = Math.max(maxY, bounds.maxY);
                     validCount++;
-
                 } catch (error) {
-                    if (debugConfig.enabled) {
-                        console.warn(`[RendererCore] Primitive ${index} bounds calculation failed:`, error);
+                    if (debugConfig.validation?.warnOnInvalidData) {
+                        console.warn(`[RendererCore] Primitive ${index} bounds failed:`, error);
                     }
                 }
             });
 
-            if (validCount === 0) {
-                return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-            }
-
+            if (validCount === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
             return { minX, minY, maxX, maxY };
         }
 
@@ -344,26 +412,17 @@
                 if (!layer.primitives || layer.primitives.length === 0) return;
                 if (!layer.visible) return;
 
-                if (layer.bounds) {
-                    minX = Math.min(minX, layer.bounds.minX);
-                    minY = Math.min(minY, layer.bounds.minY);
-                    maxX = Math.max(maxX, layer.bounds.maxX);
-                    maxY = Math.max(maxY, layer.bounds.maxY);
+                const b = layer.bounds;
+                if (b) {
+                    minX = Math.min(minX, b.minX);
+                    minY = Math.min(minY, b.minY);
+                    maxX = Math.max(maxX, b.maxX);
+                    maxY = Math.max(maxY, b.maxY);
                     hasContent = true;
-                } else {
-                    // Calculate bounds if not cached
-                    layer.primitives.forEach((primitive) => {
-                        const bounds = primitive.getBounds();
-                        minX = Math.min(minX, bounds.minX);
-                        minY = Math.min(minY, bounds.minY);
-                        maxX = Math.max(maxX, bounds.maxX);
-                        maxY = Math.max(maxY, bounds.maxY);
-                        hasContent = true;
-                    });
                 }
             });
 
-            if (hasContent && isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
+            if (hasContent && isFinite(minX)) {
                 this.overallBounds = {
                     minX, minY, maxX, maxY,
                     width: maxX - minX,
@@ -371,14 +430,16 @@
                     centerX: (minX + maxX) / 2,
                     centerY: (minY + maxY) / 2
                 };
-                this.bounds = this.overallBounds; // Alias for compatibility // Review - Check if alias is still necessary
+                this.bounds = this.overallBounds;
             } else {
                 this.overallBounds = null;
                 this.bounds = null;
             }
         }
 
+        // ========================================================================
         // Zoom & Pan
+        // ========================================================================
 
         zoomFit() {
             const fitPadding = config.renderer.zoom.fitPadding;
@@ -407,30 +468,23 @@
             };
         }
 
-        zoomIn(factor = (config.renderer.zoom.factor)) {
-            const centerX = this.canvas.width / 2;
-            const centerY = this.canvas.height / 2;
-            this.zoomToPoint(centerX, centerY, factor);
+        zoomIn(factor = config.renderer.zoom.factor) {
+            const cx = this.canvas.width / 2;
+            const cy = this.canvas.height / 2;
+            this.zoomToPoint(cx, cy, factor);
         }
 
-        zoomOut(factor = (config.renderer.zoom.factor)) {
-            const centerX = this.canvas.width / 2;
-            const centerY = this.canvas.height / 2;
-            this.zoomToPoint(centerX, centerY, 1 / factor);
+        zoomOut(factor = config.renderer.zoom.factor) {
+            const cx = this.canvas.width / 2;
+            const cy = this.canvas.height / 2;
+            this.zoomToPoint(cx, cy, 1 / factor);
         }
 
         zoomToPoint(canvasX, canvasY, factor) {
-            // Get world position at point before zoom
             const worldBefore = this.canvasToWorld(canvasX, canvasY);
-
-            // Apply zoom
             this.viewScale *= factor;
-
-            const minZoom = config.renderer.zoom.min;
-            const maxZoom = config.renderer.zoom.max;
-            this.viewScale = Math.max(minZoom, Math.min(maxZoom, this.viewScale));
-
-            // Set offset so the same world point stays under the canvas point
+            this.viewScale = Math.max(config.renderer.zoom.min, 
+                             Math.min(config.renderer.zoom.max, this.viewScale));
             this.viewOffset.x = canvasX - worldBefore.x * this.viewScale;
             this.viewOffset.y = canvasY + worldBefore.y * this.viewScale;
         }
@@ -440,60 +494,57 @@
             this.viewOffset.y += dy;
         }
 
+        // ========================================================================
         // Canvas Management
+        // ========================================================================
 
         resizeCanvas() {
             const container = this.canvas.parentElement;
             if (!container) return;
 
             const rect = container.getBoundingClientRect();
-            const dpr = window.devicePixelRatio;
+            const dpr = window.devicePixelRatio || 1;
 
-            const logicalWidth = rect.width;
-            const logicalHeight = rect.height;
+            this.canvas.width = rect.width * dpr;
+            this.canvas.height = rect.height * dpr;
+            this.canvas.style.width = rect.width + 'px';
+            this.canvas.style.height = rect.height + 'px';
 
-            // Set the drawing buffer size to the physical pixel count
-            this.canvas.width = logicalWidth * dpr;
-            this.canvas.height = logicalHeight * dpr;
+            this.devicePixelRatio = dpr;
 
-            // Set the element's display size in CSS logical pixels
-            this.canvas.style.width = logicalWidth + 'px';
-            this.canvas.style.height = logicalHeight + 'px';
+            this.ctx.imageSmoothingEnabled = true;
+            this.ctx.imageSmoothingQuality = 'high';
 
-            // Clear canvas immediately
-            this.ctx.fillStyle = this.colors.canvas.background;
+            this.ctx.fillStyle = this.colors.canvas?.background || '#1a1a2e';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
         clearCanvas() {
-            const backgroundColor = this.colors.canvas.background;
-
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.fillStyle = backgroundColor;
+            this.ctx.fillStyle = this.colors.canvas.background;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
+        // ========================================================================
         // Rendering Utilities
+        // ========================================================================
 
         getWireframeStrokeWidth() {
-            const baseWidth = canvasConfig.wireframe.baseThickness;
-            const minWidth = canvasConfig.wireframe.minThickness;
-            const maxWidth = canvasConfig.wireframe.maxThickness;
-            const scaledWidth = baseWidth / this.viewScale;
-            return Math.max(minWidth, Math.min(maxWidth, scaledWidth));
+            const base = canvasConfig.wireframe.baseThickness;
+            const min = canvasConfig.wireframe.minThickness;
+            const max = canvasConfig.wireframe.maxThickness;
+            const scaled = base / this.viewScale;
+            const dpr = this.devicePixelRatio || 1;
+            const minVisible = dpr / this.viewScale;
+            return Math.max(min, Math.min(max, Math.max(scaled, minVisible)));
         }
 
         setOptions(options) {
             const oldOptions = { ...this.options };
             Object.assign(this.options, options);
-
-            const changed = Object.keys(options).some(key => oldOptions[key] !== options[key]);
+            const changed = Object.keys(options).some(k => oldOptions[k] !== options[k]);
             if (changed) {
-                if (options.theme) {
-                    this.renderStats.lastSignificantChange = 'theme-changed';
-                } else {
-                    this.renderStats.lastSignificantChange = 'options-changed';
-                }
+                this.renderStats.lastSignificantChange = options.theme ? 'theme-changed' : 'options-changed';
             }
         }
 
@@ -501,7 +552,9 @@
             this.coordinateSystem = coordinateSystem;
         }
 
+        // ========================================================================
         // Origin & Rotation
+        // ========================================================================
 
         setOriginPosition(x, y) {
             this.originPosition.x = x;
@@ -514,10 +567,7 @@
 
         setRotation(angle, center) {
             this.currentRotation = angle || 0;
-            this.rotation = {
-                angle: angle || 0,
-                center: center || { x: 0, y: 0 }
-            };
+            this.rotation = { angle: angle || 0, center: center || { x: 0, y: 0 } };
             if (center) {
                 this.rotationCenter.x = center.x;
                 this.rotationCenter.y = center.y;
@@ -526,29 +576,34 @@
 
         applyRotationTransform() {
             if (!this.rotation || this.rotation.angle === 0) return;
-
-            const center = this.rotation.center;
-            const radians = (this.rotation.angle * Math.PI) / 180;
-
-            this.ctx.translate(center.x, center.y);
-            this.ctx.rotate(radians);
-            this.ctx.translate(-center.x, -center.y);
+            const c = this.rotation.center;
+            const rad = (this.rotation.angle * Math.PI) / 180;
+            this.ctx.translate(c.x, c.y);
+            this.ctx.rotate(rad);
+            this.ctx.translate(-c.x, -c.y);
         }
 
-        // Color & Them
+        // ========================================================================
+        // Color & Theme
+        // ========================================================================
 
         _updateThemeColors() {
             const rootStyle = getComputedStyle(document.documentElement);
-            // Helper to read CSS variables
             const read = (varName) => rootStyle.getPropertyValue(varName).trim();
 
             this.colors = {
+                source: {
+                    isolation: read('--color-geometry-source-isolation'),
+                    drill: read('--color-geometry-source-drill'),
+                    clearing: read('--color-geometry-source-clearing'),
+                    cutout: read('--color-geometry-source-cutout'),
+                    fused: read('--color-geometry-source-isolation')
+                },
                 operations: {
                     isolation: read('--color-operation-isolation'),
                     drill: read('--color-operation-drill'),
                     clearing: read('--color-operation-clearing'),
                     cutout: read('--color-operation-cutout'),
-                    toolpath: read('--color-operation-toolpath')
                 },
                 canvas: {
                     background: read('--color-canvas-bg'),
@@ -590,47 +645,35 @@
                     white: read('--color-bw-white')
                 }
             };
-
-            // Maintain 'layers' alias for backward compatibility // Review - Check if alias is still necessary
-            this.colors.layers = this.colors.operations;
-            // Add a fused alias // Review - Check if alias is still necessary
-            this.colors.layers.fused = this.colors.operations.isolation;
         }
 
         getLayerColorSettings(layer) {
-            // Use this.colors which is loaded from live CSS variables.
-            const colors = this.colors;
-
-            // 'layers' is an alias for 'operations'
-            const opColors = colors.layers; 
+            const geo = this.colors.geometry;
+            const src = this.colors.source;
 
             switch (layer.type) {
-                case 'isolation': return opColors.isolation;
-                case 'clearing':  return opColors.clearing;
-                case 'drill':     return opColors.drill;
-                case 'cutout':    return opColors.cutout;
-                case 'toolpath':  return opColors.toolpath;
-                case 'fused':     return opColors.fused || opColors.isolation;
-
+                case 'isolation': return src.isolation;
+                case 'clearing':  return src.clearing;
+                case 'drill':     return src.drill;
+                case 'cutout':    return src.cutout;
+                case 'fused':     return src.fused;
                 case 'offset':
-                    if (colors.geometry && colors.geometry.offset) {
-                        switch (layer.offsetType) { 
-                            case 'external': return colors.geometry.offset.external;
-                            case 'internal': return colors.geometry.offset.internal;
-                            case 'on':       return colors.geometry.offset.on;
-                        }
+                    switch (layer.offsetType) { 
+                        case 'external': return geo.offset.external;
+                        case 'internal': return geo.offset.internal;
+                        case 'on':       return geo.offset.on;
                     }
                     return '#FF0000';
-                    
                 case 'preview':
-                    return (colors.geometry && colors.geometry.preview) ? colors.geometry.preview : '#00FFFF';
-                
+                    return geo.preview;
                 default: 
-                    return opColors.copper || opColors.isolation;
+                    return src.isolation;
             }
         }
 
+        // ========================================================================
         // View State
+        // ========================================================================
 
         getViewState() {
             return {
@@ -643,22 +686,17 @@
         }
 
         setViewState(state) {
-            if (state.offset) {
-                this.viewOffset = { ...state.offset };
-            }
-            if (state.scale !== undefined) {
-                this.viewScale = state.scale;
-            }
-            if (state.rotation !== undefined) {
-                this.currentRotation = state.rotation;
-            }
+            if (state.offset) this.viewOffset = { ...state.offset };
+            if (state.scale !== undefined) this.viewScale = state.scale;
+            if (state.rotation !== undefined) this.currentRotation = state.rotation;
         }
 
         getTransformMatrix() {
-            if (this.currentRotation === 0 && this.originPosition.x === 0 && this.originPosition.y === 0) {
+            if (this.currentRotation === 0 && 
+                this.originPosition.x === 0 && 
+                this.originPosition.y === 0) {
                 return null;
             }
-
             return {
                 originOffset: { ...this.originPosition },
                 rotation: this.currentRotation,
@@ -666,13 +704,24 @@
             };
         }
 
+        // ========================================================================
         // Rendering Timing
+        // ========================================================================
 
         beginRender() {
             this.renderStats.primitives = 0;
             this.renderStats.renderedPrimitives = 0;
             this.renderStats.skippedPrimitives = 0;
+            this.renderStats.culledViewport = 0;
+            this.renderStats.culledLOD = 0;
             this.renderStats.drawCalls = 0;
+
+            // Pre-calculate frame constants ONCE
+            const dpr = this.devicePixelRatio || 1;
+            this.frameCache.invScale = 1 / this.viewScale;
+            this.frameCache.minWorldWidth = dpr / this.viewScale;
+            this.frameCache.viewBounds = this.getViewBounds();
+
             this.clearCanvas();
             return performance.now();
         }
@@ -683,7 +732,9 @@
             this.renderStats.lastRenderTime = Date.now();
             
             if (this.renderStats.lastSignificantChange && debugConfig.enabled) {
-                console.log(`[RendererCore] Rendered ${this.renderStats.renderedPrimitives} primitives in ${this.renderStats.renderTime.toFixed(1)}ms (${this.renderStats.lastSignificantChange})`);
+                console.log(`[RendererCore] Rendered ${this.renderStats.renderedPrimitives} prims, ` +
+                    `${this.renderStats.drawCalls} draws, ${this.renderStats.renderTime.toFixed(1)}ms ` +
+                    `(${this.renderStats.lastSignificantChange})`);
                 this.renderStats.lastSignificantChange = null;
             }
         }

@@ -48,7 +48,6 @@
                 files: 0,
                 operations: 0,
                 primitives: 0,
-                toolpaths: 0,
                 processingTime: 0
             };
             this._updatePending = false;
@@ -401,10 +400,6 @@
                 primStat.textContent = stats.totalPrimitives;
             }
 
-            const toolpathStat = document.getElementById('stat-toolpaths');
-            if (toolpathStat) {
-                toolpathStat.textContent = stats.toolpaths;
-            }
         }
 
         toggleGrid() {
@@ -465,14 +460,6 @@
             if (window.pcbcam && window.pcbcam.showFileModal) {
                 window.pcbcam.showFileModal();
             }
-        }
-
-        async generateToolpaths() {
-            if (window.pcbcam && window.pcbcam.generateToolpaths) {
-                return window.pcbcam.generateToolpaths();
-            }
-
-            this.updateStatus('Toolpath generation not yet implemented', 'warning');
         }
 
         async exportSVG() {

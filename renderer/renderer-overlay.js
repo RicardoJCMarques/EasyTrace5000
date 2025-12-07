@@ -28,9 +28,8 @@
     'use strict';
 
     const config = window.PCBCAMConfig;
-    const canvasConfig = config.rendering?.canvas;
-    const gridConfig = config.rendering?.grid;
-    const overlayConfig = config.renderer?.overlay;
+    const gridConfig = config.rendering.grid;
+    const overlayConfig = config.renderer.overlay;
     const debugConfig = config.debug;
 
     class OverlayRenderer {
@@ -48,35 +47,40 @@
             const colors = this.core.colors.canvas;
             if (!colors) return;
 
-            const gridSpacing = this._calculateStepSize();
-            const viewBounds = this.core.getViewBounds();
+            // Use cached scale for calculations
+            const fc = this.core.frameCache;
+            const step = this._calculateStepSize();
+            if (step <= 0) return;
+
+            const view = this.core.getViewBounds();
+            const origin = this.core.getOriginPosition();
+
+            this.ctx.save();
 
             this.ctx.strokeStyle = colors.grid;
-            this.ctx.lineWidth = (overlayConfig.gridLineWidth) / this.core.viewScale;
+
+            this.ctx.lineWidth = fc.invScale; 
+
             this.ctx.setLineDash([]);
+
+            this.ctx.globalAlpha = 0.20;
 
             this.ctx.beginPath();
 
-            const originX = this.core.originPosition?.x;
-            const originY = this.core.originPosition?.y;
-
-            const startX = Math.floor((viewBounds.minX - originX) / gridSpacing) * gridSpacing + originX;
-            const endX = Math.ceil((viewBounds.maxX - originX) / gridSpacing) * gridSpacing + originX;
-
-            for (let x = startX; x <= endX; x += gridSpacing) {
-                this.ctx.moveTo(x, viewBounds.minY);
-                this.ctx.lineTo(x, viewBounds.maxY);
+            const startX = Math.floor((view.minX - origin.x) / step) * step + origin.x;
+            for (let x = startX; x <= view.maxX; x += step) {
+                this.ctx.moveTo(x, view.minY);
+                this.ctx.lineTo(x, view.maxY);
             }
 
-            const startY = Math.floor((viewBounds.minY - originY) / gridSpacing) * gridSpacing + originY;
-            const endY = Math.ceil((viewBounds.maxY - originY) / gridSpacing) * gridSpacing + originY;
-
-            for (let y = startY; y <= endY; y += gridSpacing) {
-                this.ctx.moveTo(viewBounds.minX, y);
-                this.ctx.lineTo(viewBounds.maxX, y);
+            const startY = Math.floor((view.minY - origin.y) / step) * step + origin.y;
+            for (let y = startY; y <= view.maxY; y += step) {
+                this.ctx.moveTo(view.minX, y);
+                this.ctx.lineTo(view.maxX, y);
             }
 
             this.ctx.stroke();
+            this.ctx.restore();
         }
 
         // Origin
@@ -87,15 +91,20 @@
             const colors = this.core.colors.canvas;
             if (!colors) return;
 
-            const markerSize = (canvasConfig.originMarkerSize) / this.core.viewScale;
-            const circleSize = (canvasConfig.originCircleSize) / this.core.viewScale;
-            const strokeWidth = (overlayConfig.originStrokeWidth) / this.core.viewScale;
-            const outlineWidth = (overlayConfig.originOutlineWidth) / this.core.viewScale;
+            const fc = this.core.frameCache; // Use Cache
 
-            const originX = this.core.originPosition?.x;
-            const originY = this.core.originPosition?.y;
+            // Scale sizes by inverse scale
+            const markerSize = (config.rendering.canvas.originMarkerSize) * fc.invScale;
+            const circleSize = (config.rendering.canvas.originCircleSize) * fc.invScale;
+            const strokeWidth = (config.renderer.overlay.originStrokeWidth) * fc.invScale;
 
-            // Draw outline
+            // Outline is fixed width + stroke width
+            const outlineWidth = (config.renderer.overlay.originOutlineWidth) * fc.invScale;
+
+            const originX = this.core.originPosition?.x || 0;
+            const originY = this.core.originPosition?.y || 0;
+
+            // Draw Outline (Contrast)
             this.ctx.strokeStyle = colors.originOutline;
             this.ctx.lineWidth = strokeWidth + outlineWidth;
 
@@ -110,7 +119,7 @@
             this.ctx.arc(originX, originY, circleSize, 0, 2 * Math.PI);
             this.ctx.stroke();
 
-            // Draw main origin
+            // Draw Main Marker
             this.ctx.strokeStyle = colors.origin;
             this.ctx.lineWidth = strokeWidth;
 
@@ -138,11 +147,13 @@
             if (!colors) return;
 
             const bounds = this.core.overallBounds;
+            const fc = this.core.frameCache; 
 
             this.ctx.strokeStyle = colors.bounds;
-            this.ctx.lineWidth = (overlayConfig.boundsLineWidth) / this.core.viewScale;
+            this.ctx.lineWidth = overlayConfig.boundsLineWidth * fc.invScale;
+
             const dash = overlayConfig.boundsDash;
-            this.ctx.setLineDash([dash[0] / this.core.viewScale, dash[1] / this.core.viewScale]);
+            this.ctx.setLineDash([dash[0] * fc.invScale, dash[1] * fc.invScale]);
 
             this.ctx.strokeRect(
                 bounds.minX,
@@ -152,16 +163,18 @@
             );
 
             // Corner markers
-            const markerSize = (overlayConfig.boundsMarkerSize) / this.core.viewScale;
+            const markerSize = overlayConfig.boundsMarkerSize * fc.invScale;
             this.ctx.setLineDash([]);
-            this.ctx.lineWidth = (overlayConfig.boundsMarkerWidth) / this.core.viewScale;
+            this.ctx.lineWidth = overlayConfig.boundsMarkerWidth * fc.invScale;
 
             this.ctx.beginPath();
+            // Top-Left
             this.ctx.moveTo(bounds.minX, bounds.minY + markerSize);
             this.ctx.lineTo(bounds.minX, bounds.minY);
             this.ctx.lineTo(bounds.minX + markerSize, bounds.minY);
             this.ctx.stroke();
 
+            // Bottom-Right
             this.ctx.beginPath();
             this.ctx.moveTo(bounds.maxX - markerSize, bounds.maxY);
             this.ctx.lineTo(bounds.maxX, bounds.maxY);
@@ -174,123 +187,109 @@
         renderRulers() {
             if (!this.core.options.showRulers) return;
 
-            this.ctx.save();
-            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            // Use Core to reset transform (Screen Space)
+            this.core.resetTransform();
 
             const colors = this.core.colors.canvas;
-            if (!colors) {
-                this.ctx.restore();
-                return;
-            }
+            if (!colors) return;
 
-            this.ctx.strokeStyle = colors.ruler;
-            this.ctx.fillStyle = colors.rulerText;
-            this.ctx.lineWidth = overlayConfig.rulerLineWidth;
-            this.ctx.font = overlayConfig.rulerFont;
+            // Config & Setup
+            const conf = this.core.options; // Just access core options directly if needed, or keep config closure
+            // Re-accessing config via global scope is fine if 'overlayConfig' is available in closure
+
+            this.ctx.lineWidth = 1; // Standard hairline
+            this.ctx.font = '10px sans-serif'; // Or config.rulerFont
             this.ctx.textBaseline = 'top';
             this.ctx.textAlign = 'center';
 
-            const rulerSize = canvasConfig.rulerSize;
-            const tickLength = canvasConfig.rulerTickLength;
-            const majorStep = this._calculateStepSize(overlayConfig.rulerMinPixelStep, gridConfig.steps);
-            const viewBounds = this.core.getViewBounds();
+            const rulerSize = 20; // Or config.rulerSize
+            const tickLen = 5;
 
-            // Ruler backgrounds
-            const rulerAlpha = overlayConfig.rulerAlpha;
-            const bgColorWithAlpha = colors.background + rulerAlpha; 
-            this.ctx.fillStyle = bgColorWithAlpha; // Apply semi-transparent background
-            this.ctx.fillRect(0, 0, this.canvas.width, rulerSize); // Horizontal background
-            this.ctx.fillRect(0, 0, rulerSize, this.canvas.height); // Vertical background
+            // Draw Backgrounds (Fast fill)
+            const rulerAlpha = 'CC'; // Hex alpha (80%)
+            this.ctx.fillStyle = colors.background + rulerAlpha;
+            this.ctx.fillRect(0, 0, this.canvas.width, rulerSize);
+            this.ctx.fillRect(0, 0, rulerSize, this.canvas.height);
+
+            // Setup Lines
             this.ctx.strokeStyle = colors.ruler;
             this.ctx.fillStyle = colors.rulerText;
-
-            // Horizontal ruler
             this.ctx.beginPath();
             this.ctx.moveTo(rulerSize, rulerSize);
-            this.ctx.lineTo(this.canvas.width, rulerSize);
+            this.ctx.lineTo(this.canvas.width, rulerSize); // Horizontal Line
+            this.ctx.moveTo(rulerSize, rulerSize);
+            this.ctx.lineTo(rulerSize, this.canvas.height); // Vertical Line
+            this.ctx.stroke();
 
-            const originX = this.core.originPosition?.x;
-            const originY = this.core.originPosition?.y;
+            // Draw Ticks - Horizontal
+            // Calculate step based on ViewScale to ensure readable density
+            const stepWorld = this._calculateStepSize(); // Reuses existing helper
+            const view = this.core.getViewBounds();
+            const origin = this.core.getOriginPosition();
 
-            const startXWorld = Math.floor((viewBounds.minX - originX) / majorStep) * majorStep + originX;
-            const endXWorld = Math.ceil((viewBounds.maxX - originX) / majorStep) * majorStep + originX;
+            // Snap start to nearest step
+            const startX = Math.floor(view.minX / stepWorld) * stepWorld;
 
-            for (let xWorld = startXWorld; xWorld <= endXWorld; xWorld += majorStep) {
-                const xCanvas = this.core.worldToCanvasX ? this.core.worldToCanvasX(xWorld) : 
-                               (xWorld * this.core.viewScale + this.canvas.width / 2);
-                
-                if (xCanvas >= rulerSize && xCanvas <= this.canvas.width) {
-                    this.ctx.moveTo(xCanvas, rulerSize);
-                    this.ctx.lineTo(xCanvas, rulerSize - tickLength);
-                    
-                    const relativeX = xWorld - originX;
-                    let label;
-                    if (majorStep < 0.01) {
-                        label = `${(relativeX * 1000).toFixed(0)}μm`;
-                    } else if (majorStep < 1) {
-                        label = relativeX.toFixed(2);
-                    } else {
-                        label = relativeX.toFixed(1);
-                    }
-                    this.ctx.fillText(label, xCanvas, 2);
-                }
+            this.ctx.beginPath(); // Batch ticks
+
+            // Safety break to prevent infinite loops if step is 0
+            if (stepWorld <= 0) return;
+
+            for (let wx = startX; wx < view.maxX; wx += stepWorld) {
+                const cx = this.core.worldToCanvasX(wx);
+
+                // Cull off-screen ticks
+                if (cx < rulerSize || cx > this.canvas.width) continue;
+
+                this.ctx.moveTo(cx, rulerSize);
+                this.ctx.lineTo(cx, rulerSize - tickLen);
+
+                // Draw Text (Immediate)
+                const labelVal = wx - origin.x;
+                // Format text only if visible
+                const label = Math.abs(labelVal) < 0.001 ? "0" : 
+                            (stepWorld < 1 ? labelVal.toFixed(2) : labelVal.toFixed(0));
+
+                this.ctx.fillText(label, cx, 2);
             }
             this.ctx.stroke();
 
-            // Vertical ruler
-            this.ctx.beginPath();
-            this.ctx.moveTo(rulerSize, rulerSize);
-            this.ctx.lineTo(rulerSize, this.canvas.height);
+            // Draw Ticks - Vertical
+            const startY = Math.floor(view.minY / stepWorld) * stepWorld;
 
-            this.ctx.textAlign = 'left';
+            this.ctx.beginPath();
+
+            // Vertical Text Setup
+            this.ctx.textAlign = 'right';
             this.ctx.textBaseline = 'middle';
 
-            const startYWorld = Math.floor((viewBounds.minY - originY) / majorStep) * majorStep + originY;
-            const endYWorld = Math.ceil((viewBounds.maxY - originY) / majorStep) * majorStep + originY;
+            for (let wy = startY; wy < view.maxY; wy += stepWorld) {
+                const cy = this.core.worldToCanvasY(wy);
 
-            for (let yWorld = startYWorld; yWorld <= endYWorld; yWorld += majorStep) {
-                const yCanvas = this.core.worldToCanvasY ? this.core.worldToCanvasY(yWorld) :
-                               (this.canvas.height / 2 - yWorld * this.core.viewScale);
-                
-                if (yCanvas >= rulerSize && yCanvas <= this.canvas.height) {
-                    this.ctx.moveTo(rulerSize, yCanvas);
-                    this.ctx.lineTo(rulerSize - tickLength, yCanvas);
-                    
-                    const relativeY = yWorld - originY;
-                    let label;
-                    if (majorStep < 0.01) {
-                        label = `${(relativeY * 1000).toFixed(0)}μm`;
-                    } else if (majorStep < 1) {
-                        label = relativeY.toFixed(2);
-                    } else {
-                        label = relativeY.toFixed(1);
-                    }
+                if (cy < rulerSize || cy > this.canvas.height) continue;
 
-                    // Rotate text for vertical ruler
-                    this.ctx.save();
-                    this.ctx.translate(rulerSize / 2, yCanvas);
-                    this.ctx.rotate(-Math.PI / 2);
-                    this.ctx.textAlign = 'center';
-                    this.ctx.textBaseline = 'middle';
-                    this.ctx.fillText(label, 0, 0);
-                    this.ctx.restore();
-                }
+                this.ctx.moveTo(rulerSize, cy);
+                this.ctx.lineTo(rulerSize - tickLen, cy);
+
+                const labelVal = wy - origin.y;
+                const label = Math.abs(labelVal) < 0.001 ? "0" : 
+                            (stepWorld < 1 ? labelVal.toFixed(2) : labelVal.toFixed(0));
+
+                // Draw text immediately (no rotation for speed, simple right-align)
+                this.ctx.fillText(label, rulerSize - tickLen - 2, cy);
             }
             this.ctx.stroke();
 
-            // Corner stat box
-            this.ctx.fillStyle = bgColorWithAlpha; 
+            // 5. Corner Box
+            this.ctx.fillStyle = colors.background;
             this.ctx.fillRect(0, 0, rulerSize, rulerSize);
             this.ctx.strokeRect(0, 0, rulerSize, rulerSize);
 
-            // Units indicator in corner
+            // Unit Label
             this.ctx.fillStyle = colors.rulerText;
-            this.ctx.font = overlayConfig.rulerCornerFont;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(overlayConfig.rulerCornerText, rulerSize / 2, rulerSize / 2);
-
-            this.ctx.restore();
+            this.ctx.fillText("mm", rulerSize/2, rulerSize/2);
         }
 
         // Scale Indicator
@@ -408,7 +407,7 @@
         _calculateStepSize() {
             const minPixelSize = gridConfig.minPixelSpacing;
             const possibleSteps = gridConfig.steps;
-            
+
             for (const step of possibleSteps) {
                 if (step * this.core.viewScale >= minPixelSize) {
                     return step;

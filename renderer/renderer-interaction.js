@@ -28,7 +28,7 @@
     'use strict';
     
     const config = window.PCBCAMConfig;
-    const canvasConfig = config.layout.canvas; // Review - Should be in config.rendering.canvas?
+    const canvasConfig = config.rendering.canvas;
     const interactionConfig = config.renderer.interaction;
 
     class InteractionHandler {
@@ -106,7 +106,7 @@
 
         _handleMouseMove(e) {
             const rect = this.canvas.getBoundingClientRect();
-            const dpr = window.devicePixelRatio;
+            const dpr = this.core.devicePixelRatio;
 
             // Convert CSS logical pixels to canvas physical pixels
             const x = (e.clientX - rect.left) * dpr;
@@ -141,20 +141,17 @@
         _handleWheel(e) {
             e.preventDefault();
 
-            const rect = this.canvas.getBoundingClientRect();
-            // Get DPR to convert CSS pixels to physical canvas pixels // What does DPR mean?
-            const dpr = window.devicePixelRatio;
+            const dpr = this.core.devicePixelRatio;
 
-            // Calculate physical canvas coordinates, not logical CSS coordinates
-            const canvasX = (e.clientX - rect.left) * dpr;
-            const canvasY = (e.clientY - rect.top) * dpr;
+            // Use offsetX/Y to avoid synchronous layout reflows
+            const canvasX = e.offsetX * dpr;
+            const canvasY = e.offsetY * dpr;
 
-            // This config path was broken, fixed to use layout.canvas
             const wheelSpeed = canvasConfig.wheelZoomSpeed;
+
             const zoomDelta = e.deltaY * wheelSpeed;
             const zoomFactor = Math.exp(-zoomDelta);
 
-            // Pass the correct physical canvas coordinates to zoomToPoint
             this.core.zoomToPoint(canvasX, canvasY, zoomFactor);
             this.renderer.render();
 
@@ -170,22 +167,22 @@
 
         _handleTouchStart(e) {
             e.preventDefault();
-            const dpr = window.devicePixelRatio; // dead code?
-
+            // Conversion to canvas pixels happens during 'move' (delta calculation)
             if (e.touches.length === 1) {
                 const touch = e.touches[0];
                 this.lastMousePos = {
-                    x: touch.clientX, // Store CSS pixels for delta
+                    x: touch.clientX, 
                     y: touch.clientY
                 };
                 this.touchState.active = true;
-            } else if (e.touches.length === 2) {
-                const touch1 = e.touches[0];
-                const touch2 = e.touches[1];
+            } 
+            else if (e.touches.length === 2) {
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
 
-                // Calculate distance in CSS pixels. This is fine for zoom factor.
-                const dx = touch2.clientX - touch1.clientX;
-                const dy = touch2.clientY - touch1.clientY;
+                // Calculate initial distance (CSS pixels) for zoom ratio
+                const dx = t2.clientX - t1.clientX;
+                const dy = t2.clientY - t1.clientY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
                 this.touchState.startDistance = distance;
@@ -193,74 +190,74 @@
                 this.touchState.startScale = this.core.viewScale;
                 this.touchState.active = true;
 
-                // Store center in CSS pixels for delta calculation
+                // Store initial center (CSS pixels) for pan delta
                 this.touchState.lastTouchPos = {
-                    x: (touch1.clientX + touch2.clientX) / 2,
-                    y: (touch1.clientY + touch2.clientY) / 2
+                    x: (t1.clientX + t2.clientX) / 2,
+                    y: (t1.clientY + t2.clientY) / 2
                 };
             }
         }
 
         _handleTouchMove(e) {
             e.preventDefault();
-
             if (!this.touchState.active) return;
 
-            const dpr = window.devicePixelRatio;
+            const dpr = this.core.devicePixelRatio;
 
             if (e.touches.length === 1) {
-                // Finger Pan
+                // 1. Single Finger Pan
                 const touch = e.touches[0];
-                
+
                 if (this.lastMousePos) {
-                    // Calculate delta in CSS pixels, then scale by DPR for pan
                     const dx = (touch.clientX - this.lastMousePos.x) * dpr;
                     const dy = (touch.clientY - this.lastMousePos.y) * dpr;
-                    
+
                     this.core.pan(dx, dy);
                     this.renderer.render();
                 }
+                this.lastMousePos = { x: touch.clientX, y: touch.clientY };
 
-                this.lastMousePos = {
-                    x: touch.clientX, // Store new CSS position
-                    y: touch.clientY
-                };
             } else if (e.touches.length === 2) {
-                // Finger Pinch-Zoom
-                const touch1 = e.touches[0];
-                const touch2 = e.touches[1];
+                // 2. Two Finger Pinch/Pan
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
 
-                // Handle Pan Component
-                const centerX_css = (touch1.clientX + touch2.clientX) / 2;
-                const centerY_css = (touch1.clientY + touch2.clientY) / 2;
+                // Current Center (CSS pixels)
+                const currentCenterX = (t1.clientX + t2.clientX) / 2;
+                const currentCenterY = (t1.clientY + t2.clientY) / 2;
 
+                // Current Distance
+                const dx = t2.clientX - t1.clientX;
+                const dy = t2.clientY - t1.clientY;
+                const currentDistance = Math.sqrt(dx * dx + dy * dy);
+
+                // A. Handle Pan (Movement of center)
                 if (this.touchState.lastTouchPos) {
-                    // Calculate pan delta in CSS pixels, then scale by DPR
-                    const panDx = (centerX_css - this.touchState.lastTouchPos.x) * dpr;
-                    const panDy = (centerY_css - this.touchState.lastTouchPos.y) * dpr;
-                    this.core.pan(panDx, panDy);
+                    const panDx = (currentCenterX - this.touchState.lastTouchPos.x) * dpr;
+                    const panDy = (currentCenterY - this.touchState.lastTouchPos.y) * dpr;
+
+                    // Jitter filter
+                    if (Math.abs(panDx) > 1 || Math.abs(panDy) > 1) {
+                        this.core.pan(panDx, panDy);
+                    }
                 }
 
-                // Handle Zoom Component
-                const dx_css = touch2.clientX - touch1.clientX;
-                const dy_css = touch2.clientY - touch1.clientY;
-                const distance = Math.sqrt(dx_css * dx_css + dy_css * dy_css);
+                // B. Handle Zoom (Change in distance)
+                if (this.touchState.lastDistance > 0) {
+                    const zoomFactor = currentDistance / this.touchState.lastDistance;
 
-                const rect = this.canvas.getBoundingClientRect();
+                    if (Math.abs(1 - zoomFactor) > 0.005) {
+                        const rect = this.canvas.getBoundingClientRect();
+                        const canvasX = (currentCenterX - rect.left) * dpr;
+                        const canvasY = (currentCenterY - rect.top) * dpr;
 
-                // Calculate the zoom anchor point in *physical canvas pixels*
-                const canvasX = (centerX_css - rect.left) * dpr;
-                const canvasY = (centerY_css - rect.top) * dpr;
-
-                // Calculate zoom factor
-                const zoomFactor = distance / this.touchState.lastDistance;
-
-                // Call zoomToPoint with physical canvas pixels
-                this.core.zoomToPoint(canvasX, canvasY, zoomFactor);
+                        this.core.zoomToPoint(canvasX, canvasY, zoomFactor);
+                    }
+                }
 
                 // Update State
-                this.touchState.lastDistance = distance;
-                this.touchState.lastTouchPos = { x: centerX_css, y: centerY_css };
+                this.touchState.lastDistance = currentDistance;
+                this.touchState.lastTouchPos = { x: currentCenterX, y: currentCenterY };
 
                 this.renderer.render();
                 this.updateZoomDisplay();
@@ -271,18 +268,21 @@
             e.preventDefault();
 
             if (e.touches.length === 0) {
-                // Last finger lifted
+                // All fingers lifted - Reset everything
                 this.touchState.active = false;
                 this.lastMousePos = null;
                 this.touchState.lastTouchPos = null;
-            } else if (e.touches.length === 1) {
-                // Was 2 fingers, now 1 finger. Reset pan state.
+                this.touchState.lastDistance = 0;
+            } 
+            else if (e.touches.length === 1) {
+                // Transition from 2 fingers (Zoom/Pan) to 1 finger (Pan)
+                // Re-sync the last position to prevent a "jump"
                 const touch = e.touches[0];
                 this.lastMousePos = {
                     x: touch.clientX,
                     y: touch.clientY
                 };
-                // Keep touchState.active = true // Review - Was this relevant before? Should it be deleted now?
+                // Note: touchState.active remains true
             }
         }
 
@@ -292,12 +292,43 @@
             const coordX = document.getElementById('coord-x');
             const coordY = document.getElementById('coord-y');
 
-            // Re-calculate world position from stored *physical* screen position
-            const worldPos = this.core.canvasToWorld(this.lastScreenPos.x, this.lastScreenPos.y);
+            if (!coordX || !coordY) return;
 
-            const precision = interactionConfig.coordPrecision;
-            if (coordX) coordX.textContent = worldPos.x.toFixed(precision);
-            if (coordY) coordY.textContent = worldPos.y.toFixed(precision);
+            // 1. Get Raw World Position (Canvas View Space)
+            // This handles Pan/Zoom/Y-Flip
+            let worldPos = this.core.canvasToWorld(this.lastScreenPos.x, this.lastScreenPos.y);
+
+            // 2. Apply Coordinate System Transforms (Inverse)
+            // Map "Mouse Point" -> "File Coordinate" by reversing rotation/translation
+
+            // A. Inverse Rotation (Un-rotate mouse point around rotation center)
+            if (this.core.currentRotation !== 0 && this.core.rotationCenter) {
+                const c = this.core.rotationCenter;
+                const angle = this.core.currentRotation;
+                const rad = (angle * Math.PI) / 180;
+
+                // Inverse rotation = -angle
+                const cos = Math.cos(-rad);
+                const sin = Math.sin(-rad);
+
+                const dx = worldPos.x - c.x;
+                const dy = worldPos.y - c.y;
+
+                worldPos = {
+                    x: c.x + (dx * cos - dy * sin),
+                    y: c.y + (dx * sin + dy * cos)
+                };
+            }
+
+            // B. Inverse Translation (Subtract User Origin)
+            const origin = this.core.getOriginPosition();
+            const userX = worldPos.x - origin.x;
+            const userY = worldPos.y - origin.y;
+
+            // 3. Display
+            const precision = 2;
+            coordX.textContent = userX.toFixed(precision);
+            coordY.textContent = userY.toFixed(precision);
         }
 
         updateZoomDisplay() {
