@@ -1,7 +1,30 @@
 /**
- * Clipper2 WASM Core Module
- * Module initialization, state management, and memory cleanup
- * Version 5.0 - State-driven initialization
+ * @file        clipper2-core.js
+ * @description Module initialization, state management, and memory cleanup
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ *
+ * This module is part of the EasyTrace5000 Test Suite.
+ * It interfaces with the Clipper2 library (Angus Johnson) via WASM (Erik Som).
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 class Clipper2Core {
@@ -20,10 +43,10 @@ class Clipper2Core {
      */
     async initialize() {
         if (this.initialized) return true;
-        
+
         try {
             console.log('[INIT] Loading Clipper2 WASM modules...');
-            
+
             // Load main module
             if (typeof Clipper2ZFactory !== 'undefined') {
                 this.clipper2 = await Clipper2ZFactory();
@@ -31,7 +54,7 @@ class Clipper2Core {
             } else {
                 throw new Error('Clipper2ZFactory not found - ensure clipper2z.js is loaded');
             }
-            
+
             // Load utils if available
             if (typeof Clipper2ZUtilsFactory !== 'undefined') {
                 this.utils = await Clipper2ZUtilsFactory();
@@ -39,15 +62,15 @@ class Clipper2Core {
             } else {
                 console.log('[INFO] Clipper2 utils not available - SVG operations disabled');
             }
-            
+
             // Verify critical functions
             this.verifyFunctions();
-            
+
             this.initialized = true;
             console.log('[OK] Clipper2 initialization complete');
-            
+
             return true;
-            
+
         } catch (error) {
             console.error('[ERROR] Failed to initialize Clipper2:', error);
             this.initialized = false;
@@ -59,35 +82,34 @@ class Clipper2Core {
      * Verify available functions
      */
     verifyFunctions() {
-        const required = ['Union64', 'Intersect64', 'Difference64', 'Xor64', 
-                         'InflatePaths64', 'SimplifyPaths64'];
-        
+        const required = ['Union64', 'Intersect64', 'Difference64', 'Xor64', 'InflatePaths64', 'SimplifyPaths64'];
+
         const missing = required.filter(fn => !this.clipper2[fn]);
-        
+
         if (missing.length > 0) {
             console.warn('[WARN] Missing functions:', missing);
         }
-        
+
         if (!this.clipper2.FillRule) {
             throw new Error('FillRule enum not found');
         }
-        
+
         console.log('[OK] FillRule values:', Object.keys(this.clipper2.FillRule));
-        
+
         if (this.clipper2.PointInPolygon64) {
             console.log('[OK] PointInPolygon64 available');
         }
-        
+
         if (this.clipper2.MinkowskiSum64) {
             console.log('[OK] MinkowskiSum64 available');
         }
-        
+
         if (this.clipper2.UnionSelf64) {
             console.log('[OK] UnionSelf64 available');
         } else {
             console.log('[INFO] UnionSelf64 not available (will use Union64 fallback)');
         }
-        
+
         const ops = Object.keys(this.clipper2).filter(k => k.includes('64'));
         console.log('[OK] Available 64-bit operations:', ops.length);
     }
@@ -117,13 +139,13 @@ class Clipper2Core {
                 console.warn('[WARN] Failed to delete object:', e);
             }
         });
-        
+
         this.memoryTracker.clear();
-        
+
         if (cleaned > 0) {
             console.log(`[CLEANUP] Deleted ${cleaned} objects`);
         }
-        
+
         return cleaned;
     }
 
@@ -146,12 +168,12 @@ class Clipper2Core {
     validateResult(operation, input, output) {
         const inputPaths = input.size();
         const outputPaths = output.size();
-        
+
         let totalInputArea = 0;
         let totalOutputArea = 0;
         let totalInputPoints = 0;
         let totalOutputPoints = 0;
-        
+
         // Calculate simple metrics
         for (let i = 0; i < inputPaths; i++) {
             const path = input.get(i);
@@ -160,7 +182,7 @@ class Clipper2Core {
                 totalInputArea += Math.abs(this.clipper2.AreaPath64(path));
             }
         }
-        
+
         for (let i = 0; i < outputPaths; i++) {
             const path = output.get(i);
             totalOutputPoints += path.size();
@@ -168,7 +190,7 @@ class Clipper2Core {
                 totalOutputArea += Math.abs(this.clipper2.AreaPath64(path));
             }
         }
-        
+
         const validation = {
             operation: operation,
             inputPaths: inputPaths,
@@ -182,13 +204,13 @@ class Clipper2Core {
                 (1 - totalOutputPoints / totalInputPoints) * 100 : 0,
             valid: outputPaths > 0 || operation === 'difference',
         };
-        
+
         if (outputPaths === 0 && operation !== 'difference') {
             console.warn(`[WARN] ${operation} produced no output paths`);
         }
-        
+
         this.debug(`${operation} validation:`, validation);
-        
+
         return validation;
     }
 
@@ -200,7 +222,7 @@ class Clipper2Core {
             trackedObjects: this.memoryTracker.size,
             testResults: this.testResults.size,
         };
-        
+
         if (this.clipper2 && this.clipper2.HEAP8) {
             info.wasmHeapSize = this.clipper2.HEAP8.length;
             info.wasmHeapUsed = this.clipper2.HEAP8.length - this.clipper2._malloc(1);
@@ -213,17 +235,17 @@ class Clipper2Core {
      * Set configuration
      */
     setConfig(config) {
-        
+
         Object.assign(this.config, config);
-        
+
         if (config.debugMode !== undefined) {
             console.log(`[CONFIG] Debug mode ${config.debugMode ? 'enabled' : 'disabled'}`);
         }
-        
+
         if (config.scale !== undefined) {
             console.log(`[CONFIG] Scale factor set to ${config.scale}`);
         }
-        
+
         return this.config;
     }
 
@@ -242,7 +264,7 @@ class Clipper2Core {
             timestamp: Date.now(),
             result: result,
         });
-        
+
         if (this.testResults.size > 50) {
             const firstKey = this.testResults.keys().next().value;
             this.testResults.delete(firstKey);
@@ -273,8 +295,7 @@ class Clipper2Core {
         this.initialized = false;
         this.clipper2 = null;
         this.utils = null;
-        
+
         console.log(`[DESTROY] Core module destroyed, cleaned ${cleaned} objects`);
     }
-    
 }

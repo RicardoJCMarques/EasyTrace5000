@@ -1,3 +1,29 @@
+/*
+ * @file        clipper2testpage.css
+ * @description Stylesheet for the Clipper2 Test Suite
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 :root {
     /* Theme Colors - UI Chrome */
     --primary: #3b82f6;
@@ -9,37 +35,37 @@
     --border: #e5e7eb;
     --text: #111827;
     --text-secondary: #6b7280;
-    
+
     /* Canvas/Shape Rendering Colors */
     --canvas-bg: #ffffff;
     --grid-color: #e5e7eb;
-    
+
     /* Default shape styles */
     --shape-fill: rgba(59, 130, 246, 0.25);
     --shape-stroke: #3b82f6;
     --hole-stroke: #ef4444;
-    
+
     /* Input/Output styles */
     --input-fill: rgba(229, 231, 235, 0.25);
     --input-stroke: #9ca3af;
     --output-fill: rgba(16, 185, 129, 0.25);
     --output-stroke: #10b981;
-    
+
     /* Boolean test specific */
     --subject-fill: rgba(59, 130, 246, 0.25);
     --subject-stroke: #3b82f6;
     --clip-fill: rgba(239, 68, 68, 0.25);
     --clip-stroke: #ef4444;
-    
+
     /* PCB specific */
     --pcb-fill: rgba(16, 185, 129, 0.25);
     --pcb-stroke: #10b981;
-    
+
     /* Point-in-polygon specific */
     --pip-inside: #10b981;
     --pip-outside: #ef4444;
     --pip-edge: #f59e0b;
-    
+
     /* Z-index hierarchy */
     --z-base: 1;
     --z-overlay: 10;
@@ -63,6 +89,15 @@ body {
 .container {
     max-width: 1400px;
     margin: 0 auto;
+}
+
+.site-footer {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 
 /* Headers */
@@ -109,7 +144,6 @@ h1 {
 .test-group-header::before {
     content: '▶';
     font-size: 1rem;
-    animation: bounce 2s infinite;
 }
 
 /* Test Cards */
@@ -122,10 +156,8 @@ h1 {
     background: var(--surface);
     border-radius: 8px;
     padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     position: relative;
     border: 2px solid var(--border);
-    transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 
 .test-card::before {
@@ -184,7 +216,7 @@ h1 {
     margin-bottom: 1rem;
 }
 
-/* Canvas Container - FIXED: Standardized grid layout for all test cards */
+/* Canvas Container */
 .canvas-container {
     display: grid;
     grid-template-columns: 800px 1fr;
@@ -203,14 +235,14 @@ h1 {
     height: 800px;
 }
 
-/* Style for controls panel - now applies to all cards */
+/* Style for controls panel */
 .controls-panel {
     display: flex;
     flex-direction: column;
     gap: 1rem;
 }
 
-/* Canvas elements - consistent 800x800 sizing */
+/* Canvas elements */
 canvas {
     display: block;
     width: 800px;
@@ -249,14 +281,12 @@ canvas {
     border-radius: 4px;
     font-size: 0.875rem;
     background: white;
-    transition: all 0.2s;
 }
 
 .control input:focus,
 .control select:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* Buttons */
@@ -267,7 +297,6 @@ canvas {
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
@@ -284,7 +313,6 @@ canvas {
 
 .btn-primary:hover {
     background: #2563eb;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
 .btn-secondary {
@@ -304,7 +332,6 @@ canvas {
 
 .btn-toggle:hover {
     background: #d97706;
-    box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
 }
 
 .btn-success {
@@ -316,10 +343,9 @@ canvas {
 
 .btn-success:hover {
     background: #059669;
-    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
 }
 
-/* Result Display - State-based styling */
+/* Result Display */
 .result {
     padding: 1rem;
     background: var(--bg);
@@ -329,7 +355,6 @@ canvas {
     white-space: pre-wrap;
     max-height: 200px;
     overflow-y: auto;
-    transition: all 0.3s;
     border: 1px solid var(--border);
 }
 
@@ -451,7 +476,7 @@ canvas {
     border-radius: 2px;
 }
 
-/* Tangency Controls (Fixed Position Panel) */
+/* Tangency Controls */
 .tangency-controls {
     position: fixed;
     bottom: 20px;
@@ -460,7 +485,6 @@ canvas {
     border: 2px solid var(--border);
     border-radius: 8px;
     padding: 15px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     z-index: var(--z-tooltip);
     min-width: 280px;
 }
@@ -536,6 +560,45 @@ canvas {
     color: #92400e;
 }
 
+/* Additional Information Section */
+.info-card {
+    margin-top: 3rem;
+    padding: 2rem;
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.info-card h3 {
+    color: var(--primary);
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.info-card p {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    line-height: 1.6;
+}
+
+.info-card ul {
+    color: var(--text);
+    line-height: 1.8;
+    margin-left: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.info-card a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.info-card a:hover {
+    text-decoration: underline;
+}
+
 /* Loading Indicator */
 .loading {
     display: none;
@@ -546,7 +609,6 @@ canvas {
     background: white;
     padding: 2rem;
     border-radius: 8px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
     z-index: var(--z-modal);
 }
 
@@ -600,7 +662,7 @@ canvas {
     margin-top: 1rem;
 }
 
-/* Responsive Design - Updated for 800x800 layout */
+/* Responsive Design */
 @media (max-width: 1200px) {
     .canvas-container {
         grid-template-columns: 1fr;

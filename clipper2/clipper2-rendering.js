@@ -1,872 +1,603 @@
 /**
- * Clipper2 Rendering Module
- * Unified rendering pipeline using coordinate arrays
- * Version 5.3 - Fixed offset z-order
+ * @file        clipper2-renderings.js
+ * @description Rendering for Paths64, PolyTree, and JS coordinate arrays
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 class Clipper2Rendering {
     constructor(core) {
         this.core = core;
-        this.geometry = null; // Will be set by tests module
-        this.defaults = null; // Will be set during initialization
-        this.renderStats = {
-            totalPaths: 0,
-            totalPoints: 0,
-            lastRenderTime: 0
-        };
-        this.cssVarsCache = new Map(); // Cache for CSS variables
+        this.geometry = null;
+        this.defaults = null;
+        this.renderStats = { totalPaths: 0, totalPoints: 0, lastRenderTime: 0 };
+        this.cssVarsCache = new Map();
+        this.devicePixelRatio = window.devicePixelRatio || 1;
+        this.svgExporter = null;
+
+        window.addEventListener('resize', () => this.resizeAllCanvases());
     }
 
-    /**
-     * Initialize with defaults reference
-     */
     initialize(defaults) {
         this.defaults = defaults;
-        // Pre-cache commonly used CSS variables
+        if (typeof Clipper2SVGExporter !== 'undefined') {
+            this.svgExporter = new Clipper2SVGExporter(defaults);
+        }
         this.updateCSSCache();
+        this.resizeAllCanvases();
     }
 
-    /**
-     * Set geometry module reference
-     */
     setGeometryModule(geometry) {
         this.geometry = geometry;
     }
 
     /**
-     * Update CSS variable cache
+     * Main Render Entry Point
      */
-    updateCSSCache() {
-        const root = document.documentElement;
-        const computedStyle = getComputedStyle(root);
-        
-        // Cache all CSS variables we use
-        const vars = [
-            '--canvas-bg', '--grid-color',
-            '--shape-fill', '--shape-stroke', '--hole-stroke',
-            '--input-fill', '--input-stroke',
-            '--output-fill', '--output-stroke',
-            '--subject-fill', '--subject-stroke',
-            '--clip-fill', '--clip-stroke',
-            '--pcb-fill', '--pcb-stroke',
-            '--pip-inside', '--pip-outside', '--pip-edge',
-            '--text', '--text-secondary'
-        ];
-        
-        vars.forEach(varName => {
-            this.cssVarsCache.set(varName, computedStyle.getPropertyValue(varName).trim());
+
+    render(input, canvasOrId, options = {}) {
+        const startTime = performance.now();
+        const canvas = this._getCanvas(canvasOrId);
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        const opts = this._resolveOptions(options);
+
+        this._ensureCanvasScaling(canvas, ctx);
+        if (opts.clear !== false) this.clearCanvas(canvas);
+
+        this.renderStats.totalPaths = 0;
+        this.renderStats.totalPoints = 0;
+
+        if (!input) return;
+
+        // Dispatch based on input type
+        if (this._isStructuredPolyTree(input)) {
+            this._renderStructuredPolyTree(ctx, input, opts);
+        } else if (this._isClipper2Paths(input)) {
+            this._renderClipperPaths(ctx, input, opts);
+        } else if (this._isClipper2Path(input)) {
+            this._renderClipperPathSingle(ctx, input, opts);
+        } else if (Array.isArray(input)) {
+            this._renderJsCoordinates(ctx, input, opts);
+        }
+
+        this.renderStats.lastRenderTime = performance.now() - startTime;
+    }
+
+    renderPolyTree(data, canvasOrId, options = {}) {
+        this.render(data, canvasOrId, options);
+    }
+
+    /**
+     * Structured PolyTree Rendering
+     */
+
+    _renderStructuredPolyTree(ctx, data, opts) {
+        ctx.lineWidth = opts.strokeWidth || 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const polygons = data.polygons || [];
+
+        const renderPolygonNode = (node) => {
+            if (!node || !node.outer) return;
+
+            // Fill: Outer + all holes in single path for evenodd
+            if (opts.fillOuter && opts.fillOuter !== 'none') {
+                ctx.fillStyle = opts.fillOuter;
+                ctx.beginPath();
+
+                // Outer contour
+                if (node.outer.points) {
+                    this._tracePoints(ctx, node.outer.points);
+                }
+
+                // Hole contours (punch through)
+                if (node.holes) {
+                    node.holes.forEach(hole => {
+                        if (hole.points) this._tracePoints(ctx, hole.points);
+                    });
+                }
+
+                ctx.fill('evenodd');
+            }
+
+            // Stroke outer
+            if (opts.strokeOuter && opts.strokeOuter !== 'none') {
+                ctx.strokeStyle = opts.strokeOuter;
+                ctx.beginPath();
+                if (node.outer.points) {
+                    this._tracePoints(ctx, node.outer.points);
+                }
+                ctx.stroke();
+            }
+
+            // Stroke holes with dashed line
+            if (node.holes && node.holes.length > 0) {
+                const holeStroke = opts.strokeHole || opts.strokeOuter;
+                if (holeStroke && holeStroke !== 'none') {
+                    ctx.strokeStyle = holeStroke;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    node.holes.forEach(hole => {
+                        if (hole.points) this._tracePoints(ctx, hole.points);
+                    });
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+
+            // Recurse into islands (nested outers inside holes)
+            if (node.islands) {
+                node.islands.forEach(island => renderPolygonNode(island));
+            }
+        };
+
+        polygons.forEach(poly => renderPolygonNode(poly));
+        this.renderStats.totalPaths = polygons.length;
+    }
+
+    /**
+     * Clipper2 WASM Paths64 Rendering
+     */
+
+    _renderClipperPaths(ctx, paths, opts) {
+        const count = paths.size();
+        const scale = this.core.config.scale;
+
+        this.renderStats.totalPaths = count;
+
+        ctx.lineWidth = opts.strokeWidth || 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Batch fill
+        if (opts.fillOuter && opts.fillOuter !== 'none') {
+            ctx.fillStyle = opts.fillOuter;
+            ctx.beginPath();
+            for (let i = 0; i < count; i++) {
+                this._tracePath64(ctx, paths.get(i), scale);
+            }
+            ctx.fill('evenodd');
+        }
+
+        // Batch stroke
+        if (opts.strokeOuter && opts.strokeOuter !== 'none') {
+            ctx.strokeStyle = opts.strokeOuter;
+            ctx.beginPath();
+            for (let i = 0; i < count; i++) {
+                const path = paths.get(i);
+                this._tracePath64(ctx, path, scale);
+                this.renderStats.totalPoints += path.size();
+            }
+            ctx.stroke();
+        }
+    }
+
+    _renderClipperPathSingle(ctx, path, opts) {
+        const scale = this.core.config.scale;
+        this.renderStats.totalPaths = 1;
+        this.renderStats.totalPoints = path.size();
+
+        ctx.lineWidth = opts.strokeWidth || 2;
+        ctx.beginPath();
+        this._tracePath64(ctx, path, scale);
+
+        if (opts.fillOuter && opts.fillOuter !== 'none') {
+            ctx.fillStyle = opts.fillOuter;
+            ctx.fill('evenodd');
+        }
+        if (opts.strokeOuter && opts.strokeOuter !== 'none') {
+            ctx.strokeStyle = opts.strokeOuter;
+            ctx.stroke();
+        }
+    }
+
+    /**
+     * JS Coordinate Array Rendering
+     */
+
+    _renderJsCoordinates(ctx, input, opts) {
+        // Normalize to array of path objects
+        let paths = [];
+        if (input.length > 0) {
+            const first = input[0];
+            // Check if it's a single path [[x,y], ...] vs multiple [[[x,y],...], ...]
+            if (Array.isArray(first) && typeof first[0] === 'number') {
+                paths = [{ coords: input }];
+            } else if (first.coords) {
+                paths = input;
+            } else if (Array.isArray(first)) {
+                paths = input.map(c => ({ coords: c }));
+            }
+        }
+
+        this.renderStats.totalPaths = paths.length;
+
+        ctx.lineWidth = opts.strokeWidth || 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        if (opts.fillOuter && opts.fillOuter !== 'none') {
+            ctx.fillStyle = opts.fillOuter;
+            ctx.beginPath();
+            paths.forEach(p => this._tracePoints(ctx, p.coords || p));
+            ctx.fill('evenodd');
+        }
+
+        if (opts.strokeOuter && opts.strokeOuter !== 'none') {
+            ctx.strokeStyle = opts.strokeOuter;
+            ctx.beginPath();
+            paths.forEach(p => {
+                const pts = p.coords || p;
+                this._tracePoints(ctx, pts);
+                this.renderStats.totalPoints += pts.length;
+            });
+            ctx.stroke();
+        }
+    }
+
+    /**
+     * Path Tracing Helpers
+     */
+
+    _tracePath64(ctx, path, scale) {
+        const len = path.size();
+        if (len < 2) return;
+
+        let p = path.get(0);
+        ctx.moveTo(Number(p.x) / scale, Number(p.y) / scale);
+
+        for (let j = 1; j < len; j++) {
+            p = path.get(j);
+            ctx.lineTo(Number(p.x) / scale, Number(p.y) / scale);
+        }
+        ctx.closePath();
+    }
+
+    _tracePoints(ctx, points) {
+        if (!points || points.length < 2) return;
+
+        const getXY = (pt) => {
+            if (Array.isArray(pt)) return { x: pt[0], y: pt[1] };
+            return { x: pt.x, y: pt.y };
+        };
+
+        const start = getXY(points[0]);
+        ctx.moveTo(start.x, start.y);
+
+        for (let i = 1; i < points.length; i++) {
+            const pt = getXY(points[i]);
+            ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.closePath();
+    }
+
+    /**
+     * Specialized Drawing Methods
+     */
+
+    drawSimplePaths(coords, canvasOrId, options = {}) {
+        this.render(coords, canvasOrId, options);
+    }
+
+    drawShapePreview(shapes, canvasOrId) {
+        const canvas = this._getCanvas(canvasOrId);
+        if (!canvas) return;
+
+        this.clearCanvas(canvas);
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+
+        const shapeList = Array.isArray(shapes) ? shapes : Object.values(shapes);
+
+        shapeList.forEach(shape => {
+            if (!shape) return;
+
+            // Resolve color - handle both CSS vars and direct hex/rgb
+            let strokeColor = shape.color || '#3b82f6';
+            if (strokeColor.startsWith('var(')) {
+                strokeColor = this.resolveStyleValue(strokeColor) || '#3b82f6';
+            }
+
+            ctx.beginPath();
+
+            if (shape.type === 'rect') {
+                ctx.rect(shape.x, shape.y, shape.width, shape.height);
+            } else if (shape.type === 'circle') {
+                ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
+            } else if (shape.type === 'polygon' && shape.coords) {
+                this._tracePoints(ctx, shape.coords);
+            }
+
+            // Fill with transparency
+            ctx.fillStyle = strokeColor;
+            ctx.globalAlpha = 0.25;
+            ctx.fill();
+
+            // Stroke solid
+            ctx.globalAlpha = 1.0;
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        });
+
+        ctx.restore();
+    }
+
+    drawStrokes(definition, canvasOrId, options = {}) {
+        const canvas = this._getCanvas(canvasOrId);
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        this._ensureCanvasScaling(canvas, ctx);
+
+        if (options.clear !== false) this.clearCanvas(canvas);
+
+        const style = options.style || this.defaults.styles.default;
+        const fill = this.resolveStyleValue(style.fillOuter) || 'rgba(59, 130, 246, 0.25)';
+        const stroke = this.resolveStyleValue(style.strokeOuter) || '#3b82f6';
+
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+
+        const polygons = [];
+
+        if (definition.type === 'strokes') {
+            definition.data.forEach(s => {
+                polygons.push(this.defaults.generators.strokeToPolygon(s, definition.strokeWidth));
+            });
+        } else if (definition.type === 'pcb') {
+            definition.traces?.forEach(t => {
+                polygons.push(this.defaults.generators.lineToPolygon(t.from, t.to, definition.traceWidth));
+            });
+            definition.pads?.forEach(p => {
+                polygons.push(this.defaults.generators.circle(p.center[0], p.center[1], p.radius, 32));
+            });
+        }
+
+        polygons.forEach(poly => {
+            ctx.beginPath();
+            this._tracePoints(ctx, poly);
+            if (fill !== 'none') ctx.fill();
+            if (stroke !== 'none') ctx.stroke();
         });
     }
 
-    /**
-     * Get CSS variable value (with caching)
-     */
-    getCSSVar(varName) {
-        if (!this.cssVarsCache.has(varName)) {
-            const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-            this.cssVarsCache.set(varName, value);
+    drawOffsetPaths(offsetPaths, canvasOrId, type, originalPaths) {
+        const canvas = this._getCanvas(canvasOrId);
+        if (!canvas) return;
+
+        this.clearCanvas(canvas);
+
+        const drawOriginal = () => {
+            if (!originalPaths) return;
+
+            // Erase area under original shape
+            const ctx = canvas.getContext('2d');
+            ctx.save();
+            ctx.fillStyle = this.getCSSVar('--canvas-bg') || '#ffffff';
+            ctx.beginPath();
+
+            if (this._isClipper2Paths(originalPaths)) {
+                for (let i = 0; i < originalPaths.size(); i++) {
+                    this._tracePath64(ctx, originalPaths.get(i), this.core.config.scale);
+                }
+            }
+            ctx.fill('evenodd');
+            ctx.restore();
+
+            // Draw original shape
+            this.render(originalPaths, canvas, {
+                fillOuter: this.resolveStyleValue('var(--shape-fill)'),
+                strokeOuter: this.resolveStyleValue('var(--shape-stroke)'),
+                strokeWidth: 2,
+                clear: false
+            });
+        };
+
+        if (type === 'internal') drawOriginal();
+
+        const count = offsetPaths.length;
+        const isExternal = type === 'external';
+
+        for (let i = isExternal ? count - 1 : 0; 
+             isExternal ? i >= 0 : i < count; 
+             isExternal ? i-- : i++) {
+            const t = (i + 1) / count;
+            const hue = 120 - (t * (isExternal ? 60 : 120));
+
+            this.render(offsetPaths[i], canvas, {
+                fillOuter: `hsla(${hue}, 70%, 50%, ${0.3 + t * 0.3})`,
+                strokeOuter: `hsl(${hue}, 70%, 40%)`,
+                strokeWidth: 1,
+                clear: false
+            });
         }
-        return this.cssVarsCache.get(varName);
+
+        if (type === 'external') drawOriginal();
+    }
+
+    drawGrid(canvasOrId, gridSize) {
+        const canvas = this._getCanvas(canvasOrId);
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        gridSize = gridSize || this.defaults.config.gridSize;
+
+        const width = canvas.width / this.devicePixelRatio;
+        const height = canvas.height / this.devicePixelRatio;
+
+        ctx.strokeStyle = this.getCSSVar('--grid-color') || '#e5e7eb';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+
+        for (let x = 0; x <= width; x += gridSize) {
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+        }
+        for (let y = 0; y <= height; y += gridSize) {
+            ctx.moveTo(0, y);
+            ctx.lineTo(width, y);
+        }
+        ctx.stroke();
+    }
+
+    drawDefaultPIP() {
+        const pipDef = this.defaults.geometries.pip;
+        this.render([pipDef.data], 'pip-canvas', this.defaults.styles.default);
+
+        const canvas = this._getCanvas('pip-canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#6b7280';
+            ctx.fillText('Click to add test points', 10, 20);
+        }
     }
 
     /**
-     * Resolve style value - returns CSS variable or direct value
+     * Canvas & Style Management
      */
+
+    clearCanvas(canvasOrId) {
+        const canvas = this._getCanvas(canvasOrId);
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width / this.devicePixelRatio;
+        const h = canvas.height / this.devicePixelRatio;
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = this.getCSSVar('--canvas-bg') || '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+    }
+
+    _ensureCanvasScaling(canvas, ctx) {
+        const rect = canvas.getBoundingClientRect();
+        const targetW = Math.round(rect.width * this.devicePixelRatio);
+        const targetH = Math.round(rect.height * this.devicePixelRatio);
+
+        if (canvas.width !== targetW || canvas.height !== targetH) {
+            canvas.width = targetW;
+            canvas.height = targetH;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+            return true;
+        }
+        return false;
+    }
+
+    resizeAllCanvases() {
+        document.querySelectorAll('canvas').forEach(canvas => {
+            const ctx = canvas.getContext('2d');
+            this._ensureCanvasScaling(canvas, ctx);
+        });
+    }
+
+    _getCanvas(canvasOrId) {
+        return typeof canvasOrId === 'string' 
+            ? document.getElementById(canvasOrId) 
+            : canvasOrId;
+    }
+
+    _resolveOptions(options) {
+        const base = this.defaults?.styles?.default || {};
+        const opts = { clear: true, strokeWidth: 2, ...base, ...options };
+
+        // Resolve CSS variables in style properties
+        ['fillOuter', 'strokeOuter', 'fillHole', 'strokeHole'].forEach(key => {
+            if (opts[key]) {
+                opts[key] = this.resolveStyleValue(opts[key]);
+            }
+        });
+
+        return opts;
+    }
+
     resolveStyleValue(value) {
-        if (typeof value === 'string' && value.startsWith('var(')) {
-            // Extract variable name and get its value
+        if (!value) return undefined;
+        if (typeof value !== 'string') return value;
+
+        if (value.startsWith('var(')) {
             const match = value.match(/var\((--[^)]+)\)/);
             if (match) {
-                return this.getCSSVar(match[1]);
+                return this.getCSSVar(match[1]) || undefined;
             }
         }
         return value;
     }
 
-    /**
-     * Main rendering function - accepts either Clipper2 paths or coordinates
-     */
-    render(input, canvasOrId, options = {}) {
-        const startTime = performance.now();
-        
-        // Get canvas element
-        const canvas = typeof canvasOrId === 'string' ? 
-            document.getElementById(canvasOrId) : canvasOrId;
-        
-        if (!canvas) {
-            console.warn('[RENDER] Canvas not found');
-            return;
+    getCSSVar(varName) {
+        if (!this.cssVarsCache.has(varName)) {
+            this.updateCSSCache();
         }
-        
-        // Convert input to coordinate arrays
-        let pathData;
-        if (this.isClipper2Paths(input)) {
-            pathData = this.geometry.paths64ToCoordinates(input);
-        } else if (this.isClipper2Path(input)) {
-            // Single path - wrap in array
-            pathData = [{
-                coords: this.geometry.path64ToCoordinates(input),
-                area: this.geometry.calculateArea(input),
-                orientation: null
-            }];
-        } else {
-            // Already coordinates
-            pathData = this.normalizeCoordinates(input);
-        }
-        
-        // Determine orientations
-        pathData.forEach(item => {
-            if (item.orientation === null || item.orientation === undefined) {
-                item.orientation = item.area > 0 ? 'outer' : 'hole';
-            }
-        });
-        
-        // Apply default options and resolve CSS variables
-        const opts = {
-            ...this.defaults.styles.default,
-            clear: true,
-            fillRule: 'nonzero',
-            showPoints: false,
-            showLabels: false,
-            ...options
-        };
-        
-        // Resolve all style values
-        Object.keys(opts).forEach(key => {
-            if (key.includes('fill') || key.includes('stroke') || key.includes('color')) {
-                opts[key] = this.resolveStyleValue(opts[key]);
-            }
-        });
-        
-        // Render paths
-        this.renderPaths(pathData, canvas, opts);
-        
-        // Update stats
-        this.renderStats.totalPaths = pathData.length;
-        this.renderStats.totalPoints = pathData.reduce((sum, p) => sum + p.coords.length, 0);
-        this.renderStats.lastRenderTime = performance.now() - startTime;
-        
-        if (this.core.config.debugMode) {
-            console.log(`[RENDER] ${this.renderStats.totalPaths} paths, ${this.renderStats.totalPoints} points, ${this.renderStats.lastRenderTime.toFixed(2)}ms`);
-        }
+        return this.cssVarsCache.get(varName);
     }
 
-    /**
-     * Core rendering function for coordinate arrays
-     */
-    renderPaths(pathData, canvas, options) {
-        const ctx = canvas.getContext('2d');
-        
-        // Clear canvas if requested
-        if (options.clear) {
-            this.clearCanvas(canvas);
-        }
-        
-        // Group paths by type
-        const outers = pathData.filter(p => p.orientation === 'outer');
-        const holes = pathData.filter(p => p.orientation === 'hole');
-        
-        // Draw fill (all paths at once for proper holes with even-odd rule)
-        if (options.fillOuter && options.fillOuter !== 'none') {
-            ctx.fillStyle = options.fillOuter;
-            ctx.beginPath();
-            
-            // Add all paths to the same context
-            pathData.forEach(item => {
-                this.addPathToContext(ctx, item.coords);
-            });
-            
-            // Use evenodd fill rule to properly render holes
-            ctx.fill('evenodd');
-        }
-        
-        // Draw strokes
-        ctx.lineWidth = options.strokeWidth;
-        
-        // Draw outer strokes
-        if (outers.length > 0 && options.strokeOuter && options.strokeOuter !== 'none') {
-            ctx.strokeStyle = options.strokeOuter;
-            outers.forEach(item => {
-                ctx.beginPath();
-                this.addPathToContext(ctx, item.coords);
-                ctx.stroke();
-                
-                if (options.showPoints) {
-                    this.drawPoints(ctx, item.coords, options.strokeOuter);
-                }
-            });
-        }
-        
-        // Draw hole strokes with different style
-        if (holes.length > 0 && options.strokeHole) {
-            ctx.strokeStyle = options.strokeHole || options.strokeOuter;
-            ctx.setLineDash([5, 5]);
-            
-            holes.forEach(item => {
-                ctx.beginPath();
-                this.addPathToContext(ctx, item.coords);
-                ctx.stroke();
-                
-                if (options.showPoints) {
-                    this.drawPoints(ctx, item.coords, options.strokeHole);
-                }
-            });
-            
-            ctx.setLineDash([]);
-        }
-        
-        // Draw labels if requested
-        if (options.showLabels) {
-            this.drawLabels(ctx, pathData);
-        }
-    }
-
-    /**
-     * Draw simple paths (for defaults/previews)
-     */
-    drawSimplePaths(coords, canvasOrId, options = {}) {
-        const canvas = typeof canvasOrId === 'string' ? 
-            document.getElementById(canvasOrId) : canvasOrId;
-        
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext('2d');
-        
-        // Apply default options and resolve CSS variables
-        const opts = {
-            ...this.defaults.styles.default,
-            clear: true,
-            ...options
-        };
-        
-        // Resolve style values
-        Object.keys(opts).forEach(key => {
-            if (key.includes('fill') || key.includes('stroke') || key.includes('color')) {
-                opts[key] = this.resolveStyleValue(opts[key]);
-            }
-        });
-        
-        if (opts.clear) {
-            this.clearCanvas(canvas);
-        }
-        
-        ctx.fillStyle = opts.fillOuter;
-        ctx.strokeStyle = opts.strokeOuter;
-        ctx.lineWidth = opts.strokeWidth;
-        
-        // Handle array of paths or single path
-        const paths = Array.isArray(coords[0]) && !Array.isArray(coords[0][0]) ? [coords] : coords;
-        
-        paths.forEach(path => {
-            ctx.beginPath();
-            this.addPathToContext(ctx, path);
-            if (opts.fillOuter && opts.fillOuter !== 'none') {
-                ctx.fill();
-            }
-            if (opts.strokeOuter && opts.strokeOuter !== 'none') {
-                ctx.stroke();
-            }
+    updateCSSCache() {
+        const style = getComputedStyle(document.documentElement);
+        const vars = [
+            '--canvas-bg', '--grid-color', '--shape-fill', '--shape-stroke',
+            '--hole-stroke', '--input-fill', '--input-stroke', '--output-fill',
+            '--output-stroke', '--subject-fill', '--subject-stroke',
+            '--clip-fill', '--clip-stroke', '--pcb-fill', '--pcb-stroke',
+            '--pip-inside', '--pip-outside', '--pip-edge'
+        ];
+        vars.forEach(v => {
+            const val = style.getPropertyValue(v).trim();
+            if (val) this.cssVarsCache.set(v, val);
         });
     }
 
     /**
-     * Draw strokes - FIXED to use polygon generation (WYSIWYG)
-     * This ensures visual representation matches processing
-     */
-    drawStrokes(definition, canvasOrId, options = {}) {
-        const canvas = typeof canvasOrId === 'string' ? 
-            document.getElementById(canvasOrId) : canvasOrId;
-        
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext('2d');
-        
-        if (options.clear !== false) {
-            this.clearCanvas(canvas);
-        }
-        
-        const style = options.style || this.defaults.styles.default;
-        
-        if (definition.type === 'strokes') {
-            // Convert strokes to polygons using the SAME generator used for processing
-            const polygons = [];
-            
-            definition.data.forEach(stroke => {
-                const polygon = this.defaults.generators.strokeToPolygon(
-                    stroke, 
-                    definition.strokeWidth
-                );
-                polygons.push(polygon);
-            });
-            
-            // Now render the polygons
-            ctx.fillStyle = this.resolveStyleValue(style.fillOuter);
-            ctx.strokeStyle = this.resolveStyleValue(style.strokeOuter);
-            ctx.lineWidth = 1; // Polygon outline
-            
-            polygons.forEach(polygon => {
-                ctx.beginPath();
-                this.addPathToContext(ctx, polygon);
-                
-                if (style.fillOuter && style.fillOuter !== 'none') {
-                    ctx.fill();
-                }
-                if (style.strokeOuter && style.strokeOuter !== 'none') {
-                    ctx.stroke();
-                }
-            });
-            
-            // Optional: Add debug mode to show polygon vertices
-            if (options.showVertices) {
-                ctx.fillStyle = '#ff0000';
-                polygons.forEach(polygon => {
-                    polygon.forEach(point => {
-                        ctx.beginPath();
-                        ctx.arc(point[0], point[1], 2, 0, Math.PI * 2);
-                        ctx.fill();
-                    });
-                });
-            }
-            
-        } else if (definition.type === 'pcb') {
-            // Convert PCB traces to polygons
-            const polygons = [];
-            
-            // Convert traces
-            definition.traces?.forEach(trace => {
-                const polygon = this.defaults.generators.lineToPolygon(
-                    trace.from, 
-                    trace.to, 
-                    definition.traceWidth
-                );
-                polygons.push(polygon);
-            });
-            
-            // Convert pads  
-            definition.pads?.forEach(pad => {
-                const circle = this.defaults.generators.circle(
-                    pad.center[0], 
-                    pad.center[1], 
-                    pad.radius,
-                    32 // Use fewer segments for visualization
-                );
-                polygons.push(circle);
-            });
-            
-            // Render all polygons
-            ctx.fillStyle = this.resolveStyleValue(style.fillOuter);
-            ctx.strokeStyle = this.resolveStyleValue(style.strokeOuter);
-            ctx.lineWidth = 1;
-            
-            polygons.forEach(polygon => {
-                ctx.beginPath();
-                this.addPathToContext(ctx, polygon);
-                
-                if (style.fillOuter && style.fillOuter !== 'none') {
-                    ctx.fill();
-                }
-                if (style.strokeOuter && style.strokeOuter !== 'none') {
-                    ctx.stroke();
-                }
-            });
-            
-            // Optional: Add debug mode to show polygon vertices
-            if (options.showVertices) {
-                ctx.fillStyle = '#ff0000';
-                polygons.forEach(polygon => {
-                    polygon.forEach((point, idx) => {
-                        ctx.beginPath();
-                        ctx.arc(point[0], point[1], 2, 0, Math.PI * 2);
-                        ctx.fill();
-                        
-                        // Label first few points for debugging
-                        if (idx < 3) {
-                            ctx.font = '10px Arial';
-                            ctx.fillStyle = '#000';
-                            ctx.fillText(idx.toString(), point[0] + 5, point[1]);
-                        }
-                    });
-                });
-            }
-        }
-    }
-
-    /**
-     * Draw shape preview for draggable tests
-     */
-    drawShapePreview(shapes, canvasOrId, options = {}) {
-        const canvas = typeof canvasOrId === 'string' ? 
-            document.getElementById(canvasOrId) : canvasOrId;
-        
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext('2d');
-        this.clearCanvas(canvas);
-        
-        // Process both objects and arrays
-        const shapeList = Array.isArray(shapes) ? shapes : Object.values(shapes);
-        
-        shapeList.forEach(shape => {
-            if (!shape || typeof shape !== 'object') return;
-            
-            // Resolve colors from CSS variables if needed
-            const fillColor = shape.color ? 
-                this.resolveStyleValue(shape.color + '40') : 
-                this.resolveStyleValue('var(--shape-fill)');
-            const strokeColor = shape.color ? 
-                this.resolveStyleValue(shape.color) : 
-                this.resolveStyleValue('var(--shape-stroke)');
-            
-            ctx.fillStyle = fillColor;
-            ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = 2;
-            
-            if (shape.type === 'rect') {
-                ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
-                ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
-            } else if (shape.type === 'circle') {
-                ctx.beginPath();
-                ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-            } else if (shape.type === 'polygon' && shape.coords) {
-                ctx.beginPath();
-                this.addPathToContext(ctx, shape.coords);
-                ctx.fill();
-                ctx.stroke();
-            }
-        });
-    }
-
-    /**
-     * Clear canvas
-     */
-    clearCanvas(canvasOrId) {
-        const canvas = typeof canvasOrId === 'string' ? 
-            document.getElementById(canvasOrId) : canvasOrId;
-        
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = this.getCSSVar('--canvas-bg');
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
-    /**
-     * Add path to canvas context
-     */
-    addPathToContext(ctx, coords) {
-        if (!coords || coords.length === 0) return;
-        
-        coords.forEach((point, i) => {
-            const x = Array.isArray(point) ? point[0] : point.x;
-            const y = Array.isArray(point) ? point[1] : point.y;
-            
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        });
-        
-        ctx.closePath();
-    }
-
-    /**
-     * Draw individual points
-     */
-    drawPoints(ctx, coords, color) {
-        ctx.fillStyle = this.resolveStyleValue(color);
-        coords.forEach(point => {
-            const x = Array.isArray(point) ? point[0] : point.x;
-            const y = Array.isArray(point) ? point[1] : point.y;
-            
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.fill();
-        });
-    }
-
-    /**
-     * Draw path labels
-     */
-    drawLabels(ctx, pathData) {
-        ctx.font = '12px Arial';
-        ctx.fillStyle = this.getCSSVar('--text-secondary');
-        
-        pathData.forEach((item, i) => {
-            if (item.coords.length > 0) {
-                const center = this.getPathCenter(item.coords);
-                ctx.fillText(`P${i}`, center.x, center.y);
-            }
-        });
-    }
-
-    /**
-     * Get center point of a path
-     */
-    getPathCenter(coords) {
-        const bounds = this.getPathBounds(coords);
-        return {
-            x: (bounds.minX + bounds.maxX) / 2,
-            y: (bounds.minY + bounds.maxY) / 2
-        };
-    }
-
-    /**
-     * Get bounding box of a path
-     */
-    getPathBounds(coords) {
-        if (coords.length === 0) {
-            return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-        }
-        
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        
-        coords.forEach(point => {
-            const x = Array.isArray(point) ? point[0] : point.x;
-            const y = Array.isArray(point) ? point[1] : point.y;
-            
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-        });
-        
-        return { minX, minY, maxX, maxY };
-    }
-
-    /**
-     * Draw comparison view
-     */
-    drawComparison(input, output, canvasOrId) {
-        const canvas = typeof canvasOrId === 'string' ? 
-            document.getElementById(canvasOrId) : canvasOrId;
-        
-        if (!canvas) return;
-        
-        // Clear and draw input
-        this.render(input, canvas, {
-            ...this.defaults.styles.input,
-            clear: true
-        });
-        
-        // Draw output on top
-        this.render(output, canvas, {
-            ...this.defaults.styles.output,
-            clear: false
-        });
-        
-        // Add legend
-        const ctx = canvas.getContext('2d');
-        ctx.font = '12px Arial';
-        ctx.fillStyle = this.getCSSVar('--input-stroke');
-        ctx.fillText('Input', 10, 20);
-        ctx.fillStyle = this.getCSSVar('--output-stroke');
-        ctx.fillText('Output', 10, 35);
-    }
-
-    /**
-     * Draw multiple offset paths with proper z-order - FIXED
-     */
-    drawOffsetPaths(offsetPaths, canvasOrId, type, originalPaths) {
-        const canvas = typeof canvasOrId === 'string' ? 
-            document.getElementById(canvasOrId) : canvasOrId;
-        
-        if (!canvas) return;
-        
-        this.clearCanvas(canvas);
-        
-        if (type === 'external') {
-            // For external offsets:
-            // 1. Draw largest to smallest offsets (back to front)
-            for (let i = offsetPaths.length - 1; i >= 0; i--) {
-                const result = offsetPaths[i];
-                const t = (i + 1) / offsetPaths.length; // Normalized position
-                const hue = 120 - (t * 60); // Green to yellow gradient
-                const alpha = 0.3 + (t * 0.3);
-                
-                this.render(result, canvas, {
-                    fillOuter: `hsla(${hue}, 70%, 50%, ${alpha})`,
-                    strokeOuter: `hsl(${hue}, 70%, 40%)`,
-                    strokeWidth: 1,
-                    clear: false
-                });
-            }
-            // 2. Draw original shape on top
-            if (originalPaths) {
-                const pathData = this.geometry.paths64ToCoordinates(originalPaths);
-                const ctx = canvas.getContext('2d');
-                
-                // Step A: Fill with opaque canvas background color to "erase" what's behind
-                ctx.save();
-                ctx.fillStyle = this.getCSSVar('--canvas-bg');
-                ctx.beginPath();
-                pathData.forEach(item => this.addPathToContext(ctx, item.coords));
-                ctx.fill('evenodd');
-                ctx.restore();
-
-                // Step B: Render the original shape normally (with its transparent fill and stroke)
-                this.render(originalPaths, canvas, {
-                    ...this.defaults.styles.default,
-                    fillOuter: this.resolveStyleValue('var(--shape-fill)'),
-                    strokeOuter: this.resolveStyleValue('var(--shape-stroke)'),
-                    strokeWidth: 2,
-                    clear: false
-                });
-            }
-        } else {
-            // For internal offsets:
-            // 1. Draw original shape at back
-            if (originalPaths) {
-                this.render(originalPaths, canvas, {
-                    ...this.defaults.styles.default,
-                    fillOuter: this.resolveStyleValue('var(--shape-fill)'),
-                    strokeOuter: this.resolveStyleValue('var(--shape-stroke)'),
-                    strokeWidth: 2,
-                    clear: false
-                });
-            }
-            // 2. Draw offsets from largest to smallest (front to back visually)
-            for (let i = 0; i < offsetPaths.length; i++) {
-                const result = offsetPaths[i];
-                const t = (i + 1) / offsetPaths.length;
-                const hue = 120 - (t * 120); // Green to red gradient
-                const alpha = 0.3 + (t * 0.4);
-                
-                this.render(result, canvas, {
-                    fillOuter: `hsla(${hue}, 70%, 50%, ${alpha})`,
-                    strokeOuter: `hsl(${hue}, 70%, 40%)`,
-                    strokeWidth: 1,
-                    clear: false
-                });
-            }
-        }
-    }
-
-    /**
-     * Draw grid
-     */
-    drawGrid(canvasOrId, gridSize = null) {
-        const canvas = typeof canvasOrId === 'string' ? 
-            document.getElementById(canvasOrId) : canvasOrId;
-        
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext('2d');
-        gridSize = gridSize || this.defaults.config.gridSize;
-        
-        ctx.strokeStyle = this.getCSSVar('--grid-color');
-        ctx.lineWidth = 1;
-        
-        for (let i = 0; i <= canvas.width; i += gridSize) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, canvas.height);
-            ctx.stroke();
-        }
-        
-        for (let i = 0; i <= canvas.height; i += gridSize) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(canvas.width, i);
-            ctx.stroke();
-        }
-    }
-
-    /**
-     * Export paths as SVG
+     * Type Detection
      */
 
-    exportStrokesAsSVG(definition, width, height) {
-        width = width || this.defaults.config.canvasWidth;
-        height = height || this.defaults.config.canvasHeight;
-        const strokeWidth = definition.strokeWidth || 20;
-        const strokeColor = this.getCSSVar('--shape-stroke');
-
-        let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" 
-xmlns="http://www.w3.org/2000/svg">
-<rect width="${width}" height="${height}" fill="white"/>
-<g fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linecap="round">
-`;
-        definition.data.forEach(stroke => {
-            if (stroke.type === 'line') {
-                svg += `    <line x1="${stroke.from[0]}" y1="${stroke.from[1]}" x2="${stroke.to[0]}" y2="${stroke.to[1]}"/>\n`;
-            } else if (stroke.type === 'arc') {
-                const r = stroke.radius;
-                // Convert degrees to radians for JS Math functions
-                const startRad = (stroke.start - 90) * Math.PI / 180; // Adjust for canvas vs SVG angle system
-                const endRad = (stroke.end - 90) * Math.PI / 180;
-                const startX = stroke.center[0] + r * Math.cos(startRad);
-                const startY = stroke.center[1] + r * Math.sin(startRad);
-                const endX = stroke.center[0] + r * Math.cos(endRad);
-                const endY = stroke.center[1] + r * Math.sin(endRad);
-                
-                const angleDiff = Math.abs(stroke.end - stroke.start);
-                const largeArcFlag = angleDiff <= 180 ? '0' : '1';
-                const sweepFlag = '1'; // Assuming CCW arcs
-                
-                svg += `    <path d="M ${startX} ${startY} A ${r} ${r} 0 ${largeArcFlag} ${sweepFlag} ${endX} ${endY}"/>\n`;
-            }
-        });
-
-        svg += '  </g>\n</svg>';
-        return svg;
-    }
-
-    exportPcbAsSVG(definition, width, height) {
-        width = width || this.defaults.config.canvasWidth;
-        height = height || this.defaults.config.canvasHeight;
-        const traceWidth = definition.traceWidth || 24;
-        const strokeColor = this.getCSSVar('--pcb-stroke');
-
-        let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" 
-xmlns="http://www.w3.org/2000/svg">
-<rect width="${width}" height="${height}" fill="white"/>
-<g fill="${strokeColor}" stroke="${strokeColor}" stroke-linecap="round">
-`;
-        // Draw traces as lines
-        definition.traces?.forEach(trace => {
-            svg += `    <line x1="${trace.from[0]}" y1="${trace.from[1]}" x2="${trace.to[0]}" y2="${trace.to[1]}" stroke-width="${traceWidth}"/>\n`;
-        });
-
-        // Draw pads as circles
-        definition.pads?.forEach(pad => {
-            svg += `    <circle cx="${pad.center[0]}" cy="${pad.center[1]}" r="${pad.radius}"/>\n`;
-        });
-
-        svg += '  </g>\n</svg>';
-        return svg;
-    }
-
-    exportSVG(input, width = null, height = null) {
-
-        // Check if input is a raw geometry definition that needs special handling
-        if (input && typeof input === 'object' && input.type === 'strokes') {
-            return this.exportStrokesAsSVG(input, width, height);
-        }
-        if (input.type === 'pcb') {
-            return this.exportPcbAsSVG(input, width, height);
-        }
-
-        width = width || this.defaults.config.canvasWidth;
-        height = height || this.defaults.config.canvasHeight;
-        
-        // Convert to coordinates if needed
-        let pathData;
-        if (this.isClipper2Paths(input)) {
-            pathData = this.geometry.paths64ToCoordinates(input);
-        } else if (this.isClipper2Path(input)) {
-            pathData = [{
-                coords: this.geometry.path64ToCoordinates(input),
-                area: this.geometry.calculateArea(input),
-                orientation: 'outer'
-            }];
-        } else {
-            pathData = this.normalizeCoordinates(input);
-        }
-        
-        // Build SVG with proper colors
-        const fillColor = this.getCSSVar('--shape-fill');
-        const strokeColor = this.getCSSVar('--shape-stroke');
-        
-        let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" 
-     xmlns="http://www.w3.org/2000/svg">
-  <rect width="${width}" height="${height}" fill="white"/>
-  <g fill="${fillColor}" stroke="${strokeColor}" stroke-width="2">
-`;
-        
-        // Create path data
-        let pathD = '';
-        pathData.forEach(item => {
-            pathD += 'M ';
-            item.coords.forEach((point, i) => {
-                const x = Array.isArray(point) ? point[0] : point.x;
-                const y = Array.isArray(point) ? point[1] : point.y;
-                
-                if (i === 0) {
-                    pathD += `${x} ${y} `;
-                } else {
-                    pathD += `L ${x} ${y} `;
-                }
-            });
-            pathD += 'Z ';
-        });
-        
-        svg += `    <path d="${pathD}"/>\n`;
-        svg += '  </g>\n</svg>';
-        
-        return svg;
-    }
-
-    /**
-     * Check if input is Clipper2 Paths64
-     */
-    isClipper2Paths(input) {
+    _isClipper2Paths(input) {
         return input && typeof input.size === 'function' && typeof input.get === 'function';
     }
 
-    /**
-     * Check if input is Clipper2 Path64
-     */
-    isClipper2Path(input) {
-        return input && typeof input.size === 'function' && !input.get(0)?.size;
+    _isClipper2Path(input) {
+        return input && typeof input.size === 'function' && 
+               typeof input.push_back === 'function' && 
+               !this._isClipper2Paths(input);
+    }
+
+    _isStructuredPolyTree(input) {
+        return input && typeof input === 'object' && 
+               (Array.isArray(input.polygons) || input.outer !== undefined);
     }
 
     /**
-     * Normalize coordinate input to standard format
+     * SVG Export
      */
-    normalizeCoordinates(input) {
-        if (!input) return [];
-        
-        // If already in path data format
-        if (input[0] && input[0].coords) {
-            return input;
+
+    exportSVG(input, width, height) {
+        if (this.svgExporter) {
+            return this.svgExporter.exportSVG(input, width, height);
         }
-        
-        // Convert simple coordinate arrays
-        const paths = Array.isArray(input[0]) && !Array.isArray(input[0][0]) ? [input] : input;
-        
-        return paths.map(coords => ({
-            coords: coords,
-            area: this.calculateAreaFromCoords(coords),
-            orientation: null
-        }));
-    }
-
-    /**
-     * Calculate area from coordinate array
-     */
-    calculateAreaFromCoords(coords) {
-        let area = 0;
-        const n = coords.length;
-        
-        for (let i = 0; i < n; i++) {
-            const j = (i + 1) % n;
-            const pi = coords[i];
-            const pj = coords[j];
-            const xi = Array.isArray(pi) ? pi[0] : pi.x;
-            const yi = Array.isArray(pi) ? pi[1] : pi.y;
-            const xj = Array.isArray(pj) ? pj[0] : pj.x;
-            const yj = Array.isArray(pj) ? pj[1] : pj.y;
-            
-            area += xi * yj - xj * yi;
-        }
-        
-        return area / 2;
-    }
-
-    // Compatibility methods
-    drawPaths(paths, canvasId, options = {}) {
-        this.render(paths, canvasId, options);
-    }
-    
-    drawPath(path, canvasId, options = {}) {
-        this.render(path, canvasId, options);
+        return '';
     }
 }

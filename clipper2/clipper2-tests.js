@@ -1,7 +1,30 @@
 /**
- * Clipper2 Tests Module
- * Test implementations with state-driven architecture
- * Version 7.3 - Fixed state initialization and coordinate system
+ * @file        clipper2-tests.js
+ * @description Tests Module
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ *
+ * This module is part of the EasyTrace5000 Test Suite.
+ * It interfaces with the Clipper2 library (Angus Johnson) via WASM (Erik Som).
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 class Clipper2Tests {
@@ -14,19 +37,17 @@ class Clipper2Tests {
         this.testData = new Map();
         this.defaults = Clipper2Defaults;
         this.arcReconstructor = null;
-        this.rabbitPath = null; // Store parsed rabbit path
-        
-        // Derive initial state from Clipper2Defaults for consistency
+        this.rabbitPath = null;
+        this.testStatus = new Map();
+
         this.testState = {
             boolean: {
                 operation: 'union',
                 clipShape: 'circle',
                 subjectPos: { x: 400, y: 400 },
-                clipPos: { 
-                    x: this.defaults.geometries.boolean.clips.circle.initialPos[0], 
-                    y: this.defaults.geometries.boolean.clips.circle.initialPos[1] 
-                },
-                randomShape: null
+                clipPos: { x: 200, y: 200 },
+                randomShape: null,
+                usePolyTree: true
             },
             letterB: {},
             pcbFusion: {},
@@ -34,1578 +55,1151 @@ class Clipper2Tests {
                 island1Pos: { x: 300, y: 300 },
                 island2Pos: { x: 500, y: 500 }
             },
-            offset: {
-                shape: this.defaults.geometries.offset.defaults.shape,
-                type: this.defaults.geometries.offset.defaults.type,
-                count: this.defaults.geometries.offset.defaults.count,
-                distance: this.defaults.geometries.offset.defaults.distance,
-                joinType: this.defaults.geometries.offset.defaults.joinType,
-                miterLimit: this.defaults.geometries.offset.defaults.miterLimit
-            },
-            simplify: {
-                tolerance: this.defaults.geometries.simplify.defaultTolerance
-            },
-            area: {
-                points: [],
-                isDrawing: false,
-                lastPolygonPath: null,
-                animationFrameId: null
-            },
-            pip: {
-                points: [],
-                edgeTolerance: this.defaults.geometries.pip.edgeTolerance
-            },
-            minkowski: {
-                pattern: this.defaults.geometries.minkowski.defaults.pattern,
-                path: this.defaults.geometries.minkowski.defaults.path,
-                operation: this.defaults.geometries.minkowski.defaults.operation,
-                pathClosed: this.defaults.geometries.minkowski.defaults.pathClosed,
-                showSweep: this.defaults.geometries.minkowski.defaults.showSweep,
-                showOffset: this.defaults.geometries.minkowski.defaults.showOffset,
-                patternPos: { ...this.defaults.geometries.minkowski.defaults.patternPos }
-            },
-            'arc-reconstruction': {
-                operation: this.defaults.geometries['arc-reconstruction'].defaults.operation,
-                showReconstruction: this.defaults.geometries['arc-reconstruction'].defaults.showReconstruction,
-                showMetadata: this.defaults.geometries['arc-reconstruction'].defaults.showMetadata,
-                circle1Pos: { ...this.defaults.geometries['arc-reconstruction'].defaults.circle1Pos },
-                circle2Pos: { ...this.defaults.geometries['arc-reconstruction'].defaults.circle2Pos },
-                circle1Radius: this.defaults.geometries['arc-reconstruction'].defaults.circle1Radius,
-                circle2Radius: this.defaults.geometries['arc-reconstruction'].defaults.circle2Radius
-            }
+            offset: { ...this.defaults.geometries.offset.defaults },
+            simplify: { tolerance: this.defaults.geometries.simplify.defaultTolerance },
+            area: { points: [], isDrawing: false, lastPolygonPath: null, animationFrameId: null },
+            pip: { points: [], edgeTolerance: this.defaults.geometries.pip.edgeTolerance },
+            minkowski: { ...this.defaults.geometries.minkowski.defaults },
+            'arc-reconstruction': { ...this.defaults.geometries['arc-reconstruction'].defaults }
         };
-        
-        // Track test execution status
-        this.testStatus = new Map();
     }
 
-    /**
-     * Initialize test system with all modules
-     */
     async initialize() {
         try {
-            // Initialize core
             this.core = new Clipper2Core();
             await this.core.initialize();
-            
-            // Initialize modules
+
             this.geometry = new Clipper2Geometry(this.core);
             this.operations = new Clipper2Operations(this.core);
             this.rendering = new Clipper2Rendering(this.core);
-            
-            // Initialize modules with defaults
+
             this.geometry.initialize(this.defaults);
             this.operations.initialize(this.defaults);
             this.rendering.initialize(this.defaults);
-            
-            // Set cross-references
+
             this.operations.setGeometryModule(this.geometry);
             this.rendering.setGeometryModule(this.geometry);
-            
-            // Apply configuration from defaults
             this.core.setConfig(this.defaults.config);
-            
-            // Pre-parse rabbit SVG
+
             this.initializeRabbitPath();
-            
-            console.log('[TESTS] All modules initialized');
-            
-            // Check for Minkowski support
-            if (this.core.clipper2.MinkowskiSum64 && this.core.clipper2.MinkowskiDiff64) {
-                console.log('[TESTS] Minkowski operations available');
-            } else {
-                console.warn('[TESTS] Minkowski operations not available in this build');
-            }
-            
+
+            const boolClip = this.defaults.geometries.boolean.clips.circle;
+            this.testState.boolean.clipPos = { x: boolClip.initialPos[0], y: boolClip.initialPos[1] };
+
+            console.log('[TESTS] Initialized');
             return true;
-        } catch (error) {
-            console.error('[ERROR] Failed to initialize test system:', error);
+        } catch (e) {
+            console.error('[TESTS] Init failed:', e);
             return false;
         }
     }
 
-    /**
-     * Initialize rabbit path from SVG - Store permanently
-     */
     initializeRabbitPath() {
-        const rabbitDef = this.defaults.geometries.boolean.clips.rabbit;
-        if (rabbitDef?.path) {
-            try {
-                // Use geometry module's improved SVG parser
-                const scale = rabbitDef.scale || 0.3;
-                const coords = this.geometry.parseSVGPath(rabbitDef.path, scale, [0, 0]);
-                
-                if (coords.length === 0) {
-                    console.error('[TESTS] Rabbit path parsing produced no coordinates');
-                    this.rabbitPath = null;
-                    return;
-                }
-                
-                // Center the rabbit around origin
-                const bounds = this.getPathBounds(coords);
-                const centerX = (bounds.minX + bounds.maxX) / 2;
-                const centerY = (bounds.minY + bounds.maxY) / 2;
-                
-                this.rabbitPath = coords.map(pt => [
-                    pt[0] - centerX,
-                    pt[1] - centerY
-                ]);
-                
-                console.log('[TESTS] Rabbit path initialized with', this.rabbitPath?.length, 'points');
-            } catch (error) {
-                console.error('[TESTS] Failed to parse rabbit path:', error);
-                this.rabbitPath = null;
-            }
-        } else {
-            console.warn('[TESTS] Rabbit definition not found');
+        const def = this.defaults.geometries.boolean.clips.rabbit;
+        if (!def?.path) return;
+
+        try {
+            const coords = this.geometry.parseSVGPath(def.path, def.scale || 0.3, [0, 0]);
+            if (!coords.length) return;
+
+            const bounds = this.getPathBounds(coords);
+            const cx = (bounds.minX + bounds.maxX) / 2;
+            const cy = (bounds.minY + bounds.maxY) / 2;
+            
+            this.rabbitPath = coords.map(pt => [pt[0] - cx, pt[1] - cy]);
+            console.log('[TESTS] Rabbit path ready:', this.rabbitPath.length, 'points');
+        } catch (e) {
+            console.error('[TESTS] Rabbit parse failed:', e);
         }
     }
 
-    /**
-     * Get path bounds
-     */
     getPathBounds(coords) {
-        if (!coords || coords.length === 0) {
-            return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-        }
-        
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        
-        coords.forEach(point => {
-            const x = Array.isArray(point) ? point[0] : point.x;
-            const y = Array.isArray(point) ? point[1] : point.y;
-            
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        coords.forEach(p => {
+            const x = Array.isArray(p) ? p[0] : p.x;
+            const y = Array.isArray(p) ? p[1] : p.y;
+            minX = Math.min(minX, x); minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
         });
-        
         return { minX, minY, maxX, maxY };
     }
 
-    /**
-     * Update test state from UI
-     */
     updateTestState(testName, key, value) {
         if (this.testState[testName]) {
             this.testState[testName][key] = value;
-            console.log(`[STATE] ${testName}.${key} = ${JSON.stringify(value)}`);
         }
     }
 
-    /**
-     * Get test state
-     */
     getTestState(testName) {
         return this.testState[testName] || {};
     }
 
-    /**
-     * Set test status for visual feedback
-     */
     setTestStatus(testName, status) {
         this.testStatus.set(testName, status);
         const card = document.querySelector(`[data-test="${testName}"]`);
-        if (card) {
-            card.dataset.status = status; // 'pending', 'success', 'error'
+        if (card) card.dataset.status = status;
+    }
+
+    /**
+     * Boolean Operations Test
+     */
+
+    async testBooleanOperation() {
+        const testName = 'boolean';
+        this.setTestStatus(testName, 'pending');
+        const trash = [];
+
+        try {
+            const state = this.getTestState(testName);
+            const { operation, clipShape, subjectPos, clipPos, usePolyTree } = state;
+
+            const subjectDef = this.defaults.geometries.boolean.subject;
+            const subjectPath = this.geometry.coordinatesToPath64(subjectDef.data);
+            const subjectPaths = new this.core.clipper2.Paths64();
+            subjectPaths.push_back(subjectPath);
+            trash.push(subjectPath, subjectPaths);
+
+            let clipPath;
+            if (clipShape === 'rabbit' && this.rabbitPath) {
+                const coords = this.rabbitPath.map(pt => [pt[0] + clipPos.x, pt[1] + clipPos.y]);
+                clipPath = this.geometry.coordinatesToPath64(coords);
+            } else if (clipShape === 'random') {
+                let rnd = state.randomShape;
+                if (!rnd) {
+                    const def = this.defaults.geometries.boolean.clips.random;
+                    rnd = this.defaults.generators.randomConvex(0, 0, def.avgRadius, def.variance, def.points);
+                    this.updateTestState('boolean', 'randomShape', rnd);
+                }
+                clipPath = this.geometry.coordinatesToPath64(rnd.map(pt => [pt[0] + clipPos.x, pt[1] + clipPos.y]));
+            } else {
+                const def = this.defaults.geometries.boolean.clips[clipShape];
+                if (def.type === 'parametric') {
+                    clipPath = this.geometry.parametricToPath64(def, { position: [clipPos.x, clipPos.y] });
+                } else {
+                    const coords = def.data.map(pt => [pt[0] + clipPos.x, pt[1] + clipPos.y]);
+                    clipPath = this.geometry.coordinatesToPath64(coords);
+                }
+            }
+
+            const clipPaths = new this.core.clipper2.Paths64();
+            clipPaths.push_back(clipPath);
+            trash.push(clipPath, clipPaths);
+
+            this.testData.set(`${testName}-input`, subjectPaths);
+            this.testData.set(`${testName}-clip`, clipPaths);
+
+            let result, resultCount;
+
+            if (usePolyTree) {
+                switch (operation) {
+                    case 'union': result = this.operations.unionPolyTree(subjectPaths, clipPaths); break;
+                    case 'intersection': result = this.operations.intersectPolyTree(subjectPaths, clipPaths); break;
+                    case 'difference': result = this.operations.differencePolyTree(subjectPaths, clipPaths); break;
+                    case 'xor': result = this.operations.xorPolyTree(subjectPaths, clipPaths); break;
+                }
+                this.testData.set(`${testName}-output`, result);
+                this.rendering.renderPolyTree(result, 'boolean-canvas', this.defaults.styles.output);
+                resultCount = result.polygons.length;
+            } else {
+                switch (operation) {
+                    case 'union': result = this.operations.union(subjectPaths, clipPaths); break;
+                    case 'intersection': result = this.operations.intersect(subjectPaths, clipPaths); break;
+                    case 'difference': result = this.operations.difference(subjectPaths, clipPaths); break;
+                    case 'xor': result = this.operations.xor(subjectPaths, clipPaths); break;
+                }
+                trash.push(result);
+                this.testData.set(`${testName}-output`, result);
+                this.rendering.render(result, 'boolean-canvas', this.defaults.styles.output);
+                resultCount = result.size();
+            }
+
+            this.setTestStatus(testName, 'success');
+            this.ui?.updateResult('boolean-result', `[OK] ${operation.toUpperCase()}: ${resultCount} region(s)`);
+            return { success: true, output: resultCount };
+
+        } catch (e) {
+            console.error('[ERROR] Boolean:', e);
+            this.setTestStatus(testName, 'error');
+            this.ui?.updateResult('boolean-result', `[ERROR] ${e.message}`, false);
+            return { success: false, error: e.message };
+        } finally {
+            trash.forEach(o => o?.delete?.());
         }
     }
 
     /**
-     * Test Arc Reconstruction demonstration
+     * Letter B Test
      */
-    async testArcReconstruction() {
-        const testName = 'arc-reconstruction';
+
+    async testLetterB() {
+        const testName = 'letter-b';
         this.setTestStatus(testName, 'pending');
-        
+        const trash = [];
+
         try {
-            // Initialize arc reconstructor if not already done
-            if (!this.arcReconstructor) {
-                this.arcReconstructor = new ArcReconstructor(this.core, this.geometry, this.defaults);
-                this.arcReconstructor.registry.debug = this.core.config.debugMode;
-            }
-            
-            // Get test state - use actual positions from dragging
+            const def = this.defaults.geometries.letterB;
+            const strokes = this.geometry.toClipper2Paths(def);
+            trash.push(strokes);
+
+            this.testData.set(`${testName}-input`, strokes);
+
+            const result = this.operations.unionPolyTree(strokes);
+            this.testData.set(`${testName}-output`, result);
+
+            this.rendering.renderPolyTree(result, 'letter-b-canvas', {
+                fillOuter: 'var(--output-fill)',
+                strokeOuter: 'var(--output-stroke)',
+                strokeHole: 'var(--hole-stroke)',
+                strokeWidth: 2
+            });
+
+            this.setTestStatus(testName, 'success');
+            this.ui?.updateResult('letter-b-result', 
+                `[OK] Letter B: ${result.polygons.length} polygon(s), ${result.totalHoles} hole(s)`);
+            return { success: true };
+
+        } catch (e) {
+            console.error('[ERROR] Letter B:', e);
+            this.setTestStatus(testName, 'error');
+            this.ui?.updateResult('letter-b-result', `[ERROR] ${e.message}`, false);
+            return { success: false };
+        } finally {
+            trash.forEach(o => o?.delete?.());
+        }
+    }
+
+    /**
+     * PCB Fusion Test
+     */
+
+    async testPCBFusion() {
+        const testName = 'pcb-fusion';
+        this.setTestStatus(testName, 'pending');
+        const trash = [];
+
+        try {
+            const def = this.defaults.geometries.pcbFusion;
+            const components = this.geometry.toClipper2Paths(def);
+            trash.push(components);
+
+            this.testData.set(`${testName}-input`, components);
+
+            const result = this.operations.unionPolyTree(components);
+            this.testData.set(`${testName}-output`, result);
+
+            this.rendering.renderPolyTree(result, 'pcb-fusion-canvas', {
+                fillOuter: 'var(--pcb-fill)',
+                strokeOuter: 'var(--pcb-stroke)',
+                strokeWidth: 2
+            });
+
+            this.setTestStatus(testName, 'success');
+            this.ui?.updateResult('pcb-fusion-result', 
+                `[OK] PCB: ${result.polygons.length} region(s), ${result.totalHoles} hole(s)`);
+            return { success: true };
+
+        } catch (e) {
+            console.error('[ERROR] PCB:', e);
+            this.setTestStatus(testName, 'error');
+            return { success: false };
+        } finally {
+            trash.forEach(o => o?.delete?.());
+        }
+    }
+
+    /**
+     * Nested Structure Test
+     */
+
+    async testNestedStructure() {
+        const testName = 'nested';
+        this.setTestStatus(testName, 'pending');
+        const trash = [];
+
+        try {
             const state = this.getTestState(testName);
-            
-            // Create shapes from actual state positions
-            const shapes = [
-                {
-                    type: 'circle',
-                    center: { 
-                        x: state.circle1Pos.x,
-                        y: state.circle1Pos.y
-                    },
-                    radius: state.circle1Radius
-                },
-                {
-                    type: 'circle',
-                    center: { 
-                        x: state.circle2Pos.x,
-                        y: state.circle2Pos.y
-                    },
-                    radius: state.circle2Radius
-                }
-            ];
-            
-            // Run reconstruction pipeline
-            const result = this.arcReconstructor.processWithReconstruction(shapes, state.operation);
-            
-            // Clear canvas
-            const canvas = document.getElementById('arc-reconstruction-canvas');
-            this.rendering.clearCanvas(canvas);
-            
-            // Draw background grid for reference
-            this.rendering.drawGrid(canvas, 20);
-            
-            // Draw the polygonal result
-            this.rendering.render(result.polygons, canvas, {
-                fillOuter: 'rgba(59, 130, 246, 0.2)',
-                strokeOuter: '#3b82f6',
-                strokeWidth: 1,
+            const def = this.defaults.geometries.nested;
+
+            const frameOuter = this.geometry.coordinatesToPath64(def.frame.outer);
+            const frameInner = this.geometry.coordinatesToPath64(def.frame.inner);
+            const frameOuterP = new this.core.clipper2.Paths64();
+            const frameInnerP = new this.core.clipper2.Paths64();
+            frameOuterP.push_back(frameOuter);
+            frameInnerP.push_back(frameInner);
+            trash.push(frameOuter, frameInner, frameOuterP, frameInnerP);
+
+            const frame = this.operations.difference(frameOuterP, frameInnerP);
+            trash.push(frame);
+
+            const islands = new this.core.clipper2.Paths64();
+            trash.push(islands);
+
+            def.islands.forEach((iDef, idx) => {
+                const pos = state[`island${idx + 1}Pos`];
+                const dx = pos ? pos.x - iDef.outer[0][0] : 0;
+                const dy = pos ? pos.y - iDef.outer[0][1] : 0;
+
+                const oCoords = iDef.outer.map(pt => [pt[0] + dx, pt[1] + dy]);
+                const iCoords = iDef.inner.map(pt => [pt[0] + dx, pt[1] + dy]);
+
+                const oPath = this.geometry.coordinatesToPath64(oCoords);
+                const iPath = this.geometry.coordinatesToPath64(iCoords);
+                const oP = new this.core.clipper2.Paths64();
+                const iP = new this.core.clipper2.Paths64();
+                oP.push_back(oPath);
+                iP.push_back(iPath);
+                trash.push(oPath, iPath, oP, iP);
+
+                const island = this.operations.difference(oP, iP);
+                for (let k = 0; k < island.size(); k++) islands.push_back(island.get(k));
+                trash.push(island);
+            });
+
+            const result = this.operations.unionPolyTree(frame, islands);
+            this.testData.set(`${testName}-output`, result);
+
+            this.rendering.renderPolyTree(result, 'nested-canvas', this.defaults.styles.output);
+
+            this.setTestStatus(testName, 'success');
+            this.ui?.updateResult('nested-result', 
+                `[OK] Nested: ${result.polygons.length} polygon(s), ${result.totalHoles} hole(s)`);
+            return { success: true };
+
+        } catch (e) {
+            console.error('[ERROR] Nested:', e);
+            this.setTestStatus(testName, 'error');
+            return { success: false };
+        } finally {
+            trash.forEach(o => o?.delete?.());
+        }
+    }
+
+    /**
+     * Simplify Test
+     */
+
+    async testSimplify() {
+        const testName = 'simplify';
+        this.setTestStatus(testName, 'pending');
+        const trash = [];
+
+        try {
+            const state = this.getTestState(testName);
+            const def = this.defaults.geometries.simplify;
+
+            const coords = this.geometry.parseSVGPath(def.path, def.scale, def.position);
+            const path = this.geometry.coordinatesToPath64(coords);
+            const paths = new this.core.clipper2.Paths64();
+            paths.push_back(path);
+            trash.push(path, paths);
+
+            this.testData.set(`${testName}-input`, paths);
+
+            const result = this.operations.simplify(paths, state.tolerance || def.defaultTolerance);
+            trash.push(result);
+            this.testData.set(`${testName}-output`, result);
+
+            const origPts = path.size();
+            let simpPts = 0;
+            for (let i = 0; i < result.size(); i++) simpPts += result.get(i).size();
+
+            this.rendering.clearCanvas('simplify-canvas');
+
+            this.rendering.render(paths, 'simplify-canvas', {
+                fillOuter: 'none',
+                strokeOuter: '#d1d5db',
+                strokeWidth: 4,
                 clear: false
             });
-            
-            // Draw reconstructed curves if enabled
-            if (state.showReconstruction && result.reconstructedCurves.length > 0) {
-                this.arcReconstructor.drawReconstructedCurves(result.reconstructedCurves, canvas, {
-                    strokeColor: '#ff9900',
-                    fillColor: 'rgba(255, 153, 0, 0.1)',
-                    lineWidth: 3,
-                    fill: false
-                });
-            }
-            
-            // Show metadata visualization if enabled
-            if (state.showMetadata) {
-                this.drawMetadataVisualization(result.polygons, canvas);
-            }
-            
-            // Update results
-            const statsText = [
-                `Operation: ${state.operation}`,
-                `Input curves: ${result.stats.inputCurves}`,
-                `Curve groups found: ${result.stats.curveGroups}`,
-                `Reconstructed: ${result.stats.reconstructedCurves}`,
-                `  Full circles: ${result.stats.fullCircles}`,
-                `  Partial arcs: ${result.stats.partialArcs}`
-            ].join('\n');
-            
-            this.setTestStatus(testName, 'success');
-            this.ui?.updateResult('arc-reconstruction-result', 
-                `[OK] Arc reconstruction complete`);
-            this.ui?.updateInfo('arc-reconstruction-info', statsText);
-            
-            return { success: true, stats: result.stats };
-            
-        } catch (error) {
-            console.error('[ERROR] Arc reconstruction test failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('arc-reconstruction-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
-        }
-    }
-    
-    /**
-     * Draw metadata visualization for arc reconstruction
-     */
-    drawMetadataVisualization(polygonData, canvas) {
-        const ctx = canvas.getContext('2d');
-        ctx.save();
-        
-        // Draw points with curve metadata
-        polygonData.forEach(path => {
-            if (!path.coords) return;
-            
-            path.coords.forEach(point => {
-                if (point.curveId && point.curveId > 0) {
-                    // Point has curve metadata - draw it specially
-                    ctx.beginPath();
-                    ctx.arc(point[0] || point.x, point[1] || point.y, 2, 0, Math.PI * 2);
-                    
-                    // Color based on curve ID
-                    const hue = (point.curveId * 137.5) % 360;
-                    ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
-                    ctx.fill();
-                } else {
-                    // Regular point
-                    ctx.beginPath();
-                    ctx.arc(point[0] || point.x, point[1] || point.y, 1, 0, Math.PI * 2);
-                    ctx.fillStyle = '#666';
-                    ctx.fill();
-                }
+
+            this.rendering.render(result, 'simplify-canvas', {
+                fillOuter: 'var(--output-fill)',
+                strokeOuter: 'var(--output-stroke)',
+                strokeWidth: 2,
+                clear: false
             });
-        });
-        
-        ctx.restore();
+
+            const reduction = origPts > 0 ? Math.round((1 - simpPts / origPts) * 100) : 0;
+
+            this.setTestStatus(testName, 'success');
+            this.ui?.updateResult('simplify-result', 
+                `[OK] ${origPts} → ${simpPts} points (${reduction}% reduction)`);
+            return { success: true };
+
+        } catch (e) {
+            console.error('[ERROR] Simplify:', e);
+            this.setTestStatus(testName, 'error');
+            return { success: false };
+        } finally {
+            trash.forEach(o => o?.delete?.());
+        }
     }
 
     /**
-     * Test Minkowski operations with offset comparison
+     * Offset Test
      */
+
+    async testOffset() {
+        const testName = 'offset';
+        this.setTestStatus(testName, 'pending');
+        const trash = [];
+
+        try {
+            const state = this.getTestState(testName);
+            const { shape, type, count, distance, joinType, miterLimit } = state;
+            const shapeDef = this.defaults.geometries.offset.shapes[shape];
+
+            let basePath;
+            if (shapeDef.type === 'parametric') {
+                basePath = this.geometry.parametricToPath64(shapeDef);
+            } else {
+                basePath = this.geometry.polygonToPath64(shapeDef);
+            }
+            trash.push(basePath);
+
+            const paths = new this.core.clipper2.Paths64();
+            paths.push_back(basePath);
+            trash.push(paths);
+
+            this.testData.set(`${testName}-input`, paths);
+
+            const joinEnum = this.getJoinTypeEnum(joinType);
+            const endEnum = this.core.clipper2.EndType.Polygon;
+            const actualDist = type === 'internal' ? -Math.abs(distance) : Math.abs(distance);
+
+            const results = [];
+            for (let i = 1; i <= count; i++) {
+                const r = this.operations.offset(paths, actualDist * i, joinEnum, endEnum, miterLimit);
+                results.push(r);
+                trash.push(r);
+            }
+
+            this.rendering.drawOffsetPaths(results, 'offset-canvas', type, paths);
+
+            if (results.length) this.testData.set(`${testName}-output`, results[results.length - 1]);
+
+            this.setTestStatus(testName, 'success');
+            this.ui?.updateResult('offset-result', 
+                `[OK] ${type} offset: ${count} iterations at ${distance}px`);
+            return { success: true };
+
+        } catch (e) {
+            console.error('[ERROR] Offset:', e);
+            this.setTestStatus(testName, 'error');
+            return { success: false };
+        } finally {
+            trash.forEach(o => o?.delete?.());
+        }
+    }
+
+    /**
+     * Minkowski Test
+     */
+
     async testMinkowski() {
         const testName = 'minkowski';
         this.setTestStatus(testName, 'pending');
-        
+        const trash = [];
+
         try {
-            if (!this.core.clipper2.MinkowskiSum64 || !this.core.clipper2.MinkowskiDiff64) {
-                throw new Error('Minkowski operations not available in this build');
-            }
-            
-            // Read from centralized state
+            if (!this.core.clipper2.MinkowskiSum64) throw new Error('Minkowski not available');
+
             const state = this.getTestState(testName);
-            const { pattern, path: pathName, operation, pathClosed, showSweep, showOffset, patternPos } = state;
-            
-            // Get definitions from defaults
+            const { pattern, path: pathName, operation, showSweep, showOffset } = state;
+
             const patternDef = this.defaults.geometries.minkowski.patterns[pattern];
             const pathDef = this.defaults.geometries.minkowski.paths[pathName];
-            
-            // Create pattern at position (for visualization)
-            let patternCoords;
-            if (patternDef.type === 'parametric') {
-                const centered = { ...patternDef, center: [0, 0] };
-                patternCoords = this.getParametricCoords(centered);
-            } else {
-                patternCoords = patternDef.data;
-            }
-            
-            // Create path
-            let pathCoords;
-            if (pathDef.type === 'parametric') {
-                pathCoords = this.getParametricCoords(pathDef);
-            } else {
-                pathCoords = pathDef.data;
-            }
-            
-            // Convert to Clipper2 paths
+
+            let patternCoords = patternDef.type === 'parametric' 
+                ? this.getParametricCoords({ ...patternDef, center: [0, 0] })
+                : patternDef.data;
+
+            let pathCoords = pathDef.type === 'parametric'
+                ? this.getParametricCoords(pathDef)
+                : pathDef.data;
+
             const patternPath = this.geometry.coordinatesToPath64(patternCoords);
             const pathPath = this.geometry.coordinatesToPath64(pathCoords);
-            
-            // Store inputs
-            this.testData.set(`${testName}-pattern`, patternPath);
-            this.testData.set(`${testName}-path`, pathPath);
-            
-            // Perform Minkowski operation
-            const isPathClosed = pathDef.isClosed !== undefined ? pathDef.isClosed : pathClosed;
-            let minkowskiResult;
-            
-            if (operation === 'sum') {
-                minkowskiResult = this.operations.minkowskiSum(patternPath, pathPath, isPathClosed);
-            } else {
-                minkowskiResult = this.operations.minkowskiDiff(patternPath, pathPath, isPathClosed);
+            trash.push(patternPath, pathPath);
+
+            this.operations.normalizePathWinding(patternPath);
+            this.operations.normalizePathWinding(pathPath);
+
+            const isClosed = pathDef.isClosed !== undefined ? pathDef.isClosed : true;
+
+            let result = operation === 'sum'
+                ? this.operations.minkowskiSum(patternPath, pathPath, isClosed)
+                : this.operations.minkowskiDiff(patternPath, pathPath, isClosed);
+            trash.push(result);
+
+            let visualResult = result;
+            if (operation === 'diff' && isClosed) {
+                const pathP = new this.core.clipper2.Paths64();
+                pathP.push_back(pathPath);
+                trash.push(pathP);
+                visualResult = this.operations.difference(pathP, result);
+                trash.push(visualResult);
             }
-            
-            // For closed path difference, show intuitive "carved out" result
-            let visualizationResult = minkowskiResult;
-            if (operation === 'diff' && isPathClosed) {
-                const pathAsPaths = new this.core.clipper2.Paths64();
-                pathAsPaths.push_back(pathPath);
-                
-                // Show Path - MinkowskiDiff for intuitive visualization
-                visualizationResult = this.operations.difference(pathAsPaths, minkowskiResult);
-                pathAsPaths.delete();
-                
-                // Store the visualization result instead
-                this.testData.set(`${testName}-output`, visualizationResult);
-            } else {
-                this.testData.set(`${testName}-output`, minkowskiResult);
-            }
-            
-            // Calculate equivalent offset if requested
-            let offsetResult = null;
-            if (showOffset) {
-                const equivalentRadius = this.calculateEquivalentRadius(patternCoords, patternDef);
-                const pathPaths = new this.core.clipper2.Paths64();
-                pathPaths.push_back(pathPath);
-                
-                // Use positive radius for sum (external), negative for diff (internal)
-                const offsetDelta = operation === 'sum' ? equivalentRadius : -equivalentRadius;
-                
-                offsetResult = this.operations.offset(
-                    pathPaths,
-                    offsetDelta,
-                    this.core.clipper2.JoinType.Round,
-                    isPathClosed ? this.core.clipper2.EndType.Polygon : this.core.clipper2.EndType.Round
-                );
-                
-                this.testData.set(`${testName}-offset`, offsetResult);
-                pathPaths.delete();
-            }
-            
-            // Clear canvas
+
+            this.testData.set(`${testName}-output`, visualResult);
+
             const canvas = document.getElementById('minkowski-canvas');
             this.rendering.clearCanvas(canvas);
-            
-            // Draw sweep visualization if enabled (before other elements)
-            if (showSweep) {
-                this.drawMinkowskiSweep(canvas, patternCoords, pathCoords, operation);
-            }
-            
-            // Draw path (input geometry)
-            const pathPaths = new this.core.clipper2.Paths64();
-            pathPaths.push_back(pathPath);
-            this.rendering.render(pathPaths, canvas, {
+
+            if (showSweep) this.drawMinkowskiSweep(canvas, patternCoords, pathCoords, operation);
+
+            const pathP = new this.core.clipper2.Paths64();
+            pathP.push_back(pathPath);
+            trash.push(pathP);
+
+            this.rendering.render(pathP, canvas, {
                 fillOuter: 'none',
-                strokeOuter: this.defaults.styles.minkowski.path.strokeOuter,
+                strokeOuter: '#6b7280',
                 strokeWidth: 2,
                 clear: false
             });
-            
-            // Draw pattern at start position (visual reference)
-            const displayPattern = patternCoords.map(pt => [
-                pt[0] + patternPos.x,
-                pt[1] + patternPos.y
-            ]);
-            this.rendering.drawSimplePaths([displayPattern], canvas, {
-                fillOuter: 'none',
-                strokeOuter: this.defaults.styles.minkowski.pattern.strokeOuter,
-                strokeWidth: 2,
-                clear: false
-            });
-            
-            // Draw Minkowski result (solid fill, distinct color)
-            const resultStyle = operation === 'sum' ? 
-                this.defaults.styles.minkowski.sumResult : 
-                this.defaults.styles.minkowski.diffResult;
-            
-            // Render the appropriate result
-            const renderResult = (operation === 'diff' && isPathClosed) ? visualizationResult : minkowskiResult;
-            this.rendering.render(renderResult, canvas, {
-                ...resultStyle,
-                strokeWidth: 2,
-                clear: false
-            });
-            
-            // Draw offset result if calculated (dashed outline only)
-            if (offsetResult && showOffset) {
+
+            const style = operation === 'sum' 
+                ? this.defaults.styles.minkowski.sumResult 
+                : this.defaults.styles.minkowski.diffResult;
+
+            this.rendering.render(visualResult, canvas, { ...style, strokeWidth: 2, clear: false });
+
+            if (showOffset) {
+                const eqRadius = this.calculateEquivalentRadius(patternCoords, patternDef);
+                const offP = new this.core.clipper2.Paths64();
+                offP.push_back(pathPath);
+                trash.push(offP);
+
+                const delta = operation === 'sum' ? eqRadius : -eqRadius;
+                const offsetRes = this.operations.offset(offP, delta, 
+                    this.core.clipper2.JoinType.Round,
+                    isClosed ? this.core.clipper2.EndType.Polygon : this.core.clipper2.EndType.Round);
+                trash.push(offsetRes);
+
                 const ctx = canvas.getContext('2d');
                 ctx.save();
                 ctx.strokeStyle = '#f59e0b';
                 ctx.lineWidth = 2;
                 ctx.setLineDash([5, 5]);
-                
-                for (let i = 0; i < offsetResult.size(); i++) {
-                    const path = offsetResult.get(i);
+
+                for (let i = 0; i < offsetRes.size(); i++) {
+                    const p = offsetRes.get(i);
                     ctx.beginPath();
-                    for (let j = 0; j < path.size(); j++) {
-                        const pt = path.get(j);
+                    for (let j = 0; j < p.size(); j++) {
+                        const pt = p.get(j);
                         const x = Number(pt.x) / this.core.config.scale;
                         const y = Number(pt.y) / this.core.config.scale;
-                        if (j === 0) {
-                            ctx.moveTo(x, y);
-                        } else {
-                            ctx.lineTo(x, y);
-                        }
+                        j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
                     }
                     ctx.closePath();
                     ctx.stroke();
                 }
                 ctx.restore();
             }
-            
-            // Add labels
-            const ctx = canvas.getContext('2d');
-            ctx.font = '12px Arial';
-            ctx.fillStyle = '#6b7280';
-            ctx.fillText(`Pattern: ${patternDef.displayName}`, 10, 20);
-            ctx.fillText(`Path: ${pathDef.displayName}`, 10, 35);
-            ctx.fillStyle = operation === 'sum' ? '#10b981' : '#ef4444';
-            ctx.fillText(`Minkowski ${operation.toUpperCase()}`, 10, 50);
-            
-            if (showOffset) {
-                ctx.fillStyle = '#f59e0b';
-                const radius = this.calculateEquivalentRadius(patternCoords, patternDef);
-                ctx.fillText(`Offset (r=${radius.toFixed(1)}px): - - -`, 10, 65);
-            }
-            
-            // Clean up temporary paths
-            pathPaths.delete();
-            
+
             this.setTestStatus(testName, 'success');
-            
-            let resultMessage = `[OK] Minkowski ${operation}: ${renderResult.size()} path(s)`;
-            if (operation === 'diff' && isPathClosed) {
-                resultMessage += ' (showing Path - MinkowskiDiff)';
-            }
-            if (showOffset && offsetResult) {
-                resultMessage += ` | Offset: ${offsetResult.size()} path(s)`;
-                
-                // Check if results are visually similar
-                if (pattern === 'circle' && renderResult.size() === offsetResult.size()) {
-                    resultMessage += ' (equivalent for circle)';
-                }
-            }
-            
-            this.ui?.updateResult('minkowski-result', resultMessage);
-            this.ui?.updateInfo('minkowski-info', this.formatGeometryInfo(renderResult));
-            
-            // Cleanup - only delete minkowskiResult if we created a visualization
-            if (operation === 'diff' && isPathClosed && visualizationResult !== minkowskiResult) {
-                minkowskiResult.delete();
-            }
-            
-            return { success: true, output: renderResult.size() };
-            
-        } catch (error) {
-            console.error('[ERROR] Minkowski test failed:', error);
+            this.ui?.updateResult('minkowski-result', 
+                `[OK] Minkowski ${operation}: ${visualResult.size()} path(s)`);
+            return { success: true };
+
+        } catch (e) {
+            console.error('[ERROR] Minkowski:', e);
             this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('minkowski-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
+            return { success: false };
+        } finally {
+            trash.forEach(o => o?.delete?.());
         }
-    }
-    
-    /**
-     * Calculate equivalent radius for offset comparison
-     */
-    calculateEquivalentRadius(coords, definition) {
-        // If pre-calculated, use it
-        if (definition && definition.equivalentRadius) {
-            return definition.equivalentRadius;
-        }
-        
-        // Calculate max distance from center
-        let maxDist = 0;
-        let centerX = 0, centerY = 0;
-        
-        // Find centroid
-        coords.forEach(point => {
-            centerX += point[0];
-            centerY += point[1];
-        });
-        centerX /= coords.length;
-        centerY /= coords.length;
-        
-        // Find max distance from centroid
-        coords.forEach(point => {
-            const dx = point[0] - centerX;
-            const dy = point[1] - centerY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            maxDist = Math.max(maxDist, dist);
-        });
-        
-        return maxDist;
     }
 
-    /**
-     * Draw Minkowski sweep visualization - FIXED for diff operation
-     */
     drawMinkowskiSweep(canvas, patternCoords, pathCoords, operation) {
         const ctx = canvas.getContext('2d');
-        const sweepSteps = this.testState.minkowski.sweepSteps || 8;
-        
-        // Much more subtle visualization
-        const isSumOperation = operation === 'sum';
-        const markerColor = isSumOperation ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
-        const markerRadius = 1.5;
-        
+        const color = operation === 'sum' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
+        const pattern = operation === 'sum' ? patternCoords : patternCoords.map(p => [-p[0], -p[1]]);
+
         ctx.save();
-        
-        // Draw pattern markers along the path
-        const markerPositions = [];
-        
-        if (this.testState.minkowski.pathClosed) {
-            // For closed paths, show pattern at vertices
-            pathCoords.forEach((vertex, i) => {
-                markerPositions.push(vertex);
-            });
-        } else {
-            // For open paths, interpolate along segments
-            for (let i = 0; i < pathCoords.length - 1; i++) {
-                const p1 = pathCoords[i];
-                const p2 = pathCoords[i + 1];
-                
-                for (let t = 0; t <= 1; t += 1 / sweepSteps) {
-                    markerPositions.push([
-                        p1[0] + (p2[0] - p1[0]) * t,
-                        p1[1] + (p2[1] - p1[1]) * t
-                    ]);
-                }
-            }
-        }
-        
-        // For difference operation, properly negate the pattern (flip both X and Y)
-        let visualPatternCoords = patternCoords;
-        if (!isSumOperation) {
-            // Negate both X and Y for proper Minkowski difference visualization
-            visualPatternCoords = patternCoords.map(pt => [-pt[0], -pt[1]]);
-        }
-        
-        // Draw very faint pattern shapes at each marker position
-        ctx.strokeStyle = markerColor;
-        ctx.fillStyle = markerColor;
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
         ctx.lineWidth = 0.3;
-        
-        markerPositions.forEach((pos, idx) => {
-            // Draw a small dot
+
+        pathCoords.forEach((pos, idx) => {
             ctx.beginPath();
-            ctx.arc(pos[0], pos[1], markerRadius, 0, Math.PI * 2);
+            ctx.arc(pos[0], pos[1], 1.5, 0, Math.PI * 2);
             ctx.fill();
-            
-            // Draw a very faint pattern outline every few positions
-            if (idx % 6 === 0) {  // Less frequent
-                ctx.save();
-                ctx.globalAlpha = 0.08; // Even more subtle
+
+            if (idx % 6 === 0) {
+                ctx.globalAlpha = 0.08;
                 ctx.beginPath();
-                visualPatternCoords.forEach((pt, j) => {
-                    const x = pt[0] + pos[0];
-                    const y = pt[1] + pos[1];
-                    if (j === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
+                pattern.forEach((pt, j) => {
+                    const x = pt[0] + pos[0], y = pt[1] + pos[1];
+                    j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
                 });
                 ctx.closePath();
                 ctx.stroke();
-                ctx.restore();
+                ctx.globalAlpha = 1;
             }
         });
-        
         ctx.restore();
     }
 
-    /**
-     * Get parametric shape coordinates
-     */
-    getParametricCoords(definition) {
-        const pos = definition.center || [0, 0];
-        
-        switch (definition.shape) {
-            case 'circle':
-                return this.defaults.generators.circle(
-                    pos[0], pos[1], 
-                    definition.radius,
-                    32
-                );
-                
-            case 'star':
-                return this.defaults.generators.star(
-                    pos[0], pos[1],
-                    definition.outerRadius,
-                    definition.innerRadius,
-                    definition.points
-                );
-                
-            default:
-                return [];
-        }
+    calculateEquivalentRadius(coords, def) {
+        if (def?.equivalentRadius) return def.equivalentRadius;
+        let cx = 0, cy = 0;
+        coords.forEach(p => { cx += p[0]; cy += p[1]; });
+        cx /= coords.length; cy /= coords.length;
+        let max = 0;
+        coords.forEach(p => { max = Math.max(max, Math.hypot(p[0] - cx, p[1] - cy)); });
+        return max;
+    }
+
+    getParametricCoords(def) {
+        const pos = def.center || [0, 0];
+        if (def.shape === 'circle') return this.defaults.generators.circle(pos[0], pos[1], def.radius, 32);
+        if (def.shape === 'star') return this.defaults.generators.star(pos[0], pos[1], def.outerRadius, def.innerRadius, def.points);
+        return [];
     }
 
     /**
-     * Test boolean operation - Fixed with proper state handling
+     * Point in Polygon Test
      */
-    async testBooleanOperation() {
-        const testName = 'boolean';
-        this.setTestStatus(testName, 'pending');
-        
-        const subjectPaths = new this.core.clipper2.Paths64();
-        const clipPaths = new this.core.clipper2.Paths64();
-        
-        try {
-            // Read from centralized state
-            const state = this.getTestState(testName);
-            const { operation, clipShape, subjectPos, clipPos } = state;
-            
-            // Clear canvas
-            this.rendering.clearCanvas('boolean-canvas');
-            
-            // Create subject from defaults
-            const subjectDef = this.defaults.geometries.boolean.subject;
-            const subjectCoords = subjectDef.data;
-            subjectPaths.push_back(this.geometry.coordinatesToPath64(subjectCoords));
-            
-            // Create clip from defaults using state position
-            const clipDef = this.defaults.geometries.boolean.clips[clipShape];
-            
-            let clipPath;
-            if (clipShape === 'rabbit') {
-                // Use pre-parsed rabbit path
-                if (!this.rabbitPath) {
-                    throw new Error("Rabbit path not initialized");
-                }
-                const rabbitCoords = this.rabbitPath.map(pt => [
-                    pt[0] + clipPos.x,
-                    pt[1] + clipPos.y
-                ]);
-                clipPath = this.geometry.coordinatesToPath64(rabbitCoords);
-            } else if (clipShape === 'random') {
-                // Use stored random shape or generate new one
-                let randomCoords = state.randomShape;
-                if (!randomCoords) {
-                    const randomDef = this.defaults.geometries.boolean.clips.random;
-                    randomCoords = this.defaults.generators.randomConvex(
-                        0, 0, randomDef.avgRadius, randomDef.variance, randomDef.points
-                    );
-                    this.updateTestState('boolean', 'randomShape', randomCoords);
-                }
-                const positioned = randomCoords.map(pt => [
-                    pt[0] + clipPos.x,
-                    pt[1] + clipPos.y
-                ]);
-                clipPath = this.geometry.coordinatesToPath64(positioned);
-            } else if (clipDef.type === 'parametric') {
-                clipPath = this.geometry.parametricToPath64(clipDef, {
-                    position: [clipPos.x, clipPos.y]
-                });
-            } else if (clipDef.type === 'polygon') {
-                const positioned = clipDef.data.map(pt => [
-                    pt[0] + clipPos.x,
-                    pt[1] + clipPos.y
-                ]);
-                clipPath = this.geometry.coordinatesToPath64(positioned);
-            }
-            
-            clipPaths.push_back(clipPath);
-            
-            // Store inputs with consistent keys
-            this.testData.set(`${testName}-input`, subjectPaths);
-            this.testData.set(`${testName}-clip`, clipPaths);
-            
-            // Perform operation based on state
-            let result;
-            switch(operation) {
-                case 'union':
-                    result = this.operations.union(subjectPaths, clipPaths);
-                    break;
-                case 'intersection':
-                    result = this.operations.intersect(subjectPaths, clipPaths);
-                    break;
-                case 'difference':
-                    result = this.operations.difference(subjectPaths, clipPaths);
-                    break;
-                case 'xor':
-                    result = this.operations.xor(subjectPaths, clipPaths);
-                    break;
-            }
-            
-            // Store and render result
-            this.testData.set(`${testName}-output`, result);
-            this.rendering.render(result, 'boolean-canvas', this.defaults.styles.output);
-            
-            this.setTestStatus(testName, 'success');
-            this.ui?.updateResult('boolean-result', 
-                `[OK] ${operation.toUpperCase()}: ${result.size()} path(s)`);
-            this.ui?.updateInfo('boolean-info', this.formatGeometryInfo(result));
-            
-            return { success: true, output: result.size() };
-            
-        } catch (error) {
-            console.error('[ERROR] Boolean operation failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('boolean-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
-        } finally {
-            // Clean up temporary paths
-            subjectPaths.delete();
-            clipPaths.delete();
-        }
-    }
 
-    /**
-     * Test Letter B creation
-     */
-    async testLetterB() {
-        const testName = 'letter-b';
-        this.setTestStatus(testName, 'pending');
-        
-        try {
-            const letterBDef = this.defaults.geometries.letterB;
-            
-            // Convert strokes to paths
-            const strokes = this.geometry.toClipper2Paths(letterBDef);
-            
-            // Store input with consistent key
-            this.testData.set(`${testName}-input`, strokes);
-            
-            console.log(`[Letter B] Union of ${strokes.size()} strokes`);
-            
-            // Perform union
-            const result = this.operations.unionSelf(strokes);
-            
-            // Analyze result
-            const pathData = this.geometry.paths64ToCoordinates(result);
-            const holes = pathData.filter(p => p.orientation === 'hole').length;
-            const outers = pathData.filter(p => p.orientation === 'outer').length;
-            
-            console.log(`[Letter B] Result: ${outers} outer(s), ${holes} hole(s)`);
-            
-            // Store and render
-            this.testData.set(`${testName}-output`, result);
-            this.rendering.render(result, 'letter-b-canvas', {
-                ...this.defaults.styles.output,
-                fillRule: 'nonzero'
-            });
-            
-            const validation = this.defaults.validation.letterB;
-            const isValid = result.size() === validation.expectedPaths && holes === validation.expectedHoles;
-            
-            this.setTestStatus(testName, isValid ? 'success' : 'pending');
-            
-            let statusMessage = `[OK] Letter B: ${strokes.size()} strokes → ${result.size()} path(s), ${holes} hole(s)`;
-            if (!isValid) {
-                statusMessage = `[WARNING] ${validation.description}. Got ${result.size()} path(s) with ${holes} hole(s).`;
-            }
-            
-            this.ui?.updateResult('letter-b-result', statusMessage);
-            this.ui?.updateInfo('letter-b-info', this.formatGeometryInfo(result));
-            
-            return { success: true, output: result.size(), holes: holes };
-            
-        } catch (error) {
-            console.error('[ERROR] Letter B test failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('letter-b-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
-        }
-    }
-
-    /**
-     * Test PCB trace fusion
-     */
-    async testPCBFusion() {
-        const testName = 'pcb-fusion';
-        this.setTestStatus(testName, 'pending');
-        
-        try {
-            const pcbDef = this.defaults.geometries.pcbFusion;
-            
-            // Convert PCB components to paths
-            const components = this.geometry.toClipper2Paths(pcbDef);
-            
-            // Store input with consistent key
-            this.testData.set(`${testName}-input`, components);
-            const inputCount = components.size();
-            
-            console.log(`[PCB] Fusing ${inputCount} components`);
-            
-            // Perform union
-            const result = this.operations.unionSelf(components);
-            
-            // Analyze result
-            const pathData = this.geometry.paths64ToCoordinates(result);
-            const holes = pathData.filter(p => p.orientation === 'hole').length;
-            
-            // Store and render
-            this.testData.set(`${testName}-output`, result);
-            this.rendering.render(result, 'pcb-fusion-canvas', {
-                ...this.defaults.styles.pcb,
-                fillRule: 'nonzero'
-            });
-            
-            const validation = this.defaults.validation.pcbFusion;
-            const isValid = result.size() <= validation.maxPaths && holes >= validation.minHoles;
-            
-            this.setTestStatus(testName, isValid ? 'success' : 'pending');
-            
-            let statusMessage = `[OK] PCB Fusion: ${inputCount} components → ${result.size()} region(s), ${holes} hole(s)`;
-            if (!isValid) {
-                statusMessage += ` [Note: ${validation.description}]`;
-            }
-            
-            this.ui?.updateResult('pcb-fusion-result', statusMessage);
-            this.ui?.updateInfo('pcb-fusion-info', this.formatGeometryInfo(result));
-            
-            return { success: true, input: inputCount, output: result.size(), holes: holes };
-            
-        } catch (error) {
-            console.error('[ERROR] PCB fusion test failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('pcb-fusion-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
-        }
-    }
-
-    /**
-     * Test nested structure
-     */
-    async testNestedStructure() {
-        const testName = 'nested';
-        this.setTestStatus(testName, 'pending');
-        
-        try {
-            // Read from state
-            const state = this.getTestState(testName);
-            const nestedDef = this.defaults.geometries.nested;
-            
-            // Create frame with hole
-            const frameOuter = this.geometry.coordinatesToPath64(nestedDef.frame.outer);
-            const frameInner = this.geometry.coordinatesToPath64(nestedDef.frame.inner);
-            
-            const frameOuterPaths = new this.core.clipper2.Paths64();
-            frameOuterPaths.push_back(frameOuter);
-            
-            const frameInnerPaths = new this.core.clipper2.Paths64();
-            frameInnerPaths.push_back(frameInner);
-            
-            const frame = this.operations.difference(frameOuterPaths, frameInnerPaths);
-            
-            // Create islands using state positions
-            const islands = new this.core.clipper2.Paths64();
-            
-            nestedDef.islands.forEach((islandDef, index) => {
-                const posKey = `island${index + 1}Pos`;
-                const pos = state[posKey];
-                
-                let outerCoords = islandDef.outer;
-                let innerCoords = islandDef.inner;
-                
-                if (pos) {
-                    // Adjust for state position
-                    const dx = pos.x - islandDef.outer[0][0];
-                    const dy = pos.y - islandDef.outer[0][1];
-                    outerCoords = outerCoords.map(pt => [pt[0] + dx, pt[1] + dy]);
-                    innerCoords = innerCoords.map(pt => [pt[0] + dx, pt[1] + dy]);
-                }
-                
-                const islandOuterPath = this.geometry.coordinatesToPath64(outerCoords);
-                const islandInnerPath = this.geometry.coordinatesToPath64(innerCoords);
-                
-                const islandOuterPaths = new this.core.clipper2.Paths64();
-                islandOuterPaths.push_back(islandOuterPath);
-                
-                const islandInnerPaths = new this.core.clipper2.Paths64();
-                islandInnerPaths.push_back(islandInnerPath);
-                
-                const island = this.operations.difference(islandOuterPaths, islandInnerPaths);
-                
-                for (let i = 0; i < island.size(); i++) {
-                    islands.push_back(island.get(i));
-                }
-                
-                // Clean up temporary objects
-                islandOuterPaths.delete();
-                islandInnerPaths.delete();
-                island.delete();
-            });
-            
-            // Store inputs with consistent keys
-            this.testData.set(`${testName}-input`, frame);
-            this.testData.set(`${testName}-islands`, islands);
-            
-            // Union frame and islands
-            const result = this.operations.union(frame, islands);
-            
-            // Analyze result
-            const pathData = this.geometry.paths64ToCoordinates(result);
-            const holes = pathData.filter(p => p.orientation === 'hole').length;
-            
-            // Store and render
-            this.testData.set(`${testName}-output`, result);
-            this.rendering.render(result, 'nested-canvas', {
-                ...this.defaults.styles.output,
-                fillRule: 'nonzero'
-            });
-            
-            // Clean up
-            frameOuterPaths.delete();
-            frameInnerPaths.delete();
-            
-            this.setTestStatus(testName, 'success');
-            this.ui?.updateResult('nested-result', 
-                `[OK] Nested: ${result.size()} path(s), ${holes} hole(s)`);
-            this.ui?.updateInfo('nested-info', this.formatGeometryInfo(result));
-            
-            return { success: true, output: result.size(), holes: holes };
-            
-        } catch (error) {
-            console.error('[ERROR] Nested structure test failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('nested-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
-        }
-    }
-
-    /**
-     * Test path simplification - using rabbit shape
-     */
-    async testSimplify() {
-        const testName = 'simplify';
-        this.setTestStatus(testName, 'pending');
-        
-        try {
-            const state = this.getTestState(testName);
-            const simplifyDef = this.defaults.geometries.simplify;
-
-            // Use the SVG definition directly from defaults
-            const coords = this.geometry.parseSVGPath(
-                simplifyDef.path,
-                simplifyDef.scale,
-                simplifyDef.position
-            );
-            
-            if (!coords || coords.length === 0) {
-                throw new Error("Failed to parse SVG path for simplification test.");
-            }
-
-            const path = this.geometry.coordinatesToPath64(coords);
-            const paths = new this.core.clipper2.Paths64();
-            paths.push_back(path);
-            
-            this.testData.set(`${testName}-input`, paths);
-            
-            const tolerance = state.tolerance || simplifyDef.defaultTolerance;
-            
-            const result = this.operations.simplify(paths, tolerance);
-            
-            this.testData.set(`${testName}-output`, result);
-            
-            const originalPoints = path.size();
-            let simplifiedPoints = 0;
-            for (let i = 0; i < result.size(); i++) {
-                simplifiedPoints += result.get(i).size();
-            }
-            
-            this.rendering.render(paths, 'simplify-canvas', this.defaults.styles.input);
-            this.rendering.render(result, 'simplify-canvas', {
-                ...this.defaults.styles.output,
-                clear: false
-            });
-            
-            this.setTestStatus(testName, 'success');
-            
-            const reduction = originalPoints > 0 ? Math.round((1 - simplifiedPoints / originalPoints) * 100) : 0;
-            this.ui?.updateResult('simplify-result', 
-                `[OK] Simplified: ${originalPoints} → ${simplifiedPoints} points (${reduction}% reduction)`);
-            this.ui?.updateInfo('simplify-info', this.formatGeometryInfo(result));
-            
-            return { success: true, original: originalPoints, simplified: simplifiedPoints };
-            
-        } catch (error) {
-            console.error('[ERROR] Simplify test failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('simplify-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
-        }
-    }
-
-    /**
-     * Test offset operations
-     */
-    async testOffset() {
-        const testName = 'offset';
-        this.setTestStatus(testName, 'pending');
-        
-        try {
-            // Read from state
-            const state = this.getTestState(testName);
-            const { shape, type, count, distance, joinType, miterLimit } = state;
-            
-            // Get shape definition
-            const shapeDef = this.defaults.geometries.offset.shapes[shape];
-            
-            // Create base shape
-            let basePath;
-            if (shapeDef.type === 'parametric') {
-                basePath = this.geometry.parametricToPath64(shapeDef);
-            } else if (shapeDef.type === 'polygon') {
-                basePath = this.geometry.polygonToPath64(shapeDef);
-            }
-            
-            const paths = new this.core.clipper2.Paths64();
-            paths.push_back(basePath);
-            
-            // Store input with consistent key
-            this.testData.set(`${testName}-input`, paths);
-            
-            // Get join type enum
-            const joinTypeEnum = this.getJoinTypeEnum(joinType);
-            const endTypeEnum = this.core.clipper2.EndType.Polygon;
-            
-            // Perform offsets - use operations.offset which handles scaling
-            const actualDistance = type === 'internal' ? -Math.abs(distance) : Math.abs(distance);
-            const offsetResults = [];
-            
-            for (let i = 1; i <= count; i++) {
-                const delta = actualDistance * i;
-                const result = this.operations.offset(
-                    paths,
-                    delta,
-                    joinTypeEnum,
-                    endTypeEnum,
-                    miterLimit
-                );
-                
-                offsetResults.push(result);
-            }
-            
-            // Draw offsets with proper z-order using the fixed rendering method
-            this.rendering.drawOffsetPaths(offsetResults, 'offset-canvas', type, paths);
-            
-            // Store last result
-            if (offsetResults.length > 0) {
-                this.testData.set(`${testName}-output`, offsetResults[offsetResults.length - 1]);
-            }
-            
-            this.setTestStatus(testName, 'success');
-            this.ui?.updateResult('offset-result', 
-                `[OK] ${type === 'internal' ? 'Internal' : 'External'} offset: ${count} iterations at ${distance}px (miter limit: ${miterLimit})`);
-            
-            return { success: true, count: count };
-            
-        } catch (error) {
-            console.error('[ERROR] Offset test failed:', error);
-            this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('offset-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
-        }
-    }
-
-    /**
-     * Test point-in-polygon - FIXED: handle enum values properly
-     */
     async testPointInPolygon() {
         const testName = 'pip';
         this.setTestStatus(testName, 'pending');
-        
+
         try {
-            const pipDef = this.defaults.geometries.pip;
-            
-            // Create test polygon
-            const polygon = this.geometry.coordinatesToPath64(pipDef.data);
-            
-            // Store for click handler
+            const def = this.defaults.geometries.pip;
+            const polygon = this.geometry.coordinatesToPath64(def.data);
             this.testData.set('pip-polygon', polygon);
-            
-            // Draw polygon
+
             const paths = new this.core.clipper2.Paths64();
             paths.push_back(polygon);
             this.rendering.render(paths, 'pip-canvas', this.defaults.styles.default);
-            
-            // Don't reset points if they already exist
-            if (!this.testState.pip.points || this.testState.pip.points.length === 0) {
-                this.testState.pip.points = [];
-            }
-            
-            // Add instructions
-            const canvas = document.getElementById('pip-canvas');
-            const ctx = canvas.getContext('2d');
-            ctx.font = '12px Arial';
-            ctx.fillStyle = getComputedStyle(document.documentElement)
-                .getPropertyValue('--input-stroke');
-            ctx.fillText('Click to add test points', 10, 20);
-            
-            // Clean up temporary paths object
             paths.delete();
-            
+
+            const ctx = document.getElementById('pip-canvas')?.getContext('2d');
+            if (ctx) {
+                ctx.font = '12px Arial';
+                ctx.fillStyle = '#6b7280';
+                ctx.fillText('Click to add test points', 10, 20);
+            }
+
             this.setTestStatus(testName, '');
-            this.ui?.updateResult('pip-result', 'Click to add test points, then "Check Locations"');
-            
+            this.ui?.updateResult('pip-result', 'Click to add test points');
             return { success: true };
-            
-        } catch (error) {
-            console.error('[ERROR] Point-in-polygon test failed:', error);
+        } catch (e) {
+            console.error('[ERROR] PIP:', e);
             this.setTestStatus(testName, 'error');
-            this.ui?.updateResult('pip-result', `[ERROR] ${error.message}`, false);
-            return { success: false, error: error.message };
+            return { success: false };
         }
     }
 
-    /**
-     * Check point locations for PIP test - FIXED enum value handling
-     */
     checkPointLocations() {
         const polygon = this.testData.get('pip-polygon');
         const points = this.testState.pip.points;
-        
+
         if (!polygon) {
-            // Run the test first to create polygon
-            this.testPointInPolygon().then(() => {
-                // Try again if we have points
-                if (points && points.length > 0) {
-                    this.checkPointLocations();
-                }
-            });
+            this.testPointInPolygon().then(() => points?.length && this.checkPointLocations());
             return;
         }
-        
-        if (!points || points.length === 0) {
-            this.ui?.updateResult('pip-result', 'No points to check. Click to add points.');
+
+        if (!points?.length) {
+            this.ui?.updateResult('pip-result', 'No points to check');
             return;
         }
-        
+
         const canvas = document.getElementById('pip-canvas');
         const ctx = canvas.getContext('2d');
         const scale = this.core.config.scale;
-        
-        // Redraw polygon
+
         const paths = new this.core.clipper2.Paths64();
         paths.push_back(polygon);
         this.rendering.render(paths, 'pip-canvas', this.defaults.styles.default);
-        
-        // Add instructions
-        ctx.font = '12px Arial';
-        ctx.fillStyle = getComputedStyle(document.documentElement)
-            .getPropertyValue('--input-stroke');
-        ctx.fillText('Click to add test points', 10, 20);
-        
-        const results = [];
-        const edgeTolerance = this.testState.pip.edgeTolerance;
-        
-        // Get enum values from Clipper2
+        paths.delete();
+
         const { PointInPolygonResult } = this.core.clipper2;
         const IsOn = PointInPolygonResult.IsOn.value;
         const IsInside = PointInPolygonResult.IsInside.value;
-        const IsOutside = PointInPolygonResult.IsOutside.value;
-        
-        points.forEach(point => {
-            const testPoint = new this.core.clipper2.Point64(
-                BigInt(Math.round(point.x * scale)),
-                BigInt(Math.round(point.y * scale)),
-                BigInt(0)
-            );
-            
-            const resultObj = this.core.clipper2.PointInPolygon64(testPoint, polygon);
-            // Extract the numeric value from the enum object
-            const result = resultObj.value;
-            
-            // Check near edge - only if NOT already on edge
+        const tol = this.testState.pip.edgeTolerance;
+
+        const results = [];
+
+        points.forEach(pt => {
+            const testPt = new this.core.clipper2.Point64(
+                BigInt(Math.round(pt.x * scale)),
+                BigInt(Math.round(pt.y * scale)), BigInt(0));
+
+            const res = this.core.clipper2.PointInPolygon64(testPt, polygon).value;
+            testPt.delete();
+
             let isNearEdge = false;
-            if (result !== IsOn) {
-                const offsets = [
-                    [-edgeTolerance, 0], [edgeTolerance, 0],
-                    [0, -edgeTolerance], [0, edgeTolerance]
-                ];
-                
-                let insideCount = 0;
-                let outsideCount = 0;
-                
-                for (const [dx, dy] of offsets) {
-                    const nearPoint = new this.core.clipper2.Point64(
-                        BigInt(Math.round((point.x + dx) * scale)),
-                        BigInt(Math.round((point.y + dy) * scale)),
-                        BigInt(0)
-                    );
-                    const nearResultObj = this.core.clipper2.PointInPolygon64(nearPoint, polygon);
-                    const nearResult = nearResultObj.value;
-                    nearPoint.delete();
-                    
-                    if (nearResult === IsInside) insideCount++;
-                    else if (nearResult === IsOutside) outsideCount++;
-                }
-                
-                isNearEdge = insideCount > 0 && outsideCount > 0;
+            if (res !== IsOn) {
+                const offsets = [[-tol, 0], [tol, 0], [0, -tol], [0, tol]];
+                let ins = 0, out = 0;
+                offsets.forEach(([dx, dy]) => {
+                    const np = new this.core.clipper2.Point64(
+                        BigInt(Math.round((pt.x + dx) * scale)),
+                        BigInt(Math.round((pt.y + dy) * scale)), BigInt(0));
+                    const nr = this.core.clipper2.PointInPolygon64(np, polygon).value;
+                    np.delete();
+                    if (nr === IsInside) ins++; else out++;
+                });
+                isNearEdge = ins > 0 && out > 0;
             }
-            
+
             let status, color;
-            if (result === IsOn || isNearEdge) {
-                status = 'ON EDGE';
-                color = getComputedStyle(document.documentElement)
-                    .getPropertyValue('--pip-edge');
-            } else if (result === IsInside) {
-                status = 'INSIDE';
-                color = getComputedStyle(document.documentElement)
-                    .getPropertyValue('--pip-inside');
-            } else if (result === IsOutside) {
-                status = 'OUTSIDE';
-                color = getComputedStyle(document.documentElement)
-                    .getPropertyValue('--pip-outside');
+            if (res === IsOn || isNearEdge) {
+                status = 'ON EDGE'; color = this.rendering.getCSSVar('--pip-edge') || '#f59e0b';
+            } else if (res === IsInside) {
+                status = 'INSIDE'; color = this.rendering.getCSSVar('--pip-inside') || '#10b981';
             } else {
-                // This shouldn't happen but provide fallback
-                status = `UNKNOWN (${result})`;
-                color = '#666';
+                status = 'OUTSIDE'; color = this.rendering.getCSSVar('--pip-outside') || '#ef4444';
             }
-            
-            point.status = status;
-            
+
+            pt.status = status;
+
             ctx.fillStyle = color;
             ctx.beginPath();
-            ctx.arc(point.x, point.y, this.defaults.styles.pointInPolygon.pointRadius, 0, Math.PI * 2);
+            ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = '#000';
             ctx.lineWidth = 1;
             ctx.stroke();
-            
-            results.push(`(${Math.round(point.x)}, ${Math.round(point.y)}): ${status}`);
-            
-            testPoint.delete();
+
+            results.push(`(${Math.round(pt.x)}, ${Math.round(pt.y)}): ${status}`);
         });
-        
-        // Clean up
-        paths.delete();
-        
+
         this.setTestStatus('pip', 'success');
-        this.ui?.updateResult('pip-result', 
-            `Checked ${points.length} points:\n${results.join('\n')}`);
+        this.ui?.updateResult('pip-result', `Checked ${points.length} points:\n${results.join('\n')}`);
     }
 
     /**
-     * Initialize area test - make canvas immediately clickable like PIP
+     * Area Test
      */
+
     initializeAreaTest() {
         const canvas = document.getElementById('area-canvas');
         if (!canvas) return;
-        
-        const areaDef = this.defaults.geometries.area;
-        
-        // Cancel any existing animation before starting new test
+
         if (this.testState.area.animationFrameId) {
             cancelAnimationFrame(this.testState.area.animationFrameId);
-            this.testState.area.animationFrameId = null;
         }
-        
-        // Clear and setup
+
         this.rendering.clearCanvas(canvas);
-        this.rendering.drawGrid(canvas, areaDef.gridSize);
-        
-        // Clean up any existing polygon before starting new one
-        if (this.testState.area.lastPolygonPath) {
-            this.testState.area.lastPolygonPath = null;
-        }
-        
-        this.testState.area.points = [];
-        this.testState.area.isDrawing = true;
-        
+        this.rendering.drawGrid(canvas, this.defaults.geometries.area.gridSize);
+
+        this.testState.area = { points: [], isDrawing: true, lastPolygonPath: null, animationFrameId: null };
+
         const ctx = canvas.getContext('2d');
+        ctx.setLineDash([]);  // Reset dashed line from previous calculation
         ctx.font = '14px Arial';
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text');
+        ctx.fillStyle = this.rendering.getCSSVar('--text') || '#374151';
         ctx.fillText('Click to add points (min 3), then Calculate', 10, 25);
-        
-        // Set up click handler immediately
-        canvas.onclick = (event) => {
-            if (!this.testState.area.isDrawing) return;
-            
-            const rect = canvas.getBoundingClientRect();
-            const x = (event.clientX - rect.left) * (canvas.width / rect.width);
-            const y = (event.clientY - rect.top) * (canvas.height / rect.height);
-            
-            this.testState.area.points.push({ x, y });
-            
-            // Draw point
-            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--shape-stroke');
-            ctx.beginPath();
-            ctx.arc(x, y, areaDef.pointRadius, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Draw connecting line
-            if (this.testState.area.points.length > 1) {
-                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--shape-stroke');
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                const prev = this.testState.area.points[this.testState.area.points.length - 2];
-                ctx.moveTo(prev.x, prev.y);
-                ctx.lineTo(x, y);
-                ctx.stroke();
-            }
-            
-            this.ui?.updateResult('area-result', 
-                `${this.testState.area.points.length} points added. ${this.testState.area.points.length >= areaDef.minPoints ? 'Ready to calculate!' : `Need ${areaDef.minPoints - this.testState.area.points.length} more.`}`);
-        };
-        
-        this.ui?.updateResult('area-result', `Click points to draw polygon (min ${areaDef.minPoints})`);
+
+        this.ui?.updateResult('area-result', 'Click points to draw polygon');
     }
 
-    /**
-     * Test area calculation - no longer needed as separate test
-     */
-    async testArea() {
-        // Just initialize the test
-        this.initializeAreaTest();
-        return { success: true };
-    }
-
-    /**
-     * Calculate area for drawn polygon - Using native AreaPath64 function
-     */
     calculateArea() {
-        const testName = 'area';
-        const areaDef = this.defaults.geometries.area;
-        
-        if (this.testState.area.points.length < areaDef.minPoints) {
-            this.ui?.updateResult('area-result', `Need at least ${areaDef.minPoints} points`);
+        const def = this.defaults.geometries.area;
+        if (this.testState.area.points.length < def.minPoints) {
+            this.ui?.updateResult('area-result', `Need at least ${def.minPoints} points`);
             return;
         }
-        
-        // Stop drawing
+
         this.testState.area.isDrawing = false;
         const canvas = document.getElementById('area-canvas');
-        
-        // Store the polygon coordinates for later cleanup
-        const coordArray = this.testState.area.points.map(p => [p.x, p.y]);
-        this.testState.area.lastPolygonPath = coordArray;
-        
-        // Close the polygon visually
         const ctx = canvas.getContext('2d');
-        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--shape-stroke');
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        const lastPoint = this.testState.area.points[this.testState.area.points.length - 1];
-        const firstPoint = this.testState.area.points[0];
-        ctx.moveTo(lastPoint.x, lastPoint.y);
-        ctx.lineTo(firstPoint.x, firstPoint.y);
-        ctx.stroke();
-        
-        // Calculate area using native Clipper2 function
-        const path = this.geometry.coordinatesToPath64(coordArray);
+        const coords = this.testState.area.points.map(p => [p.x, p.y]);
+
+        // Calculate area
+        const path = this.geometry.coordinatesToPath64(coords, { autoFixWinding: false });
         const scaledArea = this.core.clipper2.AreaPath64(path);
         const area = scaledArea / (this.core.config.scale * this.core.config.scale);
         path.delete();
-        
-        // In screen coordinates (Y increases downward), CCW is negative, CW is positive
-        const orientation = area < 0 ? 'COUNTER-CLOCKWISE' : 'CLOCKWISE';
-        const actualArea = Math.abs(area);
-        
-        // Fill polygon with appropriate color
-        ctx.fillStyle = area < 0 ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+
+        const isCCW = area < 0;
+        const orientation = isCCW ? 'COUNTER-CLOCKWISE' : 'CLOCKWISE';
+        const absArea = Math.abs(area);
+        const strokeColor = isCCW ? '#10b981' : '#ef4444';
+
+        // Clear and redraw
+        this.rendering.clearCanvas(canvas);
+        this.rendering.drawGrid(canvas, def.gridSize);
+
+        // Fill polygon
+        ctx.fillStyle = isCCW ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)';
         ctx.beginPath();
-        coordArray.forEach((p, i) => i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]));
+        coords.forEach((p, i) => i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]));
         ctx.closePath();
         ctx.fill();
-        
-        // Draw animated directional outline
-        ctx.strokeStyle = area < 0 ? '#10b981' : '#ef4444';
+
+        // Stroke polygon
+        ctx.strokeStyle = strokeColor;
         ctx.lineWidth = 3;
-        ctx.setLineDash([10, 5]);
-        
-        // Animate the dash offset to show direction
-        let dashOffset = 0;
-        const animateOutline = () => {
-            ctx.save();
-            ctx.lineDashOffset = area < 0 ? -dashOffset : dashOffset;
-            ctx.beginPath();
-            coordArray.forEach((p, i) => i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]));
-            ctx.closePath();
-            ctx.stroke();
-            ctx.restore();
-            
-            dashOffset = (dashOffset + 1) % 15;
-            if (dashOffset < 15) {
-                this.testState.area.animationFrameId = requestAnimationFrame(animateOutline);
-            }
-        };
-        animateOutline();
-        
-        // Find bounding box for label placement
-        const bounds = this.getPathBounds(coordArray);
-        const labelX = (bounds.minX + bounds.maxX) / 2;
-        const labelY = bounds.minY - 15;
-        
-        // Draw winding direction label
         ctx.setLineDash([]);
-        ctx.font = 'bold 14px Arial';
-        ctx.fillStyle = area < 0 ? '#10b981' : '#ef4444';
-        ctx.textAlign = 'center';
-        ctx.fillText(orientation, labelX, labelY);
-        
-        // Draw small directional arrows along the path
-        ctx.strokeStyle = area < 0 ? '#10b981' : '#ef4444';
-        ctx.fillStyle = area < 0 ? '#10b981' : '#ef4444';
-        ctx.lineWidth = 2;
-        
-        // Place arrows at a few points along the path
-        const n = coordArray.length;
-        for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 4))) {
-            const curr = coordArray[i];
-            const next = coordArray[(i + 1) % n];
-            
-            const midX = (curr[0] + next[0]) / 2;
-            const midY = (curr[1] + next[1]) / 2;
-            
-            const dx = next[0] - curr[0];
-            const dy = next[1] - curr[1];
-            const len = Math.sqrt(dx * dx + dy * dy);
-            
-            if (len > 0) {
-                const ux = dx / len;
-                const uy = dy / len;
-                
-                ctx.save();
-                ctx.translate(midX, midY);
-                ctx.rotate(Math.atan2(uy, ux));
-                
-                // Draw arrow
-                ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.lineTo(-8, -4);
-                ctx.lineTo(-8, 4);
-                ctx.closePath();
-                ctx.fill();
-                
-                ctx.restore();
-            }
+        ctx.beginPath();
+        coords.forEach((p, i) => i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]));
+        ctx.closePath();
+        ctx.stroke();
+
+        // Draw winding arrows on each edge
+        ctx.fillStyle = strokeColor;
+        for (let i = 0; i < coords.length; i++) {
+            const p1 = coords[i];
+            const p2 = coords[(i + 1) % coords.length];
+
+            // Midpoint of edge
+            const mx = (p1[0] + p2[0]) / 2;
+            const my = (p1[1] + p2[1]) / 2;
+
+            // Direction angle
+            const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]);
+
+            // Draw arrow
+            const arrowSize = 8;
+            ctx.save();
+            ctx.translate(mx, my);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.moveTo(arrowSize, 0);
+            ctx.lineTo(-arrowSize, -arrowSize * 0.6);
+            ctx.lineTo(-arrowSize, arrowSize * 0.6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
         }
-        
-        this.setTestStatus(testName, 'success');
-        this.ui?.updateResult('area-result', 
-            `[OK] Area: ${actualArea.toFixed(0)} px² | Winding: ${orientation}`);
+
+        // Redraw points on top
+        const pointColor = this.rendering.resolveStyleValue('var(--shape-stroke)') || '#3b82f6';
+        ctx.fillStyle = pointColor;
+        this.testState.area.points.forEach(pt => {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, def.pointRadius, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        this.setTestStatus('area', 'success');
+        this.ui?.updateResult('area-result', `[OK] Area: ${absArea.toFixed(0)} px² | ${orientation}`);
     }
 
     /**
-     * Get JoinType enum value
+     * Arc Reconstruction Test
      */
+
+    async testArcReconstruction() {
+        const testName = 'arc-reconstruction';
+        this.setTestStatus(testName, 'pending');
+
+        try {
+            if (!this.arcReconstructor) {
+                this.arcReconstructor = new ArcReconstructor(this.core, this.geometry, this.defaults);
+            }
+
+            const state = this.getTestState(testName);
+            const shapes = [
+                { type: 'circle', center: { x: state.circle1Pos.x, y: state.circle1Pos.y }, radius: state.circle1Radius },
+                { type: 'circle', center: { x: state.circle2Pos.x, y: state.circle2Pos.y }, radius: state.circle2Radius }
+            ];
+
+            const result = this.arcReconstructor.processWithReconstruction(shapes, state.operation);
+
+            const canvas = document.getElementById('arc-reconstruction-canvas');
+            this.rendering.clearCanvas(canvas);
+            this.rendering.drawGrid(canvas, 20);
+
+            // Render result polygons
+            if (result.polygons && result.polygons.length > 0) {
+                this.rendering.render(result.polygons, canvas, {
+                    fillOuter: 'rgba(59,130,246,0.2)',
+                    strokeOuter: '#3b82f6',
+                    strokeWidth: 1,
+                    clear: false
+                });
+            }
+
+            // Draw reconstructed curves overlay
+            if (state.showReconstruction && result.reconstructedCurves?.length) {
+                this.arcReconstructor.drawReconstructedCurves(result.reconstructedCurves, canvas, {
+                    strokeColor: '#ff9900',
+                    lineWidth: 3
+                });
+            }
+
+            const stats = result.stats;
+            const statsText = state.showMetadata 
+                ? `\nGroups: ${stats.curveGroups}, Points: ${stats.survivingPoints}/${stats.totalPointsProcessed}`
+                : '';
+
+            this.setTestStatus(testName, 'success');
+            this.ui?.updateResult('arc-reconstruction-result', 
+                `[OK] ${stats.fullCircles} circle(s), ${stats.partialArcs} arc(s) reconstructed${statsText}`);
+            return { success: true };
+
+        } catch (e) {
+            console.error('[ERROR] Arc:', e);
+            this.setTestStatus(testName, 'error');
+            this.ui?.updateResult('arc-reconstruction-result', `[ERROR] ${e.message}`);
+            return { success: false };
+        }
+    }
+
+    /**
+     * Helpers
+     */
+
     getJoinTypeEnum(joinType) {
         const { JoinType } = this.core.clipper2;
-        switch(joinType) {
-            case 'Miter': return JoinType.Miter;
-            case 'Square': return JoinType.Square;
-            case 'Round': 
-            default: return JoinType.Round;
-        }
+        if (joinType === 'Miter') return JoinType.Miter;
+        if (joinType === 'Square') return JoinType.Square;
+        return JoinType.Round;
     }
 
-    /**
-     * Format geometry info for display
-     */
     formatGeometryInfo(paths) {
-        if (!paths || paths.size() === 0) return 'No paths';
-        
-        const pathData = this.geometry.paths64ToCoordinates(paths);
-        let info = `Total paths: ${paths.size()}\n`;
-        
-        pathData.forEach((item, i) => {
-            const area = Math.abs(item.area / (this.core.config.scale * this.core.config.scale)).toFixed(0);
-            const points = item.coords.length;
-            
-            info += `Path ${i}: ${points} points, area: ${area}, type: ${item.orientation}\n`;
-            
-            if (points > 0) {
-                info += `  First points: `;
-                for (let j = 0; j < Math.min(3, points); j++) {
-                    const p = item.coords[j];
-                    const x = Array.isArray(p) ? p[0] : p.x;
-                    const y = Array.isArray(p) ? p[1] : p.y;
-                    info += `(${x.toFixed(1)},${y.toFixed(1)})`;
-                    if (j < Math.min(3, points) - 1) info += ' ';
-                }
-                if (points > 3) info += ' ...';
-                info += '\n';
-            }
-        });
-        
-        return info;
+        if (!paths?.size) return 'No paths';
+        const data = this.geometry.paths64ToCoordinates(paths);
+        return `${paths.size()} paths, ${data.reduce((s, p) => s + p.coords.length, 0)} total points`;
     }
 
     /**
-     * Export test result as SVG
+     * Default Drawing Methods
      */
-    exportSVG(testName, dataType = 'output') {
-        let dataToExport;
-        let filename;
-        
-        if (dataType === 'raw') {
-            // Export raw geometry from defaults (unprocessed)
-            filename = `clipper2-${testName}-raw.svg`;
-            dataToExport = this.getRawGeometry(testName);
-        } else if (dataType === 'input') {
-            // Export processed input data
-            filename = `clipper2-${testName}-input.svg`;
-            dataToExport = this.testData.get(`${testName}-input`) || 
-                          this.testData.get(`${testName}-frame`) ||
-                          this.testData.get('pip-polygon');
+
+    drawDefaultBoolean() {
+        this.ui?.redrawDraggableCanvas('boolean');
+    }
+
+    drawDefaultLetterB() {
+        const def = this.defaults.geometries.letterB;
+        this.rendering.drawStrokes(def, 'letter-b-canvas', { style: this.defaults.styles.default });
+    }
+
+    drawDefaultNested() {
+        this.ui?.redrawDraggableCanvas('nested');
+    }
+
+    drawDefaultOffset() {
+        const state = this.getTestState('offset');
+        const def = this.defaults.geometries.offset.shapes[state.shape];
+
+        let coords;
+        if (def.type === 'parametric') {
+            if (def.shape === 'star') {
+                coords = this.defaults.generators.star(def.center[0], def.center[1], def.outerRadius, def.innerRadius, def.points);
+            } else if (def.shape === 'circle') {
+                coords = this.defaults.generators.circle(def.center[0], def.center[1], def.radius);
+            }
         } else {
-            // Export output data (default)
-            filename = `clipper2-${testName}-output.svg`;
-            dataToExport = this.testData.get(`${testName}-output`);
+            coords = def.data;
         }
-        
-        if (!dataToExport) {
-            alert(`No ${dataType} data to export. Run the test first.`);
+
+        if (coords) {
+            this.rendering.drawSimplePaths([coords], 'offset-canvas', this.defaults.styles.default);
+        }
+    }
+
+    drawDefaultSimplify() {
+        const def = this.defaults.geometries.simplify;
+        const coords = this.geometry.parseSVGPath(def.path, def.scale, def.position);
+        if (coords?.length) {
+            this.rendering.drawSimplePaths([coords], 'simplify-canvas', this.defaults.styles.default);
+        }
+    }
+
+    drawDefaultPCB() {
+        const def = this.defaults.geometries.pcbFusion;
+        this.rendering.drawStrokes(def, 'pcb-fusion-canvas', { style: this.defaults.styles.pcb });
+    }
+
+    drawDefaultPIP() {
+        const def = this.defaults.geometries.pip;
+        this.rendering.drawSimplePaths([def.data], 'pip-canvas', this.defaults.styles.default);
+
+        const ctx = document.getElementById('pip-canvas')?.getContext('2d');
+        if (ctx) {
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#6b7280';
+            ctx.fillText('Click to add test points', 10, 20);
+        }
+    }
+
+    drawDefaultMinkowski() {
+        const canvas = document.getElementById('minkowski-canvas');
+        if (!canvas) return;
+
+        const state = this.getTestState('minkowski');
+        const patternDef = this.defaults.geometries.minkowski.patterns[state.pattern];
+        const pathDef = this.defaults.geometries.minkowski.paths[state.path];
+
+        this.rendering.clearCanvas(canvas);
+
+        if (pathDef) {
+            this.rendering.drawSimplePaths([pathDef.data], canvas, {
+                fillOuter: 'none',
+                strokeOuter: '#6b7280',
+                strokeWidth: 2,
+                clear: false
+            });
+        }
+
+        if (patternDef) {
+            let coords;
+            if (patternDef.type === 'parametric') {
+                coords = this.defaults.generators[patternDef.shape](
+                    100, 200,
+                    patternDef.radius || patternDef.outerRadius,
+                    patternDef.innerRadius,
+                    patternDef.points
+                );
+            } else {
+                coords = patternDef.data.map(pt => [pt[0] + 100, pt[1] + 200]);
+            }
+
+            this.rendering.drawSimplePaths([coords], canvas, {
+                fillOuter: 'none',
+                strokeOuter: '#3b82f6',
+                strokeWidth: 2,
+                clear: false
+            });
+        }
+    }
+
+    drawDefaultArea() {
+        if (!this.testState.area.isDrawing) {
+            this.initializeAreaTest();
+        }
+    }
+
+    drawDefaultArcReconstruction() {
+        const canvas = document.getElementById('arc-reconstruction-canvas');
+        if (!canvas) return;
+
+        const state = this.getTestState('arc-reconstruction');
+
+        this.rendering.clearCanvas(canvas);
+        this.rendering.drawGrid(canvas, this.defaults.config.gridSize);
+
+        const ctx = canvas.getContext('2d');
+
+        // Circle 1
+        ctx.strokeStyle = '#3b82f6';
+        ctx.fillStyle = 'rgba(59,130,246,0.2)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(state.circle1Pos.x, state.circle1Pos.y, state.circle1Radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Circle 2
+        ctx.strokeStyle = '#10b981';
+        ctx.fillStyle = 'rgba(16,185,129,0.2)';
+        ctx.beginPath();
+        ctx.arc(state.circle2Pos.x, state.circle2Pos.y, state.circle2Radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#6b7280';
+        ctx.textAlign = 'left';
+        ctx.fillText('Drag circles to position', 10, 20);
+    }
+
+    /**
+     * Reset
+     */
+
+    resetTest(testName) {
+        this.testData.delete(`${testName}-output`);
+        this.setTestStatus(testName, '');
+
+        switch (testName) {
+            case 'boolean':
+                const bDef = this.defaults.geometries.boolean.clips.circle;
+                this.testState.boolean = {
+                    operation: 'union',
+                    clipShape: 'circle',
+                    subjectPos: { x: 400, y: 400 },
+                    clipPos: { x: bDef.initialPos[0], y: bDef.initialPos[1] },
+                    randomShape: null,
+                    usePolyTree: true
+                };
+                this.drawDefaultBoolean();
+                break;
+
+            case 'letter-b':
+                this.drawDefaultLetterB();
+                break;
+
+            case 'pcb-fusion':
+                this.drawDefaultPCB();
+                break;
+
+            case 'nested':
+                this.testState.nested = { island1Pos: { x: 300, y: 300 }, island2Pos: { x: 500, y: 500 } };
+                this.drawDefaultNested();
+                break;
+
+            case 'offset':
+                this.testState.offset = { ...this.defaults.geometries.offset.defaults };
+                this.drawDefaultOffset();
+                break;
+
+            case 'simplify':
+                this.testState.simplify = { tolerance: this.defaults.geometries.simplify.defaultTolerance };
+                this.drawDefaultSimplify();
+                break;
+
+            case 'pip':
+                this.testState.pip = { points: [], edgeTolerance: this.defaults.geometries.pip.edgeTolerance };
+                this.testData.delete('pip-polygon');
+                this.drawDefaultPIP();
+                break;
+
+            case 'area':
+                if (this.testState.area.animationFrameId) {
+                    cancelAnimationFrame(this.testState.area.animationFrameId);
+                }
+                this.testState.area = { points: [], isDrawing: false, lastPolygonPath: null, animationFrameId: null };
+                this.initializeAreaTest();
+                break;
+
+            case 'minkowski':
+                this.testState.minkowski = { ...this.defaults.geometries.minkowski.defaults };
+                this.drawDefaultMinkowski();
+                break;
+
+            case 'arc-reconstruction':
+                this.testState['arc-reconstruction'] = { ...this.defaults.geometries['arc-reconstruction'].defaults };
+                this.drawDefaultArcReconstruction();
+                break;
+        }
+
+        this.ui?.updateResult(`${testName}-result`, this.defaults.labels.ready);
+        this.ui?.resetView(testName);
+
+        const infoEl = document.getElementById(`${testName}-info`);
+        if (infoEl) infoEl.textContent = '';
+    }
+
+    exportSVG(testName, dataType = 'output') {
+        let data, filename;
+
+        if (dataType === 'input') {
+            filename = `clipper2-${testName}-input.svg`;
+            data = this.testData.get(`${testName}-input`) || this.testData.get('pip-polygon');
+        } else if (dataType === 'raw') {
+            filename = `clipper2-${testName}-raw.svg`;
+            data = this.getRawGeometry(testName);
+        } else {
+            filename = `clipper2-${testName}-output.svg`;
+            data = this.testData.get(`${testName}-output`);
+        }
+
+        if (!data) {
+            alert(`No ${dataType} data. Run test first.`);
             return;
         }
-        
-        const svg = this.rendering.exportSVG(dataToExport);
-        
+
+        const svg = this.rendering.exportSVG(data);
         const blob = new Blob([svg], { type: 'image/svg+xml' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1613,152 +1207,39 @@ class Clipper2Tests {
         a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
-        
-        console.log(`[EXPORT] Exported ${filename}`);
     }
-    
-    /**
-     * Get raw geometry for export
-     */
+
     getRawGeometry(testName) {
+        const geoms = this.defaults.geometries;
+        const paths = new this.core.clipper2.Paths64();
+
         try {
-            // Get geometry definition from defaults
-            const geometries = this.defaults.geometries;
-            let rawPaths = new this.core.clipper2.Paths64();
-            
-            switch(testName) {
+            switch (testName) {
                 case 'boolean':
-                    // Export subject as raw
-                    const subjectDef = geometries.boolean.subject;
-                    rawPaths.push_back(this.geometry.coordinatesToPath64(subjectDef.data));
+                    paths.push_back(this.geometry.coordinatesToPath64(geoms.boolean.subject.data));
                     break;
-                    
-                case 'letter-b':
-                    const letterBDef = geometries.letterB;
-                    return letterBDef;       // Replace old rawPaths = this.geometry.toClipper2Paths(letterBDef);
-                    break;
-                    
-                case 'pcb-fusion':
-                    const pcbDef = geometries.pcbFusion;
-                    return pcbDef;           // Replace old rawPaths = this.geometry.toClipper2Paths(pcbDef);
-                    break;
-                    
                 case 'offset':
-                    const offsetShape = this.testState.offset.shape;
-                    const shapeDef = geometries.offset.shapes[offsetShape];
-                    if (shapeDef.type === 'parametric') {
-                        rawPaths.push_back(this.geometry.parametricToPath64(shapeDef));
+                    const shape = geoms.offset.shapes[this.testState.offset.shape];
+                    if (shape.type === 'parametric') {
+                        paths.push_back(this.geometry.parametricToPath64(shape));
                     } else {
-                        rawPaths.push_back(this.geometry.polygonToPath64(shapeDef));
+                        paths.push_back(this.geometry.polygonToPath64(shape));
                     }
                     break;
-                    
                 case 'simplify':
-                    const simplifyDef = geometries.simplify;
-                    const coords = this.geometry.parseSVGPath(
-                        simplifyDef.path,
-                        simplifyDef.scale,
-                        simplifyDef.position
-                    );
-                    rawPaths.push_back(this.geometry.coordinatesToPath64(coords));
+                    const coords = this.geometry.parseSVGPath(geoms.simplify.path, geoms.simplify.scale, geoms.simplify.position);
+                    paths.push_back(this.geometry.coordinatesToPath64(coords));
                     break;
-                    
                 case 'pip':
-                    const pipDef = geometries.pip;
-                    rawPaths.push_back(this.geometry.coordinatesToPath64(pipDef.data));
+                    paths.push_back(this.geometry.coordinatesToPath64(geoms.pip.data));
                     break;
-                    
                 default:
                     return null;
             }
-            
-            return rawPaths;
-        } catch (error) {
-            console.error(`[ERROR] Failed to get raw geometry for ${testName}:`, error);
+            return paths;
+        } catch (e) {
+            console.error('[ERROR] getRawGeometry:', e);
             return null;
         }
-    }
-
-    /**
-     * Reset test to initial state - Fixed with proper defaults
-     */
-    resetTest(testName) {
-        // Clear output data
-        this.testData.delete(`${testName}-output`);
-        
-        // Reset status
-        this.setTestStatus(testName, '');
-        
-        // Reset state to defaults from config
-        switch(testName) {
-            case 'boolean':
-                // Reset to actual defaults from config
-                this.testState.boolean.clipShape = 'circle';
-                this.testState.boolean.operation = 'union';
-                this.testState.boolean.subjectPos = { x: 400, y: 400 };
-                this.testState.boolean.clipPos = { 
-                    x: this.defaults.geometries.boolean.clips.circle.initialPos[0], 
-                    y: this.defaults.geometries.boolean.clips.circle.initialPos[1]
-                };
-                // Clear random shape
-                this.testState.boolean.randomShape = null;
-                
-                // Sync UI elements
-                const clipShapeSelect = document.getElementById('boolean-clip-shape');
-                if (clipShapeSelect) clipShapeSelect.value = 'circle';
-                const operationSelect = document.getElementById('boolean-operation');
-                if (operationSelect) operationSelect.value = 'union';
-                break;
-                
-            case 'nested':
-                this.testState.nested.island1Pos = { x: 300, y: 300 };
-                this.testState.nested.island2Pos = { x: 500, y: 500 };
-                break;
-                
-            case 'pip':
-                this.testState.pip.points = [];
-                this.testData.delete('pip-polygon');  // Clear stored polygon
-                break;
-                
-            case 'area':
-                // Cancel any pending animation frame before resetting
-                if (this.testState.area.animationFrameId) {
-                    cancelAnimationFrame(this.testState.area.animationFrameId);
-                }
-                this.testState.area.points = [];
-                this.testState.area.isDrawing = false;
-                this.testState.area.lastPolygonPath = null;
-                this.testState.area.animationFrameId = null;
-                break;
-                
-            case 'minkowski':
-                // Reset to defaults from config
-                const minkowskiDefaults = this.defaults.geometries.minkowski.defaults;
-                this.testState.minkowski.pattern = minkowskiDefaults.pattern;
-                this.testState.minkowski.path = minkowskiDefaults.path;
-                this.testState.minkowski.operation = minkowskiDefaults.operation;
-                this.testState.minkowski.pathClosed = minkowskiDefaults.pathClosed;
-                this.testState.minkowski.showSweep = minkowskiDefaults.showSweep;
-                this.testState.minkowski.showOffset = minkowskiDefaults.showOffset;
-                this.testState.minkowski.patternPos = { ...minkowskiDefaults.patternPos };
-                break;
-                
-            case 'arc-reconstruction':
-                // Reset arc reconstruction to defaults
-                const arcDefaults = this.defaults.geometries['arc-reconstruction'].defaults;
-                this.testState['arc-reconstruction'] = {
-                    operation: arcDefaults.operation,
-                    showReconstruction: arcDefaults.showReconstruction,
-                    showMetadata: arcDefaults.showMetadata,
-                    circle1Pos: { ...arcDefaults.circle1Pos },
-                    circle2Pos: { ...arcDefaults.circle2Pos },
-                    circle1Radius: arcDefaults.circle1Radius,
-                    circle2Radius: arcDefaults.circle2Radius
-                };
-                break;
-        }
-        
-        // Let UI handle the rest
-        this.ui?.resetView(testName);
     }
 }

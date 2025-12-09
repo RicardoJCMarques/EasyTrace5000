@@ -6,6 +6,14 @@ An open-source, browser-based CAM tool for generating G-code from PCB manufactur
 
 ![I'll add screenshots when GUI is ready](https://placehold.co/800x420?text=EasyTrace5000\nScreenshot\nPlaceholder)
 
+## Live Access
+
+The latest version of EasyTrace5000 is automatically deployed and available online:
+
+* **Main Application:** [cam.eltryus.design](https://cam.eltryus.design)
+* **Extra Documentation:** [cam.eltryus.design/doc](https://cam.eltryus.design/doc)
+* **Clipper2 Test Suite:** [cam.eltryus.design/clipper2/](https://cam.eltryus.design/clipper2/)
+
 ## Key Features
 
 * **Multi-Operation Workflow**
@@ -248,7 +256,16 @@ window.getReconstructionRegistry()      // Inspect arc metadata from curve regis
 - Multi-sided PCB support
 - Service Worker for offline caching
 
-## ❤️ Support the Project
+## Development Tools
+
+### Clipper2 Integration Test Suite
+The repository includes a standalone test page used during initial development to test syntax of the WASM compilation factory wrapper. It's living documentation on how to interact with the Clipper2 WASM library.
+
+* **Live website:** [cam.eltryus.design/clipper2/](https://cam.eltryus.design/clipper2/)
+* **Purpose:** Interactive sandbox for Boolean operations, Offsetting, Minkowski Sums, and Arc Reconstruction.
+* **Self-served:** Navigate to `http://localhost:YOUR_PORT/clipper2/` while serving the project.
+
+## Support the Project <3
 
 This is a free, open-source project. If you find it useful, please consider supporting its development!
 

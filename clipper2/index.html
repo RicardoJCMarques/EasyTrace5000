@@ -1,3 +1,31 @@
+<!--
+/**
+ * @file        index.html
+ * @description EasyTrace5000 Clipper2 Test Suite Entry Point
+ * @author      Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -20,7 +48,7 @@
 
         <!-- Core Boolean Operations -->
         <h2 class="test-group-header">Core Boolean Operations</h2>
-        
+
         <div class="test-grid">
             <!-- Boolean Operations Test -->
             <div class="test-card" data-test="boolean">
@@ -28,7 +56,7 @@
                     <h3 class="test-title">Boolean Operations</h3>
                 </div>
                 <p class="test-description">Test union, intersection, difference, and XOR operations with draggable shapes</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="boolean-canvas" width="800" height="800"></canvas>
@@ -56,12 +84,12 @@
                                 </select>
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-primary" onclick="tests.testBooleanOperation()">Run Operation</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('boolean')">Reset</button>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('boolean', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('boolean', 'input')">Export Input</button>
@@ -80,7 +108,7 @@
                     <h3 class="test-title">Letter B Creation<span class="badge">Hole Detection</span></h3>
                 </div>
                 <p class="test-description">Union strokes to form the letter B with proper CCW holes</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="letter-b-canvas" width="800" height="800"></canvas>
@@ -90,13 +118,13 @@
                             <button class="btn btn-primary" onclick="tests.testLetterB()">Create Letter B</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('letter-b')">Reset</button>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('letter-b', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('letter-b', 'input')">Export Input</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('letter-b', 'output')">Export Output</button>
                         </div>
-                        
+
                         <div id="letter-b-result" class="result">Ready to run test</div>
                         <div id="letter-b-info" class="geometry-info"></div>
                     </div>
@@ -109,7 +137,7 @@
                     <h3 class="test-title">Nested Structure</h3>
                 </div>
                 <p class="test-description">Create complex nested shapes with draggable islands</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="nested-canvas" width="800" height="800"></canvas>
@@ -119,13 +147,13 @@
                             <button class="btn btn-primary" onclick="tests.testNestedStructure()">Create Structure</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('nested')">Reset</button>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('nested', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('nested', 'input')">Export Input</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('nested', 'output')">Export Output</button>
                         </div>
-                        
+
                         <div id="nested-result" class="result">Ready to run test</div>
                         <div id="nested-info" class="geometry-info"></div>
                     </div>
@@ -138,7 +166,7 @@
                     <h3 class="test-title">PCB Trace Fusion</h3>
                 </div>
                 <p class="test-description">Merge PCB traces and pads into unified regions with holes</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="pcb-fusion-canvas" width="800" height="800"></canvas>
@@ -148,13 +176,13 @@
                             <button class="btn btn-primary" onclick="tests.testPCBFusion()">Fuse Components</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('pcb-fusion')">Reset</button>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('pcb-fusion', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('pcb-fusion', 'input')">Export Input</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('pcb-fusion', 'output')">Export Output</button>
                         </div>
-                        
+
                         <div id="pcb-fusion-result" class="result">Ready to run test</div>
                         <div id="pcb-fusion-info" class="geometry-info"></div>
                     </div>
@@ -164,7 +192,7 @@
 
         <!-- Path Operations -->
         <h2 class="test-group-header">Path Operations</h2>
-        
+
         <div class="test-grid">
             <!-- Offset Test -->
             <div class="test-card" data-test="offset">
@@ -172,7 +200,7 @@
                     <h3 class="test-title">Path Offsetting</h3>
                 </div>
                 <p class="test-description">Create internal and external offsets with various join types</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="offset-canvas" width="800" height="800"></canvas>
@@ -197,7 +225,7 @@
                                 </select>
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <div class="control">
                                 <label for="offset-count">Count:</label>
@@ -208,7 +236,7 @@
                                 <input type="number" id="offset-distance" value="20" min="1" max="100">
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <div class="control">
                                 <label for="offset-join">Join Type:</label>
@@ -223,18 +251,18 @@
                                 <input type="number" id="offset-miter-limit" value="10" min="1" max="20" step="0.5">
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-primary" onclick="tests.testOffset()">Apply Offset</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('offset')">Reset</button>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('offset', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('offset', 'input')">Export Input</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('offset', 'output')">Export Output</button>
                         </div>
-                        
+
                         <div id="offset-result" class="result">Ready to run test</div>
                         <div id="offset-info" class="geometry-info"></div>
                     </div>
@@ -247,7 +275,7 @@
                     <h3 class="test-title">Path Simplification</h3>
                 </div>
                 <p class="test-description">Reduce vertices while preserving shape (using rabbit SVG)</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="simplify-canvas" width="800" height="800"></canvas>
@@ -259,18 +287,18 @@
                                 <input type="number" id="simplify-tolerance" min="0.5" max="100" value="2" step="0.5">
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-primary" onclick="tests.testSimplify()">Simplify Path</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('simplify')">Reset</button>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('simplify', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('simplify', 'input')">Export Input</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('simplify', 'output')">Export Output</button>
                         </div>
-                        
+
                         <div id="simplify-result" class="result">Ready to run test</div>
                         <div id="simplify-info" class="geometry-info"></div>
                     </div>
@@ -283,7 +311,7 @@
                     <h3 class="test-title">Minkowski vs Offset<span class="badge new">Comparison</span></h3>
                 </div>
                 <p class="test-description">Compare Minkowski operations with standard offsets. Circle patterns produce identical results, while non-circular patterns reveal key differences.</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="minkowski-canvas" width="800" height="800"></canvas>
@@ -313,7 +341,7 @@
                                 </select>
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <div class="control">
                                 <label for="minkowski-operation">Operation:</label>
@@ -323,7 +351,7 @@
                                 </select>
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <div class="control">
                                 <label for="minkowski-sweep">
@@ -338,18 +366,18 @@
                                 </label>
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-primary" onclick="tests.testMinkowski()">Calculate</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('minkowski')">Reset</button>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('minkowski', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('minkowski', 'input')">Export Input</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('minkowski', 'output')">Export Output</button>
                         </div>
-                        
+
                         <div class="legend">
                             <div class="legend-item">
                                 <div class="legend-color" style="background: rgba(16, 185, 129, 0.3); border-color: #10b981;"></div>
@@ -360,7 +388,7 @@
                                 <span>Offset Result</span>
                             </div>
                         </div>
-                        
+
                         <div id="minkowski-result" class="result">Ready to run test</div>
                         <div id="minkowski-info" class="geometry-info"></div>
                     </div>
@@ -370,7 +398,7 @@
 
         <!-- Analysis Tools -->
         <h2 class="test-group-header">Analysis Tools</h2>
-        
+
         <div class="test-grid">
 
             <!-- Point in Polygon Test -->
@@ -379,7 +407,7 @@
                     <h3 class="test-title">Point in Polygon</h3>
                 </div>
                 <p class="test-description">Test if points are inside, outside, or on polygon edges</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="pip-canvas" width="800" height="800"></canvas>
@@ -394,13 +422,13 @@
                             <input type="number" id="pip-tolerance" value="6" min="1" max="40" step="1">
                             <span>px</span>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('pip', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('pip', 'input')">Export Input</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('pip', 'output')">Export Output</button>
                         </div>
-                        
+
                         <div id="pip-result" class="result">Click to add test points</div>
                         <div id="pip-info" class="geometry-info"></div>
                     </div>
@@ -413,7 +441,7 @@
                     <h3 class="test-title">Area Calculation</h3>
                 </div>
                 <p class="test-description">Draw a polygon and calculate its area and winding direction</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="area-canvas" width="800" height="800"></canvas>
@@ -423,13 +451,13 @@
                             <button class="btn btn-primary" onclick="tests.calculateArea()">Calculate Area</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('area')">Reset</button>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-success" onclick="tests.exportSVG('area', 'raw')">Export Raw</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('area', 'input')">Export Input</button>
                             <button class="btn btn-success" onclick="tests.exportSVG('area', 'output')">Export Output</button>
                         </div>
-                        
+
                         <div id="area-result" class="result">Click points to draw polygon (min 3)</div>
                         <div id="area-info" class="geometry-info"></div>
                     </div>
@@ -442,7 +470,7 @@
                     <h3 class="test-title">Arc Reconstruction<span class="badge new">Metadata</span></h3>
                 </div>
                 <p class="test-description">Demonstrates metadata preservation through boolean operations and reconstruction of analytic curves from tessellated results</p>
-                
+
                 <div class="canvas-container">
                     <div class="canvas-wrapper">
                         <canvas id="arc-reconstruction-canvas" width="800" height="800"></canvas>
@@ -471,12 +499,12 @@
                                 </label>
                             </div>
                         </div>
-                        
+
                         <div class="controls">
                             <button class="btn btn-primary" onclick="tests.testArcReconstruction()">Run Test</button>
                             <button class="btn btn-secondary" onclick="tests.resetTest('arc-reconstruction')">Reset</button>
                         </div>
-                        
+
                         <div class="legend">
                             <div class="legend-item">
                                 <div class="legend-color" style="background: rgba(59, 130, 246, 0.2); border-color: #3b82f6;"></div>
@@ -495,7 +523,7 @@
                                 <span>Arc End</span>
                             </div>
                         </div>
-                        
+
                         <div id="arc-reconstruction-result" class="result">Ready to run test</div>
                         <div id="arc-reconstruction-info" class="geometry-info"></div>
                     </div>
@@ -503,28 +531,27 @@
             </div>
         </div>
 
-
-
-        <!-- Additional Information -->
-        <div style="margin-top: 3rem; padding: 2rem; background: var(--surface); border-radius: 8px;">
-            <h3 style="color: var(--primary); margin-bottom: 1rem;">Additional Clipper2 Functions</h3>
-            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
-                The Clipper2 WASM wrapper also provides access to these functions not demonstrated in the tests above:
+        <div class="info-card">
+            <h3>Additional Clipper2 Functions</h3>
+            <p>
+                The Clipper2 WASM wrapper also provides access to advanced functions not demonstrated in these interactive tests:
             </p>
-            <ul style="color: var(--text); line-height: 1.8;">
-                <li><strong>PolyTree/PolyPath structures:</strong> Hierarchical polygon representation with parent-child relationships, useful for complex nested geometries</li>
-                <li><strong>TrimCollinear:</strong> Removes redundant vertices on straight segments to optimize path definitions</li>
-                <li><strong>Z-coordinate callbacks:</strong> Allows custom metadata interpolation during clipping operations when new vertices are created at intersections</li>
-                <li><strong>RectClip operations:</strong> Extremely fast O(n) rectangular clipping for axis-aligned regions (viewport culling, etc.)</li>
-                <li><strong>clipper2z-utils:</strong> SVG and file manipulation utilities</li>
+            <ul>
+                <li><strong>PolyTree/PolyPath structures:</strong> Hierarchical polygon representation with parent-child relationships, essential for complex nested geometries.</li>
+                <li><strong>TrimCollinear:</strong> Optimization tool to remove redundant vertices on straight segments.</li>
+                <li><strong>RectClip operations:</strong> Extremely fast O(n) rectangular clipping for axis-aligned regions (viewport culling).</li>
             </ul>
-            <p style="color: var(--text-secondary); margin-top: 1rem;">
-                These functions are available through the Clipper2 wrapper but require direct API usage. See the 
-                <a href="https://github.com/ErikSom/Clipper2-WASM/" style="color: var(--primary);">documentation</a> 
-                for implementation details.
+            <p>
+                These features are native to the <a href="https://github.com/AngusJohnson/Clipper2" target="_blank">Clipper2</a> library and fully exposed by the wrapper. 
+                Refer to the <a href="https://github.com/ErikSom/Clipper2-WASM/" target="_blank">Clipper2-WASM documentation</a> for more API detail.
             </p>
         </div>
     </div>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>EasyTrace5000 Clipper2 Test Suite &copy; 2025 Eltryus.</p>
+    </footer>
 
     <!-- Loading indicator -->
     <div id="loading" class="loading active">
@@ -533,8 +560,8 @@
 
     <!-- Scripts -->
     <script src="clipper2z.js"></script>
-    <script src="clipper2z-utils.js"></script>
     <script src="clipper2-defaults.js"></script>
+    <script src="clipper2-svg-exporter.js"></script>
     <script src="clipper2-core.js"></script>
     <script src="clipper2-geometry.js"></script>
     <script src="clipper2-operations.js"></script>
@@ -553,18 +580,18 @@
                 // Create test system
                 tests = new Clipper2Tests();
                 await tests.initialize();
-                
+
                 // Initialize operations and geometry with defaults
                 tests.operations.initialize(Clipper2Defaults);
                 tests.geometry.initialize(Clipper2Defaults);
                 tests.rendering.initialize(Clipper2Defaults);
-                
+
                 // Create and initialize UI
                 ui = new Clipper2UI(tests);
                 await ui.initialize();
-                
+
                 console.log('[APP] Initialization complete');
-                
+
             } catch (error) {
                 console.error('[APP] Failed to initialize:', error);
                 const loading = document.getElementById('loading');

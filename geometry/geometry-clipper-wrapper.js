@@ -4,6 +4,8 @@
  * @author      Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
+ * 
+ * This module interfaces with the Clipper2 library (Angus Johnson) via WASM (Erik Som).
  */
 
 /*
