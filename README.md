@@ -33,16 +33,16 @@ The latest version of EasyTrace5000 is automatically deployed and available onli
 
 * **2. Intelligent Toolpath Pipeline**
    The final export stage converts geometry into optimized machine motion.
-   * **Geometry Translation:** Translates offset geometry objects into organized toolpath plans with proper entry/exit points.
+   * **Geometry Translation:** Translates geometry objects and their metadata into organized toolpath plans with proper entry/exit points.
+   * **Toolpath Optimization:** Optionally restructures the toolpath plan to maximize efficiency:
+      * **Staydown Clustering:** Geometrically analyzes paths and groups nearby cuts to minimize Z-axis retractions.
+      * **Path Ordering:** Applies a nearest-neighbor algorithm to sort clusters and reduce rapid travel time.
+      * **Segment Simplification:** Removes collinear points with angle-aware tolerance.
    * **Machine Processing:** Injects all necessary machine-specific commands:
       * Adds rapids, plunges, and retracts to safe/travel Z-heights.
       * Detects multi-depth passes on the same path to perform quick Z-plunges without retract.
       * Manages complex hole/slot entries (helix or plunge).
       * Handles Z-lifts for board tabs during cutout operations.
-   * **Toolpath Optimization:** Optionally restructures the toolpath plan to maximize efficiency:
-      * **Staydown Clustering:** Geometrically analyzes paths and groups nearby cuts to minimize Z-axis retractions.
-      * **Path Ordering:** Applies a nearest-neighbor algorithm to sort clusters and reduce rapid travel time.
-      * **Segment Simplification:** Removes collinear points with angle-aware tolerance.
 
 * **3. Multi-Stage Canvas Renderer**
    * **Render optimization:** Provides smooth panning and zooming with batching, level of detail and viewport culling.
@@ -225,7 +225,7 @@ The application guides the user through a clear, non-destructive process. Each s
 
 ```javascript
 // Browser console commands
-window.enablePCBDebug()                 // Enable verbose logging - Toggle button in Advanced Visualization menu
+window.enablePCBDebug()                 // Enable verbose logging - Toggle in Visualization options too
 window.pcbcam.getStats()                // Display pipeline statistics
 window.getReconstructionRegistry()      // Inspect arc metadata from curve registry
 ```
