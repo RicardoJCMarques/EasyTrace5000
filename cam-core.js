@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -934,22 +934,24 @@
 
         async _generateDrillGeometryFromStrategy(plan, operation, settings) {
             const strategyPrimitives = [];
+            const toolDiameter = parseFloat(settings.toolDiameter);
 
-            // Calculate internal offset distances for milling
-            const defaultToolDiameter = opsConfig.drill.tool.diameter;
-            // Review these toolDiameter fallbacks
-            const toolDiameter = settings.toolDiameter || settings.tool?.diameter || defaultToolDiameter; 
+            // Safety Check: Prevent generating geometry with invalid tools
+            if (!toolDiameter || isNaN(toolDiameter) || toolDiameter <= 0) {
+                console.error(`[Core] Drill strategy generation failed: Invalid tool diameter (${toolDiameter})`);
+                return []; 
+            }
 
             for (const action of plan) {
                 if (action.type === 'peck') {
                     // Create peck mark circle
                     strategyPrimitives.push(new CirclePrimitive(
                         action.position,
-                        action.toolDiameter / 2,
+                        toolDiameter / 2, // Use the resolved diameter
                         {
                             role: 'peck_mark',
                             originalDiameter: action.originalDiameter,
-                            toolDiameter: action.toolDiameter,
+                            toolDiameter: toolDiameter,
                             toolRelation: action.toolRelation,
                             reducedPlunge: action.reducedPlunge,
                             slotPart: action.slotPart,
@@ -980,7 +982,6 @@
                                     toolRelation: action.toolRelation || 'undersized',
                                     isOffset: true,
                                     offsetType: 'internal'
-
                                 }
                             ));
                         } else {
@@ -1002,28 +1003,28 @@
                     else if (source.properties?.originalSlot) {
                         const originalSlot = source.properties.originalSlot;
                         const slotWidth = source.properties.diameter || source.properties.width;
-                        
+
                         const dx = originalSlot.end.x - originalSlot.start.x;
                         const dy = originalSlot.end.y - originalSlot.start.y;
                         const slotCenterDistance = Math.hypot(dx, dy);
-                        
+
                         const pathThickness = slotWidth - toolDiameter;
-                        
+
                         if (pathThickness > minFeatureSize) {
                             const pathLength = slotCenterDistance + pathThickness;
                             const centerX = (originalSlot.start.x + originalSlot.end.x) / 2;
                             const centerY = (originalSlot.start.y + originalSlot.end.y) / 2;
-                            
+
                             const angle = Math.atan2(dy, dx);
                             const cos = Math.cos(angle);
                             const sin = Math.sin(angle);
-                            
+
                             const localHalfLength = pathLength / 2;
                             const localHalfThickness = pathThickness / 2;
-                            
+
                             const cornerX = centerX - (localHalfLength * cos - localHalfThickness * sin);
                             const cornerY = centerY - (localHalfLength * sin + localHalfThickness * cos);
-                            
+
                             const millingPath = new ObroundPrimitive(
                                 { x: cornerX, y: cornerY },
                                 pathLength,
@@ -1047,32 +1048,32 @@
                         }
                     }
                 } else if (action.type === 'centerline') {
-                // Handle explicit centerline action
-                const source = action.primitiveToOffset;
-                const originalSlot = source.properties?.originalSlot;
-                
-                if (originalSlot) {
-                    const millingPath = new PathPrimitive([{
-                        points: [originalSlot.start, originalSlot.end],
-                        isHole: false,
-                        nestingLevel: 0,
-                        parentId: null,
-                        arcSegments: [],
-                        curveIds: []
-                    }], {
-                        role: 'drill_milling_path',
-                        isCenterlinePath: true,
-                        isDrillMilling: true,
-                        toolRelation: action.toolRelation,
-                        originalDiameter: source.properties.diameter,
-                        toolDiameter: toolDiameter,
-                        operationId: operation.id,
-                        originalSlot: originalSlot,
-                        closed: false,
-                    });
-                    strategyPrimitives.push(millingPath);
+                    // Handle explicit centerline action
+                    const source = action.primitiveToOffset;
+                    const originalSlot = source.properties?.originalSlot;
+
+                    if (originalSlot) {
+                        const millingPath = new PathPrimitive([{
+                            points: [originalSlot.start, originalSlot.end],
+                            isHole: false,
+                            nestingLevel: 0,
+                            parentId: null,
+                            arcSegments: [],
+                            curveIds: []
+                        }], {
+                            role: 'drill_milling_path',
+                            isCenterlinePath: true,
+                            isDrillMilling: true,
+                            toolRelation: action.toolRelation,
+                            originalDiameter: source.properties.diameter,
+                            toolDiameter: toolDiameter,
+                            operationId: operation.id,
+                            originalSlot: originalSlot,
+                            closed: false,
+                        });
+                        strategyPrimitives.push(millingPath);
+                    }
                 }
-            }
             }
 
             return strategyPrimitives;
@@ -1224,7 +1225,8 @@
                 cutting: {
                     feedRate: params.feedRate,
                     plungeRate: params.plungeRate,
-                    spindleSpeed: params.spindleSpeed
+                    spindleSpeed: params.spindleSpeed,
+                    spindleDwell: params.spindleDwell
                 },
                 strategy: {
                     cutDepth: params.cutDepth,

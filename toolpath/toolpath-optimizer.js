@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -98,12 +98,20 @@
 
                     // Respect PathOrdering option
                     if (this.options.enablePathOrdering) {
-                        // Build Staydown Clusters using geometric proximity
-                        const toolDiameter = zGroup[0].metadata.toolDiameter;
+                        // Build Staydown Clusters
+                        const firstPlan = zGroup[0];
+                        const toolDiameter = firstPlan.metadata.toolDiameter;
+                        const stepOver = firstPlan.metadata.stepOver; 
 
-                        const staydownMarginFactor = config.gcode?.optimization?.staydownMarginFactor || 0.6;
-                        const staydownMargin = toolDiameter * staydownMarginFactor;
-                        const clusters = this.buildStaydownClusters(zGroup, staydownMargin);
+                        // Calculate theoretical Step Distance
+                        const stepDistance = toolDiameter * (1.0 - (stepOver / 100.0));
+
+                        // Strict Threshold: StepDistance + Epsilon
+                        const epsilon = config.precision.epsilon;
+                        const strictThreshold = stepDistance + epsilon;
+
+                        // Use strict threshold
+                        const clusters = this.buildStaydownClusters(zGroup, strictThreshold);
 
                         this.stats.clustersFound += clusters.length;
 
@@ -379,14 +387,12 @@
 
                 // Handle cluster run differently
                 if (options.isClusterRun) {
-                    // Store the link decision on the first plan of the chosen cluster
-                    // This ensures the MachineProcessor knows to RAPID to this cluster.
                     if (chosen.plans && chosen.plans.length > 0) {
                         chosen.plans[0].metadata.optimization = {
                             linkType: bestResult.linkType,
                             originalEntryPoint: chosen.plans[0].metadata.entryPoint,
                             optimizedEntryPoint: bestResult.bestPoint,
-                            entryCommandIndex: 0 // Don't rotate the entry point of a whole cluster
+                            entryCommandIndex: 0 
                         };
                     }
 
@@ -406,11 +412,12 @@
 
                 // Apply rotation if beneficial and safe
                 if (bestResult.commandIndex > 0) {
-                    // Only rotate if it's not a drill operation and is a simple circle or closed loop without arcs
+                    // Only rotate if it's not a drill operation.
+                    // Rotate paths with arcs if a staydown point on them was selected, otherwise the machine feeds to the old entry point.
                     if (!chosen.metadata.isPeckMark && !chosen.metadata.isDrillMilling) {
-                        if (chosen.metadata.isSimpleCircle && bestResult.linkType === 'rapid') {
+                        if (chosen.metadata.isSimpleCircle) {
                             this.rotateCircleEntry(chosen, currentPos);
-                        } else if (!chosen.metadata.hasArcs && chosen.metadata.isClosedLoop) {
+                        } else if (chosen.metadata.isClosedLoop) {
                             this.rotatePlanCommands(chosen, bestResult.commandIndex);
                         }
                     }
@@ -635,54 +642,59 @@
         rotatePlanCommands(plan, newEntryIndex) {
             if (newEntryIndex <= 0 || newEntryIndex >= plan.commands.length) return;
 
-            // The command at the newEntryIndex holds the coordinates for the new start point
-            const newStartCmd = plan.commands[newEntryIndex];
-            if (!newStartCmd) return;
+            // Identify the pivot command (the one that leads TO the new start point)
+            const pivotCmd = plan.commands[newEntryIndex];
 
-            // Create the new command array
-            const rotated = [
-                ...plan.commands.slice(newEntryIndex),
-                ...plan.commands.slice(0, newEntryIndex)
-            ];
+            // Split the commands
+            // Pre-Pivot: Commands before the pivot (0 to newEntryIndex - 1)
+            const prePivot = plan.commands.slice(0, newEntryIndex);
 
-            // The loop is now open. The last command in 'rotated', add a new closing command.
-            const newStartPoint = {
-                x: newStartCmd.x,
-                y: newStartCmd.y,
-                z: newStartCmd.z
-            };
+            // Post-Pivot: Commands after the pivot (newEntryIndex + 1 to end)
+            // Skip newEntryIndex here because it must move to the end of the sequence
+            const postPivot = plan.commands.slice(newEntryIndex + 1);
 
-            // Get the feed rate from the last command in the new loop
-            const lastLinearCmd = rotated[rotated.length - 1];
-            const feed = lastLinearCmd.f || plan.metadata.feedRate; // Review - Why does feedrate matter inside a geometry optimizer?
-
-            // Create and add the new closing command
-            const closingCmd = new MotionCommand(
-                'LINEAR',
-                { x: newStartPoint.x, y: newStartPoint.y, z: newStartPoint.z },
-                { feed: feed }
-            );
-            rotated.push(closingCmd);
-
-            plan.commands = rotated;
-            
-            // Update metadata. Entry and Exit points should now match.
-            if (plan.commands[0]) {
-                plan.metadata.entryPoint = {
-                    x: plan.commands[0].x,
-                    y: plan.commands[0].y,
-                    z: plan.commands[0].z || plan.metadata.entryPoint.z
-                };
-            }
-
+            // Check for implicit closure and create a bridge if necessary
+            // Does the last command of the original path connect back to the Original Entry?
+            const originalEntryPoint = plan.metadata.entryPoint;
             const lastCmd = plan.commands[plan.commands.length - 1];
-            if (lastCmd) {
-                plan.metadata.exitPoint = {
-                    x: lastCmd.x,
-                    y: lastCmd.y,
-                    z: lastCmd.z || plan.metadata.exitPoint.z
-                };
+
+            const distToOriginalEntry = Math.hypot(
+                (lastCmd.x || 0) - originalEntryPoint.x,
+                (lastCmd.y || 0) - originalEntryPoint.y
+            );
+
+            const newCommands = [...postPivot];
+
+            // If implicit loop (gap > epsilon), insert a linear bridge move
+            if (distToOriginalEntry > 0.001) {
+                 const bridgeCmd = new MotionCommand(
+                    'LINEAR',
+                    { 
+                        x: originalEntryPoint.x, 
+                        y: originalEntryPoint.y, 
+                        z: lastCmd.z !== null ? lastCmd.z : plan.metadata.cutDepth
+                    },
+                    { feed: plan.metadata.feedRate }
+                );
+                newCommands.push(bridgeCmd);
             }
+
+            // Reassemble: Post -> Bridge -> Pre -> Pivot
+            // The pivot command (Old Start -> New Start) must be the LAST move in the new loop.
+            newCommands.push(...prePivot);
+            newCommands.push(pivotCmd);
+
+            // Apply
+            plan.commands = newCommands;
+
+            // Update Entry/Exit Metadata
+            plan.metadata.entryPoint = { 
+                x: pivotCmd.x, 
+                y: pivotCmd.y, 
+                z: pivotCmd.z !== null ? pivotCmd.z : plan.metadata.cutDepth
+            };
+            // Since the loop was closed (explicitly or via logic), exit = entry
+            plan.metadata.exitPoint = plan.metadata.entryPoint;
         }
 
         /**

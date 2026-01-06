@@ -8,7 +8,7 @@
 
  /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -250,6 +250,16 @@
                     ...validationRules.spindleSpeed,
                     stage: 'machine',
                     category: 'feeds'
+                },
+                spindleDwell: {
+                    type: 'number',
+                    label: 'Dwell',
+                    unit: 's',
+                    step: 0.5,
+                    default: 1,
+                    ...validationRules.spindleDwell,
+                    stage: 'machine',
+                    category: 'feeds'
                 }
             };
         }
@@ -263,7 +273,7 @@
                     validators[name] = (val) => {
                         const num = parseFloat(val);
                         if (isNaN(num)) return { success: false, error: `${def.label} must be a number` };
-                        
+
                         if (def.min !== undefined && num < def.min) {
                             return { success: false, error: `${def.label} must be at least ${def.min}`, correctedValue: def.min };
                         }
@@ -484,32 +494,51 @@
             const opConfig = config.operations?.[operationType];
             if (!opConfig) return {};
 
-            const toolConfig = opConfig.tool;
             const cuttingConfig = opConfig.cutting;
             const settingsConfig = opConfig.defaultSettings;
+            const defaultToolId = opConfig.defaultTool;
 
-            const enableMultiDepth = (operationType === 'drill' || operationType === 'cutout'); // dead code? Review
+            let toolDiameter; 
+
+            // We access the global controller to find the initialized library
+            if (defaultToolId && window.pcbcam?.ui?.toolLibrary) {
+                const libraryDiameter = window.pcbcam.ui.toolLibrary.getToolDiameter(defaultToolId);
+                // Ensure we get a valid number (0 is technically valid for logic, but invalid for tools, check for null/undefined)
+                if (libraryDiameter !== null && libraryDiameter !== undefined) {
+                    toolDiameter = libraryDiameter;
+                }
+            }
 
             return {
-                // Tool/Strategy
-                toolDiameter: toolConfig.diameter,
-                multiDepth: settingsConfig.multiDepth,
-                passes: settingsConfig.passes,
-                stepOver: settingsConfig.stepOver,
-                entryType: settingsConfig.entryType,
+                // Tool
+                tool: defaultToolId,
+                toolDiameter: toolDiameter, // Will be undefined if lookup fails
+
+                // Strategy
+                multiDepth: settingsConfig?.multiDepth ?? true,
+                passes: settingsConfig?.passes ?? 1,
+                stepOver: settingsConfig?.stepOver ?? 50,
+                entryType: settingsConfig?.entryType ?? 'plunge',
 
                 // Cutting
-                cutDepth: cuttingConfig.cutDepth,
-                depthPerPass: cuttingConfig.passDepth,
-                feedRate: cuttingConfig.cutFeed,
-                plungeRate: cuttingConfig.plungeFeed,
-                spindleSpeed: cuttingConfig.spindleSpeed,
+                cutDepth: cuttingConfig?.cutDepth ?? -0.1,
+                depthPerPass: cuttingConfig?.passDepth ?? 0.1,
+                feedRate: cuttingConfig?.cutFeed ?? 150,
+                plungeRate: cuttingConfig?.plungeFeed ?? 50,
+                spindleSpeed: cuttingConfig?.spindleSpeed ?? 10000,
 
-                // Drill-specific strategy defaults
-                cannedCycle: settingsConfig.cannedCycle,
-                peckDepth: settingsConfig.peckDepth,
-                dwellTime: settingsConfig.dwellTime,
-                retractHeight: settingsConfig.retractHeight
+                // Drill-specific
+                millHoles: settingsConfig?.millHoles ?? true,
+                cannedCycle: settingsConfig?.cannedCycle ?? 'none',
+                peckDepth: settingsConfig?.peckDepth ?? 0,
+                dwellTime: settingsConfig?.dwellTime ?? 0,
+                retractHeight: settingsConfig?.retractHeight ?? 0.5,
+
+                // Cutout-specific
+                tabs: settingsConfig?.tabs ?? 4,
+                tabWidth: settingsConfig?.tabWidth ?? 3.0,
+                tabHeight: settingsConfig?.tabHeight ?? 0.5,
+                cutSide: settingsConfig?.cutSide ?? 'outside'
             };
         }
 

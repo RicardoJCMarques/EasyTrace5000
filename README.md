@@ -265,11 +265,39 @@ The repository includes a standalone test page used during initial development t
 * **Purpose:** Interactive sandbox for Boolean operations, Offsetting, Minkowski Sums, and Arc Reconstruction.
 * **Self-served:** Navigate to `http://localhost:YOUR_PORT/clipper2/` while serving the project.
 
-## Support the Project <3
+## Support & Sponsorship
 
-This is a free, open-source project. If you find it useful, please consider supporting its development!
+EasyTrace5000 is free, open-source software. Development is funded by users and industry partners.
 
-[**>> Buy Me a Coffee <<**](https://ko-fi.com/eltryus)
+### ☕ Individual Support
+If this tool saves you time or material costs, contributions via Ko-fi help fund development time and hardware for testing.
+
+[**>> Support Development on Ko-fi <<**](https://ko-fi.com/eltryus)
+
+### 🤝 Become a Sponsor
+We offer visibility for manufacturers and industry partners on the application welcome screen and documentation. 
+
+<table width="100%">
+  <tr>
+    <td align="center" width="33%">
+      <a href="https://cam.eltryus.design/#support">
+        <img src="https://placehold.co/200x80/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
+      </a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://cam.eltryus.design/#support">
+        <img src="https://placehold.co/200x80/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
+      </a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://cam.eltryus.design/#support">
+        <img src="https://placehold.co/200x80/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
+      </a>
+    </td>
+  </tr>
+</table>
+
+[**Contact us regarding sponsorship →**](https://cam.eltryus.design/#support)
 
 ## License 
 

@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -45,50 +45,57 @@
             if (this.isLoaded) return true;
 
             try {
-                // First try to load from config
+                // Load from external file (single source of truth)
+                const loaded = await this.loadFromFile('tools.json');
+                if (loaded) {
+                    return true;
+                }
+
+                // Try config if file fails
                 if (config.tools && Array.isArray(config.tools)) {
+                    console.warn('[ToolLibrary] tools.json failed, falling back to config');
                     this.loadFromConfig();
                     return true;
                 }
 
-                // Fallback to loading from external file // Review - This shouldn't really be the fallback but the main option?
-                const loaded = await this.loadFromFile('tools.json');
-                return loaded;
+                // Minimal defaults
+                this.loadDefaults();
+                return false;
 
             } catch (error) {
                 console.error('[ToolLibrary] Failed to initialize tool library:', error);
                 this.loadError = error.message;
-
-                // Load minimal defaults as fallback // Review - How many fallbacks are needed?
                 this.loadDefaults();
                 return false;
             }
         }
 
-        loadFromConfig() {
-            if (!config.tools || !Array.isArray(config.tools)) {
-                throw new Error('No tools found in config');
+        /**
+         * Gets the effective tool diameter for a given tool ID.
+         * For V-bits, returns tipDiameter. For all others, returns diameter.
+         */
+        getToolDiameter(toolId) {
+            const tool = this.getTool(toolId);
+            if (!tool || !tool.geometry) return null;
+
+            // V-bits use tipDiameter as their effective cutting width at surface
+            if (tool.type === 'v_bit' && tool.geometry.tipDiameter !== undefined) {
+                return tool.geometry.tipDiameter;
             }
+            return tool.geometry.diameter;
+        }
 
-            this.tools = [];
-            this.toolsById.clear();
-            this.toolsByType.clear();
-            this.toolsByOperation.clear();
+        /**
+         * Gets full tool data including computed effective diameter.
+         */
+        getToolWithEffectiveDiameter(toolId) {
+            const tool = this.getTool(toolId);
+            if (!tool) return null;
 
-            config.tools.forEach(tool => {
-                if (this.validateTool(tool)) {
-                    this.addTool(tool);
-                } else {
-                    console.warn(`[ToolLibrary] Invalid tool skipped: ${tool.id || 'unknown'}`);
-                }
-            });
-
-            this.isLoaded = true;
-            
-            if (debugConfig.enabled) {
-                console.log(`[ToolLibrary] Loaded ${this.tools.length} tools from config`);
-                this.logToolStats();
-            }
+            return {
+                ...tool,
+                effectiveDiameter: this.getToolDiameter(toolId)
+            };
         }
 
         async loadFromFile(url) {

@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -46,9 +46,15 @@
             }
         },
         'line': {
-            name: 'CNC Precision Line Test',
+            name: 'Line Test',
             files: {
                 isolation: 'examples/LineTest.svg'
+            }
+        },
+        'calibration': {
+            name: '100mm Step/mm Square',
+            files: {
+                cutout: 'examples/100mmSquare.svg'
             }
         }
     };
@@ -155,16 +161,29 @@
                 // Hide loading overlay and show UI
                 this.hideLoadingOverlay();
 
-                // Check for first-time user
-                const key = storageKeys.hideWelcome;
-                const hideWelcome = localStorage.getItem(key);
+                // Check if the user is trying to deep-link to support
+                const hash = window.location.hash.substring(1);
 
-                if (!hideWelcome) {
-                    // Use the Modal Manager
+                // Modals allowed to be deep-linked
+                const deepLinkModals = ['support', 'welcome', 'quickstart'];
+                const isDeepLink = deepLinkModals.includes(hash);
+
+                if (isDeepLink) {
+                    // If opening #support, always open Welcome first so it sits underneath.
+                    // This ensures closing Support reveals the main menu, not an empty void.
+                    if (hash === 'support') {
+                        this.modalManager.showModal('welcome', { examples: PCB_EXAMPLES });
+                    }
+
+                    // Open the requested deep-link modal on top
+                    this.modalManager.showModal(hash, { examples: PCB_EXAMPLES });
+
+                    // Clean the URL
+                    history.replaceState(null, null, window.location.pathname);
+                } 
+                else {
+                    // Standard Boot: always show Welcome.
                     this.modalManager.showModal('welcome', { examples: PCB_EXAMPLES });
-                } else {
-                    // Ensure coordinate system is initialized
-                    this.ensureCoordinateSystem();
                 }
 
                 this.initState.fullyReady = true;
@@ -261,7 +280,7 @@
             const addFilesBtn = document.getElementById('toolbar-add-files');
             if (addFilesBtn) {
                 addFilesBtn.addEventListener('click', () => {
-                    this.modalManager.showModal('file'); 
+                    this.modalManager.showModal('quickstart', { examples: PCB_EXAMPLES });
                     quickActionsBtn.classList.remove('active');
                     quickActionsMenu.classList.remove('show');
                 });
@@ -316,11 +335,22 @@
             // Handle file drops on entire window
             window.addEventListener('dragover', (e) => {
                 e.preventDefault();
+                // If a modal is open, do not allow workspace drag effects
+                if (this.modalManager?.activeModal) {
+                    e.dataTransfer.dropEffect = 'none';
+                    return;
+                }
             });
 
             window.addEventListener('drop', async (e) => {
                 e.preventDefault();
-                // Only handle if not over a specific drop zone
+
+                // If a modal is open, ignore global drops completely
+                if (this.modalManager?.activeModal) {
+                    return;
+                }
+
+                // Only handle if not over a specific drop zone (legacy check, kept for safety)
                 if (!e.target.closest('.file-drop-zone') && !e.target.closest('#file-drop-zone')) {
                     await this.handleGlobalFileDrop(e.dataTransfer.files);
                 }
@@ -378,6 +408,14 @@
                         this.ui.renderer.setOptions({ theme: currentTheme });
                         this.ui.renderer.render();
                     }
+                });
+            }
+            // Footer support link
+            const footerSupportLink = document.getElementById('footer-support-link');
+            if (footerSupportLink) {
+                footerSupportLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.modalManager.showModal('support');
                 });
             }
         }

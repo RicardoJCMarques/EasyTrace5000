@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -119,48 +119,209 @@
             return P;
         },
 
-        // Primitive-to-Points Converters
-        circleToPoints(primitive, curveIds = []) {
+        // Converts a circle to a PathPrimitive with arc segment metadata.
+        circleToPath(primitive) {
             const segments = this.getOptimalSegments(primitive.radius, 'circle');
-            const polygonPoints = [];
+            const points = [];
+            const arcSegments = [];
 
-            // A filled circle primitive should have one curveId
-            let curveId = curveIds.length > 0 ? curveIds[0] : null;
-
-            if (!curveId && window.globalCurveRegistry) {
-                // If this is an analytic primitive (e.g., flash), it won't have an ID yet so register it now.
+            // Register circle curve
+            let curveId = null;
+            if (window.globalCurveRegistry) {
                 curveId = window.globalCurveRegistry.register({
                     type: 'circle',
-                    center: primitive.center,
+                    center: { x: primitive.center.x, y: primitive.center.y },
                     radius: primitive.radius,
-                    clockwise: false, // Circles are always CCW by convention
-                    source: 'circle_primitive'
+                    clockwise: false,
+                    source: 'circle_to_path'
                 });
-
-                // Ensure the primitive's own list is updated
-                if (curveIds.length === 0) {
-                    curveIds.push(curveId);
-                }
             }
 
-            // Generate CCW for Y-Up
+            // Generate CCW points with arc metadata for each edge
             for (let i = 0; i < segments; i++) {
                 const angle = (i / segments) * 2 * Math.PI;
-                const point = {
+                const nextAngle = ((i + 1) % segments / segments) * 2 * Math.PI;
+
+                points.push({
                     x: primitive.center.x + primitive.radius * Math.cos(angle),
-                    y: primitive.center.y + primitive.radius * Math.sin(angle)
-                };
+                    y: primitive.center.y + primitive.radius * Math.sin(angle),
+                    curveId: curveId,
+                    segmentIndex: i,
+                    totalSegments: segments,
+                    t: i / segments
+                });
 
-                if (curveId) {
-                    point.curveId = curveId;
-                    point.segmentIndex = i;
-                    point.totalSegments = segments;
-                    point.t = i / segments;
-                }
-
-                polygonPoints.push(point);
+                // Each edge is an arc segment
+                arcSegments.push({
+                    startIndex: i,
+                    endIndex: (i + 1) % segments,
+                    center: { x: primitive.center.x, y: primitive.center.y },
+                    radius: primitive.radius,
+                    startAngle: angle,
+                    endAngle: nextAngle,
+                    clockwise: false,
+                    curveId: curveId
+                });
             }
-            return polygonPoints;
+
+            const contour = {
+                points: points,
+                isHole: primitive.properties?.polarity === 'clear',
+                nestingLevel: 0,
+                parentId: null,
+                arcSegments: arcSegments,
+                curveIds: curveId ? [curveId] : []
+            };
+
+            return new PathPrimitive([contour], {
+                ...primitive.properties,
+                originalType: 'circle',
+                closed: true,
+                fill: true
+            });
+        },
+
+        // Converts an obround to a PathPrimitive with arc metadata for the semicircular caps.
+        obroundToPath(primitive) {
+            const { x, y } = primitive.position;
+            const w = primitive.width;
+            const h = primitive.height;
+            const r = Math.min(w, h) / 2;
+
+            if (r <= this.PRECISION) return null;
+
+            const isHorizontal = w > h;
+            const points = [];
+            const arcSegments = [];
+            const curveIds = [];
+
+            // Determine cap centers
+            let cap1Center, cap2Center;
+            if (isHorizontal) {
+                const cy = y + h / 2;
+                cap1Center = { x: x + r, y: cy };
+                cap2Center = { x: x + w - r, y: cy };
+            } else {
+                const cx = x + w / 2;
+                cap1Center = { x: cx, y: y + r };
+                cap2Center = { x: cx, y: y + h - r };
+            }
+
+            // Register caps
+            const cap1Id = window.globalCurveRegistry?.register({
+                type: 'arc', center: cap1Center, radius: r,
+                clockwise: false, source: 'obround_cap1'
+            });
+            const cap2Id = window.globalCurveRegistry?.register({
+                type: 'arc', center: cap2Center, radius: r,
+                clockwise: false, source: 'obround_cap2'
+            });
+            if (cap1Id) curveIds.push(cap1Id);
+            if (cap2Id) curveIds.push(cap2Id);
+
+            const capSegs = Math.max(8, Math.floor(this.getOptimalSegments(r, 'arc') / 2));
+
+            if (isHorizontal) {
+                // Start top-left, go CCW
+                // Top edge (linear)
+                points.push({ x: x + r, y: y + h });
+                points.push({ x: x + w - r, y: y + h });
+
+                // Right cap (top to bottom)
+                const cap2Start = points.length - 1;
+                for (let i = 1; i <= capSegs; i++) {
+                    const angle = Math.PI / 2 - (Math.PI * i / capSegs);
+                    points.push({
+                        x: cap2Center.x + r * Math.cos(angle),
+                        y: cap2Center.y + r * Math.sin(angle),
+                        curveId: cap2Id
+                    });
+                }
+                arcSegments.push({
+                    startIndex: cap2Start, endIndex: points.length - 1,
+                    center: cap2Center, radius: r,
+                    startAngle: Math.PI / 2, endAngle: -Math.PI / 2,
+                    clockwise: true, curveId: cap2Id
+                });
+
+                // Bottom edge (linear)
+                points.push({ x: x + r, y: y });
+
+                // Left cap (bottom to top)
+                const cap1Start = points.length - 1;
+                for (let i = 1; i < capSegs; i++) {
+                    const angle = -Math.PI / 2 - (Math.PI * i / capSegs);
+                    points.push({
+                        x: cap1Center.x + r * Math.cos(angle),
+                        y: cap1Center.y + r * Math.sin(angle),
+                        curveId: cap1Id
+                    });
+                }
+                arcSegments.push({
+                    startIndex: cap1Start, endIndex: 0,
+                    center: cap1Center, radius: r,
+                    startAngle: -Math.PI / 2, endAngle: Math.PI / 2,
+                    clockwise: true, curveId: cap1Id
+                });
+
+            } else {
+                // Vertical obround - start left-bottom, go CCW
+                points.push({ x: x, y: y + r });
+                points.push({ x: x, y: y + h - r });
+
+                // Top cap
+                const cap2Start = points.length - 1;
+                for (let i = 1; i <= capSegs; i++) {
+                    const angle = Math.PI - (Math.PI * i / capSegs);
+                    points.push({
+                        x: cap2Center.x + r * Math.cos(angle),
+                        y: cap2Center.y + r * Math.sin(angle),
+                        curveId: cap2Id
+                    });
+                }
+                arcSegments.push({
+                    startIndex: cap2Start, endIndex: points.length - 1,
+                    center: cap2Center, radius: r,
+                    startAngle: Math.PI, endAngle: 0,
+                    clockwise: true, curveId: cap2Id
+                });
+
+                // Right edge
+                points.push({ x: x + w, y: y + r });
+
+                // Bottom cap
+                const cap1Start = points.length - 1;
+                for (let i = 1; i < capSegs; i++) {
+                    const angle = 0 - (Math.PI * i / capSegs);
+                    points.push({
+                        x: cap1Center.x + r * Math.cos(angle),
+                        y: cap1Center.y + r * Math.sin(angle),
+                        curveId: cap1Id
+                    });
+                }
+                arcSegments.push({
+                    startIndex: cap1Start, endIndex: 0,
+                    center: cap1Center, radius: r,
+                    startAngle: 0, endAngle: Math.PI,
+                    clockwise: true, curveId: cap1Id
+                });
+            }
+
+            const contour = {
+                points: points,
+                isHole: false,
+                nestingLevel: 0,
+                parentId: null,
+                arcSegments: arcSegments,
+                curveIds: curveIds
+            };
+
+            return new PathPrimitive([contour], {
+                ...primitive.properties,
+                originalType: 'obround',
+                closed: true,
+                fill: true
+            });
         },
 
         rectangleToPoints(primitive) {
@@ -285,33 +446,6 @@
         // Check if points are clockwise
         isClockwise(points) {
             return this.calculateWinding(points) < 0;
-        },
-
-        // Convert obround to points
-        obroundToPoints(obround, curveIds = []) {
-            const { x, y } = obround.position;
-            const w = obround.width;
-            const h = obround.height;
-            const r = Math.min(w, h) / 2;
-
-            if (r <= 0) return [];
-
-            const isHorizontal = w > h;
-            const strokeWidth = Math.min(w, h); // This is the diameter of the end-caps
-
-            let start, end;
-            if (isHorizontal) {
-                const centerY = y + h / 2;
-                start = { x: x + r, y: centerY };
-                end = { x: x + w - r, y: centerY };
-            } else {
-                const centerX = x + w / 2;
-                start = { x: centerX, y: y + r };
-                end = { x: centerX, y: y + h - r };
-            }
-
-            const points = this.lineToPolygon(start, end, strokeWidth, curveIds); // Delegate to lineToPolygon
-            return points;
         },
 
         // Convert polyline to polygon with metadata for end-caps
@@ -837,86 +971,124 @@
                 return primitive;
             }
 
-            let points = [];
-            let arcSegments = [];
-            let generatedCurveIds = curveIds || [];
-
-            // Handle strokes as capsule shapes (obrounds)
             const props = primitive.properties || {};
             const isStroke = (props.stroke && !props.fill) || props.isTrace;
 
+            // Handle strokes (capsule shapes)
             if (isStroke && props.strokeWidth > 0) {
                 if (primitive.type === 'arc') {
                     return this.arcToPolygon(primitive, props.strokeWidth);
                 } else if (primitive.type === 'path' && primitive.contours?.[0]?.points) {
-                    points = this.polylineToPolygon(
-                        primitive.contours[0].points, 
+                    const generatedCurveIds = curveIds.slice();
+                    const points = this.polylineToPolygon(
+                        primitive.contours[0].points,
                         props.strokeWidth,
                         generatedCurveIds
                     );
+                    if (points.length < 3) return null;
+
+                    return new PathPrimitive([{
+                        points: points,
+                        isHole: false,
+                        nestingLevel: 0,
+                        parentId: null,
+                        arcSegments: [],
+                        curveIds: generatedCurveIds
+                    }], {
+                        ...props,
+                        wasStroke: true,
+                        fill: true,
+                        stroke: false,
+                        closed: true
+                    });
                 }
-
-                if (points.length < 3) return null;
-
-                const contour = {
-                    points: points,
-                    isHole: false,
-                    nestingLevel: 0,
-                    parentId: null,
-                    arcSegments: [],
-                    curveIds: generatedCurveIds
-                };
-
-                return new PathPrimitive([contour], {
-                    ...props,
-                    wasStroke: true,
-                    fill: true,
-                    stroke: false,
-                    closed: true
-                });
             }
 
-            // Standard tessellation for non-strokes
+            // Use toPath for curve-containing primitives
             switch (primitive.type) {
                 case 'circle':
-                    points = this.circleToPoints(primitive, curveIds);
-                    generatedCurveIds = curveIds;
-                    break;
-                case 'rectangle':
-                    points = this.rectangleToPoints(primitive);
-                    break;
+                    return this.circleToPath(primitive);
+
                 case 'obround':
-                    points = this.obroundToPoints(primitive, generatedCurveIds);
-                    break;
-                case 'arc':
-                    points = this.arcToPoints(primitive);
-                    break;
-                case 'elliptical_arc':
-                    points = this.ellipticalArcToPoints(primitive);
-                    break;
-                case 'bezier':
-                    points = this.bezierToPoints(primitive);
-                    break;
+                    return this.obroundToPath(primitive);
+
+                case 'rectangle': {
+                    const points = this.rectangleToPoints(primitive);
+                    if (points.length === 0) return null;
+                    return new PathPrimitive([{
+                        points: points,
+                        isHole: false,
+                        nestingLevel: 0,
+                        parentId: null,
+                        arcSegments: [],
+                        curveIds: []
+                    }], {
+                        ...primitive.properties,
+                        originalType: 'rectangle'
+                    });
+                }
+
+                case 'arc': {
+                    const points = this.arcToPoints(primitive);
+                    if (points.length === 0) return null;
+                    // Preserve arc segment metadata
+                    return new PathPrimitive([{
+                        points: points,
+                        isHole: false,
+                        nestingLevel: 0,
+                        parentId: null,
+                        arcSegments: [{
+                            startIndex: 0,
+                            endIndex: points.length - 1,
+                            center: primitive.center,
+                            radius: primitive.radius,
+                            startAngle: primitive.startAngle,
+                            endAngle: primitive.endAngle,
+                            clockwise: primitive.clockwise
+                        }],
+                        curveIds: []
+                    }], {
+                        ...primitive.properties,
+                        originalType: 'arc'
+                    });
+                }
+
+                case 'elliptical_arc': {
+                    const points = this.ellipticalArcToPoints(primitive);
+                    if (points.length === 0) return null;
+                    return new PathPrimitive([{
+                        points: points,
+                        isHole: false,
+                        nestingLevel: 0,
+                        parentId: null,
+                        arcSegments: [],
+                        curveIds: []
+                    }], {
+                        ...primitive.properties,
+                        originalType: 'elliptical_arc'
+                    });
+                }
+
+                case 'bezier': {
+                    const points = this.bezierToPoints(primitive);
+                    if (points.length === 0) return null;
+                    return new PathPrimitive([{
+                        points: points,
+                        isHole: false,
+                        nestingLevel: 0,
+                        parentId: null,
+                        arcSegments: [],
+                        curveIds: []
+                    }], {
+                        ...primitive.properties,
+                        originalType: 'bezier'
+                    });
+                }
+
                 default:
-                    console.warn(`[GeoUtils] primitiveToPath: Unknown primitive type ${primitive.type}`);
+                    console.warn(`[GeoUtils] primitiveToPath: Unknown type ${primitive.type}`);
                     return null;
             }
-
-            if (points.length === 0) return null;
-
-            const contour = {
-                points: points,
-                isHole: false,
-                nestingLevel: 0,
-                parentId: null,
-                arcSegments: arcSegments,
-                curveIds: generatedCurveIds
-            };
-
-            return new PathPrimitive([contour], {
-                ...primitive.properties,
-                originalType: primitive.type
-            });
         },
 
         /**
@@ -931,10 +1103,10 @@
 
             const precision = geomConfig.coordinatePrecision || 0.001;
 
-            // 1: Build adjacency graph
+            // Build adjacency graph
             const graph = this.buildSegmentGraph(segments);
 
-            // 2: Find Eulerian path (if exists)
+            // Find Eulerian path (if exists)
             const orderedSegments = this.findClosedPath(graph, segments);
 
             if (!orderedSegments || orderedSegments.length !== segments.length) {
@@ -942,7 +1114,7 @@
                 return null;
             }
 
-            // 3: Build final PathPrimitive with correct arc indices
+            // Build final PathPrimitive with correct arc indices
             return this.assembleClosedPath(orderedSegments, precision);
         },
 

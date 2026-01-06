@@ -5,11 +5,10 @@
     "author": "Eltryus - Ricardo Marques",
     "see": "https://github.com/RicardoJCMarques/EasyTrace5000",
     "license": "AGPL-3.0-or-later",
-    "copyright": "Copyright (C) 2025 Eltryus"
+    "copyright": "Copyright (C) 2026 Eltryus"
   },
 
   "version": "0.1",
-  "lastModified": "2025-11-13",
   
   "id": "light",
   "colors": {
@@ -98,6 +97,15 @@
     "bw":{
       "black": "#000000",
       "white": "#ffffff"
+    },
+    "pipelines": {
+      "cnc": "#cc6600",
+      "laser": "#9333ea"
+    },
+    "interaction": {
+      "sponsorship": "#4f46e5",
+      "sponsorshipText": "#5b21b6",
+      "kofi": "#0d9488"
     }
   }
 }

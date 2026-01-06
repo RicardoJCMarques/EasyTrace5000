@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -64,61 +64,56 @@
         }
 
         /**
-         * Step 1: Determines the distances along the path where tabs should be placed.
+         * Step 1: Determines tab locations along the path perimeter.
          */
         _calculateTabRanges(geometrySource, tabCount, tabWidth, totalLength) {
             const tabHalfWidth = tabWidth / 2;
-            let requestedTabs = tabCount;
+            let remainingTabs = tabCount;
             const placedTabs = [];
 
             const segments = this._mapSegmentsToDistance(geometrySource);
 
+            // Find qualifying straight segments (linear and long enough)
             const straightSegments = segments
                 .filter(s => s.type === 'linear' && s.length >= this.MIN_SEGMENT_LENGTH)
                 .sort((a, b) => b.length - a.length);
 
-            const neededTabs = Math.min(requestedTabs, straightSegments.length);
-
-            // Priority 1: Place tabs in the center of the longest straight segments
-            for (let i = 0; i < neededTabs; i++) {
+            // Priority 1: Place tabs centered on longest straight segments
+            const tabsOnStraight = Math.min(remainingTabs, straightSegments.length);
+            for (let i = 0; i < tabsOnStraight; i++) {
                 const segment = straightSegments[i];
                 const centerDist = segment.startDistance + segment.length / 2;
-                
-                const start = centerDist - tabHalfWidth;
-                const end = centerDist + tabHalfWidth;
-                
-                placedTabs.push({ start, end });
-                requestedTabs--;
+                placedTabs.push({
+                    start: centerDist - tabHalfWidth,
+                    end: centerDist + tabHalfWidth
+                });
+                remainingTabs--;
             }
 
-            // Priority 2: Equidistant Fallback
-            if (requestedTabs > 0) {
-                const totalTabsAlreadyPlaced = placedTabs.length;
-                const totalSlots = totalTabsAlreadyPlaced + requestedTabs;
-                const totalIntervals = totalLength / totalSlots;
+            // Priority 2: Equidistant placement for remaining tabs
+            if (remainingTabs > 0) {
+                const totalSlots = placedTabs.length + remainingTabs;
+                const spacing = totalLength / totalSlots;
 
-                let currentCenter = totalIntervals / 2;
+                for (let i = 0; i < totalSlots && remainingTabs > 0; i++) {
+                    const centerDist = (spacing / 2) + (i * spacing);
+                    const proposedStart = centerDist - tabHalfWidth;
+                    const proposedEnd = centerDist + tabHalfWidth;
 
-                for (let i = 0; i < totalSlots; i++) {
-                    const checkStart = currentCenter - tabHalfWidth;
-                    const checkEnd = currentCenter + tabHalfWidth;
+                    // Check overlap with already-placed tabs
+                    const overlaps = placedTabs.some(tab =>
+                        tab.start < proposedEnd + this.TOLERANCE &&
+                        tab.end > proposedStart - this.TOLERANCE
+                    );
 
-                    let overlaps = false;
-                    for (const tab of placedTabs) {
-                        if (tab.start < checkEnd && tab.end > checkStart) {
-                            overlaps = true;
-                            break;
-                        }
-                    }
-
-                    if (!overlaps && requestedTabs > 0) {
-                        // Handle wrapping for equidistant tabs (if they are close to the seam)
-                        const wrappedTabs = this._handleBoundary({ start: checkStart, end: checkEnd }, totalLength);
+                    if (!overlaps) {
+                        const wrappedTabs = this._handleBoundary(
+                            { start: proposedStart, end: proposedEnd },
+                            totalLength
+                        );
                         placedTabs.push(...wrappedTabs);
-                        requestedTabs--;
+                        remainingTabs--;
                     }
-
-                    currentCenter += totalIntervals;
                 }
             }
 

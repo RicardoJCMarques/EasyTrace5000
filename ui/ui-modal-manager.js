@@ -8,7 +8,7 @@
 
  /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -44,8 +44,20 @@
             // Modal references
             this.modals = {
                 welcome: document.getElementById('welcome-modal'),
-                file: document.getElementById('file-modal'),
-                gcode: document.getElementById('gcode-export-modal')
+                quickstart: document.getElementById('quickstart-modal'),
+                gcode: document.getElementById('gcode-export-modal'),
+                support: document.getElementById('support-modal')
+            };
+
+            // Track selected pipeline
+            this.selectedPipeline = 'cnc'; // default
+
+            // Track quickstart files
+            this.quickstartFiles = {
+                isolation: null,
+                drill: null,
+                clearing: null,
+                cutout: null
             };
 
             // Toolpath-specific state
@@ -74,6 +86,24 @@
                     });
                 }
             });
+
+            // Deep link listener
+            window.addEventListener('hashchange', () => this.checkHash());
+        }
+
+        checkHash() {
+            // Remove the '#' character
+            const hash = window.location.hash.substring(1);
+
+            // List of modals that are safe to open directly via URL
+            const allowList = ['support', 'welcome', 'quickstart']; // (Excludes 'gcode' because it needs app state to work)
+
+            if (allowList.includes(hash)) {
+                this.showModal(hash);
+
+                // This removes #modifier from the URL bar without reloading
+                history.replaceState(null, null, window.location.pathname);
+            }
         }
 
         showPlaceholderPreview() {
@@ -128,9 +158,130 @@
             }
         }
 
-        // Welcome modal handler
+        showSupportHandler() {
+            const modal = this.modals.support;
+
+            // Define the email parts to confuse basic scrapers
+            const user = 'sponsor';
+            const domain = 'eltryus';
+            const tld = 'design';
+
+            // Reassemble
+            const email = `${user}@${domain}.${tld}`;
+
+            // Get elements
+            const oldBtn = document.getElementById('support-email-copy');
+            const closeBtn = modal.querySelector('.modal-close');
+
+            if (oldBtn) {
+                // Clone the button to remove old listeners (critical for SPAs)
+                const newBtn = oldBtn.cloneNode(true);
+                oldBtn.parentNode.replaceChild(newBtn, oldBtn);
+
+                // Get the text span inside the new button
+                const textSpan = newBtn.querySelector('#support-email-text');
+
+                // Reset state (in case it was stuck on "Copied!")
+                if (textSpan) textSpan.textContent = email;
+                newBtn.classList.remove('copied');
+
+                // Attach Click Listener
+                newBtn.onclick = async () => {
+                    try {
+                        await navigator.clipboard.writeText(email);
+
+                        // Feedback: Change text inside button, leave external hint alone
+                        if (textSpan) textSpan.textContent = 'Copied to clipboard!';
+                        newBtn.classList.add('copied');
+
+                        // Revert after 2 seconds
+                        setTimeout(() => {
+                            if (textSpan) textSpan.textContent = email;
+                            newBtn.classList.remove('copied');
+                        }, 2000);
+
+                    } catch (err) {
+                        console.error('Copy failed:', err);
+                        // Fallback: Select text
+                        if (textSpan) {
+                            const range = document.createRange();
+                            range.selectNode(textSpan);
+                            window.getSelection().removeAllRanges();
+                            window.getSelection().addRange(range);
+                        }
+                    }
+                };
+            }
+
+            // Close Button Handler
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    this.closeModal();
+                    // Clean hash if closing the support modal
+                    if (window.location.hash === '#support') {
+                        history.pushState("", document.title, window.location.pathname + window.location.search);
+                    }
+                };
+            }
+        }
+
         showWelcomeHandler(options) {
             const modal = this.modals.welcome;
+
+            // CNC card
+            const cncCard = document.getElementById('pipeline-cnc');
+            if (cncCard) {
+                cncCard.onclick = (e) => {
+                    e.preventDefault();
+                    this.selectedPipeline = 'cnc';
+                    this.closeModal();
+
+                    const key = storageKeys.hideWelcome;
+                    const hideWelcome = localStorage.getItem(key);
+
+                    if (!hideWelcome) {
+                        this.showModal('quickstart', options);
+                    }
+                };
+            }
+
+            // Laser card - opens support modal
+            const laserCard = document.getElementById('pipeline-laser');
+            if (laserCard) {
+                laserCard.onclick = (e) => {
+                    e.preventDefault();
+                    this.showModal('support');
+                };
+            }
+
+            // Sponsor slots and CTA
+            ['sponsor-slot-1', 'sponsor-slot-2', 'sponsor-slot-3', 'sponsor-contact-cta'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.onclick = (e) => {
+                        e.preventDefault();
+                        this.showModal('support');
+                    };
+                }
+            });
+
+            // Close button
+            const closeBtn = modal?.querySelector('.modal-close');
+            if (closeBtn) {
+                closeBtn.onclick = () => this.closeModal();
+            }
+        }
+
+        showQuickstartHandler(options) {
+            const modal = this.modals.quickstart;
+
+            // Reset file state
+            this.quickstartFiles = {
+                isolation: null,
+                drill: null,
+                clearing: null,
+                cutout: null
+            };
 
             // Setup example dropdown
             const select = document.getElementById('pcb-example-select');
@@ -144,7 +295,10 @@
                 });
             }
 
-            // Setup buttons
+            // Setup compact drop zones
+            this.setupQuickstartDropZones();
+
+            // Load example button
             const loadExampleBtn = document.getElementById('load-example-btn');
             if (loadExampleBtn) {
                 loadExampleBtn.onclick = async () => {
@@ -152,163 +306,146 @@
                     if (selectedExample && this.controller.loadExample) {
                         await this.controller.loadExample(selectedExample);
                     }
-                    this.handleWelcomeClose();
+                    this.handleQuickstartClose();
                 };
             }
 
-            const openFilesBtn = document.getElementById('open-files-btn');
-            if (openFilesBtn) {
-                openFilesBtn.onclick = () => {
-                    // Don't close the welcome modal, just show 'file' on top of it. showModal() will handle the stack.
-                    this.showModal('file'); 
-
-                    // Handle the "don't show again" checkbox
-                    const dontShowCheckbox = document.getElementById('dont-show-welcome');
-                    const key = storageKeys.hideWelcome || 'pcbcam-hide-welcome';
-                    if (dontShowCheckbox?.checked) {
-                        localStorage.setItem(key, 'true');
-                    }
+            // Process files button
+            const processBtn = document.getElementById('process-quickstart-files-btn');
+            if (processBtn) {
+                processBtn.disabled = true;
+                processBtn.onclick = async () => {
+                    await this.processQuickstartFiles();
+                    this.handleQuickstartClose();
                 };
             }
 
+            // Start empty button
             const startEmptyBtn = document.getElementById('start-empty-btn');
             if (startEmptyBtn) {
-                startEmptyBtn.onclick = () => {
-                    this.handleWelcomeClose();
-                    if (this.controller.ensureCoordinateSystem) {
-                        this.controller.ensureCoordinateSystem();
-                    }
-                };
+                startEmptyBtn.onclick = () => this.handleQuickstartClose();
             }
 
-            const closeBtn = modal.querySelector('.modal-close');
+            // Close button
+            const closeBtn = modal?.querySelector('.modal-close');
             if (closeBtn) {
-                closeBtn.onclick = () => {
-                    this.handleWelcomeClose();
+                closeBtn.onclick = () => this.handleQuickstartClose();
+            }
+        }
+
+        setupQuickstartDropZones() {
+            const opTypes = ['isolation', 'drill', 'clearing', 'cutout'];
+
+            opTypes.forEach(opType => {
+                const zone = document.getElementById(`qs-${opType}-zone`);
+                if (!zone) return;
+
+                const fileInput = zone.querySelector('input[type="file"]');
+                const fileLabel = zone.querySelector('.zone-file');
+
+                // Reset visual state
+                zone.classList.remove('has-file', 'dragging');
+                if (fileLabel) fileLabel.textContent = '';
+
+                // Click to browse
+                zone.onclick = () => fileInput?.click();
+
+                // File input change
+                if (fileInput) {
+                    fileInput.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (file) this.handleQuickstartFile(file, opType, zone);
+                    };
+                }
+
+                // Drag events
+                zone.ondragover = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    zone.classList.add('dragging');
                 };
+
+                zone.ondragleave = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    zone.classList.remove('dragging');
+                };
+
+                zone.ondrop = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    zone.classList.remove('dragging');
+                    const file = e.dataTransfer.files[0];
+                    if (file) this.handleQuickstartFile(file, opType, zone);
+                };
+            });
+        }
+
+        handleQuickstartFile(file, opType, zone) {
+            const validation = this.controller.core?.validateFileType(file.name, opType);
+            if (validation && !validation.valid) {
+                this.ui?.statusManager?.showStatus(validation.message, 'error');
+                return;
+            }
+
+            this.quickstartFiles[opType] = file;
+
+            // Update zone visual
+            zone.classList.add('has-file');
+            const fileLabel = zone.querySelector('.zone-file');
+            if (fileLabel) {
+                fileLabel.textContent = file.name;
+            }
+
+            this.updateQuickstartProcessButton();
+        }
+
+        updateQuickstartProcessButton() {
+            const processBtn = document.getElementById('process-quickstart-files-btn');
+            if (processBtn) {
+                const hasFiles = Object.values(this.quickstartFiles).some(f => f !== null);
+                processBtn.disabled = !hasFiles;
             }
         }
 
-        handleWelcomeClose() {
-            const dontShowCheckbox = document.getElementById('dont-show-welcome');
-            const key = storageKeys.hideWelcome || 'pcbcam-hide-welcome';
-            if (dontShowCheckbox?.checked) {
-                localStorage.setItem(key, 'true');
+        async processQuickstartFiles() {
+            for (const [type, file] of Object.entries(this.quickstartFiles)) {
+                if (file) {
+                    await this.controller.processFile(file, type);
+                }
             }
-            this.closeModal();
-            if (this.controller.ensureCoordinateSystem) {
-                this.controller.ensureCoordinateSystem();
-            }
-        }
 
-        // File modal handler
-        showFileHandler(options) { // Review - Useless parameter?
-            this.controller.uploadedFiles = {
+            // Reset
+            this.quickstartFiles = {
                 isolation: null,
                 drill: null,
                 clearing: null,
                 cutout: null
             };
 
-            // Setup drop zones
-            ['isolation', 'drill', 'clearing', 'cutout'].forEach(type => {
-                this.setupDropZone(type);
-            });
-
-            // Process button
-            const processBtn = document.getElementById('process-files-btn');
-            if (processBtn) {
-                processBtn.disabled = true;
-                processBtn.onclick = async () => {
-                    await this.controller.processUploadedFiles();
-                    this.modalStack = []; // Clear the modal stack completely
-                    this.closeModal();    // Now this will close the file modal and not reopen the welcome modal
-                };
+            // Update UI
+            if (this.ui?.navTreePanel) {
+                this.ui.navTreePanel.expandAll();
             }
 
-            // Back button
-            const backBtn = document.getElementById('back-files-btn');
-            if (backBtn) {
-                backBtn.onclick = () => {
-                    this.closeModal();
-                    this.controller.uploadedFiles = {};
-                };
-            }
-
-            // Close button
-            const closeBtn = this.modals.file.querySelector('.modal-close');
-            if (closeBtn) {
-                closeBtn.onclick = () => {
-                    this.closeModal();
-                    this.controller.uploadedFiles = {};
-                };
+            if (this.ui?.renderer) {
+                setTimeout(() => {
+                    this.ui.renderer.core.zoomFit();
+                }, 100);
             }
         }
 
-        setupDropZone(opType) {
-            const dropZone = document.getElementById(`${opType}-drop-zone`);
-            const fileInput = document.getElementById(`${opType}-file`);
-            const status = document.getElementById(`${opType}-status`);
-
-            if (!dropZone || !fileInput) return;
-
-            // Click to browse
-            dropZone.addEventListener('click', () => fileInput.click());
-
-            // File input change
-            fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    this.handleFileForOperation(file, opType);
-                }
-            });
-
-            // Drag events
-            dropZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                dropZone.classList.add('dragging');
-            });
-
-            dropZone.addEventListener('dragleave', () => {
-                dropZone.classList.remove('dragging');
-            });
-
-            dropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropZone.classList.remove('dragging');
-                const files = Array.from(e.dataTransfer.files);
-                if (files.length > 0) {
-                    this.handleFileForOperation(files[0], opType);
-                }
-            });
-
-            // Clear status
-            if (status) {
-                status.textContent = '';
-                status.className = 'zone-status';
-            }
-        }
-
-        handleFileForOperation(file, opType) {
-            const validation = this.controller.core?.validateFileType(file.name, opType);
-            if (validation && !validation.valid) {
-                const status = document.getElementById(`${opType}-status`);
-                if (status) {
-                    status.textContent = validation.message;
-                    status.className = 'zone-status error';
-                }
-                return;
+        handleQuickstartClose() {
+            // Check the "Don't show again" checkbox
+            const dontShowCheckbox = document.getElementById('dont-show-quickstart');
+            if (dontShowCheckbox && dontShowCheckbox.checked) {
+                // Save preference to localStorage
+                localStorage.setItem(this.controller.config.storageKeys.hideWelcome, 'true');
             }
 
-            this.controller.uploadedFiles[opType] = file;
-
-            const status = document.getElementById(`${opType}-status`);
-            if (status) {
-                status.textContent = `✓ ${file.name}`;
-                status.className = 'zone-status success';
-            }
-
-            this.updateProcessButton();
+            // Actually close the modal
+            this.closeModal();
         }
 
         updateProcessButton() {

@@ -5,7 +5,7 @@
     "author": "Eltryus - Ricardo Marques",
     "see": "https://github.com/RicardoJCMarques/EasyTrace5000",
     "license": "AGPL-3.0-or-later",
-    "copyright": "Copyright (C) 2025 Eltryus"
+    "copyright": "Copyright (C) 2026 Eltryus"
   },
 
   "language": "en",
@@ -330,6 +330,7 @@
         "feedRate": "Speed at which the tool moves while cutting (mm/min or in/min).",
         "plungeRate": "Speed at which the tool descends into material (mm/min or in/min). Usually slower than feed rate.",
         "spindleSpeed": "Rotation speed of the spindle (RPM). Higher speeds for smaller tools.",
+        "spindleDwell": "Time in seconds to wait after starting the spindle (M3) before moving. Essential high inertia spindles that need extra time to spin up.",
         "direction": "Climb milling: tool rotation matches feed direction (better finish). Conventional: opposite direction (more stable).",
         "entryType": "How the tool enters the material. Plunge: straight down. Ramp: diagonal. Helix: spiral down.",
         "cannedCycle": "Pre-programmed drill cycle. G83 (peck drilling) retracts periodically to clear chips.",

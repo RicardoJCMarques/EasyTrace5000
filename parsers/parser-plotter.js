@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -298,14 +298,40 @@
                             break;
                         case 'arc':
                             if (Math.abs(seg.rx - seg.ry) < tolerance && Math.abs(seg.phi) < tolerance) {
-                                // This is a circular arc
-                                arcSegments.push({
-                                    startIndex: points.length - 1,
-                                    center: seg.center, radius: seg.rx,
-                                    startAngle: seg.startAngle, endAngle: seg.endAngle,
-                                    clockwise: seg.clockwise
-                                });
+                                // This is a circular arc - register it
+                                let curveId = null;
+                                if (window.globalCurveRegistry) {
+                                    curveId = window.globalCurveRegistry.register({
+                                        type: 'arc',
+                                        center: { x: seg.center.x, y: seg.center.y },
+                                        radius: seg.rx,
+                                        startAngle: seg.startAngle,
+                                        endAngle: seg.endAngle,
+                                        clockwise: seg.clockwise,
+                                        source: 'svg_parser'
+                                    });
+                                }
+
+                                // Capture start index before adding endpoint
+                                const arcStartIndex = points.length - 1;
+
+                                // Add the endpoint
                                 points.push(seg.p1);
+
+                                // Capture end index after adding endpoint
+                                const arcEndIndex = points.length - 1;
+
+                                // Create arc segment with both indices
+                                arcSegments.push({
+                                    startIndex: arcStartIndex,
+                                    endIndex: arcEndIndex,
+                                    center: seg.center, 
+                                    radius: seg.rx,
+                                    startAngle: seg.startAngle, 
+                                    endAngle: seg.endAngle,
+                                    clockwise: seg.clockwise,
+                                    curveId: curveId
+                                });
                             } else {
                                 // This is an elliptical arc, tessellate it
                                 const tessellated = GeometryUtils.tessellateEllipticalArc(
@@ -366,7 +392,7 @@
                         nestingLevel: isHole ? 1 : 0, // Simple nesting // Review - data structure can handle more, but better to limit hierarchy levels?
                         parentId: isHole ? 0 : null,  // Assume nested in first contour
                         arcSegments: arcSegments,
-                        curveIds: []
+                        curveIds: arcSegments.map(a => a.curveId).filter(Boolean)
                     });
                 }
             }); 

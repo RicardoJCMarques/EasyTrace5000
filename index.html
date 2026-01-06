@@ -1,4 +1,4 @@
-<!--
+<!--!
 /**
  * @file        index.html
  * @description EasyTrace5000 entry point
@@ -9,7 +9,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -506,10 +506,10 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <a href="/LICENSE" target="_blank" title="View License">AGPLv3 Licensed</a> |
-                <a href="doc" target="_blank" title="Documentation">Doc</a> |
-                <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo">GitHub</a> |
-                <a href="https://ko-fi.com/eltryus" target="_blank" title="Support the Project">Support Development</a>
+                <a href="/LICENSE" target="_blank" title="View License" draggable="false">AGPLv3 Licensed</a> |
+                <a href="doc" target="_blank" title="Documentation" draggable="false">Doc</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo" draggable="false">GitHub</a> |
+                <a href="#" id="footer-support-link" title="Support the Project" draggable="false">Support Development</a>
             </div>
         </div>
          <!-- Floating Log Panel -->
@@ -577,135 +577,255 @@
 
     <!-- Welcome Modal -->
     <div id="welcome-modal" class="modal">
-        <div class="modal-content modal--upload">
+        <div class="modal-content">
             <div class="modal-header">
                 <h2>Welcome to EasyTrace5000</h2>
-                <button class="modal-close" id="welcome-close">×</button>
+                <button class="modal-close" id="welcome-close" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body">
-                <p class="welcome-subtitle">Advanced isolation routing for PCB manufacturing</p>
+                <p class="pipeline-subtitle">Select your manufacturing workflow</p>
 
-                <div class="upload-zones welcome-upload-zones">
+                <div class="pipeline-selection">
+                    <a href="#" class="pipeline-card pipeline-card--active" id="pipeline-cnc" draggable="false">
+                        <div class="pipeline-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                            </svg>
+                        </div>
+                        <h3>CNC Milling</h3>
+                        <span class="pipeline-badge pipeline-badge--stable">Ready</span>
+                        <p class="pipeline-desc">G-code generation for isolation routing, drilling, copper clearing, and board cutout.</p>
+                        <span class="pipeline-action">Start with CNC</span>
+                    </a>
 
-                    <div class="upload-zone welcome-example-zone">
-                        <select id="pcb-example-select" class="example-select">
-                            <option value="example1">Example 1</option>
-                        </select>
-                        <button class="btn btn--primary btn--primary btn--block" id="load-example-btn">
-                            <span>📦</span> Load Example Project
-                        </button>
-                        <p class="welcome-example-help">
-                            Select an example to explore functionality.
-                        </p>
-                    </div>
-
-                    <div class="origin-buttons">
-                        <button class="btn btn--secondary btn--secondary" id="open-files-btn">
-                            <span>📂</span> Open Files
-                        </button>
-                        <button class="btn btn--secondary btn--secondary" id="start-empty-btn">
-                            <span>📋</span> Start Empty
-                        </button>
-                    </div>
+                    <a href="#" class="pipeline-card pipeline-card--dev" id="pipeline-laser" draggable="false">
+                        <div class="pipeline-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M12 2v8"/>
+                                <path d="M12 14v8"/>
+                                <circle cx="12" cy="12" r="2"/>
+                                <path d="M4.93 4.93l4.24 4.24"/>
+                                <path d="M14.83 14.83l4.24 4.24"/>
+                            </svg>
+                        </div>
+                        <h3>Laser Processing</h3>
+                        <span class="pipeline-badge pipeline-badge--dev">Soon™</span>
+                        <p class="pipeline-desc">Vector/raster output for ablation and stencils. Maybe drill/cutout (UV) and soldering (Fiber)?</p>
+                        <span class="pipeline-action">Support Development</span>
+                    </a>
                 </div>
 
+                <div class="sponsors-section">
+                    <h4>Project Sponsors</h4>
+                    <div class="sponsor-grid">
+                        <a href="#" class="sponsor-slot" id="sponsor-slot-1" draggable="false">
+                            <div class="slot-content">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M12 5v14M5 12h14"/>
+                                </svg>
+                                <span style="margin-top: 4px;">Your Logo</span>
+                            </div>
+                        </a>
+                        <a href="#" class="sponsor-slot" id="sponsor-slot-2" draggable="false">
+                            <div class="slot-content">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M12 5v14M5 12h14"/>
+                                </svg>
+                                <span style="margin-top: 4px;">Your Logo</span>
+                            </div>
+                        </a>
+                        <a href="#" class="sponsor-slot" id="sponsor-slot-3" draggable="false">
+                            <div class="slot-content">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M12 5v14M5 12h14"/>
+                                </svg>
+                                <span style="margin-top: 4px;">Your Logo</span>
+                            </div>
+                        </a>
+                    </div>
+                    <a href="#" class="sponsor-cta" id="sponsor-contact-cta" draggable="false">Learn about becoming a sponsor</a>
+                </div>
             </div>
             <div class="modal-footer welcome-footer">
-                <label class="checkbox-label welcome-checkbox-label">
-                    <input type="checkbox" id="dont-show-welcome">
-                    <span>Don't show this again</span>
-                </label>
-                <p class="welcome-license-text">
-                    AGPLv3 Licensed
-                </p>
+                <div class="welcome-footer-links">
+                    <a href="LICENSE" target="_blank" draggable="false">AGPLv3</a>
+                    <span class="separator"></span>
+                    <a href="doc" target="_blank" draggable="false">Documentation</a>
+                    <span class="separator"></span>
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Multi-Zone File Upload Modal -->
-    <div id="file-modal" class="modal">
-        <div class="modal-content modal--upload">
-            <div class="modal-header">
-                <h2>Add PCB Files</h2>
-                <button class="modal-close" id="file-modal-close">×</button>
+    <!-- Quickstart Modal -->
+    <div id="quickstart-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header header-with-subtitle">
+                <div class="header-text">
+                    <h2>Start a Project</h2>
+                    <span class="modal-subtitle">Load some PCB manufacturing files</span>
+                </div>
+                <button class="modal-close" id="welcome-close" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body">
-                <div class="upload-zones">
-                    <div class="upload-zone" data-op-type="isolation">
-                        <div class="zone-header">
-                            <span class="zone-icon">🎯</span>
-                            <h3>Isolation Routing</h3>
-                        </div>
-                        <div class="file-drop-zone" id="isolation-drop-zone">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="17 8 12 3 7 8"></polyline>
-                                <line x1="12" y1="3" x2="12" y2="15"></line>
-                            </svg>
-                            <p>Drop copper layer files</p>
-                            <span class="file-types">.gbr, .ger, .gtl, .gbl</span>
-                            <input type="file" id="isolation-file" accept=".gbr,.ger,.gtl,.gbl,.gts,.gbs" hidden>
-                        </div>
-                        <div class="zone-status" id="isolation-status"></div>
+                <div class="quickstart-content">
+                    <!-- Example loader row -->
+                    <div class="quickstart-example-row">
+                        <label for="pcb-example-select">Load example:</label>
+                        <select id="pcb-example-select" class="example-select">
+                            <option value="example1">Example 1</option>
+                        </select>
+                        <button class="btn btn--secondary" id="load-example-btn">Load</button>
                     </div>
 
-                    <div class="upload-zone" data-op-type="drill">
-                        <div class="zone-header">
-                            <span class="zone-icon">🔧</span>
-                            <h3>Drilling</h3>
-                        </div>
-                        <div class="file-drop-zone" id="drill-drop-zone">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="17 8 12 3 7 8"></polyline>
-                                <line x1="12" y1="3" x2="12" y2="15"></line>
-                            </svg>
-                            <p>Drop drill files</p>
-                            <span class="file-types">.drl, .xln, .txt</span>
-                            <input type="file" id="drill-file" accept=".drl,.xln,.txt,.drill,.exc" hidden>
-                        </div>
-                        <div class="zone-status" id="drill-status"></div>
-                    </div>
+                    <!-- File upload section -->
+                    <div class="quickstart-upload-section">
+                        <p>Or drop files into each operation type:</p>
 
-                    <div class="upload-zone" data-op-type="clearing">
-                        <div class="zone-header">
-                            <span class="zone-icon">🔄</span>
-                            <h3>Copper Clearing</h3>
-                        </div>
-                        <div class="file-drop-zone" id="clearing-drop-zone">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="17 8 12 3 7 8"></polyline>
-                                <line x1="12" y1="3" x2="12" y2="15"></line>
-                            </svg>
-                            <p>Drop keepout/ground files</p>
-                            <span class="file-types">.gbr, .gpl, .gnd</span>
-                            <input type="file" id="clearing-file" accept=".gbr,.ger,.gpl,.gp1,.gnd" hidden>
-                        </div>
-                        <div class="zone-status" id="clearing-status"></div>
-                    </div>
+                        <div class="quickstart-upload-grid">
+                            <div class="quickstart-drop-zone" data-op-type="isolation" id="qs-isolation-zone">
+                                <svg width="24" height="24" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <circle cx="10" cy="10" r="8"/>
+                                    <circle cx="10" cy="10" r="5"/>
+                                    <circle cx="10" cy="10" r="2"/>
+                                </svg>
+                                <span class="zone-label">Isolation Routing</span>
+                                <span class="zone-types">.gbr, .gtl, .gbl, .svg</span>
+                                <span class="zone-hint">Click or drop</span>
+                                <span class="zone-file"></span>
+                                <input type="file" accept=".gbr,.ger,.gtl,.gbl,.gts,.gbs,.svg" hidden>
+                            </div>
 
-                    <div class="upload-zone" data-op-type="cutout">
-                        <div class="zone-header">
-                            <span class="zone-icon">✂️</span>
-                            <h3>Board Cutout</h3>
+                            <div class="quickstart-drop-zone" data-op-type="drill" id="qs-drill-zone">
+                                <svg width="24" height="24" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <circle cx="10" cy="10" r="6"/>
+                                    <line x1="10" y1="4" x2="10" y2="16"/>
+                                    <line x1="4" y1="10" x2="16" y2="10"/>
+                                </svg>
+                                <span class="zone-label">Drilling</span>
+                                <span class="zone-types">.drl, .xln, .txt</span>
+                                <span class="zone-hint">Click or drop</span>
+                                <span class="zone-file"></span>
+                                <input type="file" accept=".drl,.xln,.txt,.drill,.exc" hidden>
+                            </div>
+
+                            <div class="quickstart-drop-zone" data-op-type="clearing" id="qs-clearing-zone">
+                                <svg width="24" height="24" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M14 8 A6 6 0 1 1 6 8"/>
+                                    <polyline points="14,4 14,8 10,8"/>
+                                </svg>
+                                <span class="zone-label">Copper Clearing</span>
+                                <span class="zone-types">.gbr, .gpl, .svg</span>
+                                <span class="zone-hint">Click or drop</span>
+                                <span class="zone-file"></span>
+                                <input type="file" accept=".gbr,.ger,.gpl,.gp1,.gnd,.svg" hidden>
+                            </div>
+
+                            <div class="quickstart-drop-zone" data-op-type="cutout" id="qs-cutout-zone">
+                                <svg width="24" height="24" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <circle cx="6" cy="6" r="3"/>
+                                    <circle cx="6" cy="16" r="3"/>
+                                    <line x1="9" y1="8" x2="20" y2="2"/>
+                                    <line x1="9" y1="14" x2="20" y2="20"/>
+                                </svg>
+                                <span class="zone-label">Board Cutout</span>
+                                <span class="zone-types">.gbr, .gko, .gm1, .svg</span>
+                                <span class="zone-hint">Click or drop</span>
+                                <span class="zone-file"></span>
+                                <input type="file" accept=".gbr,.gko,.gm1,.outline,.mill,.svg" hidden>
+                            </div>
                         </div>
-                        <div class="file-drop-zone" id="cutout-drop-zone">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="17 8 12 3 7 8"></polyline>
-                                <line x1="12" y1="3" x2="12" y2="15"></line>
-                            </svg>
-                            <p>Drop outline files</p>
-                            <span class="file-types">.gbr, .gko, .gm1</span>
-                            <input type="file" id="cutout-file" accept=".gbr,.gko,.gm1,.outline,.mill" hidden>
-                        </div>
-                        <div class="zone-status" id="cutout-status"></div>
+
+                        <button class="btn btn--primary btn--block" id="process-quickstart-files-btn" disabled>
+                            Process Files
+                        </button>
+
+                        <p class="quickstart-canvas-hint">
+                            Note: You can also drag files onto the workspace canvas or use the sidebar + buttons.
+                        </p>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn btn--primary btn--primary" id="process-files-btn" disabled>Process Files</button>
-                    <button class="btn btn--secondary btn--secondary" id="back-files-btn">Back</button>
+            </div>
+            <div class="modal-footer quickstart-footer">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="dont-show-quickstart">
+                    <span>Don't show this again</span>
+                </label>
+                <button class="btn btn--secondary" id="start-empty-btn">Start Empty</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Support Modal -->
+    <div id="support-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Support EasyTrace5000</h2>
+                <button class="modal-close" id="support-close" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="support-content">
+                    <p class="support-intro">
+                        This project is free and open-source. Your support helps cover development time, hosting costs, and the test hardware needed to build the upcoming Laser pipeline
+                    </p>
+
+                    <div class="support-options">
+                        <div class="support-card support-card--sponsorship">
+                            <h3>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20 7h-9m3 10H5m16-5h-5M9 7l3 10m-8 0l3-10"/>
+                                </svg>
+                                Become a Sponsor
+                            </h3>
+                            <p>
+                                Gain visibility with your logo on the welcome screen, documentation, and repository. We are also actively seeking hardware partnerships for testing the upcoming Laser pipeline.
+                            </p>
+                            <div class="support-email-container">
+                                <span class="support-email-hint">Click to copy email</span>
+                                <button class="support-email-btn" id="support-email-copy" type="button">
+                                    <span id="support-email-text">sponsor@eltryus.design</span>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2"/>
+                                        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="support-card support-card--kofi">
+                            <h3>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                                </svg>
+                                Support the Project
+                            </h3>
+                            <p>
+                                Individual contributions directly fund the project's infrastructure and development time. Any amount helps keep the lights on.
+                            </p>
+                            <div style="margin-top: auto;">
+                                <a href="https://ko-fi.com/eltryus" target="_blank" class="btn btn--kofi" draggable="false">
+                                    Support on Ko-fi
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -716,7 +836,12 @@
         <div class="modal-content modal--gcode">
             <div class="modal-header">
                 <h2>Toolpath Manager & Export</h2>
-                <button class="modal-close" id="gcode-modal-close">×</button>
+                <button class="modal-close" id="welcome-close" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body">
                 <div class="gcode-options">

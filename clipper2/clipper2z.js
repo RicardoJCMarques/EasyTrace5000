@@ -2,7 +2,7 @@
  * Clipper2-WASM
  * Pulled from: https://github.com/ErikSom/Clipper2-WASM
  *
- * Copyright (c) 2025 Erik Som
+ * Copyright (c) 2026 Erik Som
  * Licensed under the Boost Software License 1.0.
  *
  * This file is part of the EasyTrace5000 and Clipper2 syntax test page dependency tree.

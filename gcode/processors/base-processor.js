@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -131,29 +131,24 @@
          * @param {number} speed - The new target RPM
          * @returns {string} G-code string (e.g., "M5\nM3 S10000") or "" if no change.
          */
-        setSpindle(speed) {
-            const newSpeed = Math.round(speed);
-            const currentSpeed = Math.round(this.currentSpindle);
-
-            if (newSpeed === currentSpeed) {
-                return ''; // No change needed
+        setSpindle(speed, dwell = 0) {
+            if (speed === this.currentSpindle) {
+                return null;
             }
+
+            this.currentSpindle = speed;
 
             const lines = [];
-            const sValue = this.formatSpindle(newSpeed);
 
-            // If spindle is currently on, stop it first
-            if (currentSpeed > 0) {
+            if (speed > 0) {
+                lines.push(`M3 S${speed}`);
+                if (dwell > 0) {
+                    lines.push(`G4 P${dwell}`);
+                }
+            } else {
                 lines.push('M5');
             }
-
-            // Start spindle if new speed is > 0
-            if (newSpeed > 0) {
-                lines.push(`M3 S${sValue}`);
-                lines.push('G4 P1'); // TODO: Make dwell configurable
-            }
-
-            this.currentSpindle = newSpeed; // Update the state
+            
             return lines.join('\n');
         }
 

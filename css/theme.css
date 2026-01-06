@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -96,6 +96,15 @@
     /* B&W Colors */
     --color-bw-black: #000000;
     --color-bw-white: #ffffff;
+
+    /* Pipelines */
+    --color-pipeline-cnc: #ff8844;
+    --color-pipeline-laser: #a855f7;
+
+    /* Interaction */
+    --color-interaction-sponsorship: #8b5cf6;
+    --color-interaction-sponsorship-text: #e9d5ff;
+    --color-interaction-kofi: #42d6aa;
 }
 
 /* ============================================================================

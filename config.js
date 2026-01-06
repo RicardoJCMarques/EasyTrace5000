@@ -11,7 +11,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -33,153 +33,89 @@ window.PCBCAMConfig = {
     // ============================================================================
     operations: {
         isolation: {
-            name: 'Isolation Routing',              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
-            icon: '🎯',                              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
-            extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs', '.svg'], // [USED IN: cam-core.js] [MOVE TO: constants.js]
-            defaultTool: 'em_0.2mm_flat',           // [USED IN: cam-core.js] [MOVE TO: settings.js]
-            tool: {                                  // [USED IN: cam-core.js line ~130] [MOVE TO: settings.js]
-                diameter: 0.1,
-                type: 'end_mill',
-                material: 'carbide',
-                flutes: 2
-            },
-            cutting: {                               // [USED IN: cam-core.js, ui-parameter-manager.js] [MOVE TO: settings.js]
+            name: 'Isolation Routing',
+            icon: '🎯',
+            extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gts', '.gbs', '.svg'],
+            defaultTool: 'em_0.1mm_flat',  // Tool ID - diameter comes from tools.json
+            cutting: {
                 cutDepth: -0.04,
                 passDepth: 0.04,
                 cutFeed: 100,
                 plungeFeed: 50,
                 spindleSpeed: 10000
             },
-            strategy: {                              // [USED IN: cam-core.js] [MOVE TO: settings.js]
-                passes: 3,
-                overlap: 50,
-                method: 'offset',
-                direction: 'outside',
-                cornerHandling: true,
-                preserveArcs: true
-            },
-            defaultSettings: {                       // [USED IN: cam-core.js, ui-parameter-manager.js, toolpath-optimizer.js] [MOVE TO: settings.js]
+            defaultSettings: {
                 passes: 3,
                 stepOver: 50,
-                cutDepth: -0.05,
-                direction: 'climb',
-                entryType: 'plunge',
-                preserveArcs: true
+                multiDepth: false,
+                entryType: 'plunge'
             }
         },
         drill: {
-            name: 'Drilling',                        // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
-            icon: '🔧',                              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
-            extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'], // [USED IN: cam-core.js] [MOVE TO: constants.js]
-            defaultTool: 'drill_1.0mm',             // [USED IN: cam-core.js] [MOVE TO: settings.js]
-            tool: {                                  // [USED IN: cam-core.js] [MOVE TO: settings.js]
-                diameter: 1.0,
-                type: 'drill',
-                material: 'carbide',
-                pointAngle: 118
-            },
-            cutting: {                               // [USED IN: cam-core.js, ui-parameter-manager.js] [MOVE TO: settings.js]
+            name: 'Drilling',
+            icon: '🔧',
+            extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'],
+            defaultTool: 'drill_1.0mm',  // Tool ID
+            cutting: {
                 cutDepth: -1.8,
                 passDepth: 0.5,
                 cutFeed: 50,
                 plungeFeed: 25,
                 spindleSpeed: 10000
             },
-            strategy: {                              // [USED IN: cam-core.js] [MOVE TO: settings.js]
+            strategy: {
                 minMillingMargin: 0.05,
-                minMillingFeatureSize: 0.01,
-                dwellTime: 0,
-                retractHeight: 0.5,
-                peckStepDepth: 0,
-                chipBreaking: false
+                minMillingFeatureSize: 0.01
             },
-            defaultSettings: {                       // [USED IN: cam-core.js, ui-parameter-manager.js] [MOVE TO: settings.js]
+            defaultSettings: {
                 millHoles: true,
                 multiDepth: true,
                 cannedCycle: 'none',
                 peckDepth: 0,
                 dwellTime: 0,
                 retractHeight: 0.5,
-                autoToolChange: true,
-                depthCompensation: true,
-                entryType: 'helix',
+                entryType: 'helix'
             }
         },
         clearing: {
-            name: 'Copper Clearing',                 // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
-            icon: '🔄',                              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
-            extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd', '.svg'], // [USED IN: cam-core.js] [MOVE TO: constants.js]
-            defaultTool: 'em_0.8mm_flat',           // [USED IN: cam-core.js] [MOVE TO: settings.js]
-            tool: {                                  // [USED IN: cam-core.js] [MOVE TO: settings.js]
-                diameter: 0.8,
-                type: 'end_mill',
-                material: 'carbide',
-                flutes: 2
-            },
-            cutting: {                               // [USED IN: cam-core.js, ui-parameter-manager.js] [MOVE TO: settings.js]
+            name: 'Copper Clearing',
+            icon: '🔄',
+            extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd', '.svg'],
+            defaultTool: 'em_0.8mm_flat',  // Tool ID
+            cutting: {
                 cutDepth: -0.1,
                 passDepth: 0.1,
-                multiDepth: false,
                 cutFeed: 200,
                 plungeFeed: 50,
                 spindleSpeed: 10000
             },
-            strategy: {                              // [USED IN: cam-core.js] [MOVE TO: settings.js]
-                overlap: 50,
-                pattern: 'parallel',
-                angle: 0,
-                margin: 0.1,
-                stepDown: 0.1
-            },
-            defaultSettings: {                       // [USED IN: cam-core.js, ui-parameter-manager.js] [MOVE TO: settings.js]
+            defaultSettings: {
                 passes: 4,
                 stepOver: 50,
-                cutDepth: -0.1,
-                pattern: 'offset',
-                direction: 'climb',
-                entryType: 'plunge',
-                preserveIslands: true
+                multiDepth: false,
+                entryType: 'plunge'
             }
         },
         cutout: {
-            name: 'Board Cutout',                    // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
-            icon: '✂️',                              // [USED IN: cam-core.js, ui-nav-tree-panel.js] [MOVE TO: constants.js]
-            extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill', '.svg'], // [USED IN: cam-core.js] [MOVE TO: constants.js]
-            defaultTool: 'em_1.0mm_flat',           // [USED IN: cam-core.js] [MOVE TO: settings.js]
-            tool: {                                  // [USED IN: cam-core.js] [MOVE TO: settings.js]
-                diameter: 1.0,
-                type: 'end_mill',
-                material: 'carbide',
-                flutes: 2
-            },
-            cutting: {                               // [USED IN: cam-core.js, ui-parameter-manager.js] [MOVE TO: settings.js]
+            name: 'Board Cutout',
+            icon: '✂️',
+            extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill', '.svg'],
+            defaultTool: 'em_1.0mm_flat',  // Tool ID
+            cutting: {
                 cutDepth: -1.8,
                 passDepth: 0.3,
                 cutFeed: 150,
                 plungeFeed: 50,
                 spindleSpeed: 10000
             },
-            strategy: {                              // [USED IN: cam-core.js] [MOVE TO: settings.js]
-                tabs: 4,
-                tabWidth: 3,
-                tabHeight: 0.5,
-                direction: 'conventional',
-                stepDown: 0.2,
-                leadIn: 0.5,
-                leadOut: 0.5,
-                preserveArcs: true
-            },
-            defaultSettings: {                       // [USED IN: cam-core.js, ui-parameter-manager.js] [MOVE TO: settings.js]
+            defaultSettings: {
                 passes: 1,
                 stepOver: 100,
-                cutDepth: 0.2,
-                tabs: 4,
-                tabWidth: 3.0,
-                tabHeight: 0.5,
-                direction: 'climb',
+                tabs: 0,
+                tabWidth: 0,
+                tabHeight: 0,
+                multiDepth: true,
                 entryType: 'plunge',
-                leadIn: 0.5,
-                leadOut: 0.5,
                 cutSide: 'outside'
             }
         }
@@ -555,7 +491,7 @@ window.PCBCAMConfig = {
             grbl: {
                 start: 'T1\n',
                 end: 'M5\nG0 X0Y0\nM2',
-                toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P1'
+                toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P{dwell}'
             },
             roland: {
                 start: 'PA;PA;!MC0;',
@@ -714,6 +650,7 @@ window.PCBCAMConfig = {
             maxFeedRate: 5000,
             minSpindleSpeed: 100,
             maxSpindleSpeed: 30000,
+            spindleDwell: { min: 0, max: 60, step: 0.5 },
             minDepth: 0.001,
             maxDepth: 10,
             passes: { min: 1, max: 30, step: 1 },

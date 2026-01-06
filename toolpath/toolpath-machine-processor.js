@@ -8,7 +8,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -84,9 +84,14 @@
 
             for (let i = 0; i < toolpathPlans.length; i++) {
                 const plan = toolpathPlans[i];
-                const planMetadata = plan.metadata || {}; 
+                const planMetadata = plan.metadata || {};
 
-                // 1. Handle drill peck marks
+                if (debugConfig.enabled && planMetadata.isTabbedPass) {
+                    const tabCmds = plan.commands.filter(c => c.metadata?.isTab === true).length;
+                    console.log(`[MachineProcessor] Received TABBED plan: ${tabCmds}/${plan.commands.length} tab commands`);
+                }
+
+                // Handle drill peck marks
                 if (planMetadata.isPeckMark) {
                     this.debug(`Processing Peck Mark ${i+1}/${toolpathPlans.length}`);
                     const drillPlan = this.processPeckMark(plan);
@@ -97,7 +102,7 @@
                     continue; 
                 }
 
-                // 2. Handle drill milling
+                // Handle drill milling
                 if (planMetadata.isDrillMilling) {
                     const primitiveType = planMetadata.primitiveType;
                     const useHelix = (planMetadata.entryType || 'plunge') === 'helix';
@@ -111,7 +116,7 @@
                     }
                 }
 
-                // 3 Handle centerline slots
+                // Handle centerline slots
                 if (planMetadata.isCenterlinePath && planMetadata.strategy?.zigzag) {
                     this.debug(`Processing Centerline Slot (Macro) ${i+1}/${toolpathPlans.length}`);
 
@@ -170,7 +175,7 @@
                     continue;
                 }
 
-                // 4 Connection Move Logic
+                // Connection Move Logic
                 const linkType = planMetadata.optimization?.linkType || 'rapid';
                 let isMultiDepthPlunge = false;
 
@@ -217,16 +222,24 @@
                     );
                     connectionPlan.metadata.type = 'staydown_link';
                 } else { 
-                    // Rapid Link
-                    // Retract if needed
-                    if (this.currentPosition.z < this.context.machine.travelZ) {
-                        connectionPlan.addRapid(null, null, this.context.machine.travelZ);
-                        this.currentPosition.z = this.context.machine.travelZ;
-                    }
-                    // Move XY
-                    connectionPlan.addRapid(planMetadata.entryPoint.x, planMetadata.entryPoint.y, null); 
-                    connectionPlan.metadata.type = 'rapid_link';
+                // Rapid Link or Retract if needed
+                if (this.currentPosition.z < this.context.machine.travelZ) {
+                    connectionPlan.addRapid(null, null, this.context.machine.travelZ);
+                    this.currentPosition.z = this.context.machine.travelZ;
                 }
+
+                // Move XY - only if not already at target position
+                const atTargetXY = Math.hypot(
+                    planMetadata.entryPoint.x - this.currentPosition.x,
+                    planMetadata.entryPoint.y - this.currentPosition.y
+                ) < 0.01;
+
+                if (!atTargetXY) {
+                    connectionPlan.addRapid(planMetadata.entryPoint.x, planMetadata.entryPoint.y, null);
+                }
+
+                connectionPlan.metadata.type = 'rapid_link';
+            }
                 machineReadyPlans.push(connectionPlan);
 
                 this.currentPosition.x = planMetadata.entryPoint.x;
@@ -235,13 +248,15 @@
                 // Entry Move
                 if (linkType === 'rapid' && !isMultiDepthPlunge) {
                     const entryPlan = new ToolpathPlan('entry');
+                    entryPlan.metadata.spindleSpeed = this.context.cutting.spindleSpeed;
+                    entryPlan.metadata.spindleDwell = this.context.cutting.spindleDwell;
                     const entryType = planMetadata.entryType || 'plunge';
                     this.generateEntryMove(entryPlan, planMetadata, entryType); 
                     machineReadyPlans.push(entryPlan);
                     this.currentPosition.z = planMetadata.entryPoint.z;
                 }
 
-                // 5 Execute cutting plan
+                // Execute cutting plan
                 const cuttingPlan = new ToolpathPlan(plan.operationId);
                 Object.assign(cuttingPlan.metadata, plan.metadata);
 
@@ -273,7 +288,7 @@
                 machineReadyPlans.push(cuttingPlan);
                 this.currentPosition.z = currentPassDepth; 
 
-                // 6. Retract Logic
+                // Retract Logic
                 const isStayDownSource = (
                     i < toolpathPlans.length - 1 &&
                     toolpathPlans[i + 1]?.metadata?.optimization?.linkType === 'staydown'

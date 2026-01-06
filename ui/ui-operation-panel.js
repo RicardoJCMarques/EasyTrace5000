@@ -8,7 +8,7 @@
 
  /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025 Eltryus
+ * Copyright (C) 2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -232,25 +232,10 @@
             const input = document.createElement('input');
             input.type = 'number';
             input.id = `prop-${param.name}`;
-            input.value = value || 0;
+            input.value = value ?? 0;
             if (param.min !== undefined) input.min = param.min;
             if (param.max !== undefined) input.max = param.max;
             if (param.step !== undefined) input.step = param.step;
-
-            // Prevent negative sign if min is >= 0
-            if (param.min !== undefined && param.min >= 0) {
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === '-' || e.key === 'Subtract') {
-                        e.preventDefault();
-                    }
-                });
-                input.addEventListener('paste', (e) => {
-                    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
-                    if (pastedText.includes('-')) {
-                        e.preventDefault();
-                    }
-                });
-            }
 
             wrapper.appendChild(input);
 
@@ -260,7 +245,7 @@
                 unitSpan.textContent = param.unit;
                 wrapper.appendChild(unitSpan);
             }
-            
+
             field.appendChild(wrapper);
         }
 
@@ -387,86 +372,48 @@
             const toolSelect = container.querySelector('#prop-tool');
             if (toolSelect) {
                 toolSelect.addEventListener('change', (e) => {
-                    const tool = this.toolLibrary?.getTool(e.target.value);
-                    if (tool) {
-                        // Set both parameters at once
-                        this.onParameterChange('tool', e.target.value);
-                        this.onParameterChange('toolDiameter', tool.geometry.diameter);
+                    const toolId = e.target.value;
+                    const toolDiameter = this.toolLibrary?.getToolDiameter(toolId);
 
-                        // Update the diameter input to reflect the change
+                    if (toolDiameter !== null && toolDiameter !== undefined) {
+                        this.onParameterChange('tool', toolId);
+                        this.onParameterChange('toolDiameter', toolDiameter);
+
                         const diamInput = container.querySelector('#prop-toolDiameter');
                         if (diamInput) {
-                            diamInput.value = tool.geometry.diameter;
+                            diamInput.value = toolDiameter;
                         }
                     }
                 });
             }
 
-            // Auto-save on all inputs
+            // Attach handlers to all inputs
             container.querySelectorAll('input, select, textarea').forEach(input => {
-                if (input.id === 'prop-tool') return; // Already handled
+                if (input.id === 'prop-tool') return; // Already handled above
 
                 const paramName = input.id.replace('prop-', '');
 
+                // Change event: Final validation and save
                 input.addEventListener('change', () => {
-                    let value;
-                    if (input.type === 'checkbox') {
-                        value = input.checked;
-                    } else if (input.type === 'number') {
-                        value = parseFloat(input.value);
-                    } else {
-                        value = input.value;
-                    }
-
+                    const value = this.extractInputValue(input);
                     this.onParameterChange(paramName, value);
                 });
 
-                // Real-time validation for number inputs
-                if (input.type === 'number') {
-                    const paramName = input.id.replace('prop-', '');
-
-                    input.addEventListener('input', (e) => {
-                        const value = e.target.value;
-                        const def = this.parameterManager.parameterDefinitions[paramName];
-
-                        // Check for invalid characters (e.g., 'abc', '5e-')
-                        const num = parseFloat(value);
-                        if (isNaN(num) && value !== "" && value !== "-") { 
-                            this.ui.statusManager.showStatus(`${def.label} must be a number`, 'error');
-                            // Revert to the last known good value
-                            e.target.value = this.parameterManager.getParameters(this.currentOperation.id, this.currentGeometryStage)[paramName];
-                            return;
-                        }
-
-                        // Check Min/Max while typing (only clamp on max)
-                        if (def.max !== undefined && num > def.max) {
-                            this.ui.statusManager.showStatus(`${def.label} cannot be more than ${def.max}`, 'error');
-                            e.target.value = def.max; // Clamp immediately
-                            // Trigger the change to save the clamped value
-                            this.onParameterChange(paramName, def.max);
-                            return; // Stop further processing
-                        }
-
-                        // Don't clamp min while typing, as user might be typing "-0.1"
-                        // If it's a valid partial number, send it to the manager (onParameterChange will handle final validation on 'change'/'blur')
-                        if (!isNaN(num)) {
-                             this.onParameterChange(paramName, num, true); // 'true' for real-time update
-                        }
+                // Blur event: Also validate and save (catches tab-away without change)
+                if (input.type === 'text' || input.type === 'number' || input.tagName === 'TEXTAREA') {
+                    input.addEventListener('blur', () => {
+                        const value = this.extractInputValue(input);
+                        this.onParameterChange(paramName, value);
+                        this.saveCurrentState();
                     });
                 }
 
-                // Save on blur for text inputs
-                if (input.type === 'text' || input.type === 'number' || input.tagName === 'TEXTAREA') {
-                    input.addEventListener('blur', () => {
-                        // On blur, force a final validation/save
-                        let value;
-                        if (input.type === 'number') {
-                            value = parseFloat(input.value);
-                        } else {
-                            value = input.value;
-                        }
-                        this.onParameterChange(paramName, value); // This will clamp
-                        this.saveCurrentState(); // This will save
+                // Input event: Only for visual feedback, no validation, no status messages
+                // This allows free typing of intermediate values like "-", "0.", ".5"
+                if (input.type === 'number') {
+                    input.addEventListener('input', () => {
+                        // Clear any previous error styling when user starts typing
+                        input.classList.remove('input-error');
                     });
                 }
             });
@@ -476,7 +423,6 @@
             if (millCheck) {
                 millCheck.addEventListener('change', async (e) => {
                     const isMilling = e.target.checked;
-
                     this.onParameterChange('millHoles', isMilling);
 
                     if (this.currentOperation) {
@@ -489,7 +435,7 @@
 
                     this.showOperationProperties(this.currentOperation, this.currentGeometryStage);
                     await this.ui.updateRendererAsync();
-                    
+
                     this.ui.statusManager?.showStatus(
                         `Switched to ${isMilling ? 'milling' : 'pecking'} mode`,
                         'info'
@@ -505,6 +451,20 @@
 
             // Initial conditional evaluation
             this.evaluateConditionals(container);
+        }
+
+        /**
+         * Extracts and converts value from input element based on its type.
+         */
+        extractInputValue(input) {
+            if (input.type === 'checkbox') {
+                return input.checked;
+            } else if (input.type === 'number') {
+                const num = parseFloat(input.value);
+                return isNaN(num) ? 0 : num;
+            } else {
+                return input.value;
+            }
         }
 
         evaluateConditionals(container) {
@@ -536,29 +496,38 @@
                 value
             );
 
-            // Enforcement logic
+            const inputEl = document.getElementById(`prop-${name}`);
+
             if (result.success) {
-                if (this.ui.statusManager.currentStatus?.type === 'error') {
-                    this.ui.statusManager.updateStatus(); 
+                // Clear error state
+                if (inputEl) inputEl.classList.remove('input-error');
+
+                // Clear status only if it was showing an error for this field
+                if (this.ui.statusManager?.currentStatus?.type === 'error') {
+                    this.ui.statusManager.updateStatus();
                 }
             } else {
-                // Show error
-                this.ui.statusManager.showStatus(result.error, 'error');
+                // Show error and apply visual feedback
+                if (!isRealtime) {
+                    this.ui.statusManager?.showStatus(result.error, 'error');
+                }
 
-                // Clamp the value in the UI
-                if (result.correctedValue !== undefined) {
-                    const input = document.getElementById(`prop-${name}`);
-                    if (input && input.value != result.correctedValue) {
-                        input.value = result.correctedValue;
-                    }
+                if (inputEl) {
+                    inputEl.classList.add('input-error');
+                }
+
+                // Apply corrected value to input
+                if (result.correctedValue !== undefined && inputEl) {
+                    inputEl.value = result.correctedValue;
+                    inputEl.classList.remove('input-error'); // Corrected, no longer in error
                 }
             }
 
-            // Conditionals must be re-evaluated on *every* change
+            // Re-evaluate conditionals
             const container = document.getElementById('property-form');
             if (container) this.evaluateConditionals(container);
 
-            // Debounced auto-save (only if successful and not a real-time 'input' event)
+            // Debounced auto-save (not during realtime typing)
             if (result.success && !isRealtime) {
                 clearTimeout(this.changeTimeout);
                 const delay = timingConfig.propertyDebounce;
