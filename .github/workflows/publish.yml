@@ -21,9 +21,8 @@ jobs:
           server-dir: /
           exclude: |
             **/.git*
-            **/.git*/**
             .github/**
-            **/images/
+            images/**
             README.md
             CONTRIBUTING.md
             SECURITY.md
