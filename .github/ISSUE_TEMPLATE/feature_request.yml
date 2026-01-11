@@ -1,0 +1,32 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+title: "[Feat]: "
+labels: ["enhancement", "needs-discussion"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear and concise description of what the problem is. Ex. "I'm always frustrated when I have to manually ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+      description: How should the tool handle this?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Impact / Priority
+      options:
+        - "Visual / UI Polish"
+        - "Workflow Improvement (Saves time)"
+        - "New Capability (Can't do this currently)"
+        - "Critical (Blocking my work)"
+    validations:
+      required: true

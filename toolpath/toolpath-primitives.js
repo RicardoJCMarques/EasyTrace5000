@@ -2,13 +2,14 @@
  * @file        toolpath/toolpath-primitives.js
  * @description Shared primitive classes for toolpath generation
  * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2026 Eltryus
+ * Copyright (C) 2025-2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by

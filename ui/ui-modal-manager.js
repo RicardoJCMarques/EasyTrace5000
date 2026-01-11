@@ -2,13 +2,14 @@
  * @file        ui/ui-modal-manager.js
  * @description Unified modal management
  * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
  /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2026 Eltryus
+ * Copyright (C) 2025-2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -69,26 +70,47 @@
         }
 
         init() {
-            // Setup ESC key handler
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && this.activeModal) {
-                    this.closeModal();
+                    // Check if closing the welcome modal specifically
+                    if (this.activeModal === this.modals.welcome) {
+                        // Use the existing logic that handles the transition to quickstart
+                        this.handleClickOutside('welcome'); 
+                    } else {
+                        // Default behavior for all other modals
+                        this.closeModal();
+                    }
                 }
             });
 
-            // Setup click-outside-to-close
-            Object.values(this.modals).forEach(modal => {
+            // Click-outside handling with special cases
+            Object.entries(this.modals).forEach(([name, modal]) => {
                 if (modal) {
                     modal.addEventListener('click', (e) => {
                         if (e.target === modal) {
-                            this.closeModal();
+                            this.handleClickOutside(name);
                         }
                     });
                 }
             });
 
-            // Deep link listener
             window.addEventListener('hashchange', () => this.checkHash());
+        }
+
+        handleClickOutside(modalName) {
+            if (modalName === 'welcome') {
+                // Transition to quickstart instead of closing everything
+                this.activeModal?.classList.remove('active');
+                this.activeModal = null;
+                this.modalStack = [];
+                
+                const hideWelcome = localStorage.getItem(storageKeys.hideWelcome);
+                if (!hideWelcome) {
+                    this.showModal('quickstart');
+                }
+            } else {
+                this.closeModal();
+            }
         }
 
         checkHash() {
@@ -213,6 +235,14 @@
                 };
             }
 
+            // Back button
+            const backBtn = document.getElementById('support-back-btn');
+            if (backBtn) {
+                backBtn.onclick = () => {
+                    this.closeModal(); // Returns to welcome via stack
+                };
+            }
+
             // Close Button Handler
             if (closeBtn) {
                 closeBtn.onclick = () => {
@@ -236,9 +266,7 @@
                     this.selectedPipeline = 'cnc';
                     this.closeModal();
 
-                    const key = storageKeys.hideWelcome;
-                    const hideWelcome = localStorage.getItem(key);
-
+                    const hideWelcome = localStorage.getItem(storageKeys.hideWelcome);
                     if (!hideWelcome) {
                         this.showModal('quickstart', options);
                     }
@@ -265,15 +293,25 @@
                 }
             });
 
-            // Close button
+            // Close button - same behavior as click-outside
             const closeBtn = modal?.querySelector('.modal-close');
             if (closeBtn) {
-                closeBtn.onclick = () => this.closeModal();
+                closeBtn.onclick = () => this.handleClickOutside('welcome');
             }
         }
 
-        showQuickstartHandler(options) {
+        showQuickstartHandler(options = {}) {
             const modal = this.modals.quickstart;
+            
+            // Get the modal content wrapper (to apply the mode class)
+            const modalContent = modal.querySelector('.modal-content');
+            
+            // Determine pipeline State
+            const pipeline = this.selectedPipeline || 'cnc';
+
+            // Apply State
+            modalContent.classList.remove('mode-cnc', 'mode-laser');
+            modalContent.classList.add(`mode-${pipeline}`);
 
             // Reset file state
             this.quickstartFiles = {
@@ -282,6 +320,20 @@
                 clearing: null,
                 cutout: null
             };
+
+            // Initialize "don't show again" checkbox from stored preference
+            const dontShowCheckbox = document.getElementById('dont-show-quickstart');
+            if (dontShowCheckbox) {
+                const hideWelcome = localStorage.getItem(storageKeys.hideWelcome);
+                dontShowCheckbox.checked = !!hideWelcome;
+
+                dontShowCheckbox.onchange = (e) => {
+                    if (!e.target.checked) {
+                        localStorage.removeItem(storageKeys.hideWelcome);
+                        this.ui?.statusManager?.showStatus('Quickstart will show on next visit', 'info');
+                    }
+                };
+            }
 
             // Setup example dropdown
             const select = document.getElementById('pcb-example-select');
@@ -324,6 +376,15 @@
             const startEmptyBtn = document.getElementById('start-empty-btn');
             if (startEmptyBtn) {
                 startEmptyBtn.onclick = () => this.handleQuickstartClose();
+            }
+
+            // Back button
+            const backBtn = document.getElementById('quickstart-back-btn');
+            if (backBtn) {
+                backBtn.onclick = () => {
+                    this.closeModal();
+                    this.showModal('welcome');
+                };
             }
 
             // Close button
@@ -441,7 +502,7 @@
             const dontShowCheckbox = document.getElementById('dont-show-quickstart');
             if (dontShowCheckbox && dontShowCheckbox.checked) {
                 // Save preference to localStorage
-                localStorage.setItem(this.controller.config.storageKeys.hideWelcome, 'true');
+                localStorage.setItem(storageKeys.hideWelcome, 'true');
             }
 
             // Actually close the modal

@@ -2,13 +2,14 @@
  * @file        cam-core.js
  * @description Core application logic
  * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2026 Eltryus
+ * Copyright (C) 2025-2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -1006,35 +1007,43 @@
 
                         const dx = originalSlot.end.x - originalSlot.start.x;
                         const dy = originalSlot.end.y - originalSlot.start.y;
-                        const slotCenterDistance = Math.hypot(dx, dy);
+                        const slotLength = Math.hypot(dx, dy);
 
                         const pathThickness = slotWidth - toolDiameter;
 
                         if (pathThickness > minFeatureSize) {
-                            const pathLength = slotCenterDistance + pathThickness;
+                            const pathLength = slotLength + pathThickness;
                             const centerX = (originalSlot.start.x + originalSlot.end.x) / 2;
                             const centerY = (originalSlot.start.y + originalSlot.end.y) / 2;
 
-                            const angle = Math.atan2(dy, dx);
-                            const cos = Math.cos(angle);
-                            const sin = Math.sin(angle);
+                            // Determine slot orientation - ObroundPrimitive only supports axis-aligned
+                            const isHorizontal = Math.abs(dx) > Math.abs(dy);
 
-                            const localHalfLength = pathLength / 2;
-                            const localHalfThickness = pathThickness / 2;
+                            let obroundWidth, obroundHeight, cornerX, cornerY;
 
-                            const cornerX = centerX - (localHalfLength * cos - localHalfThickness * sin);
-                            const cornerY = centerY - (localHalfLength * sin + localHalfThickness * cos);
+                            if (isHorizontal) {
+                                // Horizontal slot: long axis along X
+                                obroundWidth = pathLength;
+                                obroundHeight = pathThickness;
+                                cornerX = centerX - pathLength / 2;
+                                cornerY = centerY - pathThickness / 2;
+                            } else {
+                                // Vertical slot: long axis along Y
+                                obroundWidth = pathThickness;
+                                obroundHeight = pathLength;
+                                cornerX = centerX - pathThickness / 2;
+                                cornerY = centerY - pathLength / 2;
+                            }
 
                             const millingPath = new ObroundPrimitive(
                                 { x: cornerX, y: cornerY },
-                                pathLength,
-                                pathThickness,
+                                obroundWidth,
+                                obroundHeight,
                                 {
                                     role: 'drill_milling_path',
                                     originalDiameter: slotWidth,
                                     toolDiameter: toolDiameter,
                                     originalSlot: originalSlot,
-                                    rotation: angle,
                                     toolRelation: 'undersized',
                                     operationId: operation.id,
                                     isOffset: true,

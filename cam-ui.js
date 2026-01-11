@@ -2,13 +2,14 @@
  * @file        cam-ui.js
  * @description Tooltip integration, status manager usage
  * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2026 Eltryus
+ * Copyright (C) 2025-2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -567,8 +568,7 @@
         }
 
         triggerFileInput(opType) {
-            const fileInput = document.getElementById('file-input-hidden') || 
-                           document.getElementById('file-input-temp');
+            const fileInput = document.getElementById('file-input-hidden') || document.getElementById('file-input-temp');
             if (fileInput) {
                 fileInput.setAttribute('data-type', opType);
 
@@ -580,6 +580,19 @@
                     }
                     fileInput.setAttribute('accept', extensions.join(','));
                 }
+
+                fileInput.onchange = async (e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                        for (const file of files) {
+                            await this.processFile(file, opType);
+                        }
+                        this.renderer.core.zoomFit(true);
+                        this.renderer.render();
+                        this.renderer.interactionHandler.updateZoomDisplay();
+                    }
+                    fileInput.value = '';
+                };
 
                 fileInput.click();
             } else {

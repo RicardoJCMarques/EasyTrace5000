@@ -2,13 +2,14 @@
  * @file        renderer/renderer-core.js
  * @description Coordinates canvas, view and layer states
  * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2026 Eltryus
+ * Copyright (C) 2025-2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -50,6 +51,7 @@
             this.viewScale = canvasConfig.defaultZoom;
             this.isDragging = false;
             this.lastMousePos = null;
+            this.originIncludedInFit = false;
 
             // Origin and rotation state
             this.originPosition = { x: 0, y: 0 };
@@ -251,6 +253,7 @@
             this.layers.clear();
             this.overallBounds = null;
             this.bounds = null;
+            this.originIncludedInFit = false;
             this.renderStats.lastSignificantChange = 'layers-cleared';
         }
 
@@ -441,16 +444,40 @@
         // Zoom & Pan
         // ========================================================================
 
-        zoomFit() {
-            const fitPadding = config.renderer.zoom.fitPadding;
-
+        zoomFit(includeOrigin = false) {
             if (!this.overallBounds) {
-                this.viewScale = 10;
-                this.viewOffset = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
+                const emptyConfig = config.renderer.emptyCanvas;
+                this.viewScale = emptyConfig.defaultScale;
+                const canvasX = this.canvas.width * emptyConfig.originMarginLeft;
+                const canvasY = this.canvas.height * (1 - emptyConfig.originMarginBottom);
+                this.viewOffset = { x: canvasX, y: canvasY };
                 return;
             }
 
-            const bounds = this.overallBounds;
+            // Use wider padding only if origin placement checked AND not fitted
+            const useWidePadding = includeOrigin && !this.originIncludedInFit;
+            const fitPadding = useWidePadding 
+                ? config.renderer.zoom.fitPaddingWithOrigin 
+                : config.renderer.zoom.fitPadding;
+
+            let bounds = this.overallBounds;
+
+            if (includeOrigin) {
+                const origin = this.originPosition || { x: 0, y: 0 };
+                bounds = {
+                    minX: Math.min(bounds.minX, origin.x),
+                    minY: Math.min(bounds.minY, origin.y),
+                    maxX: Math.max(bounds.maxX, origin.x),
+                    maxY: Math.max(bounds.maxY, origin.y)
+                };
+                bounds.width = bounds.maxX - bounds.minX;
+                bounds.height = bounds.maxY - bounds.minY;
+                bounds.centerX = (bounds.minX + bounds.maxX) / 2;
+                bounds.centerY = (bounds.minY + bounds.maxY) / 2;
+                
+                this.originIncludedInFit = true;
+            }
+
             const canvasAspect = this.canvas.width / this.canvas.height;
             const boundsAspect = bounds.width / bounds.height;
 

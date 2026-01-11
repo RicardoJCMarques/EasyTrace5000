@@ -24,7 +24,7 @@ This page is self-contained. To run the tests:
 ## ⚖️ License & Credits
 
 **Test Suite Logic & UI**
-Copyright © 2026 Eltryus - Ricardo Marques.
+Copyright © 2025-2026 Eltryus - Ricardo Marques.
 Licensed under the [GNU Affero General Public License v3.0](../LICENSE).
 
 **Underlying Libraries**
@@ -36,6 +36,6 @@ This test suite relies on external open-source libraries which are distributed u
   * [GitHub Repository](https://github.com/AngusJohnson/Clipper2)
 
 * **Clipper2-WASM Port**
-  * Copyright © 2026 Erik Som
+  * Copyright © 2010-2026 Erik Som
   * License: [Boost Software License 1.0](LICENSE)
   * [GitHub Repository](https://github.com/ErikSom/Clipper2-WASM)

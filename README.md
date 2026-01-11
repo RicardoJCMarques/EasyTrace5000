@@ -4,7 +4,9 @@
 
 An open-source, browser-based CAM tool for generating G-code from PCB manufacturing files. Featuring an interactive 2D Canvas renderer, high-performance Clipper2 geometry engine with a custom arc-reconstruction system and intelligent toolpath optimization.
 
-![I'll add screenshots when GUI is ready](https://placehold.co/800x420?text=EasyTrace5000\nScreenshot\nPlaceholder)
+<div align="center">
+  <img src="./images/EasyTrace5000_workspace.jpg" width="830" alt="EasyTrace5000 Workspace screenshot">
+</div>
 
 ## Live Access
 
@@ -56,7 +58,9 @@ The latest version of EasyTrace5000 is automatically deployed and available onli
 * **Rendering:** Custom 2D Canvas-based layer renderer with an overlay system for grids, rulers, and origin points.
 * **File Parsing:** Native parsers for Gerber (RS-274X), Excellon and SVG formats.
 * **Toolpath Generation:** A three-stage pipeline (Translate, Optimize, Process) to convert geometry into machine-ready plans.
-* **Post-Processors:** GRBL, Roland RML (Experimental), GrblHAL (Experimental), Marlin (Experimental), LinuxCNC (Experimental), Mach3 (Experimental).
+* **Post-Processors:** GRBL, GrblHAL (Experimental), Marlin (Experimental), LinuxCNC (Experimental), Mach3 (Experimental), Roland RML (VERY Experimental).
+
+Note: All Experimental post-processors need testing. I only have access to GRBL and Roland machines, be extra cautious. Please report successes or issues so I know and can plan accordingly.
 
 ## File Compatibility
 
@@ -66,16 +70,17 @@ The application has been developed and tested with files generated from **KiCAD*
 * **Excellon:** `.drl`, `.xln`, `.txt`, `.drill`, `.exc`
 * **SVG**
 
-Note: The parser understands all SVG data including complex Bézier curves and creates the corresponding Cubic or Quadratic primitives. Bézier primitives are then interpolated by the plotter into line segments, as the geometry engine does not support analytic Bézier offsetting yet.
+Note: The parser understands all SVG data including complex Bézier curves and creates the corresponding Cubic or Quadratic primitives. Bézier primitives are then interpolated by the plotter into line segments, as the geometry engine does not support analytic Bézier offsetting, yet.
 
 ## Usage
 
 ### Quick Start
-1. **Load Files:** Drag-and-drop or use "Add Files" button for each operation type
-2. **Configure Tool:** Select tool from library or define custom diameter
-3. **Generate Offsets:** Set passes, stepover, and click "Generate Offsets"
-4. **Preview Toolpath:** Configure depths, feeds, and click "Generate Preview"
-5. **Export G-code:** Open Operations Manager, arrange sequence, and export
+1. **Load Files:** From the Quickstart screen, Drag-and-drop over the preview canvas or use "Add Files" button for each operation type
+2. **Origin & Machine Settings:** Check origin and overall machine parameters for the project
+3. **Select File:** Select a source file object from the Operation Navigation tree to expose related parameters
+4. **Generate Offsets:** Set X&Y axis parameters: passes, stepover and click "Generate Offsets"
+5. **Preview Toolpath:** Define Z axis parameters: cut depth, multi-pass, entry-type and click "Generate Preview"
+6. **Export G-code:** Open Operations Manager, arrange sequence, confirm gcode parameters, preview & export
 
 ## The Workflow
 
@@ -92,8 +97,8 @@ The application guides the user through a clear, non-destructive process. Each s
 * **You See:** Origin and rulers will adapt if origin is moved in relation to the board.
 
 ### Stage 2: Offset (Generate Geometry)
-* **Action:** Configure parameters (tool, depth, stepover) and click **"Generate Offsets"** (or "Generate Drill Strategy").
-* **Result:** The core runs the **Geometry Engine**.
+* **Action:** Configure parameters (tool, depth, stepover) and click **"Generate Offsets"**.
+* **Result:** The core triggers the **Geometry Engine**.
    * For **Milling** operations, this creates new `offset` primitives using virtually lossless pipelines.
    * For **Drilling** operations, this runs the drill strategy logic, creating Peck, Drill Milling, or Centerline primitives based on tool/hole size comparison.
 * **You See:** New objects appear in the tree ("Pass 1", "Peck Marks", "Milling Paths") and are rendered as thin red outlines. Drill markings are color-coded: green (exact fit), yellow (undersized tool), red (oversized tool).
@@ -197,11 +202,14 @@ The application guides the user through a clear, non-destructive process. Each s
 │       └── roland-processor.js           # Independent RML module
 │
 ├── examples/
-│   ├── example1/                         # Sample PCB files
-│   └── LineTest.svg                      # Precision test pattern
+│   ├── exampleSMD1/                      # Sample SMD board files
+│   ├── exampleThroughHole1/              # Sample Through-hole board files
+│   ├── LineTest.svg                      # Precision test pattern
+│   └── 100mmSquare.svg                   # 100*100mm square to check steps/mm
 │
-├── doc/
-│   └── index.html                        # Documentation - Tutorial
+├── doc.html                              # Documentation entry point
+├── cnc.html                              # Documentation for the CNC Pipeline (AI placeholder)
+├── laser.html                            # Documentation for the Laser Pipeline (General idea)
 │
 └── clipper2/                             # Clipper2 test page
 ```
@@ -277,21 +285,21 @@ If this tool saves you time or material costs, contributions via Ko-fi help fund
 ### 🤝 Become a Sponsor
 We offer visibility for manufacturers and industry partners on the application welcome screen and documentation. 
 
-<table width="100%">
+<table width="830px">
   <tr>
     <td align="center" width="33%">
       <a href="https://cam.eltryus.design/#support">
-        <img src="https://placehold.co/200x80/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
+        <img src="https://placehold.co/250x125/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
       </a>
     </td>
     <td align="center" width="33%">
       <a href="https://cam.eltryus.design/#support">
-        <img src="https://placehold.co/200x80/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
+        <img src="https://placehold.co/250x125/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
       </a>
     </td>
     <td align="center" width="33%">
       <a href="https://cam.eltryus.design/#support">
-        <img src="https://placehold.co/200x80/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
+        <img src="https://placehold.co/250x125/f8f9fa/666666?text=Your+Logo&font=roboto" alt="Your Logo" />
       </a>
     </td>
   </tr>
@@ -299,11 +307,13 @@ We offer visibility for manufacturers and industry partners on the application w
 
 [**Contact us regarding sponsorship →**](https://cam.eltryus.design/#support)
 
-## License 
+## License
+
+Copyright (C) 2025-2026 Eltryus - Ricardo Marques
 
 This project is licensed under the GNU Affero General Public License v3.0.
 
-This means the software is free to use, modify, and distribute. However, if you run a modified version on a network server and allow users to interact with it, you must also make the modified source code openly available.
+This means the software is free to use, modify, and distribute. However, if you run a modified version on a network server and allow users to interact with it, you must also make the modified source code openly available to all users interacting with it remotely.
 
 For the full license text, see the [LICENSE](./LICENSE) file.
 
@@ -318,7 +328,8 @@ For the full license text, see the [LICENSE](./LICENSE) file.
 - Angus Johnson for Clipper2 and Erik Sombroek for the WASM compilation 
 - Open-source and Fab Lab / Makerspace community
 - Krisjanis and Marcela for outstanding contributions to naming this thing
+- Bonus points for Marcela for providing the through-hole example board
 
 ---
 
-**Status**: Active Development | **Version**: 1.0 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.0.0 | **Platform**: Client-side Web

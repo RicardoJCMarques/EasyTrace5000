@@ -2,6 +2,7 @@
  * @file        config.js
  * @description Configuration - Single file (to be split later) - Under review
  * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  * @todo REFACTOR: Split into config/constants.js and config/settings.js
@@ -11,7 +12,7 @@
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2026 Eltryus
+ * Copyright (C) 2025-2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -205,18 +206,24 @@ window.PCBCAMConfig = {
     // [ADDED] For settings in renderer-*.js files
     // ============================================================================
     renderer: {
-        context: {                                   // [ADDED] [HARDCODED in renderer-core.js]
+        context: {                                  // [ADDED] [HARDCODED in renderer-core.js]
             alpha: false,
             desynchronized: true
         },
-        lodThreshold: 1,                             // [ADDED] [HARDCODED in renderer-core.js]
+        lodThreshold: 1,                            // [ADDED] [HARDCODED in renderer-core.js]
         zoom: {
-            fitPadding: 1.1,                         // [ADDED] [HARDCODED in renderer-core.js]
-            factor: 1.2,                             // [ADDED] [HARDCODED in renderer-core.js]
-            min: 0.01,                               // [ADDED] [HARDCODED in renderer-core.js, layout.canvas.minZoom]
-            max: 3000                                // [ADDED] [HARDCODED in renderer-core.js, layout.canvas.maxZoom]
+            fitPadding: 1.1,                        // [ADDED] [HARDCODED in renderer-core.js]
+            fitPaddingWithOrigin: 1.35,              // [ADDED] [HARDCODED in renderer-core.js]
+            factor: 1.2,                            // [ADDED] [HARDCODED in renderer-core.js]
+            min: 0.01,                              // [ADDED] [HARDCODED in renderer-core.js, layout.canvas.minZoom]
+            max: 3000                               // [ADDED] [HARDCODED in renderer-core.js, layout.canvas.maxZoom]
         },
-        overlay: {                                   // [ADDED] [HARDCODED in renderer-overlay.js]
+        emptyCanvas: {
+            originMarginLeft: 0.10,    // 15% from left edge
+            originMarginBottom: 0.12,  // 15% from bottom edge  
+            defaultScale: 10
+        },
+        overlay: {                                  // [ADDED] [HARDCODED in renderer-overlay.js]
             gridLineWidth: 0.1,
             originStrokeWidth: 3,
             originOutlineWidth: 1,

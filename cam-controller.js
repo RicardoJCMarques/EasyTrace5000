@@ -2,13 +2,14 @@
  * @file        cam-controller.js
  * @description Initializes and connects core and UI
  * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2026 Eltryus
+ * Copyright (C) 2025-2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -36,13 +37,21 @@
 
     // PCB Example definitions
     const PCB_EXAMPLES = {
-        'example1': {
-            name: 'Example 1',
+        'exampleSMD1': {
+            name: 'Example 1 - SMD',
             files: {
-                isolation: 'examples/example1/isolation.gbr',
-                drill: 'examples/example1/drill.drl',
-                clearing: 'examples/example1/clearing.gbr',
-                cutout: 'examples/example1/cutout.gbr'
+                isolation: 'examples/exampleSMD1/isolation.gbr',
+                drill: 'examples/exampleSMD1/drill.drl',
+                clearing: 'examples/exampleSMD1/clearing.gbr',
+                cutout: 'examples/exampleSMD1/cutout.gbr'
+            }
+        },
+        'exampleThroughHole1': {
+            name: 'Example 2 - Through-Hole',
+            files: {
+                isolation: 'examples/exampleThroughHole1/Gerber_BottomLayer.gbl',
+                drill: 'examples/exampleThroughHole1/Excellon_PTH_Through.drl',
+                cutout: 'examples/exampleThroughHole1/Gerber_BoardOutlineLayer.gko'
             }
         },
         'line': {

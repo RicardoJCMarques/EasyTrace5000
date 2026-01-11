@@ -2,13 +2,14 @@
  * @file        components.css
  * @description Reusable UI components - buttons, inputs, modals, tooltips
  * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
  */
 
 /*
  * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2026 Eltryus
+ * Copyright (C) 2025-2026 Eltryus
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -495,7 +496,7 @@ input[type="radio"] {
 
 .modal-body {
     flex: 1 1 auto;
-    padding: var(--spacing-xl);
+    padding: var(--spacing-lg);
     overflow-y: auto;
 }
 
@@ -508,7 +509,7 @@ input[type="radio"] {
     display: flex;
     gap: var(--spacing-sm);
     justify-content: flex-end;
-    padding: var(--spacing-md) var(--spacing-xl);
+    padding: var(--spacing-lg);
     border-top: 1px solid var(--color-border-primary);
     flex-shrink: 0;
 }
@@ -686,7 +687,7 @@ input[type="radio"] {
 
 /* Base Slot Style */
 .sponsor-slot {
-    height: 75px;
+    height: 110px;
     background: var(--color-bg-primary);
     border: 1.5px dashed var(--color-border-secondary);
     border-radius: var(--radius);
@@ -870,6 +871,39 @@ input[type="radio"] {
    QUICKSTART MODAL
    ============================================================================ */
 
+/* 1. Alignment */
+.header-text-group h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm); /* Space between icon and text */
+}
+
+/* 2. The Anchor Span */
+.pipeline-icon-anchor {
+    display: flex;
+    align-items: center;
+    height: 1em; /* Matches text height perfectly */
+}
+
+/* 3. Icon Default State (Hidden) */
+.pipeline-icon-anchor svg {
+    display: none;
+    width: 22px; /* Slightly larger than the 19px text for visual balance */
+    height: 22px;
+}
+
+/* 4. CNC State (Triggered by parent class) */
+.mode-cnc .icon-cnc {
+    display: block;
+    color: var(--color-pipeline-cnc);
+}
+
+/* 5. Laser State */
+.mode-laser .icon-laser {
+    display: block;
+    color: var(--color-pipeline-laser);
+}
+
 .quickstart-content {
     display: flex;
     flex-direction: column;
@@ -1022,11 +1056,25 @@ input[type="radio"] {
     font-weight: 600;
 }
 
+/* Quickstart footer - three column layout */
 .quickstart-footer {
-    justify-content: space-between;
+    display: flex;
     align-items: center;
-    background: var(--color-bg-tertiary);
+    padding: var(--spacing-lg);
     border-top: 1px solid var(--color-border-primary);
+}
+
+.quickstart-footer #quickstart-back-btn {
+    flex: 0 0 auto;
+}
+
+.quickstart-footer .checkbox-label {
+    flex: 1;
+    justify-content: center;
+}
+
+.quickstart-footer #start-empty-btn {
+    flex: 0 0 auto;
 }
 
 #start-empty-btn {
@@ -1041,6 +1089,12 @@ input[type="radio"] {
     color: var(--color-text-primary);
     background: var(--color-bg-hover);
     border-color: var(--color-text-primary);
+}
+
+
+/* Support footer - back button left aligned */
+#support-modal .modal-footer {
+    justify-content: flex-start;
 }
 
 /* ============================================================================

@@ -1,0 +1,64 @@
+name: Bug Report
+description: Report a parsing error, renderer glitch, or crash
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Before you submit
+        Please check the [Known Issues list](https://github.com/RicardoJCMarques/Eltryus_CAM#known-issues--limitations) in the README.
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what went wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: |
+        1. Load file...
+        2. Set tool diameter to...
+        3. Click 'Generate Offsets'
+      placeholder: |
+        1. Loaded attached 'Test_Board.gbr'
+        2. Set Tool Diameter to 0.4mm
+        3. Clicked Generate Offsets
+        4. App froze / Console showed error
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Reproduction Files (Recommended)
+      description: |
+        **Please drag & drop the Gerber/Excellon/SVG file that causes the issue here.**
+        *Note: If your file is proprietary, please create a minimal example that demonstrates the problem.*
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Browser & OS
+      description: |
+        Since this is a web-based CAM tool, the browser engine matters.
+      placeholder: "Chrome 120 on Windows 11 (or Safari on macOS, Firefox on Linux)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console Logs
+      description: |
+        Please press **F12**, go to the **Console** tab, and run:
+        `window.enablePCBDebug()`
+        Then reproduce the error and paste the red error text below.
+      render: shell
