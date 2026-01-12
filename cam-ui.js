@@ -329,9 +329,8 @@
                                 `offset_${operation.id}_combined` :
                                 `offset_${operation.id}_pass_${passIndex + 1}`;
 
-                            // Check if this operation has a preview.
-                            // If it does, the offsets should get hidden.
-                            const hasPreview = operation.preview && operation.preview.ready;
+                            // Check if this operation has a preview and if it does, the offsets should get hidden.
+                            const hasPreview = operation.preview && operation.preview.primitives && operation.preview.primitives.length > 0;
 
                             this.renderer.addLayer(
                                 layerName,

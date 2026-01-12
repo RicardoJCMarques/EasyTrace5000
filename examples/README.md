@@ -7,7 +7,7 @@ Use these files to verify your CNC machine's accuracy and resolution before atte
 
 | File | Purpose |
 | :--- | :--- |
-| **`100mm_Calibration_Square.svg`** | **Axis Tuning.** Just a 100x100mm square. Cut this first to measure your real-world output and calibrate your $X/Y steps per mm$ settings. Remember to take run-out into account and check the Z axis too. |
+| **`100mm_Calibration_Square.svg`** | **Axis Tuning.** Just a 100x100mm square. Cut this first to measure your real-world output and calibrate your X/Y steps/mm settings. Remember to take run-out into account and check the Z axis too. |
 | **`LineTest.svg`** | **DRC / Precision Test.** A pattern of expanding gaps and traces. Use this to find the limit of your V-bit's tip width and determine the minimum clearance and trace width your machine can handle. |
 
 ## Project Examples

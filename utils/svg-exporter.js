@@ -7,6 +7,24 @@
  * @license     AGPL-3.0-or-later
  */
 
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025-2026 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 (function() {
     'use strict';
 
@@ -21,7 +39,7 @@
             this.svgNS = 'http://www.w3.org/2000/svg';
 
             this.options = {
-                precision: 3, 
+                precision: 3,
                 padding: 5,
                 preserveArcs: geomConfig.preserveArcs !== false,
                 includeMetadata: true,
@@ -30,6 +48,109 @@
             };
         }
 
+        // Color System
+        /**
+         * Get all drill-related colors with fallbacks
+         */
+        _getColors() {
+            const src = this.core.colors?.source || {};
+            const geo = this.core.colors?.geometry || {};
+            const prim = this.core.colors?.primitives || {};
+
+            // Helper to strip 8-digit hex to 6-digit (remove alpha)
+            const stripAlpha = (color) => {
+                if (!color) return null;
+                // Match #RRGGBBAA format
+                if (/^#[0-9a-fA-F]{8}$/.test(color)) {
+                    return color.slice(0, 7);
+                }
+                return color;
+            };
+
+            return {
+                // Source geometry
+                drillSource: stripAlpha(src.drill) || '#4488ff',
+
+                // Preview/offset strokes
+                preview: stripAlpha(geo.preview) || '#0060dd',
+                offsetExternal: stripAlpha(geo.offset?.external) || '#a60000',
+                offsetInternal: stripAlpha(geo.offset?.internal) || '#00a600',
+
+                // Status colors (tool fit)
+                statusGood: stripAlpha(prim.peckMarkGood) || '#22c55e',
+                statusWarn: stripAlpha(prim.peckMarkWarn) || '#f59e0b',
+                statusError: stripAlpha(prim.peckMarkError) || '#ef4444',
+
+                // Fixed
+                white: '#FFFFFF'
+            };
+        }
+
+        /**
+         * Get status color based on tool relation
+         */
+        _getStatusColor(toolRelation) {
+            const colors = this._getColors();
+            switch (toolRelation) {
+                case 'oversized': return colors.statusError;
+                case 'undersized': return colors.statusWarn;
+                default: return colors.statusGood;
+            }
+        }
+
+        /**
+         * Determine geometry and mark colors for drill-related primitives
+         */
+        _getDrillElementColors(primitive, layer) {
+            const props = primitive.properties || {};
+            const toolRelation = props.toolRelation || 'exact';
+            const colors = this._getColors();
+
+            const isPreview = layer.isPreview || layer.type === 'preview';
+            const isOffset = layer.isOffset || layer.type === 'offset';
+            const isSourceDrill = layer.type === 'drill' && !isOffset && !isPreview;
+
+            const isPeck = props.role === 'peck_mark' || props.isToolPeckMark;
+            const statusColor = this._getStatusColor(toolRelation);
+
+            let geometryColor, geometryFill, markColor;
+
+            if (isSourceDrill) {
+                // Blue source outlines
+                geometryColor = colors.drillSource;
+                geometryFill = 'none';
+                markColor = colors.drillSource;
+            } 
+            else if (isPreview) {
+                if (isPeck) {
+                    // Preview Pecks: Filled circle + White Crosshair
+                    geometryColor = statusColor;
+                    geometryFill = statusColor;
+                    markColor = colors.white;
+                } else {
+                    // Preview Mills: Outline (wall) + White/Warn Crosshair
+                    geometryColor = colors.preview;
+                    geometryFill = 'none';
+                    markColor = toolRelation === 'undersized' ? colors.statusWarn : colors.white;
+                }
+            } 
+            else if (isOffset) {
+                // Offset mode: All Outlines
+                geometryColor = statusColor;
+                geometryFill = 'none'; 
+                markColor = statusColor;
+            } 
+            else {
+                // Fallback
+                geometryColor = statusColor;
+                geometryFill = 'none';
+                markColor = statusColor;
+            }
+
+            return { geometryColor, geometryFill, markColor };
+        }
+
+        // Main Export
         exportSVG(options = {}) {
             const exportConfig = { ...this.options, ...options };
             const filename = exportConfig.filename || 'pcb-export.svg';
@@ -43,9 +164,8 @@
             }
 
             const svg = this._createSVGRoot(bounds, exportConfig);
-
             if (exportConfig.includeMetadata) svg.appendChild(this._createExportComment());
-            if (exportConfig.embedStyles) svg.appendChild(this._createDefs(exportConfig));
+            if (exportConfig.embedStyles) svg.appendChild(this._createDefs());
 
             const mainGroup = this._createMainGroup(exportConfig);
             svg.appendChild(mainGroup);
@@ -82,56 +202,32 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         _createDefs() {
             const defs = document.createElementNS(this.svgNS, 'defs');
             const style = document.createElementNS(this.svgNS, 'style');
+            const colors = this._getColors();
 
-            const src = this.core.colors.source;
-            const geo = this.core.colors.geometry;
-            const prim = this.core.colors.primitives;
+            const src = this.core.colors?.source || {};
             const isBW = this.core.options.blackAndWhite;
 
             let css = `.lg { stroke-linecap: round; stroke-linejoin: round; }\n`;
 
             if (isBW) {
-                const w = this.core.colors.bw.white;
-                const b = this.core.colors.bw.black;
+                const w = this.core.colors?.bw?.white || '#ffffff';
+                const b = this.core.colors?.bw?.black || '#000000';
                 css += `svg { background: ${b}; }\n`;
                 css += `.fill { fill: ${w}; stroke: none; fill-rule: evenodd; }\n`;
                 css += `.str { fill: none; stroke: ${w}; }\n`;
-                css += `.mk { stroke: ${w} !important; stroke-width: 0.025; fill: none; }\n`;
             } else {
-                // Layer fills
-                css += `.iso { fill: ${src.isolation}; }\n`;
-                css += `.drl { fill: ${src.drill}; }\n`;
-                css += `.clr { fill: ${src.clearing}; }\n`;
-                css += `.cut { fill: ${src.cutout}; }\n`;
-                css += `.fus { fill: ${src.fused}; fill-rule: evenodd; }\n`;
+                // Source layer fills
+                css += `.iso { fill: ${src.isolation || '#ff8844'}; }\n`;
+                css += `.drl { fill: ${src.drill || '#4488ff'}; }\n`;
+                css += `.clr { fill: ${src.clearing || '#44ff88'}; }\n`;
+                css += `.cut { fill: ${src.cutout || '#333333'}; }\n`;
+                css += `.fus { fill: ${src.fused || '#ff8844'}; fill-rule: evenodd; }\n`;
 
                 // Stroke-only layers
-                css += `.trc { fill: none; stroke: ${src.isolation}; }\n`;
-                css += `.off-e { fill: none; stroke: ${geo.offset.external}; }\n`;
-                css += `.off-i { fill: none; stroke: ${geo.offset.internal}; }\n`;
-                css += `.prv { fill: none; stroke: ${geo.preview}; }\n`;
-
-                // Drill source geometry
-                css += `.d-hole { fill: none !important; stroke: ${src.drill} !important; stroke-width: 0.05; }\n`;
-                css += `.d-slot { fill: none !important; stroke: ${src.drill} !important; stroke-width: 0.05; }\n`;
-
-                // Drill strategy geometry
-                css += `.d-mill { fill: none !important; stroke-width: 0.025; }\n`;
-                css += `.d-peck { stroke-width: 0.025; }\n`;
-                css += `.d-peck-fill { stroke-width: 0.025; }\n`;
-
-                // Center marks
-                css += `.mk { fill: none !important; stroke-width: 0.025; }\n`;
-                css += `.mk-ok { stroke: ${prim.peckMarkGood} !important; }\n`;
-                css += `.mk-warn { stroke: ${prim.peckMarkWarn} !important; }\n`;
-                css += `.mk-err { stroke: ${prim.peckMarkError} !important; }\n`;
-                css += `.mk-src { stroke: ${src.drill} !important; }\n`;
-                css += `.mk-white { stroke: #FFFFFF !important; }\n`;
-
-                // Status colors
-                css += `.status-ok { stroke: ${prim.peckMarkGood} !important; }\n`;
-                css += `.status-warn { stroke: ${prim.peckMarkWarn} !important; }\n`;
-                css += `.status-err { stroke: ${prim.peckMarkError} !important; }\n`;
+                css += `.trc { fill: none; stroke: ${src.isolation || '#ff8844'}; }\n`;
+                css += `.off-e { fill: none; stroke: ${colors.offsetExternal}; }\n`;
+                css += `.off-i { fill: none; stroke: ${colors.offsetInternal}; }\n`;
+                css += `.prv { fill: none; stroke: ${colors.preview}; }\n`;
             }
 
             style.textContent = css;
@@ -157,75 +253,64 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             return mainGroup;
         }
 
+        // Layer Export
         _exportVisibleLayers(parentGroup, config) {
             const visibleLayers = this.core.getVisibleLayers();
             const order = ['cutout', 'source', 'fused', 'preprocessed', 'clearing', 'isolation', 'drill', 'offset', 'preview'];
 
-            const sortedLayers = Array.from(visibleLayers.entries()).sort((a, b) => {
-                const getScore = (l) => {
-                    if (l.isPreview) return 100;
-                    if (l.isOffset) return 90;
-                    if (l.isFused) return 20;
-                    return order.indexOf(l.type);
-                };
-                return getScore(a[1]) - getScore(b[1]);
-            });
+            const sortedLayers = Array.from(visibleLayers.entries())
+                .filter(([name, layer]) => this._shouldExportLayer(layer))
+                .sort((a, b) => {
+                    const getScore = (l) => {
+                        if (l.isPreview) return 100;
+                        if (l.isOffset) return 90;
+                        if (l.isFused) return 20;
+                        return order.indexOf(l.type);
+                    };
+                    return getScore(a[1]) - getScore(b[1]);
+                });
 
             for (const [name, layer] of sortedLayers) {
                 const layerGroup = document.createElementNS(this.svgNS, 'g');
                 layerGroup.setAttribute('id', name);
                 layerGroup.classList.add('lg');
 
-                // Check if layer has drill geometry that needs individual styling
-                const hasDrillGeometry = layer.primitives?.some(p => {
-                    const role = p.properties?.role;
-                    return role === 'peck_mark' || role === 'drill_milling_path' || 
-                           role === 'drill_hole' || role === 'drill_slot' ||
-                           p.properties?.isCenterlinePath;
-                });
+                this._applyGroupClass(layerGroup, layer);
 
-                // Apply group class (may be skipped for mixed drill layers)
-                this._applyGroupClass(layerGroup, layer, hasDrillGeometry);
-
-                // Get tool diameter for this layer
-                const groupToolDia = layer.metadata?.toolDiameter;
-
-                // Only set group stroke-width for pure preview layers (no drill geometry)
-                if (groupToolDia && (layer.isPreview || layer.type === 'preview') && !hasDrillGeometry) {
-                    layerGroup.setAttribute('stroke-width', this._formatNumber(groupToolDia, config.precision));
-                }
-
-                const geometryElements = [];
-                const decorationElements = [];
-
+                // Export each primitive via dispatcher
                 layer.primitives.forEach(primitive => {
-                    const el = this._primitiveToSVG(primitive, layer, config, hasDrillGeometry, groupToolDia);
-                    if (el) geometryElements.push(el);
-
-                    const marks = this._createDecorations(primitive, layer, config);
-                    if (marks.length > 0) decorationElements.push(...marks);
+                    const el = this._primitiveToSVG(primitive, layer, config);
+                    if (el) layerGroup.appendChild(el);
                 });
-
-                geometryElements.forEach(el => layerGroup.appendChild(el));
-                decorationElements.forEach(el => layerGroup.appendChild(el));
 
                 if (layerGroup.hasChildNodes()) parentGroup.appendChild(layerGroup);
             }
         }
 
-        _applyGroupClass(group, layer, hasDrillGeometry) {
+        // Visibility helper
+        _shouldExportLayer(layer) {
+            const opts = this.core.options;
+            
+            if (layer.type === 'offset' && !opts.showOffsets) return false;
+            if (layer.type === 'preview' && !opts.showPreviews) return false;
+            if (layer.type === 'drill' && !opts.showDrills) return false;
+            if (layer.type === 'cutout' && !opts.showCutouts) return false;
+            
+            return layer.visible;
+        }
+
+        // Group styling
+        _applyGroupClass(group, layer) {
             if (this.core.options.showWireframe) return;
 
+            const isDrillOperation = layer.operationType === 'drill' || layer.type === 'drill';
+
             if (layer.isPreview) {
-                // Only apply .prv class if NO drill geometry (pure preview layer)
-                // Mixed layers get individual inline styling
-                if (!hasDrillGeometry) {
-                    group.classList.add('prv');
-                }
+                group.classList.add('prv');
             } else if (layer.isOffset) {
-                if (!hasDrillGeometry) {
-                    group.classList.add(layer.offsetType === 'internal' ? 'off-i' : 'off-e');
-                }
+                // Drill offsets use inline styles, skip class
+                if (isDrillOperation) return;
+                group.classList.add(layer.offsetType === 'internal' ? 'off-i' : 'off-e');
             } else if (layer.isFused) {
                 group.classList.add('fus');
             } else {
@@ -234,31 +319,274 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             }
         }
 
-        //Main primitive to SVG element converter (handles all geometry types with proper styling)
-        _primitiveToSVG(primitive, layer, config, hasDrillGeometry, groupToolDia) {
-            const prec = config.precision;
+        // Primitive Rendering
+        _primitiveToSVG(primitive, layer, config) {
             const props = primitive.properties || {};
             const role = props.role;
-            const fmt = (n) => this._formatNumber(n, prec);
 
-            // Drill geometry
-            // Peck marks - circle with status-colored fill/stroke
+            // Dispatch by role (mirrors renderer logic)
             if (role === 'peck_mark' || props.isToolPeckMark) {
-                return this._createPeckMarkCircle(primitive, layer, config);
+                return this._exportPeckMark(primitive, layer, config);
             }
 
-            // Source drill holes and slots
-            if (role === 'drill_hole' || role === 'drill_slot') {
-                return this._createSourceDrillElement(primitive, config);
+            if (role === 'drill_hole') {
+                return this._exportSourceDrillHole(primitive, layer, config);
             }
 
-            // Drill milling paths (undersized holes, centerlines)
+            if (role === 'drill_slot') {
+                return this._exportSourceDrillSlot(primitive, layer, config);
+            }
+
             if (role === 'drill_milling_path' || props.isCenterlinePath) {
-                return this._createDrillMillingElement(primitive, config);
+                return this._exportMillingPath(primitive, layer, config);
             }
 
-            // Standard geometry
+            // Standard geometry fallback
+            return this._exportStandardGeometry(primitive, layer, config);
+        }
+
+        // Peck Mark Handler
+        _exportPeckMark(primitive, layer, config) {
+            const prec = config.precision;
+            const fmt = (n) => this._formatNumber(n, prec);
+            const props = primitive.properties || {};
+
+            const { geometryColor, geometryFill, markColor } = this._getDrillElementColors(primitive, layer);
+
+            const isPreview = layer.isPreview || layer.type === 'preview';
+
+            const group = document.createElementNS(this.svgNS, 'g');
+
+            // Main Circle
+            const circle = document.createElementNS(this.svgNS, 'circle');
+            circle.setAttribute('cx', fmt(primitive.center.x));
+            circle.setAttribute('cy', fmt(primitive.center.y));
+            circle.setAttribute('r', fmt(primitive.radius));
+            circle.setAttribute('fill', geometryFill);
+            circle.setAttribute('stroke', geometryColor);
+
+            // Scale stroke relative to geometry size for visibility
+            const baseStroke = isPreview ? 0.025 : Math.max(0.05, primitive.radius * 0.08);
+            circle.setAttribute('stroke-width', fmt(baseStroke));
+            group.appendChild(circle);
+
+            // Crosshair - scale to geometry
+            const markSize = Math.min(0.5, primitive.radius * 0.4);
+            group.appendChild(this._createCrosshair(primitive.center, markSize, prec, markColor));
+
+            // Reduced Plunge Ring (dashed)
+            if (props.reducedPlunge) {
+                const ring = document.createElementNS(this.svgNS, 'circle');
+                ring.setAttribute('cx', fmt(primitive.center.x));
+                ring.setAttribute('cy', fmt(primitive.center.y));
+                ring.setAttribute('r', fmt(primitive.radius * 0.8));
+                ring.setAttribute('fill', 'none');
+                ring.setAttribute('stroke', this._getColors().statusWarn);
+                ring.setAttribute('stroke-width', fmt(baseStroke * 0.5));
+                ring.setAttribute('stroke-dasharray', `${fmt(0.1)} ${fmt(0.1)}`);
+                group.appendChild(ring);
+            }
+
+            return group;
+        }
+
+        // Source Drill Hole Handler
+        _exportSourceDrillHole(primitive, layer, config) {
+            const prec = config.precision;
+            const fmt = (n) => this._formatNumber(n, prec);
+            const colors = this._getColors();
+
+            const group = document.createElementNS(this.svgNS, 'g');
+
+            // Main circle
+            const circle = document.createElementNS(this.svgNS, 'circle');
+            circle.setAttribute('cx', fmt(primitive.center.x));
+            circle.setAttribute('cy', fmt(primitive.center.y));
+            circle.setAttribute('r', fmt(primitive.radius));
+            circle.setAttribute('fill', 'none');
+            circle.setAttribute('stroke', colors.drillSource);
+            circle.setAttribute('stroke-width', fmt(0.05));
+            group.appendChild(circle);
+
+            // Crosshair
+            const markSize = Math.min(0.5, primitive.radius * 0.6);
+            group.appendChild(this._createCrosshair(primitive.center, markSize, prec, colors.drillSource));
+
+            return group;
+        }
+
+        // Source Drill Slot Handler
+        _exportSourceDrillSlot(primitive, layer, config) {
+            const prec = config.precision;
+            const fmt = (n) => this._formatNumber(n, prec);
+            const props = primitive.properties || {};
+            const colors = this._getColors();
+            const slot = props.originalSlot;
+
+            if (!slot) return null;
+
+            const group = document.createElementNS(this.svgNS, 'g');
+            const radius = props.diameter / 2;
+
+            // Build slot perimeter path
+            const dx = slot.end.x - slot.start.x;
+            const dy = slot.end.y - slot.start.y;
+            const angle = Math.atan2(dy, dx);
+
+            // Perpendicular offsets
+            const px = radius * Math.cos(angle + Math.PI / 2);
+            const py = radius * Math.sin(angle + Math.PI / 2);
+
+            // Use large=0, sweep=1 to match working _obroundToD logic
+            const d = [
+                `M${fmt(slot.start.x + px)} ${fmt(slot.start.y + py)}`,
+                `A${fmt(radius)} ${fmt(radius)} 0 0 1 ${fmt(slot.start.x - px)} ${fmt(slot.start.y - py)}`,
+                `L${fmt(slot.end.x - px)} ${fmt(slot.end.y - py)}`,
+                `A${fmt(radius)} ${fmt(radius)} 0 0 1 ${fmt(slot.end.x + px)} ${fmt(slot.end.y + py)}`,
+                'Z'
+            ].join(' ');
+
+            const path = document.createElementNS(this.svgNS, 'path');
+            path.setAttribute('d', d);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', colors.drillSource);
+            path.setAttribute('stroke-width', fmt(0.05));
+            group.appendChild(path);
+
+            // Crosshairs at endpoints
+            const markSize = Math.min(0.5, radius * 0.6);
+            group.appendChild(this._createCrosshair(slot.start, markSize, prec, colors.drillSource));
+            group.appendChild(this._createCrosshair(slot.end, markSize, prec, colors.drillSource));
+
+            return group;
+        }
+
+        // Milling Path Handler
+        _exportMillingPath(primitive, layer, config) {
+            const prec = config.precision;
+            const fmt = (n) => this._formatNumber(n, prec);
+            const props = primitive.properties || {};
+
+            // Get Unified Colors
+            const { geometryColor, geometryFill, markColor } = this._getDrillElementColors(primitive, layer);
+
+            // State Flags
+            const isPreview = layer.isPreview || layer.type === 'preview';
+            const isCenterline = props.isCenterlinePath;
+
+            const group = document.createElementNS(this.svgNS, 'g');
+            let mainEl = null;
+
+            // Generate the Main Geometry
+            // Handle specific primitives that might be "milling paths"
+            if (primitive.type === 'circle') {
+                mainEl = document.createElementNS(this.svgNS, 'circle');
+                mainEl.setAttribute('cx', fmt(primitive.center.x));
+                mainEl.setAttribute('cy', fmt(primitive.center.y));
+                mainEl.setAttribute('r', fmt(primitive.radius));
+
+            } else if (primitive.type === 'obround') {
+                mainEl = document.createElementNS(this.svgNS, 'path');
+                mainEl.setAttribute('d', this._obroundToD(primitive, prec));
+
+            } else if (isCenterline && primitive.contours?.[0]?.points?.length >= 2) {
+                // Special case: Centerline slot body
+                const pts = primitive.contours[0].points;
+                const p1 = pts[0];
+                const p2 = pts[pts.length - 1];
+                const toolDia = props.toolDiameter || layer.metadata?.toolDiameter || 0.5;
+                const radius = toolDia / 2;
+
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const angle = Math.atan2(dy, dx);
+                const px = radius * Math.cos(angle + Math.PI / 2);
+                const py = radius * Math.sin(angle + Math.PI / 2);
+
+                // sweep=1 for Y-flipped coords
+                const d = [
+                    `M${fmt(p1.x + px)} ${fmt(p1.y + py)}`,
+                    `A${fmt(radius)} ${fmt(radius)} 0 0 1 ${fmt(p1.x - px)} ${fmt(p1.y - py)}`,
+                    `L${fmt(p2.x - px)} ${fmt(p2.y - py)}`,
+                    `A${fmt(radius)} ${fmt(radius)} 0 0 1 ${fmt(p2.x + px)} ${fmt(p2.y + py)}`,
+                    'Z'
+                ].join(' ');
+
+                mainEl = document.createElementNS(this.svgNS, 'path');
+                mainEl.setAttribute('d', d);
+
+                // White centerline visual
+                const line = document.createElementNS(this.svgNS, 'line');
+                line.setAttribute('x1', fmt(p1.x));
+                line.setAttribute('y1', fmt(p1.y));
+                line.setAttribute('x2', fmt(p2.x));
+                line.setAttribute('y2', fmt(p2.y));
+                line.setAttribute('stroke', '#FFFFFF');
+                line.setAttribute('stroke-width', fmt(0.025));
+                group.appendChild(line);
+
+            } else {
+                // Fallback for complex paths
+                const pathData = this._buildPathData(primitive, prec, config);
+                if (pathData) {
+                    mainEl = document.createElementNS(this.svgNS, 'path');
+                    mainEl.setAttribute('d', pathData);
+                }
+            }
+
+            if (!mainEl) return null; // Safety check
+
+            // Apply Styling
+            if (isPreview) {
+                // In preview, milling paths should show the tool width or fill
+                if (isCenterline) {
+                    // Centerline slots are filled solid
+                    mainEl.setAttribute('fill', geometryColor);
+                    mainEl.setAttribute('stroke', 'none');
+                } else {
+                    // Regular milling paths (boring holes) are outlines of the hole wall
+                    // The tool width is the stroke width
+                    const toolDia = props.toolDiameter || layer.metadata?.toolDiameter || 0.1;
+                    mainEl.setAttribute('fill', 'none');
+                    mainEl.setAttribute('stroke', geometryColor);
+                    mainEl.setAttribute('stroke-width', fmt(toolDia));
+                    mainEl.setAttribute('stroke-linecap', 'round');
+                    mainEl.setAttribute('stroke-linejoin', 'round');
+                }
+            } else {
+                // Offset/Source mode: Hairline outline
+                mainEl.setAttribute('fill', 'none');
+                mainEl.setAttribute('stroke', geometryColor);
+                mainEl.setAttribute('stroke-width', fmt(0.025));
+            }
+
+            group.appendChild(mainEl);
+
+            // Add center marks
+            if (props.originalSlot) {
+                group.appendChild(this._createCrosshair(props.originalSlot.start, 0.5, prec, markColor));
+                group.appendChild(this._createCrosshair(props.originalSlot.end, 0.5, prec, markColor));
+            } else if (primitive.center) {
+                group.appendChild(this._createCrosshair(primitive.center, 0.5, prec, markColor));
+            } else if (isCenterline) {
+                // Fallback for centerline path endpoints
+                const pts = primitive.contours[0].points;
+                group.appendChild(this._createCrosshair(pts[0], 0.5, prec, markColor));
+                group.appendChild(this._createCrosshair(pts[pts.length-1], 0.5, prec, markColor));
+            }
+
+            return group;
+        }
+
+        // Standard Geometry Handler
+        _exportStandardGeometry(primitive, layer, config) {
+            const prec = config.precision;
+            const fmt = (n) => this._formatNumber(n, prec);
+            const props = primitive.properties || {};
+
             let el = null;
+
+            // Generate Element based on type
             switch (primitive.type) {
                 case 'circle':
                     el = document.createElementNS(this.svgNS, 'circle');
@@ -266,6 +594,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
                     el.setAttribute('cy', fmt(primitive.center.y));
                     el.setAttribute('r', fmt(primitive.radius));
                     break;
+
                 case 'rectangle':
                     el = document.createElementNS(this.svgNS, 'rect');
                     el.setAttribute('x', fmt(primitive.position.x));
@@ -273,246 +602,124 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
                     el.setAttribute('width', fmt(primitive.width));
                     el.setAttribute('height', fmt(primitive.height));
                     break;
-                case 'path':
+
                 case 'obround':
-                case 'arc':
                     el = document.createElementNS(this.svgNS, 'path');
-                    el.setAttribute('d', this._buildPathData(primitive, prec, config));
+                    el.setAttribute('d', this._obroundToD(primitive, prec));
+                    break;
+
+                case 'path':
+                case 'arc':
+                case 'bezier': 
+                    el = document.createElementNS(this.svgNS, 'path');
+                    const pathData = this._buildPathData(primitive, prec, config);
+                    if (!pathData) return null;
+                    el.setAttribute('d', pathData);
                     if (primitive.contours?.some(c => c.isHole)) {
                         el.setAttribute('fill-rule', 'evenodd');
                     }
                     break;
-                default: 
+
+                default:
                     return null;
             }
 
-            if (!el) return null;
+            // Apply Layer-Context Styling
+            const isPreview = layer.isPreview || layer.type === 'preview';
+            const isOffset = layer.isOffset || layer.type === 'offset';
+            const isTrace = (props.isTrace || props.stroke) && !props.fill;
 
-            // Apply styling
-            if (!this.core.options.showWireframe) {
-                const isPreviewLayer = layer.isPreview || layer.type === 'preview';
-                const isOffsetLayer = layer.isOffset || layer.type === 'offset';
+            if (isPreview) {
+                const toolDia = props.toolDiameter || layer.metadata?.toolDiameter || 0.1;
+                el.setAttribute('fill', 'none');
+                el.setAttribute('stroke', this._getColors().preview);
+                el.setAttribute('stroke-width', fmt(toolDia));
+                el.setAttribute('stroke-linecap', 'round');
+                el.setAttribute('stroke-linejoin', 'round');
 
-                // For preview/offset layers with drill geometry, apply inline styles since the group class was skipped
-                if (hasDrillGeometry && (isPreviewLayer || isOffsetLayer)) {
-                    this._applyInlineStyles(el, primitive, layer, config, groupToolDia);
-                } 
-                // For standard traces (stroked paths), set stroke-width
-                else if ((props.isTrace || props.stroke === true) && !isOffsetLayer && !isPreviewLayer) {
-                    el.classList.add('trc');
+            } else if (isOffset) {
+                const offsetColor = layer.offsetType === 'internal' 
+                    ? this._getColors().offsetInternal 
+                    : this._getColors().offsetExternal;
+                el.setAttribute('fill', 'none');
+                el.setAttribute('stroke', offsetColor);
+                el.setAttribute('stroke-width', fmt(0.025));
+                el.setAttribute('stroke-linejoin', 'round');
+
+            } else if (isTrace) {
+                // Source traces - use CSS class for color, inline for width
+                el.classList.add('trc');
+                if (props.strokeWidth) {
+                    el.setAttribute('stroke-width', fmt(props.strokeWidth));
+                }
+
+            } else if (props.fill === false) {
+                el.setAttribute('fill', 'none');
+            }
+            // Else: filled geometry uses CSS class from parent group
+
+            return el;
+        }
+
+        // Helper to separate creation from styling
+        _styleStandardElement(el, primitive, layer, config) {
+            const fmt = (n) => this._formatNumber(n, config.precision);
+            const props = primitive.properties || {};
+            const colors = this._getColors();
+
+            if (layer.isPreview || layer.type === 'preview') {
+                // Preview Mode: Use tool diameter width
+                const toolDia = props.toolDiameter || layer.metadata?.toolDiameter || 0.1;
+
+                el.setAttribute('fill', 'none');
+                el.setAttribute('stroke', colors.preview);
+                el.setAttribute('stroke-width', fmt(toolDia));
+                el.setAttribute('stroke-linecap', 'round');
+                el.setAttribute('stroke-linejoin', 'round');
+
+            } else if (layer.isOffset || layer.type === 'offset') {
+                // Offset Mode: Thin lines
+                const offsetColor = layer.offsetType === 'internal' 
+                    ? colors.offsetInternal 
+                    : colors.offsetExternal;
+
+                el.setAttribute('fill', 'none');
+                el.setAttribute('stroke', offsetColor);
+                el.setAttribute('stroke-width', fmt(0.025)); // Hairline
+                el.setAttribute('stroke-linejoin', 'round');
+                
+            } else {
+                // Source Mode
+                // Traces/Strokes
+                if ((props.isTrace || props.stroke) && !props.fill) {
+                    el.setAttribute('fill', 'none');
+                    // If the element has a class (from layer group), stroke color comes from CSS.
+                    // Must set width if defined.
                     if (props.strokeWidth) {
                         el.setAttribute('stroke-width', fmt(props.strokeWidth));
                     }
-                }
-                // For preview layers without drill geometry, tool diameter comes from group but individual elements may override
-                else if (isPreviewLayer && !hasDrillGeometry) {
-                    const objectWidth = props.toolDiameter || props.strokeWidth;
-                    if (objectWidth && (!groupToolDia || Math.abs(objectWidth - groupToolDia) > 0.0001)) {
-                        el.setAttribute('stroke-width', fmt(objectWidth));
-                    }
+                    // If it's a generic stroke without width, default to 0
+                } 
+                // Regions/Fills - handled by CSS classes on the parent Group usually, but if specific properties override, handle here:
+                else if (props.fill === false) {
+                    el.setAttribute('fill', 'none');
                 }
             }
 
             return el;
         }
 
-        //Apply inline styles to elements in mixed-geometry layers (layers where group class was skipped due to drill geometry)
-        _applyInlineStyles(el, primitive, layer, config, groupToolDia) {
-            const fmt = (n) => this._formatNumber(n, config.precision);
-            const props = primitive.properties || {};
-            const geo = this.core.colors.geometry;
-
-            const isPreviewLayer = layer.isPreview || layer.type === 'preview';
-            const isOffsetLayer = layer.isOffset || layer.type === 'offset';
-
-            // Determine stroke color
-            let strokeColor;
-            if (isPreviewLayer) {
-                strokeColor = geo.preview;
-            } else if (isOffsetLayer) {
-                strokeColor = layer.offsetType === 'internal' ? geo.offset.internal : geo.offset.external;
-            }
-
-            if (strokeColor) {
-                el.setAttribute('fill', 'none');
-                el.setAttribute('stroke', strokeColor);
-            }
-
-            // Determine stroke width
-            const toolDia = props.toolDiameter || groupToolDia || props.strokeWidth;
-            if (toolDia) {
-                el.setAttribute('stroke-width', fmt(toolDia));
-            }
-        }
-
-        // Create peck mark circle with status-colored styling
-        _createPeckMarkCircle(primitive, layer, config) {
-            const prec = config.precision;
-            const props = primitive.properties || {};
-            const fmt = (n) => this._formatNumber(n, prec);
-
-            if (!primitive.center || !primitive.radius) return null;
-
-            const toolRelation = props.toolRelation || 'exact';
-            const isPreview = layer.isPreview || layer.type === 'preview';
-            const color = this._getStatusColor(toolRelation);
-
-            const circle = document.createElementNS(this.svgNS, 'circle');
-            circle.setAttribute('cx', fmt(primitive.center.x));
-            circle.setAttribute('cy', fmt(primitive.center.y));
-            circle.setAttribute('r', fmt(primitive.radius));
-
-            // All styling inline to override any group inheritance
-            if (isPreview) {
-                // Filled circle for preview mode
-                circle.setAttribute('fill', color);
-                circle.setAttribute('stroke', color);
-                circle.setAttribute('stroke-width', fmt(0.025));
-            } else {
-                // Stroked outline for offset mode
-                circle.setAttribute('fill', 'none');
-                circle.setAttribute('stroke', color);
-                circle.setAttribute('stroke-width', fmt(0.025));
-            }
-            
-            return circle;
-        }
-
-        // Create source drill geometry (holes and slots from drill file)
-        _createSourceDrillElement(primitive, config) {
-            const prec = config.precision;
-            const props = primitive.properties || {};
-            const fmt = (n) => this._formatNumber(n, prec);
-            const drillColor = this.core.colors.source.drill;
-
-            let el = document.createElementNS(this.svgNS, 'path');
-
-            if (props.role === 'drill_hole') {
-                const cx = primitive.center.x;
-                const cy = primitive.center.y;
-                const r = primitive.radius;
-                el.setAttribute('d', `M${fmt(cx + r)} ${fmt(cy)}A${fmt(r)} ${fmt(r)} 0 1 0 ${fmt(cx - r)} ${fmt(cy)}A${fmt(r)} ${fmt(r)} 0 1 0 ${fmt(cx + r)} ${fmt(cy)}`);
-            } else if (props.role === 'drill_slot') {
-                el.setAttribute('d', this._buildPathData(primitive, prec, config));
-            }
-
-            // Inline styling - source drills are always stroked outlines
-            el.setAttribute('fill', 'none');
-            el.setAttribute('stroke', drillColor);
-            el.setAttribute('stroke-width', fmt(0.05));
-
-            return el;
-        }
-
-        //Create drill milling path geometry (undersized holes, centerline slots)
-        _createDrillMillingElement(primitive, config) {
-            const prec = config.precision;
-            const props = primitive.properties || {};
-            const fmt = (n) => this._formatNumber(n, prec);
-
-            const toolRelation = props.toolRelation || 'exact';
-            const color = this._getStatusColor(toolRelation);
-
-            let el = document.createElementNS(this.svgNS, 'path');
-            el.setAttribute('d', this._buildPathData(primitive, prec, config));
-
-            // Inline styling
-            el.setAttribute('fill', 'none');
-            el.setAttribute('stroke', color);
-            el.setAttribute('stroke-width', fmt(0.025));
-            el.setAttribute('stroke-linecap', 'round');
-            el.setAttribute('stroke-linejoin', 'round');
-            
-            return el;
-        }
-
-        // Create decoration elements (crosshairs, center marks)
-        _createDecorations(primitive, layer, config) {
-            const decos = [];
-            const props = primitive.properties || {};
-            const role = props.role;
-            const prec = config.precision;
-
-            const toolRelation = props.toolRelation || 'exact';
-            const isPreview = layer.isPreview || layer.type === 'preview';
-            const isSourceDrill = layer.type === 'drill' && !layer.isOffset && !layer.isPreview;
-
-            // Determine crosshair color
-            let markColor;
-            if (isSourceDrill) {
-                markColor = this.core.colors.source.drill;
-            } else if (isPreview) {
-                markColor = '#FFFFFF';
-            } else {
-                markColor = this._getStatusColor(toolRelation);
-            }
-
-            const baseMarkSize = 0.5;
-
-            // Peck marks - crosshair only (circle created in _primitiveToSVG)
-            if (role === 'peck_mark' || props.isToolPeckMark) {
-                if (primitive.center) {
-                    const markSize = Math.min(baseMarkSize, primitive.radius * 0.4);
-                    decos.push(this._createCrosshair(primitive.center, markSize, prec, markColor));
-                }
-                return decos;
-            }
-
-            // Source drill holes
-            if (role === 'drill_hole' && primitive.center) {
-                const markSize = Math.min(baseMarkSize, primitive.radius * 0.6);
-                decos.push(this._createCrosshair(primitive.center, markSize, prec, markColor));
-            }
-
-            // Source drill slots
-            if (role === 'drill_slot' && props.originalSlot) {
-                const markSize = Math.min(baseMarkSize, (props.diameter || 1) * 0.3);
-                decos.push(this._createCrosshair(props.originalSlot.start, markSize, prec, markColor));
-                decos.push(this._createCrosshair(props.originalSlot.end, markSize, prec, markColor));
-            }
-
-            // Milling paths
-            if (role === 'drill_milling_path' || props.isCenterlinePath) {
-                if (props.originalSlot) {
-                    decos.push(this._createCrosshair(props.originalSlot.start, baseMarkSize, prec, markColor));
-                    decos.push(this._createCrosshair(props.originalSlot.end, baseMarkSize, prec, markColor));
-                } else if (primitive.center) {
-                    decos.push(this._createCrosshair(primitive.center, baseMarkSize, prec, markColor));
-                } else if (primitive.contours?.[0]?.points?.length > 0) {
-                    const pts = primitive.contours[0].points;
-                    decos.push(this._createCrosshair(pts[0], baseMarkSize, prec, markColor));
-                    decos.push(this._createCrosshair(pts[pts.length - 1], baseMarkSize, prec, markColor));
-                }
-            }
-
-            return decos;
-        }
-
-        //Create a crosshair marker at a point
+        // Decorations (Crosshairs)
         _createCrosshair(pt, size, prec, color) {
             const path = document.createElementNS(this.svgNS, 'path');
             const fmt = (n) => this._formatNumber(n, prec);
-            const x = pt.x, y = pt.y;
 
-            path.setAttribute('d', `M${fmt(x - size)} ${fmt(y)}L${fmt(x + size)} ${fmt(y)}M${fmt(x)} ${fmt(y - size)}L${fmt(x)} ${fmt(y + size)}`);
-
-            // All inline - no CSS classes
+            path.setAttribute('d', `M${fmt(pt.x - size)} ${fmt(pt.y)}L${fmt(pt.x + size)} ${fmt(pt.y)}M${fmt(pt.x)} ${fmt(pt.y - size)}L${fmt(pt.x)} ${fmt(pt.y + size)}`);
             path.setAttribute('fill', 'none');
             path.setAttribute('stroke', color);
             path.setAttribute('stroke-width', fmt(0.025));
-            
-            return path;
-        }
 
-        // Get status color based on tool relation
-        _getStatusColor(toolRelation) {
-            const prim = this.core.colors.primitives;
-            switch (toolRelation) {
-                case 'oversized': return prim.peckMarkError;
-                case 'undersized': return prim.peckMarkWarn;
-                case 'exact':
-                default: return prim.peckMarkGood;
-            }
+            return path;
         }
 
         // Path Data Building
@@ -530,7 +737,6 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         _contourPointsToD(points, prec) {
             if (!points || points.length < 2) return '';
 
-            // Collinear filter
             const optimized = [points[0]];
             for (let i = 1; i < points.length - 1; i++) {
                 const prev = optimized[optimized.length - 1];
@@ -548,14 +754,9 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             for (let i = 1; i < optimized.length; i++) {
                 const px = optimized[i].x;
                 const py = optimized[i].y;
-                const dx = px - cx;
-                const dy = py - cy;
-
-                const sDx = this._formatNumber(dx, prec);
-                const sDy = this._formatNumber(dy, prec);
-                const sep = (sDy.startsWith('-')) ? '' : ' ';
-                d += `l${sDx}${sep}${sDy}`;
-
+                const sDx = this._formatNumber(px - cx, prec);
+                const sDy = this._formatNumber(py - cy, prec);
+                d += `l${sDx}${sDy.startsWith('-') ? '' : ' '}${sDy}`;
                 cx = px; cy = py;
             }
             return d + 'Z';
@@ -589,12 +790,15 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
                 }
 
                 const end = pts[arc.endIndex];
+
+                // Use pre-computed sweepAngle if available (stitched paths), otherwise calculate from angles (regular geometry)
                 let span = arc.sweepAngle;
                 if (span === undefined) {
                     span = arc.endAngle - arc.startAngle;
                     if (arc.clockwise && span > 0) span -= 2 * Math.PI;
                     if (!arc.clockwise && span < 0) span += 2 * Math.PI;
                 }
+
                 const large = Math.abs(span) > Math.PI ? 1 : 0;
                 const sweep = arc.clockwise ? 1 : 0;
 
@@ -604,7 +808,8 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
                 d += `A${rx} ${rx} 0 ${large} ${sweep} ${ex} ${ey}`;
 
-                cx = end.x; cy = end.y;
+                cx = end.x; 
+                cy = end.y;
                 currentIdx = arc.endIndex;
             }
 
@@ -619,26 +824,45 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         _arcToD(prim, prec) {
-            const fmt = (n) => this._formatNumber(n, prec);
+            const f = (n) => this._formatNumber(n, prec);
             const sx = prim.center.x + prim.radius * Math.cos(prim.startAngle);
             const sy = prim.center.y + prim.radius * Math.sin(prim.startAngle);
             const ex = prim.center.x + prim.radius * Math.cos(prim.endAngle);
             const ey = prim.center.y + prim.radius * Math.sin(prim.endAngle);
             let span = prim.endAngle - prim.startAngle;
+
             if (prim.clockwise && span > 0) span -= 2 * Math.PI;
             if (!prim.clockwise && span < 0) span += 2 * Math.PI;
+
             const large = Math.abs(span) > Math.PI ? 1 : 0;
-            const sweep = !prim.clockwise ? 1 : 0;
-            return `M${fmt(sx)} ${fmt(sy)}A${fmt(prim.radius)} ${fmt(prim.radius)} 0 ${large} ${sweep} ${fmt(ex)} ${fmt(ey)}`;
+            const sweep = prim.clockwise ? 1 : 0;
+
+            return `M${f(sx)} ${f(sy)} A${f(prim.radius)} ${f(prim.radius)} 0 ${large} ${sweep} ${f(ex)} ${f(ey)}`;
         }
 
         _obroundToD(prim, prec) {
             const fmt = (n) => this._formatNumber(n, prec);
-            const r = Math.min(prim.width, prim.height) / 2;
             const { x, y } = prim.position;
-            const w = prim.width, h = prim.height;
-            if (w > h) return `M${fmt(x+r)} ${fmt(y)}L${fmt(x+w-r)} ${fmt(y)}A${fmt(r)} ${fmt(r)} 0 0 0 ${fmt(x+w-r)} ${fmt(y+h)}L${fmt(x+r)} ${fmt(y+h)}A${fmt(r)} ${fmt(r)} 0 0 0 ${fmt(x+r)} ${fmt(y)}Z`;
-            else return `M${fmt(x+w)} ${fmt(y+r)}L${fmt(x+w)} ${fmt(y+h-r)}A${fmt(r)} ${fmt(r)} 0 0 0 ${fmt(x)} ${fmt(y+h-r)}L${fmt(x)} ${fmt(y+r)}A${fmt(r)} ${fmt(r)} 0 0 0 ${fmt(x+w)} ${fmt(y+r)}Z`;
+            const w = prim.width;
+            const h = prim.height;
+            const r = Math.min(w, h) / 2;
+
+            // In Y-flipped coords, sweep=1 for visually correct semicircles
+            if (w > h) {
+                // Horizontal obround
+                return `M${fmt(x + r)} ${fmt(y)}` +
+                    `L${fmt(x + w - r)} ${fmt(y)}` +
+                    `A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(x + w - r)} ${fmt(y + h)}` +
+                    `L${fmt(x + r)} ${fmt(y + h)}` +
+                    `A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(x + r)} ${fmt(y)}Z`;
+            } else {
+                // Vertical obround
+                return `M${fmt(x + w)} ${fmt(y + r)}` +
+                    `L${fmt(x + w)} ${fmt(y + h - r)}` +
+                    `A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(x)} ${fmt(y + h - r)}` +
+                    `L${fmt(x)} ${fmt(y + r)}` +
+                    `A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(x + w)} ${fmt(y + r)}Z`;
+            }
         }
 
         // Utilities

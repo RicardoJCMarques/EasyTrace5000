@@ -140,7 +140,7 @@ The application guides the user through a clear, non-destructive process. Each s
 │   └── dark.json                         # Dark Theme
 │
 ├── utils/
-│   ├── unit-converter.js                 # Rudimentary unit conversion system (only SVG parsing currently)
+│   ├── unit-converter.js                 # Rudimentary unit conversion system (SVG parsing only)
 │   ├── svg-exporter.js                   # SVG export
 │   └── coordinate-system.js              # Coordinate transformations
 │
@@ -311,16 +311,31 @@ We offer visibility for manufacturers and industry partners on the application w
 
 Copyright (C) 2025-2026 Eltryus - Ricardo Marques
 
-This project is licensed under the GNU Affero General Public License v3.0.
+**This project uses multiple licenses.**
 
+* **Software Source Code (The App):**
+    The core application logic, UI, and algorithms are licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+    See [`LICENSE`](./LICENSE) in the root directory.
+
+* **Third-Party Libraries:**
+    The `geometry/clipper2z` library (Clipper2 WASM) is subject to its own license terms.
+    See the [license file](./geometry/LICENSE) located in the `geometry/` directory.
+
+* **Example Files (Assets):**
+    * `examples/exampleThroughHole1`: Released into the **[Public Domain (CC0)](./examples/exampleThroughHole1/LICENSE)**.
+    * `examples/exampleSMD1` and `LineTest.svg`: Licensed under **[CC BY-NC (Attribution-NonCommercial)](./examples/LICENSE)**.
+    * Other files: Check for specific license text within their respective directories.
+
+**Trademarks**
+The name "Eltryus" is a trademark. You may not use this name to endorse or promote products derived from this software without specific prior written permission, except as required to describe the origin of the software.
+
+**Permissions & Obligations (AGPL)**
 This means the software is free to use, modify, and distribute. However, if you run a modified version on a network server and allow users to interact with it, you must also make the modified source code openly available to all users interacting with it remotely.
-
-For the full license text, see the [LICENSE](./LICENSE) file.
 
 **Key points:**
 - ✅ Free to use, including commercial applications
 - ✅ Modify and distribute as needed
-- ✅ Must keep source open (GPL v3)
+- ✅ Must keep source open (AGPL v3)
 - ❌ Cannot create closed-source derivatives
 
 ## 🙏 Acknowledgments
@@ -329,6 +344,14 @@ For the full license text, see the [LICENSE](./LICENSE) file.
 - Open-source and Fab Lab / Makerspace community
 - Krisjanis and Marcela for outstanding contributions to naming this thing
 - Bonus points for Marcela for providing the through-hole example board
+
+## Community & Contributing
+
+While I'm not actively seeking major code contributions, please help me test it and let me know what is or isn't working so I can focus accordingly.
+
+* **Contributing:** Please read our [Contribution Guidelines](.github/CONTRIBUTING.md) before submitting a Pull Request.
+* **Code of Conduct:** This project adheres to a [Code of Conduct](.github/CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+* **Changelog:** See [CHANGELOG.md](./CHANGELOG.md) for a history of changes and updates.
 
 ---
 

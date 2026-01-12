@@ -357,6 +357,7 @@
                     const selectedExample = select?.value;
                     if (selectedExample && this.controller.loadExample) {
                         await this.controller.loadExample(selectedExample);
+                        this.ui.renderer.core.zoomFit(true);
                     }
                     this.handleQuickstartClose();
                 };

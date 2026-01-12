@@ -665,12 +665,9 @@
                     this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
                 }
 
-                // Force renderer update and zoom
-                if (this.ui?.updateRendererAsync) {
-                    await this.ui.updateRendererAsync();
-                    this.ui.renderer.core.zoomFit();
-                    this.ui.renderer.render();
-                }
+                await this.ui.updateRendererAsync();
+                this.ui.renderer.core.zoomFit(true);
+                this.ui.renderer.render();
             }
 
             if (this.pendingOperations.length > 0 && !this.initState.fullyReady) {
@@ -690,13 +687,13 @@
 
         async processPendingOperations() {
             if (this.pendingOperations.length === 0) return;
-            
+
             this.debug(`Processing ${this.pendingOperations.length} pending files...`);
-            
+
             for (let op of this.pendingOperations) {
                 await this.processFile(op.file, op.opType);
             }
-            
+
             this.pendingOperations = [];
         }
 
@@ -739,7 +736,7 @@
                     }
 
                     const ctx = this.core.buildToolpathContext(opId, this.parameterManager);
-                    
+
                     // Pass as a pair
                     operationContextPairs.push({ operation, context: ctx });
 
@@ -769,7 +766,7 @@
             // Loop through the super-batches
             const allMachineReadyPlans = [];
             const firstContext = operationContextPairs[0].context; // Get global context
-            
+
             // This is the persistent machine position that tracks between batches
             let currentMachinePos = { x: 0, y: 0, z: firstContext.machine.safeZ };
 
