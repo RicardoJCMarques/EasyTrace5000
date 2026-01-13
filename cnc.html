@@ -108,13 +108,24 @@
                 <p class="tagline">G-code generation for PCB isolation routing</p>
             </section>
 
-            <!-- INTERFACE OVERVIEW -->
+            <section id="safety-warning">
+                <div class="callout callout--warning">
+                    <h4>Safety & Material Warning</h4>
+                    <p><strong>Please read this before machining your first board.</strong></p>
+                    
+                    <h5>PCB Substrate Selection (FR4 vs FR1)</h5>
+                    <p><strong>Avoid FR4 for home milling:</strong> Standard FR4 PCB stock is made of epoxy reinforced with <strong>fiberglass</strong>. Milling FR4 creates fine glass dust which is hazardous to health (silicosis risk) and highly abrasive to machines and tooling.</p>
+                    <p><strong>FR1 (Phenolic Paper):</strong> is strongly recommended as it contains no fiberglass, making it safer to machine and extends tool life significantly.</p>
+
+                    <h5>Dust Extraction</h5>
+                    <p>Always use a vacuum system or enclosure. Even FR1 dust should not be inhaled. Good feeds and speeds also help make dust less fine and easier to contain.</p>
+                </div>
+            </section>
+
+            <!-- Interface overview -->
             <section id="interface">
                 <h2>Interface Overview</h2>
-                <p>
-                    EasyTrace5000's interface is organized around a central canvas with sidebars for navigation 
-                    and configuration. Understanding this layout will help you work efficiently.
-                </p>
+                <p>EasyTrace5000's interface is organized around a central canvas with sidebars for navigation and configuration. Understanding this layout will help you work efficiently.</p>
 
                 <figure>
                     <svg viewBox="0 0 800 500" style="width:100%;max-width:800px;background:#1a1a1a;border-radius:8px;">
@@ -145,16 +156,10 @@
                 </figure>
 
                 <h3 id="interface-toolbar">Top Toolbar</h3>
-                <p>
-                    The toolbar spans the top of the window. On the left, the <strong>Actions</strong> menu 
-                    provides access to file loading, toolpath management, and SVG export. The center displays 
-                    the workspace title. On the right, you'll find zoom controls (fit, in, out) and the theme toggle.
-                </p>
+                <p>The toolbar spans the top of the window. On the left, the <strong>Actions</strong> menu provides access to file loading, toolpath management, and SVG export. The center displaysthe workspace title. On the right, you'll find zoom controls (fit, in, out) and the theme toggle.</p>
 
                 <h3 id="interface-left-sidebar">Left Sidebar: Operations Tree</h3>
-                <p>
-                    The left sidebar organizes your loaded files into four operation categories:
-                </p>
+                <p>The left sidebar organizes your loaded files into four operation categories:</p>
                 <dl>
                     <dt>Isolation Routing</dt>
                     <dd>Copper layer files (Gerber) for trace isolation</dd>
@@ -188,51 +193,26 @@
                     <figcaption>The operations tree with an expanded isolation file showing offset passes and preview</figcaption>
                 </figure>
 
-                <p>
-                    Each category can be expanded or collapsed by clicking its header. Use the <strong>+</strong> button 
-                    next to each category to add files specifically for that operation type. When you click on a loaded file, 
-                    it becomes selected (highlighted), and its properties appear in the right sidebar.
-                </p>
+                <p>Each category can be expanded or collapsed by clicking its header. Use the <strong>+</strong> button next to each category to add files specifically for that operation type. When you click on a loaded file, it becomes selected (highlighted), and its properties appear in the right sidebar.</p>
 
                 <h3 id="interface-canvas">Center Canvas</h3>
-                <p>
-                    The main canvas displays your geometry. This is where you'll see source files, generated offsets, 
-                    and toolpath previews.
-                </p>
+                <p>The main canvas displays your geometry. This is where you'll see source files, generated offsets, and toolpath previews.</p>
                 <h4>Navigation</h4>
-                <p>
-                    <strong>Pan:</strong> Click and drag anywhere on the canvas to move the view.<br>
-                    <strong>Zoom:</strong> Use the mouse scroll wheel, or the toolbar buttons (+, −, fit).<br>
-                    <strong>Fit to View:</strong> Press <kbd>F</kbd> or click the fit button to automatically 
-                    zoom and center on all loaded geometry.
-                </p>
+                <p><strong>Pan:</strong> Click and drag anywhere on the canvas to move the view.<br><strong>Zoom:</strong> Use the mouse scroll wheel, or the toolbar buttons (+, -, fit).<br><strong>Fit to View:</strong> Press <kbd>F</kbd> or click the fit button to automatically zoom and center on all loaded geometry.</p>
                 <h4>Coordinate Display</h4>
-                <p>
-                    The bottom-left corner shows real-time cursor coordinates (X, Y) in millimeters, plus the 
-                    current zoom level. This helps you verify positions and measure distances visually.
-                </p>
+                <p>The bottom-left corner shows real-time cursor coordinates (X, Y) in millimeters, plus the current zoom level. This helps you verify positions and measure distances visually.</p>
 
                 <h3 id="interface-right-sidebar">Right Sidebar: Properties &amp; Settings</h3>
                 <p>The right sidebar contains three collapsible sections:</p>
 
                 <h4>Origin &amp; Rotation</h4>
-                <p>
-                    Controls where the machine's coordinate origin sits relative to your geometry, plus board rotation. 
-                    The "Board Size" display shows the dimensions of all loaded geometry.
-                </p>
+                <p>Controls where the machine's coordinate origin sits relative to your geometry, plus board rotation. The "Board Size" display shows the dimensions of all loaded geometry.</p>
 
                 <h4>Machine Settings</h4>
-                <p>
-                    Global parameters that affect G-code output: post-processor selection, start/end G-code blocks, 
-                    units, PCB thickness, safe heights, and rapid feed rate.
-                </p>
+                <p>Global parameters that affect G-code output: post-processor selection, start/end G-code blocks, units, PCB thickness, safe heights, and rapid feed rate.</p>
 
                 <h4>Properties</h4>
-                <p>
-                    Context-sensitive panel that shows parameters for the currently selected operation. Parameters are 
-                    organized into three stages: Geometry (2D offsets), Strategy (depth/entry), and Machine (feeds/speeds). 
-                    Action buttons trigger generation for each stage.
-                </p>
+                <p>Context-sensitive panel that shows parameters for the currently selected operation. Parameters are organized into three stages: Geometry (2D offsets), Strategy (depth/entry), and Machine (feeds/speeds). Action buttons trigger generation for each stage.</p>
 
                 <figure>
                     <svg viewBox="0 0 380 500" style="width:100%;max-width:380px;background:#1a1a1a;border-radius:8px;">
@@ -275,27 +255,16 @@
                 <p>The footer bar at the bottom serves two purposes:</p>
                 
                 <h4>Visualization Panel</h4>
-                <p>
-                    Click the eye icon to expand the visualization settings. Here you can toggle display elements 
-                    (grid, rulers, wireframe), control layer visibility (traces, pads, drills, offsets, previews), 
-                    and enable advanced debug features. See the <a href="#visualization">Visualization Options</a> 
-                    section for details.
-                </p>
+                <p>Click the eye icon to expand the visualization settings. Here you can toggle display elements (grid, rulers, wireframe), control layer visibility (traces, pads, drills, offsets, previews), and enable advanced debug features. See the <a href="#visualization">Visualization Options</a> section for details.</p>
 
                 <h4>Status Bar</h4>
-                <p>
-                    Shows status messages and progress for operations like file loading, offset generation, and export. 
-                    Click the status bar to expand a log history showing recent messages—useful for troubleshooting.
-                </p>
+                <p>Shows status messages and progress for operations like file loading, offset generation, and export. Click the status bar to expand a log history showing recent messages—useful for troubleshooting.</p>
             </section>
 
-            <!-- THE WORKFLOW -->
+            <!-- The workflow -->
             <section id="workflow">
                 <h2>The Workflow</h2>
-                <p>
-                    EasyTrace5000 follows a non-destructive, staged workflow. Each stage builds on the previous one, 
-                    and you can always go back to adjust parameters and regenerate. The stages are:
-                </p>
+                <p>EasyTrace5000 follows a non-destructive, staged workflow. Each stage builds on the previous one, and you can always go back to adjust parameters and regenerate. The stages are:</p>
                 <ol>
                     <li><strong>Load</strong> your source files (Gerber, Excellon, SVG)</li>
                     <li><strong>Position</strong> your geometry (origin, rotation)</li>
@@ -348,18 +317,10 @@
                 <p>There are several ways to load files into EasyTrace5000:</p>
 
                 <h4>Using the Welcome Modal</h4>
-                <p>
-                    When you first open the application (and haven't checked "Don't show this again"), you'll see 
-                    the Welcome modal. From here you can load a built-in example project, click "Open Files" to 
-                    access the file upload modal, or click "Start Empty" to begin with a blank workspace.
-                </p>
+                <p>When you first open the application (and haven't checked "Don't show this again"), you'll see the Welcome modal. From here you can load a built-in example project, click "Open Files" to access the file upload modal, or click "Start Empty" to begin with a blank workspace.</p>
 
                 <h4>Using the File Upload Modal</h4>
-                <p>
-                    Access this via Actions → Add Files, or the "Open Files" button in the Welcome modal. 
-                    The modal shows four drop zones, one for each operation type. Drop files onto the appropriate 
-                    zone, or click a zone to browse.
-                </p>
+                <p>Access this via Actions → Add Files, or the "Open Files" button in the Welcome modal. The modal shows four drop zones, one for each operation type. Drop files onto the appropriate zone, or click a zone to browse.</p>
 
                 <figure>
                     <svg viewBox="0 0 600 400" style="width:100%;max-width:600px;background:#1a1a1a;border-radius:8px;">
@@ -391,32 +352,17 @@
                 </figure>
 
                 <h4>Drag and Drop</h4>
-                <p>
-                    You can drag files directly onto the main application window. EasyTrace5000 will auto-detect 
-                    the file type by extension and assign it to the appropriate operation category.
-                </p>
+                <p>You can drag files directly onto the main application window. EasyTrace5000 will auto-detect the file type by extension and assign it to the appropriate operation category.</p>
 
                 <h4>Category Add Buttons</h4>
-                <p>
-                    In the left sidebar, each operation category has a small <strong>+</strong> button. 
-                    Click it to open a file browser filtered for that operation's accepted file types.
-                </p>
+                <p>In the left sidebar, each operation category has a small <strong>+</strong> button. Click it to open a file browser filtered for that operation's accepted file types.</p>
 
                 <h3 id="workflow-coordinates">Stage 2: Setting Up Coordinates</h3>
-                <p>
-                    Verify that your coordinate origin is positioned correctly for your CNC setup.
-                </p>
+                <p>Verify that your coordinate origin is positioned correctly for your CNC setup.</p>
                 
                 <h4>Origin Offset</h4>
-                <p>
-                    The Origin &amp; Rotation panel in the right sidebar shows "Origin Offset" X and Y fields. 
-                    These values shift where (0,0) sits relative to your geometry. By default, the origin is at 
-                    the geometry's lower-left corner.
-                </p>
-                <p>
-                    Two shortcut buttons are provided: <strong>Center</strong> places the origin at the 
-                    geometry's center point, and <strong>Bottom-Left</strong> resets it to the lower-left corner.
-                </p>
+                <p>The Origin &amp; Rotation panel in the right sidebar shows "Origin Offset" X and Y fields. These values shift where (0,0) sits relative to your geometry. By default, the origin is at the geometry's lower-left corner.</p>
+                <p>Two shortcut buttons are provided: <strong>Center</strong> places the origin at the geometry's center point, and <strong>Bottom-Left</strong> resets it to the lower-left corner.</p>
 
                 <figure>
                     <svg viewBox="0 0 600 300" style="width:100%;max-width:600px;background:#1a1a1a;border-radius:8px;">
@@ -450,57 +396,28 @@
                 </figure>
 
                 <h4>Board Rotation</h4>
-                <p>
-                    If your PCB needs to be rotated (perhaps to fit your stock material orientation), enter a 
-                    rotation angle in degrees. Click <strong>Apply Rotation</strong> to rotate all geometry 
-                    around its center. <strong>Reset Rotation</strong> returns to 0°.
-                </p>
+                <p>If your PCB needs to be rotated (perhaps to fit your stock material orientation), enter a rotation angle in degrees. Click <strong>Apply Rotation</strong> to rotate all geometry around its center. <strong>Reset Rotation</strong> returns to 0°.</p>
 
                 <h4>Why Origin Matters</h4>
-                <p>
-                    The origin you set here becomes (0,0) in your G-code output. Most CNC workflows involve 
-                    homing the machine, then jogging to a known position on your stock and setting the work 
-                    coordinate system origin there. Your origin setting in EasyTrace5000 should match that 
-                    physical position—typically a corner or the center of the board.
-                </p>
+                <p>The origin you set here becomes (0,0) in your G-code output. Most CNC workflows involve homing the machine, then jogging to a known position on your stock and setting the work coordinate system origin there. Your origin setting in EasyTrace5000 should match that physical position—typically a corner or the center of the board.</p>
 
                 <h3 id="workflow-machine">Stage 3: Machine Settings</h3>
-                <p>
-                    The Machine Settings panel contains global parameters that affect all G-code output.
-                </p>
+                <p>The Machine Settings panel contains global parameters that affect all G-code output.</p>
 
                 <h4>Post-Processor</h4>
-                <p>
-                    Select the G-code syntax your machine expects. GRBL is the default and most common for 
-                    hobbyist CNC routers. Other options (GrblHAL, Marlin, LinuxCNC, Mach3, Roland RML) are 
-                    experimental so they should be tested with caution.
-                </p>
+                <p>Select the G-code syntax your machine expects. GRBL is the default and most common for hobbyist CNC routers. Other options (GrblHAL, Marlin, LinuxCNC, Mach3, Roland RML) are experimental so they should be tested with caution.</p>
 
                 <h4>Start/End G-code</h4>
-                <p>
-                    These text areas contain commands that run at the very beginning and end of your program. 
-                    Use these spaces if you for example you have commands to turn on/off dust collection, etc.
-                </p>
+                <p>These text areas contain commands that run at the very beginning and end of your program. Use these spaces if you for example you have commands to turn on/off dust collection, etc.</p>
 
                 <h4>Heights</h4>
-                <p>
-                    <strong>Safe Z:</strong> The height the tool moves to at program start/end and typically
-                    spindle is turned on/off.<br>
-                    <strong>Travel Z:</strong> The height for rapid moves between cutting operations. This can 
-                    be lower than Safe Z for faster operation, but must still clear any clamps and high points.
-                </p>
+                <p><strong>Safe Z:</strong> The height the tool moves to at program start/end and typicallyspindle is turned on/off.<br><strong>Travel Z:</strong> The height for rapid moves between cutting operations. This can be lower than Safe Z for faster operation, but must still clear any clamps and high points.</p>
 
                 <h3 id="workflow-offsets">Stage 4: Generating Offsets</h3>
-                <p>
-                    With files loaded and coordinates set, you're ready to generate the toolpath geometry. 
-                    This stage focuses purely on 2D offset paths—no depth or Z-axis settings yet.
-                </p>
+                <p>With files loaded and coordinates set, you're ready to generate the toolpath geometry. This stage focuses purely on 2D offset paths—no depth or Z-axis settings yet.</p>
 
                 <h4>Selecting an Operation</h4>
-                <p>
-                    Click on a source file in the Operations Tree (left sidebar). The Properties panel (right sidebar) 
-                    will collapse the origin and machine sections and show that operation's parameters.
-                </p>
+                <p>Click on a source file in the Operations Tree (left sidebar). The Properties panel (right sidebar) will collapse the origin and machine sections and show that operation's parameters.</p>
 
                 <h4>Setting Parameters</h4>
                 <p>The Properties panel shows parameters appropriate for the operation type:</p>
@@ -526,10 +443,7 @@
                 </dl>
 
                 <h4>Generate Offsets</h4>
-                <p>
-                    Click <strong>Generate Offsets</strong> (or <strong>Generate Drill Strategy</strong> for drill operations). 
-                    The geometry engine processes your source geometry and creates 2D offset paths.
-                </p>
+                <p>Click <strong>Generate Offsets</strong> (or <strong>Generate Drill Strategy</strong> for drill operations). The geometry engine processes your source geometry and creates 2D offset paths</p>
 
                 <figure>
                     <svg viewBox="0 0 800 350" style="width:100%;max-width:800px;background:#1a1a1a;border-radius:8px;">
@@ -557,22 +471,15 @@
                     <figcaption>Before and after: Source geometry (copper fill) and generated offset paths (red outlines)</figcaption>
                 </figure>
 
-                <p>
-                    When complete, new items appear under the file in the Operations Tree: "Pass 1", "Pass 2", etc. 
-                    The canvas updates to show the offset geometry as thin colored lines representing tool centerlines.
-                </p>
+                <p>When complete, new items appear under the file in the Operations Tree: "Pass 1", "Pass 2", etc. The canvas updates to show the offset geometry as thin colored lines representing tool centerlines.</p>
 
                 <div class="callout callout--info">
                     <h4>Note</h4>
-                    <p>At this stage, you've only defined <em>where</em> the tool will travel in X/Y. 
-                    Depth settings (how deep to cut) are configured in the next stage.</p>
+                    <p>At this stage, you've only defined <em>where</em> the tool will travel in X/Y. Depth settings (how deep to cut) are configured in the next stage.</p>
                 </div>
 
                 <h3 id="workflow-preview">Stage 5: Generating Preview</h3>
-                <p>
-                    After generating offsets, you configure cutting strategy and depth settings, then create a 
-                    preview that simulates what your tool will actually cut.
-                </p>
+                <p>After generating offsets, you configure cutting strategy and depth settings, then create a preview that simulates what your tool will actually cut.</p>
 
                 <h4>Depth &amp; Strategy Parameters</h4>
                 <p>When you select an offset pass in the tree, the Properties panel shows depth and strategy settings:</p>
@@ -598,10 +505,7 @@
                 </dl>
 
                 <h4>Preview vs. Offset</h4>
-                <p>
-                    <strong>Offsets</strong> show the centerline path the tool will follow—where the spindle axis travels.<br>
-                    <strong>Previews</strong> show the full width of the tool's cutting envelope—what material will be removed.
-                </p>
+                <p><strong>Offsets</strong> show the centerline path the tool will follow—where the spindle axis travels.<br><strong>Previews</strong> show the full width of the tool's cutting envelope—what material will be removed.</p>
 
                 <figure>
                     <svg viewBox="0 0 700 300" style="width:100%;max-width:700px;background:#1a1a1a;border-radius:8px;">
@@ -628,16 +532,11 @@
                 </figure>
 
                 <h4>Generating the Preview</h4>
-                <p>
-                    After configuring depth settings, click <strong>Generate Toolpath Preview</strong>. 
-                    A new "Preview" item appears under the file in the tree, and the canvas shows thick strokes 
-                    representing the tool's cutting area. Offset layers are automatically hidden when preview exists.
-                </p>
+                <p>After configuring depth settings, click <strong>Generate Toolpath Preview</strong>. A new "Preview" item appears under the file in the tree, and the canvas shows thick strokes representing the tool's cutting area. Offset layers are automatically hidden when preview exists.</p>
 
                 <div class="callout callout--info">
                     <h4>Note</h4>
-                    <p>The preview is a visual simulation only. Feed rates and spindle speed are configured 
-                    in the final stage before G-code export.</p>
+                    <p>The preview is a visual simulation only. Feed rates and spindle speed are configured in the final stage before G-code export.</p>
                 </div>
 
                 <h3 id="workflow-export">Stage 6: Exporting G-code</h3>
@@ -655,10 +554,7 @@
                 </dl>
                 
                 <h4>Opening the Operations Manager</h4>
-                <p>
-                    Click <strong>Operations &amp; G-Code</strong> in the Properties panel, or go to 
-                    Actions menu → <strong>Manage Toolpaths</strong>.
-                </p>
+                <p>Click <strong>Operations &amp; G-Code</strong> in the Properties panel, or go to Actions menu → <strong>Manage Toolpaths</strong>.</p>
 
                 <figure>
                     <svg viewBox="0 0 700 450" style="width:100%;max-width:700px;background:#1a1a1a;border-radius:8px;">
@@ -719,26 +615,16 @@
                 </dl>
 
                 <h4>Calculate and Export</h4>
-                <p>
-                    Click <strong>Calculate Toolpaths</strong> to process. The preview area shows generated 
-                    G-code with statistics: line count, operation count, estimated time, and total travel distance. 
-                    Click <strong>Export G-code</strong> to download.
-                </p>
+                <p>Click <strong>Calculate Toolpaths</strong> to process. The preview area shows generated G-code with statistics: line count, operation count, estimated time, and total travel distance. Click <strong>Export G-code</strong> to download.</p>
             </section>
 
-            <!-- OPERATION TYPES -->
+            <!-- Operation types -->
             <section id="operations">
                 <h2>Operation Types</h2>
-                <p>
-                    Each operation type has specific parameters organized across three stages: 
-                    Geometry (2D offsets), Strategy (depth/entry), and Machine (feeds/speeds).
-                </p>
+                <p>Each operation type has specific parameters organized across three stages: Geometry (2D offsets), Strategy (depth/entry), and Machine (feeds/speeds).</p>
 
                 <h3 id="op-isolation">Isolation Routing</h3>
-                <p>
-                    Isolation routing cuts trenches around your PCB traces, electrically separating them from 
-                    the surrounding copper. The tool follows paths offset outward from the trace edges.
-                </p>
+                <p>Isolation routing cuts trenches around your PCB traces, electrically separating them from the surrounding copper. The tool follows paths offset outward from the trace edges.</p>
 
                 <figure>
                     <svg viewBox="0 0 600 300" style="width:100%;max-width:600px;background:#1a1a1a;border-radius:8px;">
@@ -791,10 +677,7 @@
                 </dl>
 
                 <h3 id="op-drilling">Drilling</h3>
-                <p>
-                    Drilling operations process Excellon files containing hole and slot definitions. 
-                    EasyTrace5000 analyzes each feature against your tool diameter and selects an appropriate strategy.
-                </p>
+                <p>Drilling operations process Excellon files containing hole and slot definitions. EasyTrace5000 analyzes each feature against your tool diameter and selects an appropriate strategy.</p>
 
                 <figure>
                     <svg viewBox="0 0 600 300" style="width:100%;max-width:600px;background:#1a1a1a;border-radius:8px;">
@@ -866,10 +749,7 @@
                 </dl>
 
                 <h3 id="op-clearing">Copper Clearing</h3>
-                <p>
-                    Copper clearing removes large areas of unwanted copper. Unlike isolation (outward offsets), 
-                    clearing offsets inward to pocket out the interior.
-                </p>
+                <p>Copper clearing removes large areas of unwanted copper. Unlike isolation (outward offsets), clearing offsets inward to pocket out the interior.</p>
 
                 <h4>Geometry Stage Parameters</h4>
                 <dl>
@@ -889,9 +769,7 @@
                 </dl>
 
                 <h3 id="op-cutout">Board Cutout</h3>
-                <p>
-                    Cutout operations generate the path to separate your finished PCB from stock material.
-                </p>
+                <p>Cutout operations generate the path to separate your finished PCB from stock material.</p>
 
                 <figure>
                     <svg viewBox="0 0 600 300" style="width:100%;max-width:600px;background:#1a1a1a;border-radius:8px;">
@@ -940,12 +818,10 @@
                 </dl>
             </section>
 
-            <!-- MACHINE SETTINGS REFERENCE -->
+            <!-- Machine settings reference -->
             <section id="machine-settings">
                 <h2>Machine Settings Reference</h2>
-                <p>
-                    This section provides detailed information about each machine setting and typical values.
-                </p>
+                <p>This section provides detailed information about each machine setting and typical values.</p>
 
                 <h3>Post-Processor</h3>
                 <table>
@@ -988,13 +864,10 @@
                 </dl>
             </section>
 
-            <!-- VISUALIZATION OPTIONS -->
+            <!-- Visualization options -->
             <section id="visualization">
                 <h2>Visualization Options</h2>
-                <p>
-                    The Visualization panel (footer, left side—click the eye icon) controls what appears 
-                    on the canvas. Most are development leftovers but fun to use.
-                </p>
+                <p>The Visualization panel (footer, left side—click the eye icon) controls what appears on the canvas. Most are development leftovers but fun to use.</p>
 
                 <h3>Display Options</h3>
                 <dl>
@@ -1041,14 +914,10 @@
                 </dl>
 
                 <h3>Verbose Debug</h3>
-                <p>
-                    At the bottom of the Visualization panel is a "Verbose Debug" toggle. When enabled, 
-                    detailed logging information appears in the browser's developer console and in the 
-                    status log history. Useful for troubleshooting issues.
-                </p>
+                <p>At the bottom of the Visualization panel is a "Verbose Debug" toggle. When enabled, detailed logging information appears in the browser's developer console and in the status log history. Useful for troubleshooting issues.</p>
             </section>
 
-            <!-- TIPS & TROUBLESHOOTING -->
+            <!-- Tips & troubleshooting -->
             <section id="tips">
                 <h2>Tips &amp; Troubleshooting</h2>
 

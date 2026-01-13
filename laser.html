@@ -112,20 +112,21 @@
 
                 <div class="callout callout--warning">
                     <h4>Under Active Development</h4>
-                    <p>The Laser pipeline is in beta. Features described below are being implemented and may change before stable release.</p>
+                    <p>The Laser pipeline is being planned as a complex workflow for full Fiber, full UV and hybrid with some cnc milled drilling/cutting. Features described below are being implemented and may change before stable release.</p>
                 </div>
 
-                <p>
-                    The Laser pipeline generates vector and raster output files from your PCB design files. 
-                    Unlike the CNC pipeline which outputs G-code for mechanical milling, the Laser pipeline 
-                    exports SVG, DXF, and PNG files optimized for use with laser control software.
-                </p>
+                <div class="callout callout--warning">
+                    <h4></h4>TOXIC FUME HAZARD</h4>
+                    <p><strong>Active Ventilation Mandatory:</strong> Laser processing burns the epoxy/phenolic resins in PCBs, releasing <strong>toxic fumes</strong> (including carbon monoxide and various carcinogens).</p>
+                    <ul>
+                        <li><strong>Fiber/Diode Lasers:</strong> Must be vented to the outdoors or passed through high-grade filtration.</li>
+                        <li><strong>UV Lasers:</strong> Until proven otherwise, treat UV laser ablation with the same extreme caution regarding particulates and fumes.</li>
+                    </ul>
+                </div>
 
-                <p>
-                    The workflow mirrors the CNC pipeline: load files, configure operations, generate geometry, 
-                    and export. What your laser can do with that output—copper ablation, photoresist exposure, 
-                    stencil cutting, etc.—depends on your equipment and materials.
-                </p>
+                <p>The Laser pipeline generates vector and raster output files from your PCB design files. Unlike the CNC pipeline which outputs G-code for mechanical milling, the Laser pipeline exports SVG, DXF, and PNG files optimized for use with laser control software.</p>
+
+                <p>The workflow mirrors the CNC pipeline: load files, configure operations, generate geometry, and export. What your laser can do with that output—copper ablation, photoresist exposure, stencil cutting, etc.—depends on your equipment and materials.</p>
 
                 <figure>
                     <img src="https://placehold.co/800x300/1a1a1a/666666?text=Laser+Pipeline+Overview%0A%0A[+Gerber/Excellon+]++→++[+Geometry+]++→++[+SVG/DXF/PNG+]%0A+++++Source+files++++++++Processing++++++++Export" alt="Laser Pipeline Overview">
@@ -149,10 +150,7 @@
             <!-- Workflow -->
             <section id="workflow">
                 <h2>The Workflow</h2>
-                <p>
-                    The Laser workflow follows the same stages as CNC, but exports different file formats. 
-                    If you're familiar with the <a href="cnc">CNC Guide</a>, you'll recognize the process.
-                </p>
+                <p>The Laser workflow follows similar stages as CNC, but exports different file formats. If you're familiar with the <a href="cnc">CNC Guide</a>, you'll recognize the process.</p>
 
                 <figure>
                     <img src="https://placehold.co/800x200/1a1a1a/666666?text=Workflow+Stages%0A%0A[+Load+]++→++[+Configure+]++→++[+Generate+]++→++[+Export+]%0A+Files++++++Operations++++++++Geometry++++++++SVG/PNG" alt="Workflow Stages">
@@ -160,26 +158,17 @@
                 </figure>
 
                 <h3 id="workflow-loading">Loading Files</h3>
-                <p>
-                    Load your PCB files the same way as the CNC pipeline: drag-and-drop, file modal, or 
-                    category add buttons. The Laser pipeline accepts the same file types:
-                </p>
+                <p>Load your PCB files the same way as the CNC pipeline: drag-and-drop, file modal, or category add buttons. The Laser pipeline accepts the same file types: </p>
                 <ul>
                     <li><strong>Gerber:</strong> Copper layers, soldermask, paste layers</li>
                     <li><strong>Excellon:</strong> Drill files for hole positions</li>
                     <li><strong>SVG:</strong> Custom outlines or artwork</li>
                 </ul>
 
-                <p>
-                    For stencil generation, you'll load paste layer Gerbers (<code>.gtp</code>, <code>.gbp</code>). 
-                    For soldermask work, load soldermask files (<code>.gts</code>, <code>.gbs</code>).
-                </p>
+                <p>For stencil generation, you'll load paste layer Gerbers (<code>.gtp</code>, <code>.gbp</code>). For soldermask work, load soldermask files (<code>.gts</code>, <code>.gbs</code>).</p>
 
                 <h3 id="workflow-offsets">Generating Geometry</h3>
-                <p>
-                    Select an operation from the tree and configure parameters. The Laser pipeline uses 
-                    similar controls to CNC:
-                </p>
+                <p>Select an operation from the tree and configure parameters. The Laser pipeline uses similar controls to CNC:</p>
                 <dl>
                     <dt>Kerf / Line Width</dt>
                     <dd>Width of the laser cut. Used to calculate offsets and preview visualization.</dd>
@@ -188,16 +177,10 @@
                     <dt>Hatch Settings</dt>
                     <dd>For filled areas: hatch spacing, angle, and pattern (line, crosshatch).</dd>
                 </dl>
-                <p>
-                    Click <strong>Generate Geometry</strong> to create the laser paths. Preview shows 
-                    the geometry that will be exported.
-                </p>
+                <p>Click <strong>Generate Geometry</strong> to create the laser paths. Preview shows the geometry that will be exported.</p>
 
                 <h3 id="workflow-export">Exporting</h3>
-                <p>
-                    Once geometry is generated, export via Actions → Export or the Properties panel. 
-                    Choose your format based on your laser software:
-                </p>
+                <p>Once geometry is generated, export via Actions → Export or the Properties panel. Choose your format based on your laser software:</p>
                 <ul>
                     <li><strong>SVG:</strong> LightBurn, Inkscape, LaserGRBL</li>
                     <li><strong>DXF:</strong> EzCad, RDWorks, industrial systems</li>
@@ -208,15 +191,10 @@
             <!-- Operation Types -->
             <section id="operations">
                 <h2>Operation Types</h2>
-                <p>
-                    The same operation categories apply, but output differs from CNC. Instead of G-code 
-                    toolpaths, you get vector or raster geometry optimized for laser processing.
-                </p>
+                <p>The same operation categories apply, but output differs from CNC. Instead of G-code toolpaths, you get vector or raster geometry optimized for laser processing.</p>
 
                 <h3 id="op-isolation">Isolation</h3>
-                <p>
-                    Generates geometry for the isolation zones around traces. Output depends on your workflow:
-                </p>
+                <p>Generates geometry for the isolation zones around traces. Output depends on your workflow:</p>
 
                 <figure>
                     <img src="https://placehold.co/700x300/1a1a1a/666666?text=Isolation+Output+Modes%0A%0A[+Vector+Outlines+]+++[+Hatched+Fill+]%0A++For+scoring+++++++++For+ablation" alt="Isolation Output Modes">
@@ -244,11 +222,7 @@
                 </dl>
 
                 <h3 id="op-drilling">Drilling</h3>
-                <p>
-                    For fiber lasers capable of drilling through copper and substrate, generates spiral or 
-                    trepanning paths. For other workflows, exports hole positions as markers for mechanical 
-                    drilling or reference points.
-                </p>
+                <p>For fiber lasers capable of drilling through copper and substrate, generates spiral or trepanning paths. For other workflows, exports hole positions as markers for mechanical drilling or reference points.</p>
 
                 <h4>Output Options</h4>
                 <dl>
@@ -261,10 +235,7 @@
                 </dl>
 
                 <h3 id="op-cutout">Board Cutout</h3>
-                <p>
-                    Generates board outline paths for cutting or scoring. Same offset options as CNC 
-                    (outside, inside, on-line).
-                </p>
+                <p>Generates board outline paths for cutting or scoring. Same offset options as CNC (outside, inside, on-line).</p>
 
                 <div class="callout callout--warning">
                     <h4>Safety Note</h4>
@@ -272,10 +243,7 @@
                 </div>
 
                 <h3 id="op-stencil">Stencil Generation</h3>
-                <p>
-                    New operation type for the Laser pipeline. Load paste layer Gerber files to generate 
-                    solder paste stencil apertures.
-                </p>
+                <p>New operation type for the Laser pipeline. Load paste layer Gerber files to generate solder paste stencil apertures.</p>
 
                 <figure>
                     <img src="https://placehold.co/600x300/1a1a1a/666666?text=Stencil+Generation%0A%0A[+Paste+Layer+Gerber+]++→++[+Aperture+Outlines+]%0A++++++.gtp/.gbp+++++++++++++Cut+paths+for+stencil" alt="Stencil Generation">
@@ -295,11 +263,7 @@
                 </dl>
 
                 <h3 id="op-soldermask">Soldermask Clearing</h3>
-                <p>
-                    For boards with existing soldermask or conformal coating, generates geometry to 
-                    ablate the mask from pad areas, exposing copper for soldering or rework. Uses 
-                    soldermask Gerber files to identify pad locations.
-                </p>
+                <p>For boards with existing soldermask or conformal coating, generates geometry to ablate the mask from pad areas, exposing copper for soldering or rework. Uses soldermask Gerber files to identify pad locations.</p>
 
                 <h4>Parameters</h4>
                 <dl>
@@ -363,24 +327,13 @@
                 <h2>Use Cases</h2>
 
                 <h3>Fiber Laser Ablation</h3>
-                <p>
-                    Use hatched fill isolation output. Import SVG into EzCad or LightBurn. Configure 
-                    power/speed for copper removal (material-dependent, typically 80-100% power, 
-                    100-300mm/s, multiple passes). Drill holes with spiral paths or mark for mechanical drilling.
-                </p>
+                <p>Use hatched fill isolation output. Import SVG into EzCad or LightBurn. Configure power/speed for copper removal (material-dependent, typically 80-100% power, 100-300mm/s, multiple passes). Drill holes with spiral paths or mark for mechanical drilling</p>
 
                 <h3>Solder Paste Stencils</h3>
-                <p>
-                    Load paste layer, use Stencil operation. Export SVG/DXF. Cut from 0.1-0.15mm Kapton 
-                    or Mylar on CO₂ or fiber laser. Align using fiducials or frame corners.
-                </p>
+                <p>Load paste layer, use Stencil operation. Export SVG/DXF. Cut from 0.1-0.15mm Kapton or Mylar on CO₂ or fiber laser. Align using fiducials or frame corners.</p>
 
                 <h3>Hybrid Workflow</h3>
-                <p>
-                    Combine laser and CNC: use laser for fine isolation traces (better resolution), 
-                    CNC for drilling and cutout (faster, safer for FR4). Export both formats with 
-                    matching coordinates and fiducial markers.
-                </p>
+                <p>Combine laser and CNC: use laser for fine isolation traces (better resolution), CNC for drilling and cutout (faster, safer for FR4). Export both formats with matching coordinates and fiducial markers.</p>
             </section>
 
             <!-- Experimental -->
@@ -389,11 +342,7 @@
 
                 <h3>Direct Solder Reflow</h3>
                 <p><span class="doc-badge doc-badge--planned">Research</span></p>
-                <p>
-                    Fiber lasers can reflow solder paste directly, heating each pad to melting point 
-                    without an oven. We're exploring scan pattern generation from paste Gerbers. 
-                    Requires precise power modulation and potentially temperature feedback.
-                </p>
+                <p>Fiber lasers can reflow solder paste directly, heating each pad to melting point without an oven. We're exploring scan pattern generation from paste Gerbers. Requires precise power modulation and potentially temperature feedback.</p>
             </section>
             
             <!-- Footer -->

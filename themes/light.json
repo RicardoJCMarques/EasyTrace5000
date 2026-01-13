@@ -31,9 +31,9 @@
       "focus": "#4080ff"
     },
     "accent": {
-      "primary": "#3b82f6",
-      "hover": "#2563eb",
-      "active": "#1d4ed8"
+    "primary": "#2563eb",
+    "hover": "#1d4ed8",
+    "active": "#1e40af"
     },
     "semantic": {
       "success": "#22c55e",

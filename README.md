@@ -16,6 +16,27 @@ The latest version of EasyTrace5000 is automatically deployed and available onli
 * **Extra Documentation:** [cam.eltryus.design/doc](https://cam.eltryus.design/doc)
 * **Clipper2 Test Suite:** [cam.eltryus.design/clipper2/](https://cam.eltryus.design/clipper2/)
 
+## Safety & Material Guide
+
+**Please read this before machining your first board.**
+
+### PCB Substrate Selection (FR4 vs FR1)
+* **Avoid FR4 for home milling:** Standard FR4 PCB stock is made of **fiberglass-reinforced epoxy**. Milling into FR4 creates fine glass dust. This dust is:
+    * **Hazardous to health:** Glass particulates can cause serious respiratory issues (silicosis) when inhaled and skin irritation.
+    * **Bad for machinery:** Glass dust is highly abrasive and will wear out linear bearings, lead screws, and spindle runout very quickly.
+    * **Hard on tools:** It will dull standard carbide endmills much faster.
+
+* **Use FR1 (Phenolic Paper):** For prototyping isolation routing, **FR1** (also sold as Bakelite or Phenolic Paper) is strongly recommended. 
+    * It contains **no fiberglass**.
+    * Making the dust less abrasive (though you still need to be somewhat careful).
+    * It's easier to work with, meaning less machine and tool wear.
+
+### Dust & Fume Extraction
+* **CNC:** Always use a vacuum system or enclosure with FR4. Even FR1 dust should not be inhaled. Good feeds and speeds also help make dust less fine and easier to contain.
+* **Laser:** Fiber laser processing burns the epoxy/phenolic resins, releasing **toxic fumes** (including carbon monoxide and various carcinogens). **Active ventilation to the outdoors or filtering is mandatory.**
+
+Note: Jury's still out on UV lasers but until proven otherwise, use them with the same caution as fiber lasers.
+
 ## Key Features
 
 * **Multi-Operation Workflow**
@@ -283,7 +304,7 @@ If this tool saves you time or material costs, contributions via Ko-fi help fund
 [**>> Support Development on Ko-fi <<**](https://ko-fi.com/eltryus)
 
 ### 🤝 Become a Sponsor
-We offer visibility for manufacturers and industry partners on the application welcome screen and documentation. 
+EasyTrace5000 offers visibility for manufacturers and industry partners on the application welcome screen and documentation. 
 
 <table width="830px">
   <tr>
