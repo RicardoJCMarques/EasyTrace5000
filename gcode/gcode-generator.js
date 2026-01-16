@@ -115,9 +115,10 @@
             // Pass the first plan to the header for feed rate setup (for Roland RML post-processor)
             options.firstPlan = toolpathPlans[0]
 
-            let coordinateTransform = null;
+            let originOffset = { x: 0, y: 0 };
             if (this.core && this.core.coordinateSystem) {
-                coordinateTransform = this.core.coordinateSystem.getCoordinateTransform();
+                const origin = this.core.coordinateSystem.getOriginPosition();
+                originOffset = { x: -origin.x, y: -origin.y };
             }
 
             // Generate header (G90, G21, etc.)
@@ -128,12 +129,9 @@
             if (initPlanIndex !== -1) {
                 const initPlan = toolpathPlans[initPlanIndex];
                 for (const cmd of initPlan.commands) {
-                    const startPosForTransform = { ...this.untransformedPosition };
 
                     let transformedCmd = cmd;
-                    if (coordinateTransform) {
-                        transformedCmd = this.transformCommand(cmd, coordinateTransform, startPosForTransform);
-                    }
+                    transformedCmd = this.transformCommand(cmd, originOffset);
 
                     const gcode = this.currentProcessor.processCommand(transformedCmd);
                     if (gcode) {
@@ -199,12 +197,9 @@
 
                     // Process each command/segment
                     for (const commandToProcess of commandsToProcess) {
-                        const currentStartPos = { ...this.untransformedPosition };
 
                         let transformedCmd = commandToProcess;
-                        if (coordinateTransform) {
-                            transformedCmd = this.transformCommand(commandToProcess, coordinateTransform, currentStartPos);
-                        }
+                        transformedCmd = this.transformCommand(commandToProcess, originOffset);
 
                         const gcode = this.currentProcessor.processCommand(transformedCmd);
                         if (gcode) {
@@ -229,46 +224,21 @@
             return output.join('\n');
         }
 
-        transformCommand(cmd, transform, currentUntransformedPos) {
+        transformCommand(cmd, originOffset) {
+            if (originOffset.x === 0 && originOffset.y === 0) {
+                return cmd;
+            }
+
             const transformed = { ...cmd };
 
-            const hasX = cmd.x !== null && cmd.x !== undefined;
-            const hasY = cmd.y !== null && cmd.y !== undefined;
-
-            const x = hasX ? cmd.x : currentUntransformedPos.x;
-            const y = hasY ? cmd.y : currentUntransformedPos.y;
-
-            // Apply Offset
-            let tx = x + transform.offsetX;
-            let ty = y + transform.offsetY;
-
-            // Apply Rotation
-            if (transform.rotation !== 0 && transform.rotationCenter) {
-                const rad = (transform.rotation * Math.PI) / 180;
-                const cx = transform.rotationCenter.x + transform.offsetX;
-                const cy = transform.rotationCenter.y + transform.offsetY;
-
-                const dx = tx - cx;
-                const dy = ty - cy;
-
-                tx = cx + (dx * Math.cos(rad) - dy * Math.sin(rad));
-                ty = cy + (dx * Math.sin(rad) + dy * Math.cos(rad));
+            if (cmd.x !== null && cmd.x !== undefined) {
+                transformed.x = cmd.x + originOffset.x;
+            }
+            if (cmd.y !== null && cmd.y !== undefined) {
+                transformed.y = cmd.y + originOffset.y;
             }
 
-            // Only write back coordinates present in original command
-            if (hasX) transformed.x = tx;
-            if (hasY) transformed.y = ty;
-
-            // Transform I,J for arcs (relative offsets)
-            if ((cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') && transform.rotation !== 0) {
-                const rad = (transform.rotation * Math.PI) / 180;
-                const i = cmd.i || 0;
-                const j = cmd.j || 0;
-
-                transformed.i = i * Math.cos(rad) - j * Math.sin(rad);
-                transformed.j = i * Math.sin(rad) + j * Math.cos(rad);
-            }
-
+            // I/J are relative to current position, not affected by origin offset
             return transformed;
         }
 

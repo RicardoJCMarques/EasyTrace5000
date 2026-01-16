@@ -436,17 +436,17 @@
             const strategy = planContext.strategy.drill;
             const cutting = planContext.cutting;
 
-            // 1. Retract to Travel Z if needed
+            // Retract to Travel Z if needed
             if (this.currentPosition.z < machine.travelZ) {
                 machinePlan.addRapid(null, null, machine.travelZ);
                 this.currentPosition.z = machine.travelZ;
             }
-            // 2. Move to XY
+            // Move to XY
             machinePlan.addRapid(position.x, position.y, null);
             this.currentPosition.x = position.x;
             this.currentPosition.y = position.y;
 
-            // 3. Rapid to Feed Height
+            // Rapid to Feed Height
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
 
             if (strategy.cannedCycle === 'none' || strategy.peckDepth === 0 ||
@@ -542,21 +542,30 @@
             const segmentsPerRev = 16;
             const totalSegments = Math.ceil(revolutions * segmentsPerRev);
 
-            const startX = center.x + radius; 
-            const startY = center.y;          
+            // Use the correctly transformed entry point as start position
+            const startX = purePlan.metadata.entryPoint.x;
+            const startY = purePlan.metadata.entryPoint.y;
+
+            // Calculate the starting angle from actual entry point position relative to center
+            // This ensures helix traces from wherever the transformed entry point landed
+            const startAngle = Math.atan2(startY - center.y, startX - center.x);
 
             machinePlan.addRapid(startX, startY, null);
-
-            // Feed to Z0
             machinePlan.addLinear(startX, startY, 0, plungeRate);
 
-            const angleSpan = revolutions * 2 * Math.PI * -1; 
+            // Determine arc direction based on mirror state
+            const transforms = this.context.transforms || {};
+            const isMirrored = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+            const arcCW = !isMirrored;
+
+            // Negative angleSpan = CW traversal, Positive = CCW
+            const angleSpan = revolutions * 2 * Math.PI * (arcCW ? -1 : 1);
             
             let lastX = startX, lastY = startY;
 
             for (let i = 1; i <= totalSegments; i++) {
                 const ratio = i / totalSegments;
-                const angle = 0 + (ratio * angleSpan);
+                const angle = startAngle + (ratio * angleSpan);
                 const z = ratio * finalDepth;
 
                 const x = center.x + radius * Math.cos(angle);
@@ -565,26 +574,30 @@
                 const i_val = center.x - lastX;
                 const j_val = center.y - lastY;
 
-                machinePlan.addArc(x, y, z, i_val, j_val, true, feedRate); 
+                machinePlan.addArc(x, y, z, i_val, j_val, arcCW, feedRate);
                 lastX = x;
                 lastY = y;
             }
 
             machinePlan.addLinear(lastX, lastY, finalDepth, feedRate);
 
-            const i_center = center.x - lastX; 
-            const j_center = center.y - lastY; 
-            machinePlan.addArc(lastX, lastY, finalDepth, i_center, j_center, true, feedRate);
+            // Full circle cleanup pass at final depth
+            const i_center = center.x - lastX;
+            const j_center = center.y - lastY;
+            machinePlan.addArc(lastX, lastY, finalDepth, i_center, j_center, arcCW, feedRate);
 
             machinePlan.addRetract(this.context.machine.travelZ);
         }
 
         generateSlotHelix(machinePlan, purePlan) {
             const obroundData = purePlan.metadata.obroundData;
-            if (!obroundData) return;
 
-            const slotRadius = obroundData.slotRadius;
-            const isHorizontal = obroundData.isHorizontal;
+            const pA = obroundData.pA;
+            const pB = obroundData.pB;
+            const pC = obroundData.pC;
+            const pD = obroundData.pD;
+
+            // Use transformed centers (these are just for I/J calculation)
             const startCapCenter = obroundData.startCapCenter;
             const endCapCenter = obroundData.endCapCenter;
 
@@ -593,22 +606,16 @@
             const feedRate = purePlan.metadata.feedRate;
             const plungeRate = purePlan.metadata.plungeRate;
 
-            let pA, pB, pC, pD;
+            // If the coordinate system is mirrored (flipped parity), arc direction must be inverted to maintain the convex shape of the caps.
+            const transforms = this.context.transforms || {};
+            const isMirrored = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
 
-            if (isHorizontal) {
-                pA = { x: startCapCenter.x, y: startCapCenter.y + slotRadius };
-                pB = { x: startCapCenter.x, y: startCapCenter.y - slotRadius };
-                pC = { x: endCapCenter.x, y: endCapCenter.y - slotRadius };
-                pD = { x: endCapCenter.x, y: endCapCenter.y + slotRadius };
-            } else {
-                pA = { x: startCapCenter.x - slotRadius, y: startCapCenter.y };
-                pB = { x: startCapCenter.x + slotRadius, y: startCapCenter.y };
-                pC = { x: endCapCenter.x + slotRadius, y: endCapCenter.y };
-                pD = { x: endCapCenter.x - slotRadius, y: endCapCenter.y };
-            }
+            // Standard slots use CW (true) arcs. Mirrored slots must use CCW (false).
+            const arcCW = !isMirrored; 
 
+            // Move to Start of Helix Loop (pA)
             machinePlan.addRapid(pA.x, pA.y, null);
-            
+
             // Feed to Z0
             machinePlan.addLinear(pA.x, pA.y, 0, plungeRate);
 
@@ -620,32 +627,40 @@
             let targetZ = 0;
 
             while (currentZ > finalDepth) {
+                // Linear cut along side
                 machinePlan.addLinear(pD.x, pD.y, currentZ, feedRate);
 
+                // Cap Arc 1 (End Cap)
                 targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
                 const i1 = endCapCenter.x - pD.x;
                 const j1 = endCapCenter.y - pD.y;
-                machinePlan.addArc(pC.x, pC.y, targetZ, i1, j1, true, feedRate); 
+                // Use dynamic arcCW
+                machinePlan.addArc(pC.x, pC.y, targetZ, i1, j1, arcCW, feedRate); 
                 currentZ = targetZ;
 
+                // Linear cut along other side
                 machinePlan.addLinear(pB.x, pB.y, currentZ, feedRate);
 
+                // Cap Arc 2 (Start Cap)
                 targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
                 const i2 = startCapCenter.x - pB.x;
                 const j2 = startCapCenter.y - pB.y;
-                machinePlan.addArc(pA.x, pA.y, targetZ, i2, j2, true, feedRate); 
+
+                // Use dynamic arcCW
+                machinePlan.addArc(pA.x, pA.y, targetZ, i2, j2, arcCW, feedRate); 
                 currentZ = targetZ;
             }
 
+            // Bottom cleanup pass (Final Depth)
             const i_end = endCapCenter.x - pD.x;
             const j_end = endCapCenter.y - pD.y;
             const i_start = startCapCenter.x - pB.x;
             const j_start = startCapCenter.y - pB.y;
 
             machinePlan.addLinear(pD.x, pD.y, finalDepth, feedRate);
-            machinePlan.addArc(pC.x, pC.y, finalDepth, i_end, j_end, true, feedRate);
+            machinePlan.addArc(pC.x, pC.y, finalDepth, i_end, j_end, arcCW, feedRate);
             machinePlan.addLinear(pB.x, pB.y, finalDepth, feedRate);
-            machinePlan.addArc(pA.x, pA.y, finalDepth, i_start, j_start, true, feedRate);
+            machinePlan.addArc(pA.x, pA.y, finalDepth, i_start, j_start, arcCW, feedRate);
 
             machinePlan.addRetract(this.context.machine.travelZ);
         }

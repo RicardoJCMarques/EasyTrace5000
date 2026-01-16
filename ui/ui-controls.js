@@ -56,6 +56,7 @@
             this.setupVisualizationToggles();
             this.setupOffsetControls();
             this.setupRotationControls();
+            this.setupMirrorControls();
             this.setupZoomControls();
             this.setupCollapsibleMenus();
             this.setupVizPanelButton();
@@ -85,7 +86,7 @@
 
                 // Find the label associated with this input
                 const label = document.querySelector(`label[for="${inputId}"]`) || 
-                              input.closest('.property-field, .sidebar-section')?.querySelector('label');
+                            input.closest('.property-field, .sidebar-section')?.querySelector('label');
 
                 if (label) {
                     // Check if this input's label already has a tooltip
@@ -109,10 +110,29 @@
                 }
             };
 
+            // Helper for standalone labels (not associated with inputs)
+            const attachToLabel = (labelId, tooltipKey) => {
+                const label = document.getElementById(labelId);
+                if (!label || processedLabels.has(label)) return;
+
+                processedLabels.add(label);
+                const text = this.lang.get(tooltipKey);
+                const title = label.textContent?.trim() || 'Mirror Geometry';
+
+                if (text) {
+                    window.TooltipManager.attachWithIcon(label, { title: title, text: text }, {
+                        showOnFocus: true
+                    });
+                }
+            };
+
             // Origin Controls
             attachTo('x-offset', 'tooltips.originControls.originOffset');
-            attachTo('y-offset', 'tooltips.originControls.originOffset'); // Both X and Y share one tooltip
+            attachTo('y-offset', 'tooltips.originControls.originOffset');
             attachTo('rotation-angle', 'tooltips.originControls.boardRotation');
+
+            // Mirror Controls
+            attachToLabel('mirrorGeometry', 'tooltips.originControls.mirrorGeometry');
 
             // Machine Settings
             attachTo('pcb-thickness', 'tooltips.machineSettings.pcbThickness');
@@ -375,6 +395,64 @@
                     const input = document.getElementById('rotation-angle');
                     if (input) input.value = '0';
                 });
+            }
+        }
+
+        setupMirrorControls() {
+            const toggleX = document.getElementById('mirror-x-toggle');
+            const toggleY = document.getElementById('mirror-y-toggle');
+
+            if (toggleX) {
+                toggleX.addEventListener('change', (e) => {
+                    if (!this.coordinateSystem) return;
+
+                    const result = this.coordinateSystem.setMirrorX(e.target.checked);
+
+                    if (result.success) {
+                        this.ui.updateOriginDisplay();
+                        const state = result.mirrorX ? 'enabled' : 'disabled';
+                        this.ui.statusManager?.showStatus(`Horizontal mirror ${state}`, 'info');
+                    }
+                });
+            }
+
+            if (toggleY) {
+                toggleY.addEventListener('change', (e) => {
+                    if (!this.coordinateSystem) return;
+
+                    const result = this.coordinateSystem.setMirrorY(e.target.checked);
+
+                    if (result.success) {
+                        this.ui.updateOriginDisplay();
+                        const state = result.mirrorY ? 'enabled' : 'disabled';
+                        this.ui.statusManager?.showStatus(`Vertical mirror ${state}`, 'info');
+                    }
+                });
+            }
+
+            // Initial state sync and add listener for external changes
+            this.syncMirrorCheckboxes();
+
+            // Re-sync checkboxes whenever coordinate system changes
+            if (this.coordinateSystem) {
+                this.coordinateSystem.addChangeListener((status) => {
+                    this.syncMirrorCheckboxes();
+                });
+            }
+        }
+
+        syncMirrorCheckboxes() {
+            if (!this.coordinateSystem) return;
+
+            const state = this.coordinateSystem.getMirrorState();
+            const toggleX = document.getElementById('mirror-x-toggle');
+            const toggleY = document.getElementById('mirror-y-toggle');
+
+            if (toggleX && toggleX.checked !== state.mirrorX) {
+                toggleX.checked = state.mirrorX;
+            }
+            if (toggleY && toggleY.checked !== state.mirrorY) {
+                toggleY.checked = state.mirrorY;
             }
         }
 

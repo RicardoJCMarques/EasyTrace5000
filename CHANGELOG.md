@@ -5,10 +5,11 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.1] - 2026-01-16
 
 ### Added
-- Placeholder for upcoming features (e.g., Laser pipeline support).
+- **Mirroring:** Added support for Horizontal (X) and Vertical (Y) board mirroring. Toggles in 
+- **Coordinate System:** Upgraded the transformation engine to support complex combinations of rotation and mirroring.
 
 ## [1.0.0] - 2026-01-12
 

@@ -50,6 +50,10 @@
             this.fileRotation = 0; // Original file rotation (always 0)
             this.rotationCenter = null; // Center point for rotation (board center)
 
+            // Mirror tracking
+            this.mirrorX = false;  // Horizontal flip (across Y-axis, centered on origin)
+            this.mirrorY = false;  // Vertical flip (across X-axis, centered on origin)
+
             this.boardBounds = null; // Board bounds in file coordinates
             this.initialized = false;
 
@@ -62,7 +66,6 @@
         }
 
         initializeEmpty() {
-            // Initialize with default empty bounds for empty canvas
             if (!this.initialized) {
                 this.boardBounds = {
                     minX: 0,
@@ -85,6 +88,7 @@
                 this.previewOrigin = { x: 0, y: 0 };
                 this.currentRotation = 0;
                 this.fileRotation = 0;
+
                 this.initialized = true;
 
                 this.syncToRenderer();
@@ -160,6 +164,45 @@
             this.notifyChange({ action: 'syncPreview' });
         }
 
+        /**
+         * Returns bounds in VISUAL space (after mirror transform).
+         * When mirrored, minX/maxX and/or minY/maxY are swapped relative to geometry space.
+         */
+        getVisualBounds() {
+            const bounds = this.getRotatedBoardBounds();
+            if (!bounds) return null;
+
+            let { minX, maxX, minY, maxY } = bounds;
+
+            // Mirror center is the board center for visual transforms
+            const cx = bounds.centerX;
+            const cy = bounds.centerY;
+
+            if (this.mirrorX) {
+                // Horizontal flip: minX and maxX swap positions relative to center
+                const newMinX = 2 * cx - maxX;
+                const newMaxX = 2 * cx - minX;
+                minX = newMinX;
+                maxX = newMaxX;
+            }
+
+            if (this.mirrorY) {
+                // Vertical flip: minY and maxY swap positions relative to center
+                const newMinY = 2 * cy - maxY;
+                const newMaxY = 2 * cy - minY;
+                minY = newMinY;
+                maxY = newMaxY;
+            }
+
+            return {
+                minX, minY, maxX, maxY,
+                width: maxX - minX,
+                height: maxY - minY,
+                centerX: (minX + maxX) / 2,
+                centerY: (minY + maxY) / 2
+            };
+        }
+
         previewCenterOrigin() {
             if (!this.boardBounds) {
                 return { success: false, error: 'No board bounds available' };
@@ -168,13 +211,14 @@
             // Calculate rotated center position
             const rotatedBounds = this.getRotatedBoardBounds();
 
+            // Center is invariant under mirroring around board center
             this.previewOrigin.x = rotatedBounds.centerX;
             this.previewOrigin.y = rotatedBounds.centerY;
 
             // Sync preview to renderer
             this.syncToRenderer();
 
-            this.debug(`Preview origin at center: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)})`);
+            this.debug(`Preview origin at center: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)}) [mirrorX=${this.mirrorX}, mirrorY=${this.mirrorY}]`);
             return { 
                 success: true,
                 position: { ...this.previewOrigin }
@@ -189,13 +233,13 @@
             // Calculate rotated bottom-left position
             const rotatedBounds = this.getRotatedBoardBounds();
 
+            // Always use minX/minY regardless of mirror state.
             this.previewOrigin.x = rotatedBounds.minX;
             this.previewOrigin.y = rotatedBounds.minY;
 
             // Sync preview to renderer
             this.syncToRenderer();
 
-            this.debug(`Preview origin at bottom-left: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)})`);
             return { 
                 success: true,
                 position: { ...this.previewOrigin }
@@ -269,31 +313,35 @@
                 return this.boardBounds;
             }
 
-            // Get the four corners of the original board bounds
             const corners = [
-                { x: this.boardBounds.minX, y: this.boardBounds.minY }, // bottom-left
-                { x: this.boardBounds.maxX, y: this.boardBounds.minY }, // bottom-right
-                { x: this.boardBounds.maxX, y: this.boardBounds.maxY }, // top-right
-                { x: this.boardBounds.minX, y: this.boardBounds.maxY }  // top-left
+                { x: this.boardBounds.minX, y: this.boardBounds.minY },
+                { x: this.boardBounds.maxX, y: this.boardBounds.minY },
+                { x: this.boardBounds.maxX, y: this.boardBounds.maxY },
+                { x: this.boardBounds.minX, y: this.boardBounds.maxY }
             ];
 
-            // Rotate each corner around the rotation center
-            const rotationCenter = this.rotationCenter || { x: this.boardBounds.centerX, y: this.boardBounds.centerY };
-            const angle = (this.currentRotation * Math.PI) / 180;
+            const rotationCenter = this.rotationCenter || { 
+                x: this.boardBounds.centerX, 
+                y: this.boardBounds.centerY 
+            };
+
+            // Negate angle when mirrored to match renderer behavior
+            const isMirrored = (this.mirrorX ? 1 : 0) ^ (this.mirrorY ? 1 : 0);
+            const effectiveAngle = isMirrored ? -this.currentRotation : this.currentRotation;
+
+            const angle = (effectiveAngle * Math.PI) / 180;
             const cos = Math.cos(angle);
             const sin = Math.sin(angle);
 
             const rotatedCorners = corners.map(corner => {
                 const dx = corner.x - rotationCenter.x;
                 const dy = corner.y - rotationCenter.y;
-                
                 return {
                     x: rotationCenter.x + (dx * cos - dy * sin),
                     y: rotationCenter.y + (dx * sin + dy * cos)
                 };
             });
 
-            // Find the new bounds
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
 
@@ -367,6 +415,79 @@
             };
         }
 
+        setMirrorX(enabled) {
+            if (!this.initialized) {
+                // Allow setting mirror before initialization - store for later
+                this.mirrorX = !!enabled;
+                this.debug(`Mirror X pre-init set to: ${this.mirrorX}`);
+                return { success: true, mirrorX: this.mirrorX };
+            }
+
+            this.mirrorX = !!enabled;
+            this.syncToRenderer();
+            this.debug(`Mirror X set to: ${this.mirrorX}`);
+            this.notifyChange({ action: 'setMirrorX', mirrorX: this.mirrorX });
+
+            return { success: true, mirrorX: this.mirrorX };
+        }
+
+        setMirrorY(enabled) {
+            if (!this.initialized) {
+                // Allow setting mirror before initialization - store for later
+                this.mirrorY = !!enabled;
+                this.debug(`Mirror Y pre-init set to: ${this.mirrorY}`);
+                return { success: true, mirrorY: this.mirrorY };
+            }
+
+            this.mirrorY = !!enabled;
+            this.syncToRenderer();
+            this.debug(`Mirror Y set to: ${this.mirrorY}`);
+            this.notifyChange({ action: 'setMirrorY', mirrorY: this.mirrorY });
+
+            return { success: true, mirrorY: this.mirrorY };
+        }
+
+        toggleMirrorX() {
+            return this.setMirrorX(!this.mirrorX);
+        }
+
+        toggleMirrorY() {
+            return this.setMirrorY(!this.mirrorY);
+        }
+
+        resetMirror() {
+            if (!this.initialized) {
+                return { success: false, error: 'Coordinate system not initialized' };
+            }
+
+            const hadMirror = this.mirrorX || this.mirrorY;
+            this.mirrorX = false;
+            this.mirrorY = false;
+
+            if (hadMirror) {
+                this.syncToRenderer();
+                this.notifyChange({ action: 'resetMirror' });
+            }
+
+            this.debug('Mirror reset');
+            return { success: true };
+        }
+
+        getMirrorState() {
+            // Use board center for mirror operations, consistent with getStatus()
+            const mirrorCenter = this.boardBounds ? {
+                x: this.boardBounds.centerX,
+                y: this.boardBounds.centerY
+            } : { x: 0, y: 0 };
+
+            return {
+                mirrorX: this.mirrorX,
+                mirrorY: this.mirrorY,
+                hasMirror: this.mirrorX || this.mirrorY,
+                mirrorCenter: mirrorCenter
+            };
+        }
+
         getGeometryTransform() {
             if (this.currentRotation === 0) {
                 return null; // No transformation needed
@@ -394,7 +515,12 @@
             // Use config precision for comparison
             const precision = geomConfig.coordinatePrecision;
 
-            // Origin description based on preview position
+            // Mirror center is board center for correct visual mirroring
+            const mirrorCenter = this.boardBounds ? {
+                x: this.boardBounds.centerX,
+                y: this.boardBounds.centerY
+            } : { x: 0, y: 0 };
+
             let originDescription = 'File Origin';
             if (this.boardBounds) {
                 const atSaved = Math.abs(offset.x) < precision && Math.abs(offset.y) < precision;
@@ -402,11 +528,16 @@
                 if (atSaved && savedPosition.x === 0 && savedPosition.y === 0) {
                     originDescription = 'File Origin';
                 } else if (atSaved) {
-                    // At saved position (not file origin)
-                    const atCenter = Math.abs(savedPosition.x - this.boardBounds.centerX) < precision &&
-                                    Math.abs(savedPosition.y - this.boardBounds.centerY) < precision;
-                    const atBottomLeft = Math.abs(savedPosition.x - this.boardBounds.minX) < precision &&
-                                        Math.abs(savedPosition.y - this.boardBounds.minY) < precision;
+                    // Check against VISUAL positions (accounting for mirror)
+                    const visualCenterX = this.boardBounds.centerX;
+                    const visualCenterY = this.boardBounds.centerY;
+                    const visualBottomLeftX = this.mirrorX ? this.boardBounds.maxX : this.boardBounds.minX;
+                    const visualBottomLeftY = this.mirrorY ? this.boardBounds.maxY : this.boardBounds.minY;
+
+                    const atCenter = Math.abs(savedPosition.x - visualCenterX) < precision &&
+                                    Math.abs(savedPosition.y - visualCenterY) < precision;
+                    const atBottomLeft = Math.abs(savedPosition.x - visualBottomLeftX) < precision &&
+                                        Math.abs(savedPosition.y - visualBottomLeftY) < precision;
 
                     if (atCenter) {
                         originDescription = 'Board Center (saved)';
@@ -416,14 +547,19 @@
                         originDescription = `Custom (${savedPosition.x.toFixed(1)}, ${savedPosition.y.toFixed(1)})mm`;
                     }
                 } else {
-                    // Preview position with offset
                     originDescription = `Preview: +${offset.x.toFixed(1)}, +${offset.y.toFixed(1)}mm`;
                 }
             }
 
-            // Add rotation info if rotated
             if (this.currentRotation !== 0) {
                 originDescription += ` • ${this.currentRotation}°`;
+            }
+
+            if (this.mirrorX || this.mirrorY) {
+                const mirrorDesc = [];
+                if (this.mirrorX) mirrorDesc.push('H');
+                if (this.mirrorY) mirrorDesc.push('V');
+                originDescription += ` • Mirror: ${mirrorDesc.join('+')}`;
             }
 
             return {
@@ -432,6 +568,10 @@
                 savedPosition: savedPosition,
                 offset: offset,
                 originDescription: originDescription,
+                mirrorX: this.mirrorX,
+                mirrorY: this.mirrorY,
+                mirrorCenter: mirrorCenter,
+                hasMirror: this.mirrorX || this.mirrorY,
                 currentRotation: this.currentRotation,
                 rotationCenter: this.rotationCenter ? { ...this.rotationCenter } : null,
                 initialized: this.initialized,
@@ -442,15 +582,6 @@
 
         getOriginPosition() {
             return { ...this.previewOrigin };
-        }
-
-        getCoordinateTransform() {
-            return {
-                offsetX: -this.previewOrigin.x,
-                offsetY: -this.previewOrigin.y,
-                rotation: this.currentRotation,
-                rotationCenter: this.rotationCenter ? { ...this.rotationCenter } : null
-            };
         }
 
         getRotationMatrix() {

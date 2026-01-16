@@ -344,8 +344,9 @@
         "endCode": "Custom G-code to add to the end of this operation's toolpath."
       },
       "originControls": {
-        "originOffset": "Manually preview a new X/Y origin. Click 'Apply Origin' to save this position as the new (0,0).",
-        "boardRotation": "Apply a rotation (in degrees) to all operations around the current origin."
+        "originOffset": "Set a new X/Y origin. Click 'Apply Origin' to save this position as the new (0,0).",
+        "boardRotation": "Apply a rotation (in degrees) to all files around itself.",
+        "mirrorGeometry": "Invert file geometry. Usefull with bottom-layer isolation."
       },
       "machineSettings": {
         "pcbThickness": "The total thickness of your PCB material (e.g., 1.6mm). Used for cutout depth calculations.",

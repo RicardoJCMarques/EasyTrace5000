@@ -104,10 +104,27 @@
             this.core.setupTransform();
             this.ctx.save();
 
-            // Apply object rotation
-            if (this.core.currentRotation !== 0 && this.core.rotationCenter) {
+            // Apply transforms in order: Mirror → Rotation
+            const hasMirror = this.core.mirrorX || this.core.mirrorY;
+            const hasRotation = this.core.currentRotation !== 0 && this.core.rotationCenter;
+
+            if (hasMirror) {
+                const mc = this.core.mirrorCenter;
+                this.ctx.translate(mc.x, mc.y);
+                this.ctx.scale(
+                    this.core.mirrorX ? -1 : 1,
+                    this.core.mirrorY ? -1 : 1
+                );
+                this.ctx.translate(-mc.x, -mc.y);
+            }
+
+            if (hasRotation) {
+                // When mirrored, negate rotation to preserve visual direction
+                const isMirrored = (this.core.mirrorX ? 1 : 0) ^ (this.core.mirrorY ? 1 : 0);
+                const effectiveAngle = isMirrored ? -this.core.currentRotation : this.core.currentRotation;
+
                 this.ctx.translate(this.core.rotationCenter.x, this.core.rotationCenter.y);
-                this.ctx.rotate((this.core.currentRotation * Math.PI) / 180);
+                this.ctx.rotate((effectiveAngle * Math.PI) / 180);
                 this.ctx.translate(-this.core.rotationCenter.x, -this.core.rotationCenter.y);
             }
 

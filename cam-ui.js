@@ -124,7 +124,13 @@
                         if (this.renderer) {
                             this.renderer.core.setOriginPosition(status.currentPosition.x, status.currentPosition.y);
                             this.renderer.core.setRotation(status.currentRotation, status.rotationCenter);
+                            // Use board center (from status.mirrorCenter) for mirroring
+                            this.renderer.core.setMirror(status.mirrorX, status.mirrorY, status.mirrorCenter);
                             this.renderer.render();
+                        }
+
+                        if (debugConfig.enabled && (status.action === 'setMirrorX' || status.action === 'setMirrorY')) {
+                            console.log(`[cam-ui] Mirror state updated: X=${status.mirrorX}, Y=${status.mirrorY}`);
                         }
                     });
                 }

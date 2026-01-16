@@ -59,6 +59,11 @@
             this.rotationCenter = { x: 0, y: 0 };
             this.rotation = { angle: 0, center: { x: 0, y: 0 } };
 
+            // Mirror state
+            this.mirrorX = false;
+            this.mirrorY = false;
+            this.mirrorCenter = { x: 0, y: 0 };
+
             // Bounds
             this.bounds = null;
             this.overallBounds = null;
@@ -460,7 +465,12 @@
                 ? config.renderer.zoom.fitPaddingWithOrigin 
                 : config.renderer.zoom.fitPadding;
 
-            let bounds = this.overallBounds;
+            let bounds = { ...this.overallBounds };
+
+            // Transform bounds to visual space if mirrored
+            if (this.mirrorX || this.mirrorY) {
+                bounds = this._getVisualBounds(bounds);
+            }
 
             if (includeOrigin) {
                 const origin = this.originPosition || { x: 0, y: 0 };
@@ -474,8 +484,16 @@
                 bounds.height = bounds.maxY - bounds.minY;
                 bounds.centerX = (bounds.minX + bounds.maxX) / 2;
                 bounds.centerY = (bounds.minY + bounds.maxY) / 2;
-                
+
                 this.originIncludedInFit = true;
+            }
+
+            // Recalculate derived values if not already set
+            if (bounds.width === undefined) {
+                bounds.width = bounds.maxX - bounds.minX;
+                bounds.height = bounds.maxY - bounds.minY;
+                bounds.centerX = (bounds.minX + bounds.maxX) / 2;
+                bounds.centerY = (bounds.minY + bounds.maxY) / 2;
             }
 
             const canvasAspect = this.canvas.width / this.canvas.height;
@@ -492,6 +510,38 @@
             this.viewOffset = {
                 x: this.canvas.width / 2 - bounds.centerX * this.viewScale,
                 y: this.canvas.height / 2 + bounds.centerY * this.viewScale
+            };
+        }
+
+        /**
+         * Returns bounds in visual space after mirror transform.
+         */
+        _getVisualBounds(bounds) {
+            const cx = this.mirrorCenter.x;
+            const cy = this.mirrorCenter.y;
+
+            let { minX, maxX, minY, maxY } = bounds;
+
+            if (this.mirrorX) {
+                const newMinX = 2 * cx - maxX;
+                const newMaxX = 2 * cx - minX;
+                minX = newMinX;
+                maxX = newMaxX;
+            }
+
+            if (this.mirrorY) {
+                const newMinY = 2 * cy - maxY;
+                const newMaxY = 2 * cy - minY;
+                minY = newMinY;
+                maxY = newMaxY;
+            }
+
+            return {
+                minX, minY, maxX, maxY,
+                width: maxX - minX,
+                height: maxY - minY,
+                centerX: (minX + maxX) / 2,
+                centerY: (minY + maxY) / 2
             };
         }
 
@@ -580,7 +630,7 @@
         }
 
         // ========================================================================
-        // Origin & Rotation
+        // Origin, Rotation and Mirroring
         // ========================================================================
 
         setOriginPosition(x, y) {
@@ -608,6 +658,23 @@
             this.ctx.translate(c.x, c.y);
             this.ctx.rotate(rad);
             this.ctx.translate(-c.x, -c.y);
+        }
+
+        setMirror(mirrorX, mirrorY, center) {
+            this.mirrorX = mirrorX || false;
+            this.mirrorY = mirrorY || false;
+            if (center) {
+                this.mirrorCenter.x = center.x;
+                this.mirrorCenter.y = center.y;
+            }
+        }
+
+        getMirrorState() {
+            return {
+                mirrorX: this.mirrorX,
+                mirrorY: this.mirrorY,
+                mirrorCenter: { ...this.mirrorCenter }
+            };
         }
 
         // ========================================================================
@@ -747,17 +814,55 @@
             const dpr = this.devicePixelRatio || 1;
             this.frameCache.invScale = 1 / this.viewScale;
             this.frameCache.minWorldWidth = dpr / this.viewScale;
-            this.frameCache.viewBounds = this.getViewBounds();
+
+            // Get view bounds in screen-world space
+            let viewBounds = this.getViewBounds();
+
+            // Transform view bounds to source-geometry space if mirrored
+            // This makes culling work correctly without per-primitive transforms
+            if (this.mirrorX || this.mirrorY) {
+                viewBounds = this._transformBoundsForMirror(viewBounds);
+            }
+
+            this.frameCache.viewBounds = viewBounds;
 
             this.clearCanvas();
             return performance.now();
+        }
+
+        /**
+         * Transforms view bounds into source-geometry space by applying inverse mirror.
+         */
+        _transformBoundsForMirror(bounds) {
+            const cx = this.mirrorCenter.x;
+            const cy = this.mirrorCenter.y;
+
+            let { minX, maxX, minY, maxY } = bounds;
+
+            if (this.mirrorX) {
+                // Reflect across vertical line x = cx
+                const newMinX = 2 * cx - maxX;
+                const newMaxX = 2 * cx - minX;
+                minX = newMinX;
+                maxX = newMaxX;
+            }
+
+            if (this.mirrorY) {
+                // Reflect across horizontal line y = cy
+                const newMinY = 2 * cy - maxY;
+                const newMaxY = 2 * cy - minY;
+                minY = newMinY;
+                maxY = newMaxY;
+            }
+
+            return { minX, minY, maxX, maxY };
         }
 
         endRender(startTime) {
             const endTime = performance.now();
             this.renderStats.renderTime = endTime - startTime;
             this.renderStats.lastRenderTime = Date.now();
-            
+
             if (this.renderStats.lastSignificantChange && debugConfig.enabled) {
                 console.log(`[RendererCore] Rendered ${this.renderStats.renderedPrimitives} prims, ` +
                     `${this.renderStats.drawCalls} draws, ${this.renderStats.renderTime.toFixed(1)}ms ` +

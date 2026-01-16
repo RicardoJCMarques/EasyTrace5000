@@ -1208,6 +1208,12 @@
                 isInternal
             );
 
+            // Transform Values - use board center for mirror, not origin
+            const boardCenter = this.coordinateSystem?.boardBounds ? {
+                x: this.coordinateSystem.boardBounds.centerX,
+                y: this.coordinateSystem.boardBounds.centerY
+            } : { x: 0, y: 0 };
+
             const depthLevels = this._calculateDepthLevels(
                 params.cutDepth,
                 params.depthPerPass,
@@ -1262,6 +1268,16 @@
                 computed: {
                     offsetDistances: offsetDistances,
                     depthLevels: depthLevels
+                },
+
+                // Transform Values
+                transforms: {
+                    origin: this.coordinateSystem?.getOriginPosition() || { x: 0, y: 0 },
+                    rotation: this.coordinateSystem?.currentRotation || 0,
+                    rotationCenter: this.coordinateSystem?.rotationCenter || null,
+                    mirrorX: this.coordinateSystem?.mirrorX || false,
+                    mirrorY: this.coordinateSystem?.mirrorY || false,
+                    mirrorCenter: boardCenter
                 },
 
                 // Config References

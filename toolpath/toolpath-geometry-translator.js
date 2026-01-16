@@ -224,25 +224,28 @@
         }
 
         /**
-         * New specialized translator for Centerline Slot Paths.
+         * Specialized translator for Centerline Slot Paths.
          * Generates a single "Macro" plan that the MachineProcessor expands into a Zig-Zag pattern.
          */
         translateCenterlinePath(primitive, ctx, depthLevels) {
             const plans = [];
 
-            const points = primitive.contours[0]?.points;
+            // Centerline slots are wrapped in a PathPrimitive, so the points are in the first contour.
+            const contour = primitive.contours[0];
+            const points = contour?.points;
+
             if (!points || points.length < 2) return [];
 
             const startPoint = points[0];
             const endPoint = points[points.length - 1];
             const slotLength = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
 
-            // Create one abstract plan for the entire slot operation
-            const plan = this.createPurePlan(primitive, ctx, depthLevels[0], false, false, false);
+            // Create the plan using the contour points
+            const plan = this.createPurePlan(contour, ctx, depthLevels[0], false, false, false);
 
-            if (plan) {
-                plan.metadata.entryPoint = { ...startPoint, z: depthLevels[0] };
-                plan.metadata.exitPoint = { ...endPoint, z: depthLevels[depthLevels.length - 1] };
+            if (plan && plan.metadata.exitPoint) {
+                // Only update the Z-depth of the exit point
+                plan.metadata.exitPoint.z = depthLevels[depthLevels.length - 1];
 
                 plan.metadata.primitiveType = 'centerline_slot';
                 plan.metadata.isCenterlinePath = true;
@@ -259,10 +262,13 @@
                     plungeRate: ctx.cutting.plungeRate
                 };
 
-                // Add a single guide command (A -> B)
+                // Use the transformed exit point for the guide command so MachineProcessor knows where the slot ends in machine coordinates.
+                const targetX = plan.metadata.exitPoint.x;
+                const targetY = plan.metadata.exitPoint.y;
+
                 plan.commands.push(new MotionCommand(
                     'LINEAR',
-                    { x: endPoint.x, y: endPoint.y, z: depthLevels[0] },
+                    { x: targetX, y: targetY, z: depthLevels[0] },
                     { feed: ctx.cutting.feedRate }
                 ));
 
@@ -281,6 +287,7 @@
             const { operationId, operationType, tool, cutting, strategy } = ctx;
 
             const plan = new ToolpathPlan(operationId);
+            plan.metadata.context = ctx; 
 
             // Set metadata
             plan.metadata.operationId = ctx.operationId;
@@ -307,7 +314,46 @@
             // Analyze primitive sets entry/exit points and metadata
             this.analyzePrimitive(plan, primitive, depth);
 
-            // Generate commands only if explicitly requested (used for the base unsegmented path)
+            // Apply transforms to entry/exit points
+            const transforms = ctx.transforms;
+            if (transforms && (transforms.mirrorX || transforms.mirrorY || transforms.rotation)) {
+                // Transform Entry and Exit
+                if (plan.metadata.entryPoint) {
+                    const transformed = this.applyTransforms(plan.metadata.entryPoint, transforms);
+                    plan.metadata.entryPoint.x = transformed.x;
+                    plan.metadata.entryPoint.y = transformed.y;
+                }
+                if (plan.metadata.exitPoint) {
+                    const transformed = this.applyTransforms(plan.metadata.exitPoint, transforms);
+                    plan.metadata.exitPoint.x = transformed.x;
+                    plan.metadata.exitPoint.y = transformed.y;
+                }
+
+                // Transform Geometry Centers
+                if (plan.metadata.obroundData) {
+                    const od = plan.metadata.obroundData;
+
+                    // Transform centers
+                    od.startCapCenter = this.applyTransforms(od.startCapCenter, transforms);
+                    od.endCapCenter = this.applyTransforms(od.endCapCenter, transforms);
+
+                    // Transform all corner points
+                    if (od.pA) od.pA = this.applyTransforms(od.pA, transforms);
+                    if (od.pB) od.pB = this.applyTransforms(od.pB, transforms);
+                    if (od.pC) od.pC = this.applyTransforms(od.pC, transforms);
+                    if (od.pD) od.pD = this.applyTransforms(od.pD, transforms);
+
+                    // Re-link metadata.center
+                    if (plan.metadata.center) {
+                        plan.metadata.center = od.startCapCenter;
+                    }
+                }
+                else if (plan.metadata.center) {
+                    plan.metadata.center = this.applyTransforms(plan.metadata.center, transforms);
+                }
+            }
+
+            // Generate commands only if explicitly requested
             if (generateCommands) {
                 this.translatePrimitiveToCutting(plan, primitive, depth, cutting.feedRate);
             }
@@ -315,7 +361,7 @@
             // Drill Helix Validation
             if (ctx.operationType === 'drill' && ctx.strategy.entryType === 'helix' && plan.commands.length === 0) {
                 // If the plan is empty but is a helix entry for drill milling, populate metadata
-                 if (plan.metadata.primitiveType === 'path' && primitive.arcSegments && primitive.arcSegments.length > 0) {
+                if (plan.metadata.primitiveType === 'path' && primitive.arcSegments && primitive.arcSegments.length > 0) {
                     const arc = primitive.arcSegments[0];
                     const dist = Math.hypot(primitive.points[0].x - primitive.points[primitive.points.length-1].x, primitive.points[0].y - primitive.points[primitive.points.length-1].y);
                     if(primitive.arcSegments.length === 1 && dist < 0.001) {
@@ -332,7 +378,6 @@
             };
 
             // Note: Bounds, winding and tab logic must be performed by the caller (translateOperation) after the final command set is chosen.
-
             return plan;
         }
 
@@ -429,19 +474,48 @@
          * Translate circle to cutting commands
          */
         translateCircle(plan, primitive, depth, feedRate, clockwise) {
-            const center = primitive.center;
+            const transforms = plan.metadata.context?.transforms;
+
+            // Transform the Center
+            const center = this.applyTransforms(primitive.center, transforms);
             const radius = primitive.radius;
 
-            const startX = center.x + radius;
-            const startY = center.y;
+            // Determine the Transformed Start Point
+            // The primitive "starts" at 3 o'clock (0 radians) in local space.
+            // Transform this point so the arc starts exactly where the Entry Point is.
+            const rawStart = {
+                x: primitive.center.x + primitive.radius,
+                y: primitive.center.y
+            };
+            const transformedStart = this.applyTransforms(rawStart, transforms);
 
-            plan.addArc(startX, startY, depth, -radius, 0, clockwise, feedRate);
+            // Adjust direction for mirror
+            let actualClockwise = clockwise;
+            if (transforms) {
+                const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                if (flipped) actualClockwise = !actualClockwise;
+            }
+
+            // Generate Arc
+            const i = center.x - transformedStart.x;
+            const j = center.y - transformedStart.y;
+
+            plan.addArc(
+                transformedStart.x, 
+                transformedStart.y, 
+                depth, 
+                i, j, 
+                actualClockwise, 
+                feedRate
+            );
         }
 
         /**
          * Translate obround to cutting commands (2 lines, 2 arcs)
          */
         translateObround(plan, primitive, depth, feedRate, clockwise) {
+            const transforms = plan.metadata.context?.transforms;
+
             const slotRadius = Math.min(primitive.width, primitive.height) / 2;
             const isHorizontal = primitive.width > primitive.height;
 
@@ -455,6 +529,10 @@
                 startCapCenter = { x: centerX, y: primitive.position.y + slotRadius };
                 endCapCenter = { x: centerX, y: primitive.position.y + primitive.height - slotRadius };
             }
+
+            // Transform centers
+            startCapCenter = this.applyTransforms(startCapCenter, transforms);
+            endCapCenter = this.applyTransforms(endCapCenter, transforms);
 
             const startAngle1 = isHorizontal ? (Math.PI / 2) : Math.PI;
             const endAngle1 = isHorizontal ? (3 * Math.PI / 2) : (2 * Math.PI);
@@ -475,7 +553,14 @@
             const i2 = endCapCenter.x - pC_x;
             const j2 = endCapCenter.y - pC_y;
 
-            if (clockwise) {
+            // Adjust direction for mirror
+            let actualClockwise = clockwise;
+            if (transforms) {
+                const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                if (flipped) actualClockwise = !actualClockwise;
+            }
+
+            if (actualClockwise) {
                 plan.addLinear(pD_x, pD_y, depth, feedRate);
                 plan.addArc(pC_x, pC_y, depth, i2, j2, true, feedRate);
                 plan.addLinear(pB_x, pB_y, depth, feedRate);
@@ -492,44 +577,58 @@
          * Translate arc to cutting commands
          */
         translateArc(plan, primitive, depth, feedRate) {
-            const i = primitive.center.x - primitive.startPoint.x;
-            const j = primitive.center.y - primitive.startPoint.y;
+            // Get Transform Context
+            const transforms = plan.metadata.context?.transforms;
 
-            plan.addLinear(primitive.startPoint.x, primitive.startPoint.y, depth, feedRate);
+            // Transform Absolute Points
+            const start = this.applyTransforms(primitive.startPoint, transforms);
+            const end = this.applyTransforms(primitive.endPoint, transforms);
+            const center = this.applyTransforms(primitive.center, transforms);
 
-            // Check for collapsed arc
-            const minArcChordLength = 0.01; // Use the same tolerance as the optimizer
-            const chordDistance = Math.hypot(
-                primitive.endPoint.x - primitive.startPoint.x, 
-                primitive.endPoint.y - primitive.startPoint.y
-            );
+            // Calculate Relative I/J for G-code
+            const i = center.x - start.x;
+            const j = center.y - start.y;
+
+            // Handle Winding Direction (Clockwise/Counter-Clockwise)
+            let isClockwise = primitive.clockwise;
+
+            // If mirrored, it might be necessary to flip the arc direction
+            if (transforms) {
+                // XOR Logic: If mirrored on X OR Y (but not both), flip direction.
+                const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                if (flipped) {
+                    isClockwise = !isClockwise;
+                }
+            }
+
+            // Add Linear move to Start
+            plan.addLinear(start.x, start.y, depth, feedRate);
+
+            // Check for collapsed arc (Safety)
+            const minArcChordLength = 0.01;
+            const chordDistance = Math.hypot(end.x - start.x, end.y - start.y);
 
             if (chordDistance < minArcChordLength) {
-                // Arc is tiny, replace with a straight line to be safe
-                plan.addLinear(
-                    primitive.endPoint.x,
-                    primitive.endPoint.y,
-                    depth,
-                    feedRate
-                );
+                plan.addLinear(end.x, end.y, depth, feedRate);
                 return;
             }
 
+            // Add Arc Command
             plan.addArc(
-                primitive.endPoint.x,
-                primitive.endPoint.y,
+                end.x,
+                end.y,
                 depth,
                 i, j,
-                !primitive.clockwise, // Flipped back
+                !isClockwise,
                 feedRate
             );
         }
 
         translatePath(plan, contour, depth, feedRate) {
             const points = contour.points;
-
             if (!points || points.length < 2) return;
 
+            const transforms = plan.metadata.context?.transforms;
             const isClosed = plan.metadata.isClosed;
             const arcSegments = contour.arcSegments || [];
             const minArcChordLength = 0.01;
@@ -552,12 +651,34 @@
                 );
 
                 if (isFullCircle) {
-                    // Emit single full-circle arc command
-                    const startX = first.center.x + first.radius;
-                    const startY = first.center.y;
-                    const clockwise = first.clockwise || false;
-                    const gcodeClockwise = !clockwise; // Flip for G-code convention
-                    plan.addArc(startX, startY, depth, -first.radius, 0, gcodeClockwise, feedRate);
+                    const transformedCenter = this.applyTransforms(first.center, transforms);
+
+                    // Use the actual start point of the path, not 3 o'clock
+                    const transformedStart = this.applyTransforms(points[0], transforms);
+
+                    let clockwise = first.clockwise || false;
+
+                    // Flip for mirror
+                    if (transforms) {
+                        const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                        if (flipped) clockwise = !clockwise;
+                    }
+
+                    // Calculate I/J relative to the transformed start
+                    const i = transformedCenter.x - transformedStart.x;
+                    const j = transformedCenter.y - transformedStart.y;
+
+                    const gcodeClockwise = !clockwise;
+
+                    // Target is same as Start for full circle
+                    plan.addArc(
+                        transformedStart.x, 
+                        transformedStart.y, 
+                        depth, 
+                        i, j, 
+                        gcodeClockwise, 
+                        feedRate
+                    );
                     return;
                 }
             }
@@ -571,22 +692,30 @@
             let segmentsDrawn = 0;
 
             while (segmentsDrawn < segmentsToDraw) {
-                const startPoint = points[i];
+                const startPoint = this.applyTransforms(points[i], transforms);
                 const arc = arcMap.get(i);
 
                 let nextIndex = (i + 1) % numPoints;
                 if (nextIndex >= numPoints) nextIndex = 0;
 
-                const endPoint = points[nextIndex];
+                const endPoint = this.applyTransforms(points[nextIndex], transforms);
 
                 if (arc && arc.endIndex === nextIndex) {
                     // Arc segment
                     const chordDistance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
 
                     if (chordDistance >= minArcChordLength && arc.center && arc.radius > 0) {
-                        const i_val = arc.center.x - startPoint.x;
-                        const j_val = arc.center.y - startPoint.y;
-                        const gcodeClockwise = !arc.clockwise;
+                        const transformedCenter = this.applyTransforms(arc.center, transforms);
+                        const i_val = transformedCenter.x - startPoint.x;
+                        const j_val = transformedCenter.y - startPoint.y;
+
+                        let clockwise = arc.clockwise;
+                        // Flip for mirror
+                        if (transforms) {
+                            const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                            if (flipped) clockwise = !clockwise;
+                        }
+                        const gcodeClockwise = !clockwise;
 
                         plan.addArc(endPoint.x, endPoint.y, depth, i_val, j_val, gcodeClockwise, feedRate);
                     } else {
@@ -599,8 +728,6 @@
                     if (dist > minLinearLength) {
                         plan.addLinear(endPoint.x, endPoint.y, depth, feedRate);
                     }
-
-                    i = nextIndex;
                 }
 
                 i = nextIndex;
@@ -613,7 +740,7 @@
          */
         translateDrillOperation(ctx, strategyPrimitives, depthLevels) {
             const plans = [];
-            const { operationId, tool, cutting, strategy } = ctx;
+            const { operationId, tool, cutting, strategy, transforms } = ctx; // Destructure transforms
             const finalDepth = depthLevels[depthLevels.length - 1];
 
             for (const primitive of strategyPrimitives) {
@@ -631,8 +758,13 @@
                     plan.metadata.spindleSpeed = cutting.spindleSpeed;
                     plan.metadata.spindleDwell = cutting.spindleDwell;
                     plan.metadata.isPeckMark = true;
-                    plan.metadata.entryPoint = { ...primitive.center, z: finalDepth };
-                    plan.metadata.exitPoint = { ...primitive.center, z: finalDepth };
+
+                    // Apply transforms to the center
+                    const transformedCenter = this.applyTransforms(primitive.center, transforms);
+
+                    plan.metadata.entryPoint = { ...transformedCenter, z: finalDepth };
+                    plan.metadata.exitPoint = { ...transformedCenter, z: finalDepth };
+
                     plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:drill_TYPE:peck`;
 
                     plan.metadata.peckCycle = {
@@ -643,7 +775,8 @@
                     };
 
                     plan.metadata.peckData = {
-                        position: primitive.center,
+                        // Ensure the MachineProcessor gets the transformed coordinate
+                        position: transformedCenter, 
                         ...primitive.properties
                     };
 
@@ -653,22 +786,13 @@
                         entryCommandIndex: 0
                     };
 
-                    if (debugConfig.enabled && plan.commands.length > 0) {
-                        const windingStr = actuallyClockwise ? 'CW' : 'CCW';
-                        const desiredStr = desiredClockwise ? 'CW' : 'CCW';
-                        const flipped = actuallyClockwise !== desiredClockwise;
-                        console.log(`[Translator] Plan winding: ${windingStr} → ${desiredStr} (${flipped ? 'flipped' : 'no change'})`);
-                    }
-                    // Validate depth consistency
-                    if (Math.abs(plan.metadata.cutDepth - ctx.strategy.cutDepth) > 0.001) {
-                        this.debug(`Warning: cutDepth mismatch for peck mark: ${plan.metadata.cutDepth} vs ${ctx.strategy.cutDepth}`);
-                    }
                     plans.push(plan);
 
                 } else if (role === 'drill_milling_path') {
                     // Check for centerline before regular drill milling
                     // CenterLinePath handles its own Z-depths internally
                     if (primitive.properties?.isCenterlinePath) {
+                        // Centerline uses createPurePlan internally, which handles transforms correctly
                         const centerlinePlans = this.translateCenterlinePath(primitive, ctx, depthLevels);
                         plans.push(...centerlinePlans);
                         continue; // Skip to next primitive
@@ -726,7 +850,7 @@
             const commands = plan.commands;
             const newCommands = [];
 
-            // 1. Build an absolute point list from the original path
+            // Build an absolute point list from the original path
             const points = [{ ...plan.metadata.entryPoint }];
             let currentPos = { ...plan.metadata.entryPoint };
 
@@ -747,7 +871,7 @@
                 currentPos = nextPos;
             }
 
-            // 2. Iterate the point list backwards to create new commands
+            // Iterate the point list backwards to create new commands
             // Start from the last point (new entry) and move to the first (new exit)
             for (let i = points.length - 1; i > 0; i--) {
                 const startPos = points[i]; // The new start point
@@ -797,7 +921,7 @@
 
             plan.commands = newCommands;
 
-            // 3. Swap entry/exit points
+            // Swap entry/exit points
             const oldEntry = plan.metadata.entryPoint;
             plan.metadata.entryPoint = plan.metadata.exitPoint;
             plan.metadata.exitPoint = oldEntry;
@@ -840,15 +964,31 @@
             const isHorizontal = primitive.width > primitive.height;
             let startCapCenter, endCapCenter;
 
+            // Define points A, B, C, D locally to ensure consistency with entryPoint logic
+            let pA, pB, pC, pD;
+
             if (isHorizontal) {
                 const centerY = primitive.position.y + primitive.height / 2;
                 startCapCenter = { x: primitive.position.x + slotRadius, y: centerY };
                 endCapCenter = { x: primitive.position.x + primitive.width - slotRadius, y: centerY };
+
+                // Horizontal: pA is Top-Left relative to start cap (90 deg)
+                pA = { x: startCapCenter.x, y: startCapCenter.y + slotRadius };
+                pB = { x: startCapCenter.x, y: startCapCenter.y - slotRadius };
+                pC = { x: endCapCenter.x, y: endCapCenter.y - slotRadius };
+                pD = { x: endCapCenter.x, y: endCapCenter.y + slotRadius };
             } else {
                 const centerX = primitive.position.x + primitive.width / 2;
                 startCapCenter = { x: centerX, y: primitive.position.y + slotRadius };
                 endCapCenter = { x: centerX, y: primitive.position.y + primitive.height - slotRadius };
+
+                // Vertical: pA is Left-Middle relative to start cap (180 deg)
+                pA = { x: startCapCenter.x - slotRadius, y: startCapCenter.y };
+                pB = { x: startCapCenter.x + slotRadius, y: startCapCenter.y };
+                pC = { x: endCapCenter.x + slotRadius, y: endCapCenter.y };
+                pD = { x: endCapCenter.x - slotRadius, y: endCapCenter.y };
             }
+
             return {
                 position: primitive.position,
                 width: primitive.width,
@@ -856,7 +996,9 @@
                 isHorizontal: isHorizontal,
                 slotRadius: slotRadius,
                 startCapCenter: startCapCenter,
-                endCapCenter: endCapCenter
+                endCapCenter: endCapCenter,
+                // Pass pre-calculated corners
+                pA, pB, pC, pD
             };
         }
 
@@ -912,13 +1054,48 @@
             return length;
         }
 
+        // Accessory method related to applying geometry transformations
+        applyTransforms(point, transforms) {
+            if (!transforms) return point;
+
+            let x = point.x;
+            let y = point.y;
+
+            // Apply Mirror (around board center)
+            if (transforms.mirrorX || transforms.mirrorY) {
+                const cx = transforms.mirrorCenter?.x ?? transforms.origin?.x ?? 0;
+                const cy = transforms.mirrorCenter?.y ?? transforms.origin?.y ?? 0;
+                if (transforms.mirrorX) {
+                    x = 2 * cx - x;
+                }
+                if (transforms.mirrorY) {
+                    y = 2 * cy - y;
+                }
+            }
+
+            // Apply Rotation (around rotation center)
+            if (transforms.rotation && transforms.rotation !== 0 && transforms.rotationCenter) {
+                const rcx = transforms.rotationCenter.x;
+                const rcy = transforms.rotationCenter.y;
+                const rad = (transforms.rotation * Math.PI) / 180;
+                const cos = Math.cos(rad);
+                const sin = Math.sin(rad);
+
+                const dx = x - rcx;
+                const dy = y - rcy;
+
+                x = rcx + (dx * cos - dy * sin);
+                y = rcy + (dx * sin + dy * cos);
+            }
+            return { x, y };
+        }
+
         _isClosedPoints(points) {
             if (points.length < 2) return false;
             const first = points[0];
             const last = points[points.length - 1];
             return Math.hypot(first.x - last.x, first.y - last.y) < 0.001;
-        }  
-
+        }
     }
 
     window.GeometryTranslator = GeometryTranslator;

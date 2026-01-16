@@ -49,6 +49,7 @@ Note: Jury's still out on UV lasers but until proven otherwise, use them with th
 * **1. Advanced Geometry Engine**
    The first stage converts source files into offset *geometry*.
    * **Analytic Parsing:** Reads Gerber, Excellon and full SVG paths (including arcs and Béziers) and converts to geometry objects.
+   * **Board Rotation/Mirroring:** Support for project rotation and horizontal/vertical mirroring. (No per object manipulation, yet)
    * **Clipper2 Engine:** Uses the WebAssembly compilation of Clipper2 for high-performance boolean operations.
    * **Arc Reconstruction:** Reconstructs true arcs (G2/G3) from polygonized post-Clipper2 data.
    * **Unified Offset Pipeline:** A single pipeline handles both external (isolation) and internal (clearing) multi-pass offsets.
@@ -112,10 +113,10 @@ The application guides the user through a clear, non-destructive process. Each s
 * **Result:** The original source geometry is parsed, analyzed and displayed in the renderer.
 * **You See:** The original trace paths, pads, regions, drill holes and slots.
 
-### Stage 1.5: Coordinates and Machine settings
-* **Action:** Double check origin placement, rotation and base Machine parameters.
-* **Result:** Sets geometry origin and all machine settings that will affect toolpaths.
-* **You See:** Origin and rulers will adapt if origin is moved in relation to the board.
+### Stage 1.5: Board Placement and Machine settings
+* **Action:** Double check origin, rotation/mirroring and base Machine parameters.
+* **Result:** Sets origin, transforms geometry and all machine settings that will affect toolpaths.
+* **You See:** Origin/rulers will adapt if origin is moved and board geometry will re-align if rotated or mirrored.
 
 ### Stage 2: Offset (Generate Geometry)
 * **Action:** Configure parameters (tool, depth, stepover) and click **"Generate Offsets"**.
@@ -376,4 +377,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.0.0 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.0.1 | **Platform**: Client-side Web

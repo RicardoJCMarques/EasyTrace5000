@@ -237,10 +237,10 @@
 
         <!-- Right Sidebar -->
         <aside class="sidebar sidebar-right" id="sidebar-right">
-            <!-- Origin & Rotation -->
+            <!-- Board Placement -->
             <div class="sidebar-section coordinate-section">
                 <header class="section-header collapsible-header collapsible" data-target="coordinate-controls">
-                    <h2>Origin & Rotation</h2>
+                    <h2>Board Placement</h2>
                     <span class="collapse-indicator">▼</span>
                 </header>
                 <div class="section-content collapsible" id="coordinate-controls">
@@ -282,6 +282,33 @@
                         </div>
                         <div class="origin-buttons"> <button class="btn btn--sm btn--compact btn--primary" id="apply-rotation-btn">Apply Rotation</button>
                             <button class="btn btn--sm btn--compact btn--secondary" id="reset-rotation-btn">Reset Rotation</button>
+                        </div>
+                    </div>
+
+                    <div class="mirror-section">
+                        <div class="property-field">
+                            <label id="mirrorGeometry">Mirror Geometry</label>
+                            <div class="field-row">
+                                <label class="checkbox-label" for="mirror-x-toggle">
+                                    <input type="checkbox" id="mirror-x-toggle">
+                                    <span>Horizontal</span>
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <line x1="10" y1="2" x2="10" y2="18"/>
+                                        <path d="M7 6L3 10L7 14" fill="currentColor" stroke="none"/>
+                                        <path d="M13 6L17 10L13 14" fill="currentColor" stroke="none"/>
+                                    </svg>
+                                </label>
+
+                                <label class="checkbox-label" for="mirror-y-toggle">
+                                    <input type="checkbox" id="mirror-y-toggle">
+                                    <span>Vertical</span>
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <line x1="2" y1="10" x2="18" y2="10"/>
+                                        <path d="M6 7L10 3L14 7" fill="currentColor" stroke="none"/>
+                                        <path d="M6 13L10 17L14 13" fill="currentColor" stroke="none"/>
+                                    </svg>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -509,6 +536,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
+                <span title="Version">Version 1.0.1</span> |
                 <a href="/LICENSE" target="_blank" title="View License" draggable="false">AGPLv3 Licensed</a> |
                 <a href="doc" target="_blank" title="Documentation" draggable="false">Doc</a> |
                 <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo" draggable="false">GitHub</a> |
