@@ -4,6 +4,11 @@ RewriteEngine On
 # Set WASM MIME type
 AddType application/wasm .wasm
 
+# Fix MIME types for favicons and webmanifest
+AddType image/svg+xml .svg .svgz
+AddType image/x-icon .ico
+AddType application/manifest+json .webmanifest
+
 # Enable compression
 <IfModule mod_deflate.c>
     AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json image/svg+xml application/wasm
