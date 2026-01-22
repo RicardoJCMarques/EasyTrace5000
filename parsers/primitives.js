@@ -29,7 +29,6 @@
     'use strict';
 
     const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
 
     let nextPrimitiveId = 1;
 
@@ -281,7 +280,7 @@
             this.width = width;
             this.height = height;
             
-            const tolerance = geomConfig.coordinatePrecision;
+            const tolerance = config.precision.coordinate;
             this.isCircular = Math.abs(width - height) < tolerance;
             
             this.geometricContext.isAnalytic = true;

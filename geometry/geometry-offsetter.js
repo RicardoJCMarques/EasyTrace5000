@@ -35,7 +35,7 @@
     class GeometryOffsetter {
         constructor(options = {}) {
             this.options = {
-                precision: options.precision || geomConfig.coordinatePrecision,
+                precision: config.precision.coordinate,
                 miterLimit: options.miterLimit
             };
             this.initialized = true;

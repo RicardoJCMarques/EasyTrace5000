@@ -1,6 +1,6 @@
 # EasyTrace5000 - Advanced Workspace
 
-![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg) ![Status: Active](https://img.shields.io/badge/status-active-success.svg) ![Tech: VanillaJS](https://img.shields.io/badge/tech-Vanilla_JS-yellow.svg) ![Tech: WebAssembly](https://img.shields.io/badge/tech-WebAssembly-blueviolet.svg)
+![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg) ![Status: Active](https://img.shields.io/badge/status-active-success.svg) ![Tech: VanillaJS](https://img.shields.io/badge/tech-Vanilla_JS-yellow.svg) ![Tech: WebAssembly](https://img.shields.io/badge/tech-WebAssembly-blueviolet.svg) ![Accessibility: WCAG 2.1 AA Partial](https://img.shields.io/badge/accessibility-WCAG_2.1_AA_partial-yellow.svg)
 
 An open-source, browser-based CAM tool for generating G-code from PCB manufacturing files. Featuring an interactive 2D Canvas renderer, high-performance Clipper2 geometry engine with a custom arc-reconstruction system and intelligent toolpath optimization.
 
@@ -136,6 +136,64 @@ The application guides the user through a clear, non-destructive process. Each s
 * **You See:** G-Code Preview text box will become populated by the g-code and clicking **Export G-Code** will create a file for the browser to save/download.
 
 ---
+
+## Keyboard Shortcuts
+
+EasyTrace5000 supports keyboard navigation for efficient workflow. All shortcuts are active when focus is on the canvas or workspace (not inside input fields).
+
+### View Controls
+
+| Shortcut | Action |
+|----------|--------|
+| `Home` | Fit all geometry to view |
+| `R` | Fit to view |
+| `=` | Fit to view |
+| `+` | Zoom in |
+| `-` | Zoom out |
+
+### Origin Controls
+
+| Shortcut | Action |
+|----------|--------|
+| `B` | Set origin to bottom-left |
+| `C` | Set origin to center |
+| `O` | Save current origin |
+
+### Canvas Navigation
+
+| Shortcut | Action |
+|----------|--------|
+| `Arrow Keys` | Pan canvas |
+| `Shift + Arrow Keys` | Pan canvas (faster) |
+
+### Display Toggles
+
+| Shortcut | Action |
+|----------|--------|
+| `W` | Toggle wireframe mode |
+| `G` | Toggle grid visibility |
+
+### Operations
+
+| Shortcut | Action |
+|----------|--------|
+| `Delete` | Remove selected operation |
+| `Escape` | Deselect / Close modal |
+
+### General
+
+| Shortcut | Action |
+|----------|--------|
+| `F6` / `F6` | Cycle focus between Toolbar, Sidebars, and Canvas |
+| `?` or `F1` | Show keyboard shortcuts help (not fully implemented, yet) |
+
+---
+
+Note: Shortcuts are disabled when typing in input fields, textareas, or select dropdowns
+
+## Accessibility
+
+EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Accessibility Documentation](docs/ACCESSIBILITY.md) for complete keyboard controls and WCAG 2.1 compliance details.
 
 ## Project Structure
 
@@ -299,12 +357,12 @@ The repository includes a standalone test page used during initial development t
 
 EasyTrace5000 is free, open-source software. Development is funded by users and industry partners.
 
-### ☕ Individual Support
+### Individual Support
 If this tool saves you time or material costs, contributions via Ko-fi help fund development time and hardware for testing.
 
 [**>> Support Development on Ko-fi <<**](https://ko-fi.com/eltryus)
 
-### 🤝 Become a Sponsor
+### Become a Sponsor
 EasyTrace5000 offers visibility for manufacturers and industry partners on the application welcome screen and documentation. 
 
 <table width="830px">
@@ -360,7 +418,7 @@ This means the software is free to use, modify, and distribute. However, if you 
 - ✅ Must keep source open (AGPL v3)
 - ❌ Cannot create closed-source derivatives
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Angus Johnson for Clipper2 and Erik Sombroek for the WASM compilation 
 - Open-source and Fab Lab / Makerspace community
@@ -377,4 +435,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.0.1 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.0.2 | **Platform**: Client-side Web

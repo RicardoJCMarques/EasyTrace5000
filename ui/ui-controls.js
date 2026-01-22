@@ -46,11 +46,78 @@
             };
         }
 
+        setupFocusZones() {
+            // Define zones - canvas excluded from cycling
+            this.focusZones = [
+                { id: 'cam-toolbar', selector: '#cam-toolbar' },
+                { id: 'sidebar-left', selector: '#sidebar-left' },
+                { id: 'sidebar-right', selector: '#sidebar-right' }
+            ];
+            this.currentZoneIndex = 1;
+            this.lastFocusedPerZone = new Map();
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'F6') {
+                    // Don't cycle if modal is open
+                    if (window.pcbcam?.modalManager?.activeModal) return;
+
+                    e.preventDefault();
+                    this.cycleZone(e.shiftKey ? -1 : 1);
+                }
+            });
+        }
+
+        cycleZone(direction) {
+            const currentZone = this.focusZones[this.currentZoneIndex];
+            if (currentZone && document.activeElement) {
+                const zoneEl = document.querySelector(currentZone.selector);
+                if (zoneEl && zoneEl.contains(document.activeElement)) {
+                    this.lastFocusedPerZone.set(currentZone.id, document.activeElement);
+                }
+            }
+
+            this.currentZoneIndex = (this.currentZoneIndex + direction + this.focusZones.length) % this.focusZones.length;
+            const nextZone = this.focusZones[this.currentZoneIndex];
+            const zoneEl = document.querySelector(nextZone.selector);
+            if (!zoneEl) return;
+
+            const lastFocused = this.lastFocusedPerZone.get(nextZone.id);
+            if (lastFocused && document.body.contains(lastFocused)) {
+                lastFocused.focus();
+                return;
+            }
+
+            // Find first focusable - never auto-focus canvas
+            const focusTarget = zoneEl.querySelector(
+                '[tabindex="0"]:not(canvas), button:not([disabled]), input:not([disabled]), select:not([disabled])'
+            );
+            if (focusTarget) focusTarget.focus();
+        }
+
+        findZoneFocusTarget(container, zoneId) {
+            // Canvas is directly focusable
+            if (zoneId === 'preview-canvas') {
+                container.setAttribute('tabindex', '0');
+                return container;
+            }
+
+            // Priority: Element with tabindex="0" (roving tabindex active item)
+            const activeItem = container.querySelector('[tabindex="0"]:not([disabled])');
+            if (activeItem) return activeItem;
+
+            // Fallback: First interactive element
+            return container.querySelector(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+            );
+        }
+
         init(renderer, coordinateSystem) {
             this.renderer = renderer;
             this.coordinateSystem = coordinateSystem;
 
             this.debug("Initializing controls...");
+
+            this.setupFocusZones();
 
             // Directly call setup methods to attach listeners
             this.setupVisualizationToggles();
@@ -61,6 +128,7 @@
             this.setupCollapsibleMenus();
             this.setupVizPanelButton();
             this.setupMachineSettings();
+            this.setupSidebarSectionNavigation();
             this.attachStaticTooltips();
 
             // Link coordinate system changes back to UI updates
@@ -171,7 +239,7 @@
                 return;
             }
 
-            // 1. Set Initial State
+            // Set Initial State
             // Iterate over all checkboxes with a [data-option]
             vizControls.querySelectorAll('input[type="checkbox"][data-option]').forEach(el => {
                 const option = el.dataset.option;
@@ -189,7 +257,7 @@
                 debugLogToggle.checked = debugConfig.enabled || false;
             }
 
-            // 2. Attach Single Event Listener
+            // Attach Single Event Listener
             vizControls.addEventListener('change', async (e) => {
                 const el = e.target;
                 
@@ -205,7 +273,7 @@
 
                 this.debug(`Viz toggle changed: ${option || el.id} = ${isChecked}, action: ${action}`);
 
-                // 3. Handle Dependencies
+                // Handle Dependencies
                 if (dependencyId) {
                     const dependencyEl = document.getElementById(dependencyId);
                     if (dependencyEl && !dependencyEl.checked) {
@@ -230,7 +298,7 @@
                     }
                 }
 
-                // 4. Perform Action
+                // Perform Action
                 switch (action) {
                     case 'render':
                         // Simple redraw (e.g., grid, wireframe)
@@ -635,18 +703,34 @@
 
                 if (!content || !indicator) return;
 
-                // Set initial indicator state based on content's class
+                // Make header focusable
+                header.setAttribute('tabindex', '0');
+                header.setAttribute('role', 'button');
+                header.setAttribute('aria-expanded', !content.classList.contains('collapsed'));
+                header.setAttribute('aria-controls', targetId);
+
+                // Set initial indicator state
                 if (content.classList.contains('collapsed')) {
                     indicator.classList.add('collapsed');
                 } else {
                     indicator.classList.remove('collapsed');
                 }
 
-                // Add click listener
-                header.addEventListener('click', () => {
+                // Click handler
+                const toggleSection = () => {
                     content.classList.toggle('collapsed');
-                    // Toggle the indicator's class to match the content's state
                     indicator.classList.toggle('collapsed');
+                    header.setAttribute('aria-expanded', !content.classList.contains('collapsed'));
+                };
+
+                header.addEventListener('click', toggleSection);
+
+                // Keyboard handler
+                header.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleSection();
+                    }
                 });
             });
         }
@@ -817,8 +901,80 @@
             }
         }
 
+        setupSidebarSectionNavigation() {
+            const rightSidebar = document.getElementById('sidebar-right');
+            if (!rightSidebar) return;
+
+            const headers = rightSidebar.querySelectorAll('.section-header.collapsible');
+            headers.forEach((header, idx) => {
+                header.setAttribute('tabindex', idx === 0 ? '0' : '-1');
+            });
+
+            rightSidebar.addEventListener('keydown', (e) => {
+                if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+
+                const focused = document.activeElement;
+                if (!rightSidebar.contains(focused)) return;
+
+                // Prevent scroll
+                e.preventDefault();
+
+                // If on a section header
+                if (focused.classList.contains('section-header')) {
+                    const allHeaders = Array.from(headers);
+                    const idx = allHeaders.indexOf(focused);
+
+                    if (e.key === 'ArrowDown') {
+                        const section = focused.closest('.sidebar-section');
+                        const content = section?.querySelector('.section-content:not(.collapsed)');
+                        if (content) {
+                            const firstField = content.querySelector('input, select, button, [tabindex="0"]');
+                            if (firstField) {
+                                focused.setAttribute('tabindex', '-1');
+                                firstField.focus();
+                                return;
+                            }
+                        }
+                        if (allHeaders[idx + 1]) {
+                            focused.setAttribute('tabindex', '-1');
+                            allHeaders[idx + 1].setAttribute('tabindex', '0');
+                            allHeaders[idx + 1].focus();
+                        }
+                    } else {
+                        if (allHeaders[idx - 1]) {
+                            focused.setAttribute('tabindex', '-1');
+                            allHeaders[idx - 1].setAttribute('tabindex', '0');
+                            allHeaders[idx - 1].focus();
+                        }
+                    }
+                    return;
+                }
+
+                // If on input/select within section
+                if (focused.matches('input, select')) {
+                    const section = focused.closest('.section-content');
+                    if (!section) return;
+
+                    const fields = Array.from(section.querySelectorAll('input, select, button')).filter(f => !f.disabled);
+                    const idx = fields.indexOf(focused);
+                    const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+
+                    if (fields[nextIdx]) {
+                        fields[nextIdx].focus();
+                    } else if (e.key === 'ArrowUp' && idx === 0) {
+                        // Go back to header
+                        const header = section.closest('.sidebar-section')?.querySelector('.section-header');
+                        if (header) {
+                            header.setAttribute('tabindex', '0');
+                            header.focus();
+                        }
+                    }
+                }
+            });
+        }
+
         debug(message, data = null) {
-            if (this.ui && this.ui.debug) {
+            if (this.ui.debug) {
                 this.ui.debug(`[UIControls] ${message}`, data);
             }
         }

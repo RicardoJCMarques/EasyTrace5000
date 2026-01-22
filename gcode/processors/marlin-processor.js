@@ -39,7 +39,7 @@
                 coordinatePrecision: 3,
                 feedPrecision: 0,
                 spindlePrecision: 0,
-                modalCommands: true,
+                modalCommands: false,
                 maxSpindleSpeed: 255, // PWM range
                 maxRapidRate: 1000
             });

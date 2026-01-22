@@ -161,6 +161,12 @@
 
                 this.renderer.render();
             }
+            
+            // Firefox workaround: prevent canvas auto-focus on load
+            if (canvas) {
+                canvas.blur();
+                document.body.focus();
+            }
         }
 
         initializeTheme() {

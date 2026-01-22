@@ -125,7 +125,7 @@
             }
 
             // Check precision
-            const precision = geomConfig.coordinatePrecision;
+            const precision = config.precision.coordinate;
             const xRounded = Math.round(coordinates.x / precision) * precision;
             const yRounded = Math.round(coordinates.y / precision) * precision;
 

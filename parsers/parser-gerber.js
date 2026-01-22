@@ -29,7 +29,6 @@
     'use strict';
 
     const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
     const formatConfig = config.formats.gerber;
 
     class GerberParser extends ParserCore {
@@ -408,7 +407,7 @@
                     const drawPos = this.parsePosition(command.params);
 
                     // Check for a zero-length draw.
-                    const precision = geomConfig.zeroLengthTolerance;
+                    const precision = config.precision.zeroLength;
                     const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
                                              Math.abs(this.state.position.y - drawPos.y) < precision;
 
@@ -489,7 +488,7 @@
             // Close region if needed
             const first = this.state.regionPoints[0];
             const last = this.state.regionPoints[this.state.regionPoints.length - 1];
-            const precision = config.geometry?.coordinatePrecision || 0.001;
+            const precision = config.precision.coordinate;
 
             if (Math.abs(first.x - last.x) > precision || Math.abs(first.y - last.y) > precision) {
                 this.state.regionPoints.push({ ...first });

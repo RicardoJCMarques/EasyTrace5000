@@ -137,7 +137,7 @@
                 // Initialize GeometryOffsetter
                 if (typeof GeometryOffsetter !== 'undefined') {
                     this.geometryOffsetter = new GeometryOffsetter({
-                        precision: geomConfig.coordinatePrecision,
+                        precision: config.precision.coordinate,
                         miterLimit: geomConfig.offsetting?.miterLimit
                     });
 
@@ -817,7 +817,7 @@
         _determineDrillStrategy(operation, settings) {
             const plan = [];
             const warnings = [];
-            const precision = geomConfig.coordinatePrecision || 0.001;
+            const precision = config.precision.coordinate;
             const toolDiameter = parseFloat(settings.toolDiameter);
             const minMillingMargin = parseFloat(opsConfig.drill?.strategy?.minMillingMargin || 0.05);
 
@@ -1196,7 +1196,7 @@
 
             // Get precision values
             const toolpathConfig = config.toolpath || {};
-            const precision = config.geometry.coordinatePrecision;
+            const precision = config.precision.coordinate;
             const offsettingEpsilon = config.geometry.offsetting?.epsilon;
 
             // Compute derived values
@@ -1377,7 +1377,7 @@
 
         debug(message, data = null) {
             if (debugConfig.enabled) {
-                if (data) {
+                if (data !== null) {
                     console.log(`[Core] ${message}`, data);
                 } else {
                     console.log(`[Core] ${message}`);

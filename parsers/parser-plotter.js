@@ -30,7 +30,6 @@
 
     const config = window.PCBCAMConfig;
     const debugConfig = config.debug;
-    const geomConfig = config.geometry;
 
     /**
      * Smart translator from parser analytic objects to primitives.
@@ -234,7 +233,7 @@
             }
 
             // Main Analytic Subpath Processing
-            const tolerance = geomConfig.coordinatePrecision;
+            const tolerance = config.precision.coordinate;
             const contours = []; // This will be the final list of contours
 
             // Process each analytic subpath (contour)
@@ -554,7 +553,7 @@
                     );
 
                 case 'obround':
-                    const tolerance = geomConfig.coordinatePrecision || 0.001;
+                    const tolerance = config.precision.coordinate;
                     if (Math.abs(flash.width - flash.height) < tolerance) {
                         this.creationStats.circularObrounds++;
                         this.creationStats.flashesCreated++;

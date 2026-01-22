@@ -2,13 +2,22 @@
 
 All notable changes to the **EasyTrace5000** project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.2] - 2026-01-22
+
+### Added
+- **Improved UI Responsivenes:** Made the UI values more flexible. Workspace should be more usable even with smaller screens. (Not aiming at narrow smartphones, yet)
+- **Fixed Marlin Post-processor:** Marlin has been flagged as Not supporting modal commands.
+- **Added ARIA Tags:** Initial implementation of Accessible Rich Internet Applications tag management.
+- **Fixed/Expanded Keyboard Shortcuts/Navigation:** See [Accessibility Documentation](docs/ACCESSIBILITY.md) for more details.
+- **Added Favicons**
+- **SEO Changes**
 
 ## [1.0.1] - 2026-01-16
 
 ### Added
-- **Mirroring:** Added support for Horizontal (X) and Vertical (Y) board mirroring. Toggles in 
+- **Mirroring:** Added support for Horizontal (X) and Vertical (Y) board mirroring. Toggles under board rotation inside the Board Placement section.
 - **Coordinate System:** Upgraded the transformation engine to support complex combinations of rotation and mirroring.
 
 ## [1.0.0] - 2026-01-12

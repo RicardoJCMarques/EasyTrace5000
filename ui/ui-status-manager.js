@@ -169,6 +169,13 @@
             const statusText = document.getElementById('status-text');
             if (!statusText) return;
 
+            // Set appropriate aria-live based on message type
+            if (type === 'error') {
+                statusText.setAttribute('aria-live', 'assertive');
+            } else {
+                statusText.setAttribute('aria-live', 'polite');
+            }
+
             if (this.statusTimeout) {
                 clearTimeout(this.statusTimeout);
                 this.statusTimeout = null;
@@ -264,7 +271,7 @@
         }
 
         debug(message, data = null) {
-            if (this.ui && this.ui.debug) {
+            if (this.ui.debug) {
                 this.ui.debug(`[StatusManager] ${message}`, data);
             }
         }

@@ -32,8 +32,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clipper2 WASM Test Suite</title>
+    <title>Clipper2 WASM Library Syntax Interactive Test Suite</title>
+
+    <meta name="description" content="Interactive demo of the Clipper2 polygon clipping library compiled to WebAssembly. Test boolean operations, offsetting, and Minkowski sums in the browser.">
+    <meta name="keywords" content="Clipper2, WebAssembly, WASM, Polygon Clipping, Boolean Operations, Offset, JavaScript Geometry">
+    <meta name="author" content="Eltryus">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#ffffff"> <link rel="canonical" href="https://cam.eltryus.design/clipper2/">
+
     <link rel="stylesheet" href="clipper2testpage.css">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Clipper2 WASM Test Suite",
+      "description": "Interactive technical demonstration of the Clipper2 geometry library running in WebAssembly.",
+      "applicationCategory": "DeveloperTool",
+      "operatingSystem": "Browser",
+      "author": {
+        "@type": "Organization",
+        "name": "Eltryus"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0"
+      },
+      "browserRequirements": "Requires WebAssembly support"
+    }
+    </script>
 </head>
 <body>
     <div class="container">
@@ -43,9 +70,9 @@
         </h1>
 
         <p class="welcome-message">
-            This page provides an interactive syntax demonstration of the <strong>Clipper2</strong> library compiled to <strong>WASM (WebAssembly)</strong>.
+            This page provides an interactive demonstration of the <strong>Clipper2</strong> library compiled to <strong>WASM (WebAssembly)</strong>.<br>
+            It was built to test Clipper2 WASM syntax during development of the geometry engine for <strong><a href="../">EasyTrace5000</a></strong>.
         </p>
-
 
         <!-- Core Boolean Operations -->
         <h2 class="test-group-header">Core Boolean Operations</h2>

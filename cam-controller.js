@@ -258,10 +258,20 @@
             const quickActionsMenu = document.getElementById('quick-actions-menu');
 
             if (quickActionsBtn && quickActionsMenu) {
+                // Set ARIA attributes
+                quickActionsBtn.setAttribute('aria-haspopup', 'true');
+                quickActionsBtn.setAttribute('aria-expanded', 'false');
+                quickActionsMenu.setAttribute('role', 'menu');
+
+                // Set role on menu items
+                quickActionsMenu.querySelectorAll('.menu-item').forEach(item => {
+                    item.setAttribute('role', 'menuitem');
+                });
+
                 quickActionsBtn.addEventListener('click', (e) => {
-                    // Stop this click from being caught by the document listener below
-                    e.stopPropagation(); 
-                    quickActionsBtn.classList.toggle('active');
+                    e.stopPropagation();
+                    const isExpanded = quickActionsBtn.classList.toggle('active');
+                    quickActionsBtn.setAttribute('aria-expanded', isExpanded.toString());
                     quickActionsMenu.classList.toggle('show');
                 });
 
@@ -275,6 +285,7 @@
                     // If the click was not on the button and not inside the menu, close it
                     if (!quickActionsBtn.contains(e.target) && !quickActionsMenu.contains(e.target)) {
                         quickActionsBtn.classList.remove('active');
+                        quickActionsBtn.setAttribute('aria-expanded', 'false');
                         quickActionsMenu.classList.remove('show');
                     }
                 });
@@ -365,47 +376,280 @@
                 }
             });
 
-            // Keyboard shortcuts // Review - remove/add more shorcuts?
+            /* Keyboard shortcuts */
             document.addEventListener('keydown', (e) => {
-                // Skip if typing in input field
-                if (e.target.matches('input, textarea, select')) return;
+            // Don't intercept if modal is open
+            if (window.pcbcam?.modalManager?.activeModal) {
+                return;
+            }
 
-                // Ctrl/Cmd + O: Open files
-                if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+            // Guard: Skip if in any interactive element
+            const isInputFocused = e.target.matches(
+                'input, textarea, select, [contenteditable="true"], .property-field'
+            );
+
+            // Guard: Skip if on skip-link
+            if (e.target.classList.contains('skip-link')) {
+                return;
+            }
+
+            // Toolbar Arrow Navigation
+            const toolbar = document.getElementById('cam-toolbar');
+            if (toolbar && toolbar.contains(document.activeElement)) {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
                     e.preventDefault();
-                    this.showFileModal();
+                    this.navigateToolbar(e.key === 'ArrowRight' ? 1 : -1);
+                    return;
+                }
+            }
+
+            // Guard: Let tree handle its own arrow navigation
+            const isInTree = e.target.closest('#operations-tree');
+            const isArrowKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+
+            if (isInputFocused) {
+                // Allow Escape to blur inputs
+                if (e.key === 'Escape') {
+                    e.target.blur();
+                }
+                return;
+            }
+
+            if (isInTree && isArrowKey) {
+                return;
+            }
+
+            const key = e.key;
+            const code = e.code;
+            const isShift = e.shiftKey;
+
+            // Escape: Context-aware handling
+            if (key === 'Escape') {
+                // Check if a select dropdown is open (let browser handle it)
+                if (document.activeElement?.tagName === 'SELECT') {
+                    // Let the native select close itself, don't prevent
+                    return;
                 }
 
-                // Ctrl/Cmd + S: Export SVG
-                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                // Check if in an input - blur it first
+                if (document.activeElement?.matches('input, textarea')) {
                     e.preventDefault();
-                    this.exportSVG();
+                    document.activeElement.blur();
+                    return;
                 }
 
-                // F: Fit to view (when not in input)
-                if (e.key === 'f') {
+                // Check if dropdown menu is open
+                const openDropdown = document.querySelector('.dropdown-content.show');
+                if (openDropdown) {
                     e.preventDefault();
-                    this.ui.renderer.core.zoomFit();
+                    openDropdown.classList.remove('show');
+                    const btn = openDropdown.previousElementSibling;
+                    if (btn) {
+                        btn.classList.remove('active');
+                        btn.setAttribute('aria-expanded', 'false');
+                    }
+                    return;
                 }
 
-                // W: Toggle wireframe
-                if (e.key === 'w') {
-                    e.preventDefault();
-                    this.ui?.toggleWireframe();
+                e.preventDefault();
+
+                // If in right sidebar, return to tree
+                const rightSidebar = document.getElementById('sidebar-right');
+                if (rightSidebar && rightSidebar.contains(document.activeElement)) {
+                    this.returnFocusToTree();
+                    return;
                 }
 
-                // G: Toggle grid (when not using Ctrl/Cmd)
-                if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
-                    e.preventDefault();
-                    this.ui?.toggleGrid();
+                // If in canvas, return to tree
+                const canvas = document.getElementById('preview-canvas');
+                if (document.activeElement === canvas) {
+                    this.returnFocusToTree();
+                    return;
                 }
 
-                // Delete: Remove selected operation
-                if (e.key === 'Delete') {
-                    e.preventDefault();
-                    this.removeSelectedOperation();
+                // Otherwise deselect
+                if (this.ui?.navTreePanel?.selectedNode) {
+                    this.ui.navTreePanel.selectedNode = null;
+                    document.querySelectorAll('.file-node-content.selected, .geometry-node.selected')
+                        .forEach(el => el.classList.remove('selected'));
+                    this.ui?.operationPanel?.clearProperties();
                 }
-            });
+                return;
+            }
+
+            /* View Controls */
+            // Home: Fit to view (standard CAD shortcut)
+            if (key === 'Home') {
+                e.preventDefault();
+                this.ui?.renderer?.core?.zoomFit();
+                this.ui?.renderer?.render();
+                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                return;
+            }
+
+            // F: Fit view (alternative)
+            if (key === 'f' || key === 'F') {
+                e.preventDefault();
+                this.ui?.renderer?.core?.zoomFit();
+                this.ui?.renderer?.render();
+                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                return;
+            }
+
+            // =: Fit view (alternative)
+            if (key === '=' || code === 'Equal') {
+                e.preventDefault();
+                this.ui?.renderer?.core?.zoomFit();
+                this.ui?.renderer?.render();
+                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                return;
+            }
+
+            // + : Zoom in
+            if (key === '+' || code === 'NumpadAdd') {
+                e.preventDefault();
+                this.ui?.renderer?.core?.zoomIn();
+                this.ui?.renderer?.render();
+                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                return;
+            }
+
+            // -: Zoom out
+            if (key === '-' || code === 'Minus' || code === 'NumpadSubtract') {
+                e.preventDefault();
+                this.ui?.renderer?.core?.zoomOut();
+                this.ui?.renderer?.render();
+                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                return;
+            }
+
+            /* Canvas Panning (Arrow Keys) */
+            const panAmount = isShift ? 100 : 25; // Fast pan with Shift
+
+            const inSidebar = document.activeElement?.closest('#sidebar-left, #sidebar-right');
+
+            if (key === 'ArrowLeft' && !inSidebar) {
+                e.preventDefault();
+                this.ui?.renderer?.core?.pan(panAmount, 0);
+                this.ui?.renderer?.render();
+                return;
+            }
+
+            if (key === 'ArrowRight' && !inSidebar) {
+                e.preventDefault();
+                this.ui?.renderer?.core?.pan(-panAmount, 0);
+                this.ui?.renderer?.render();
+                return;
+            }
+
+            if (key === 'ArrowUp' && !inSidebar) {
+                e.preventDefault();
+                this.ui?.renderer?.core?.pan(0, panAmount);
+                this.ui?.renderer?.render();
+                return;
+            }
+
+            if (key === 'ArrowDown' && !inSidebar) {
+                e.preventDefault();
+                this.ui?.renderer?.core?.pan(0, -panAmount);
+                this.ui?.renderer?.render();
+                return;
+            }
+
+            /* DisplayToggles */
+            // W: Toggle wireframe
+            if (key === 'w' || key === 'W') {
+                e.preventDefault();
+                const toggle = document.getElementById('show-wireframe');
+                if (toggle) {
+                    toggle.checked = !toggle.checked;
+                    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return;
+            }
+
+            // G: Toggle grid
+            if (key === 'g' || key === 'G') {
+                e.preventDefault();
+                const toggle = document.getElementById('show-grid');
+                if (toggle) {
+                    toggle.checked = !toggle.checked;
+                    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return;
+            }
+
+            /* Operations */
+            // Delete: Remove selected operation
+            if (key === 'Delete' || code === 'Delete') {
+                e.preventDefault();
+                this.removeSelectedOperation();
+                return;
+            }
+
+            // Escape: Deselect / Close modal
+            if (key === 'Escape') {
+                e.preventDefault();
+
+                // If in parameter panel, return to tree
+                const paramForm = document.getElementById('property-form');
+                if (paramForm && paramForm.contains(document.activeElement)) {
+                    const selected = document.querySelector('.file-node-content.selected, .geometry-node-content.selected');
+                    if (selected) {
+                        selected.focus();
+                        return;
+                    }
+                }
+
+                // Otherwise deselect current selection
+                if (this.ui?.navTreePanel?.selectedNode) {
+                    this.ui.navTreePanel.selectedNode = null;
+                    document.querySelectorAll('.file-node-content.selected, .geometry-node.selected')
+                        .forEach(el => el.classList.remove('selected'));
+                    this.ui?.operationPanel?.clearProperties();
+                }
+                return;
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // Add a function to 1-0 numeric characters?
+            // Select source files?
+            // ═══════════════════════════════════════════════════════════════
+
+            /* Origin Controls */
+            // B: Bottom-left origin
+            if (key === 'b' || key === 'B') {
+                e.preventDefault();
+                this.ui?.controls?.bottomLeftOrigin();
+                return;
+            }
+
+            // O: Apply/save origin
+            if (key === 'o' || key === 'O') {
+                e.preventDefault();
+                this.ui?.controls?.applyOffsetAndSetOrigin();
+                return;
+            }
+
+            // C: Center origin (change to Shift+C to avoid conflicts if necessary)
+            if (key === 'c' ||key === 'C' ) {
+                e.preventDefault();
+                this.ui?.controls?.centerOrigin();
+                return;
+            }
+
+            /* Help */
+            // ? or F1: Show help (future implementation)
+            if (key === '?' || (isShift && code === 'Slash') || key === 'F1') {
+                e.preventDefault();
+                // TODO: Show keyboard shortcuts modal
+                this.ui?.statusManager?.showStatus(
+                    'Keyboard shortcuts: Home=Fit, +/-=Zoom, Arrows=Pan, W=Wireframe, G=Grid',
+                    'info'
+                );
+                return;
+            }
+        });
 
             // Theme toggle button
             const themeToggle = document.getElementById('theme-toggle');
@@ -426,6 +670,45 @@
                     e.preventDefault();
                     this.modalManager.showModal('support');
                 });
+            }
+        }
+
+        navigateToolbar(direction) {
+            const toolbar = document.getElementById('cam-toolbar');
+            if (!toolbar) return;
+
+            const focusables = Array.from(toolbar.querySelectorAll(
+                'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+            ));
+
+            const currentIndex = focusables.indexOf(document.activeElement);
+            if (currentIndex === -1) return;
+ 
+            let nextIndex = currentIndex + direction;
+            if (nextIndex < 0) nextIndex = focusables.length - 1;
+            if (nextIndex >= focusables.length) nextIndex = 0;
+
+            focusables[nextIndex].focus();
+        }
+
+        returnFocusToTree() {
+            const selected = document.querySelector(
+                '.file-node-content.selected, .geometry-node-content.selected, .geometry-node.selected'
+            );
+            if (selected) {
+                const focusTarget = selected.classList.contains('selected') 
+                    ? selected 
+                    : selected.querySelector('.file-node-content, .geometry-node-content');
+                if (focusTarget) {
+                    focusTarget.setAttribute('tabindex', '0');
+                    focusTarget.focus();
+                }
+            } else {
+                // Focus first category header if nothing selected
+                const firstHeader = document.querySelector('.category-header');
+                if (firstHeader) {
+                    firstHeader.focus();
+                }
             }
         }
 
@@ -922,7 +1205,7 @@
         // Debug utilities
         debug(message, data = null) {
             if (debugConfig.enabled) {
-                if (data) {
+                if (data !== null) {
                     console.log(`[Controller] ${message}`, data);
                 } else {
                     console.log(`[Controller] ${message}`);

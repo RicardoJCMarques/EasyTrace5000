@@ -1,0 +1,49 @@
+name: Accessibility Report
+description: Report an accessibility barrier or WCAG compliance failure
+title: "[A11y]: "
+labels: ["accessibility", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Accessibility Report
+        Thank you for helping us make EasyTrace5000 accessible to everyone.
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is the barrier? (e.g., "Focus is trapped in the modal", "Missing alt text on icon")
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: |
+        1. Navigate to...
+        2. Press 'Tab'...
+      placeholder: |
+        1. Opened the 'G-code Export' modal
+        2. Pressed Tab to navigate fields
+        3. Focus moved behind the modal to the main canvas
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Browser & OS
+      placeholder: "Firefox 142 on Windows 11"
+    validations:
+      required: true
+
+  - type: input
+    id: assistive-tech
+    attributes:
+      label: Assistive Technology (Optional)
+      description: Screen reader (NVDA, JAWS, VoiceOver), dictation software, switch device, etc.
+      placeholder: "NVDA 2023.1"
+    validations:
+      required: false

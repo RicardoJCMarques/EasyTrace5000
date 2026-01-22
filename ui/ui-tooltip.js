@@ -195,6 +195,12 @@
 
             return icon;
         }
+
+        debug(message, data = null) {
+            if (this.ui.debug) {
+                this.ui.debug(`[TooltipManager] ${message}`, data);
+            }
+        }
     }
 
     window.TooltipManager = new TooltipManager();

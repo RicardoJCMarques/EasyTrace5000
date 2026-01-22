@@ -29,7 +29,6 @@
     'use strict';
 
     const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
 
     class SVGParser extends ParserCore {
         constructor(options = {}) {
@@ -162,7 +161,7 @@
                 });
             }
 
-            // Fallback: if we have viewBox but no explicit dimensions, assume 1:1 mm
+            // Fallback: if s a viewBox exists but has no explicit dimensions, assume 1:1 mm
             if (this.viewBox && !this.documentHeight) {
                 this.documentHeight = this.viewBox.height;
                 this.documentWidth = this.viewBox.width;
@@ -422,7 +421,7 @@
             }
 
             // Check if it's an obround (corner radius equals half the smaller dimension)
-            const tolerance = geomConfig.coordinatePrecision || 0.001;
+            const tolerance = config.precision.coordinate;
             const minDim = Math.min(width, height);
             const isObround = Math.abs(rx - minDim / 2) < tolerance && Math.abs(ry - minDim / 2) < tolerance;
 

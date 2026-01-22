@@ -325,6 +325,7 @@
         }
 
         debug(message, data = null) {
+            // does this work?
             if (this.ui && this.ui.debug) {
                 this.ui.debug(`[ToolLibrary] ${message}`, data);
             }

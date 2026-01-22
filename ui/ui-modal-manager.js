@@ -61,6 +61,10 @@
                 cutout: null
             };
 
+            // Focus management for accessibility
+            this.previousActiveElement = null;
+            this.focusTrapListener = null;
+
             // Toolpath-specific state
             this.selectedOperations = [];
             this.highlightedOpId = null;
@@ -72,12 +76,14 @@
         init() {
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && this.activeModal) {
-                    // Check if closing the welcome modal specifically
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Special case: welcome modal goes to quickstart, not closes
                     if (this.activeModal === this.modals.welcome) {
-                        // Use the existing logic that handles the transition to quickstart
-                        this.handleClickOutside('welcome'); 
+                        this.handleClickOutside('welcome');
                     } else {
-                        // Default behavior for all other modals
+                        // All other modals: just close (stack handles the rest)
                         this.closeModal();
                     }
                 }
@@ -150,8 +156,12 @@
                 return;
             }
 
+            // Store return focus target
+            this.previousActiveElement = document.activeElement;
+
             // Close current modal if exists
             if (this.activeModal) {
+                this.removeFocusTrap();
                 this.modalStack.push(this.activeModal);
                 this.activeModal.classList.remove('active');
             }
@@ -159,25 +169,105 @@
             this.activeModal = modal;
             modal.classList.add('active');
 
+            // Set ARIA attributes
+            const content = modal.querySelector('.modal-content');
+            if (content) {
+                content.setAttribute('role', 'dialog');
+                content.setAttribute('aria-modal', 'true');
+
+                const heading = content.querySelector('.modal-header h2');
+                if (heading) {
+                    const headingId = `modal-heading-${modalName}`;
+                    heading.id = headingId;
+                    content.setAttribute('aria-labelledby', headingId);
+                }
+            }
+
             // Call specific show handler
             const handler = `show${modalName.charAt(0).toUpperCase() + modalName.slice(1)}Handler`;
             if (this[handler]) {
                 this[handler](options);
             }
+
+            // Setup focus trap and move focus
+            this.setupFocusTrap(modal);
+            this.setupModalFieldNavigation(modal);
         }
 
         closeModal() {
             if (!this.activeModal) return;
 
+            this.removeFocusTrap();
             this.activeModal.classList.remove('active');
 
-            // Check for stacked modals
             if (this.modalStack.length > 0) {
                 this.activeModal = this.modalStack.pop();
                 this.activeModal.classList.add('active');
+                this.setupFocusTrap(this.activeModal);
             } else {
                 this.activeModal = null;
+
+                // Restore focus - but never to canvas
+                if (this.previousActiveElement && 
+                    document.body.contains(this.previousActiveElement) &&
+                    this.previousActiveElement.id !== 'preview-canvas') {
+                    this.previousActiveElement.focus();
+                } else {
+                    // Fallback to first tree item
+                    const treeItem = document.querySelector('#operations-tree [tabindex="0"]');
+                    if (treeItem) treeItem.focus();
+                }
+                this.previousActiveElement = null;
             }
+        }
+
+        handleEscapeKey() {
+            if (!this.activeModal) return;
+
+            const modalName = this.getActiveModalName();
+
+            switch (modalName) {
+                case 'welcome':
+                    // Welcome -> transition to quickstart (same as clicking outside)
+                    this.handleClickOutside('welcome');
+                    break;
+
+                case 'quickstart':
+                    // Quickstart -> go back to welcome
+                    this.closeModal();
+                    this.showModal('welcome');
+                    break;
+
+                case 'support':
+                    // Support -> go back to previous (welcome if stacked, or just close)
+                    if (this.modalStack.length > 0) {
+                        // There's a modal underneath, go back to it
+                        this.closeModal();
+                    } else {
+                        // Opened standalone (e.g., from footer), just close
+                        this.closeModal();
+                    }
+                    break;
+
+                case 'gcode':
+                    // G-code modal -> just close
+                    this.closeModal();
+                    break;
+
+                default:
+                    this.closeModal();
+            }
+        }
+
+        getActiveModalName() {
+            if (!this.activeModal) return null;
+            
+            for (const [name, modal] of Object.entries(this.modals)) {
+                if (modal === this.activeModal) {
+                    return name;
+                }
+            }
+            return null;
         }
 
         showSupportHandler() {
@@ -409,8 +499,21 @@
                 zone.classList.remove('has-file', 'dragging');
                 if (fileLabel) fileLabel.textContent = '';
 
+                // Make keyboard accessible
+                zone.setAttribute('tabindex', '0');
+                zone.setAttribute('role', 'button');
+                zone.setAttribute('aria-label', `Upload ${opType} file. Click or press Enter to browse.`);
+
                 // Click to browse
                 zone.onclick = () => fileInput?.click();
+
+                // Keyboard: Enter or Space to browse
+                zone.onkeydown = (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        fileInput?.click();
+                    }
+                };
 
                 // File input change
                 if (fileInput) {
@@ -436,7 +539,6 @@
                 zone.ondrop = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-
                     zone.classList.remove('dragging');
                     const file = e.dataTransfer.files[0];
                     if (file) this.handleQuickstartFile(file, opType, zone);
@@ -738,7 +840,9 @@
 
         makeSortable(container) {
             let draggedItem = null;
+            let grabbedItem = null;
 
+            // Mouse drag support (existing)
             container.addEventListener('dragstart', (e) => {
                 // Check if the target or its parent is the draggable item
                 const targetItem = e.target.closest('.file-node-content');
@@ -768,9 +872,82 @@
                 }
             });
 
-            // Make items draggable
-            container.querySelectorAll('.file-node-content').forEach(item => {
+            // Make items draggable and keyboard accessible
+            container.querySelectorAll('.file-node-content').forEach((item, idx) => {
                 item.draggable = true;
+                item.setAttribute('tabindex', idx === 0 ? '0' : '-1');
+                item.setAttribute('role', 'listitem');
+                item.setAttribute('aria-grabbed', 'false');
+            });
+
+            // Keyboard sorting
+            container.addEventListener('keydown', (e) => {
+                const focused = document.activeElement;
+                if (!focused || !focused.classList.contains('file-node-content')) return;
+                if (!container.contains(focused)) return;
+
+                const items = Array.from(container.querySelectorAll('.file-node-content'));
+                const isGrabbed = focused.getAttribute('aria-grabbed') === 'true';
+
+                // Space: Toggle grab
+                if (e.key === ' ') {
+                    e.preventDefault();
+
+                    if (isGrabbed) {
+                        // Drop
+                        focused.setAttribute('aria-grabbed', 'false');
+                        focused.classList.remove('is-grabbed');
+                        grabbedItem = null;
+                        this.ui?.statusManager?.showStatus('Item placed', 'info');
+                    } else {
+                        // Grab - release any other grabbed item first
+                        items.forEach(item => {
+                            item.setAttribute('aria-grabbed', 'false');
+                            item.classList.remove('is-grabbed');
+                        });
+                        focused.setAttribute('aria-grabbed', 'true');
+                        focused.classList.add('is-grabbed');
+                        grabbedItem = focused;
+                        this.ui?.statusManager?.showStatus('Item grabbed. Use Up/Down to move, Space to place.', 'info');
+                    }
+                }
+
+                // Arrow navigation / reordering
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    const idx = items.indexOf(focused);
+                    const targetIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+
+                    if (isGrabbed) {
+                        // Reorder
+                        const sibling = e.key === 'ArrowDown' ? focused.nextElementSibling : focused.previousElementSibling;
+                        if (sibling && sibling.classList.contains('file-node-content')) {
+                            if (e.key === 'ArrowUp') {
+                                container.insertBefore(focused, sibling);
+                            } else {
+                                container.insertBefore(sibling, focused);
+                            }
+                            focused.focus();
+                        }
+                    } else {
+                        // Navigate
+                        if (items[targetIdx]) {
+                            focused.setAttribute('tabindex', '-1');
+                            items[targetIdx].setAttribute('tabindex', '0');
+                            items[targetIdx].focus();
+                        }
+                    }
+                }
+
+                // Escape: Cancel grab
+                if (e.key === 'Escape' && isGrabbed) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    focused.setAttribute('aria-grabbed', 'false');
+                    focused.classList.remove('is-grabbed');
+                    grabbedItem = null;
+                    this.ui?.statusManager?.showStatus('Reorder cancelled', 'info');
+                }
             });
         }
 
@@ -790,13 +967,13 @@
         }
 
         async runToolpathOrchestration(btn) {
-            // 1. Show loading state
+            // Show loading state
             const originalText = btn.textContent;
             btn.textContent = 'Calculating...';
             btn.disabled = true;
 
             try {
-                // 2. Find the correct list and items
+                // Find the correct list and items
                 const list = document.getElementById('gcode-operation-order');
                 if (!list) {
                     console.error("[UI-ModalManager] Could not find list 'gcode-operation-order'");
@@ -818,7 +995,7 @@
                     return;
                 }
 
-                // 3. Validate operations
+                // Validate operations
                 const selectedOps = selectedItemIds
                     .map(id => this.selectedOperations.find(o => o.id === id))
                     .filter(Boolean);
@@ -834,7 +1011,7 @@
                     return;
                 }
 
-                // 4. Gather options
+                // Gather options
                 const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
                 const options = {
                     operationIds: selectedItemIds,
@@ -849,7 +1026,7 @@
                     optimize: optimizeCheckbox ? optimizeCheckbox.checked : true
                 };
 
-                // 5. Run orchestration
+                // Run orchestration
                 const result = await this.controller.orchestrateToolpaths(options);
 
                 if (!result || !result.gcode) {
@@ -858,7 +1035,7 @@
                     return;
                 }
 
-                // 6. Display results
+                // Display results
                 const previewText = document.getElementById('gcode-preview-text');
                 if (previewText) previewText.value = result.gcode;
 
@@ -885,7 +1062,7 @@
                 this.showPlaceholderPreview();
                 this.ui?.statusManager?.showStatus(`Failed: ${error.message}`, 'error');
             } finally {
-                // 7. Restore button
+                // Restore button
                 btn.textContent = originalText;
                 btn.disabled = false;
             }
@@ -961,6 +1138,93 @@
             }
 
             this.closeModal();
+        }
+
+        setupFocusTrap(modal) {
+            const focusableSelector = 
+                'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), ' +
+                'select:not([disabled]), textarea:not([disabled]), ' +
+                '[tabindex]:not([tabindex="-1"])';
+
+            // Store for trap logic
+            this._currentModalFocusables = () => {
+                return Array.from(modal.querySelectorAll(focusableSelector));
+            };
+
+            // Trap focus - handles both initial entry and cycling
+            this.focusTrapListener = (e) => {
+                if (e.key !== 'Tab') return;
+
+                const focusables = this._currentModalFocusables();
+                if (focusables.length === 0) return;
+
+                const first = focusables[0];
+                const last = focusables[focusables.length - 1];
+                const current = document.activeElement;
+
+                // Check if focus is currently inside this modal
+                const focusInModal = modal.contains(current);
+
+                if (!focusInModal) {
+                    // First Tab press - enter the modal
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                        last.focus();
+                    } else {
+                        first.focus();
+                    }
+                    return;
+                }
+
+                // Normal cycling within modal
+                if (e.shiftKey && current === first) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && current === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            };
+
+            // Listen on document to catch Tab when focus is outside modal
+            document.addEventListener('keydown', this.focusTrapListener);
+        }
+
+        removeFocusTrap() {
+            if (this.focusTrapListener) {
+                document.removeEventListener('keydown', this.focusTrapListener);
+                this.focusTrapListener = null;
+            }
+            this._currentModalFocusables = null;
+        }
+
+        setupModalFieldNavigation(modal) {
+            const content = modal.querySelector('.modal-content');
+            if (!content) return;
+
+            content.addEventListener('keydown', (e) => {
+                // Only handle arrows
+                if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+
+                const focused = document.activeElement;
+
+                // Skip if in select (let native handle) or textarea
+                if (focused.tagName === 'SELECT' || focused.tagName === 'TEXTAREA') return;
+
+                // Get all navigable fields
+                const fields = Array.from(content.querySelectorAll(
+                    'input:not([type="hidden"]):not([disabled]), select:not([disabled]), button:not([disabled]), [tabindex="0"]'
+                )).filter(el => el.offsetParent !== null); // visible only
+
+                const idx = fields.indexOf(focused);
+                if (idx === -1) return;
+
+                const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+                if (fields[nextIdx]) {
+                    e.preventDefault();
+                    fields[nextIdx].focus();
+                }
+            });
         }
 
         // Warning modal (for future use)

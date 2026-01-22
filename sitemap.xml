@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+   
+   <url>
+      <loc>https://cam.eltryus.design/</loc>
+      <lastmod>2026-01-22</lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>1.0</priority>
+      <image:image>
+         <image:loc>https://cam.eltryus.design/images/social-preview.jpg</image:loc>
+         <image:title>EasyTrace5000 PCB CAM Workspace</image:title>
+      </image:image>
+   </url>
+   
+   <url>
+      <loc>https://cam.eltryus.design/doc</loc>
+      <lastmod>2026-01-13</lastmod>
+      <changefreq>monthly</changefreq>
+      <priority>0.8</priority>
+   </url>
+
+   <url>
+      <loc>https://cam.eltryus.design/cnc</loc>
+      <lastmod>2026-01-13</lastmod>
+      <changefreq>monthly</changefreq>
+      <priority>0.7</priority>
+   </url>
+
+   <url>
+      <loc>https://cam.eltryus.design/laser</loc>
+      <lastmod>2026-01-13</lastmod>
+      <changefreq>monthly</changefreq>
+      <priority>0.5</priority>
+   </url>
+
+</urlset>

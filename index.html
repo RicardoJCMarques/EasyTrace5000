@@ -32,8 +32,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EasyTrace5000 - Advanced Workspace</title>
-    <link rel="icon" type="image/x-icon" href="images/favicon.png">
+    <title>EasyTrace5000 | Browser-Based PCB CAM Tool</title>
+
+    <meta name="description" content="Convert EDA CAD fabrication files (Gerber, Excellon or SVG) into machine ready files. 100% web-based, client-side, open-source and free to use.">
+    <meta name="keywords" content="PCB CAM, PCB Isolation Routing, G-code Generator, Gerber Viewer, CNC, Open Source, WebAssembly">
+    <meta name="author" content="Eltryus">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#1a1a1a">
+
+    <link rel="canonical" href="https://cam.eltryus.design/">
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://cam.eltryus.design/">
+    <meta property="og:title" content="EasyTrace5000 | Browser-Based PCB CAM Tool">
+    <meta property="og:site_name" content="Eltryus">
+    <meta property="og:description" content="Convert EDA CAD fabrication files (Gerber, Excellon or SVG) into machine ready files. 100% web-based, client-side, open-source and free to use.">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-preview.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="EasyTrace5000 workspace showing PCB geometry">
+    <meta property="og:locale" content="en_US">
+
+    <link rel="icon" type="image/png" href="/images/favicon/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/images/favicon/favicon.svg" />
+    <link rel="shortcut icon" href="/images/favicon/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon/apple-touch-icon.png" />
+    <link rel="manifest" href="/images/favicon/site.webmanifest" />
 
     <!-- Modular CSS Architecture -->
     <link rel="stylesheet" href="css/base.css">
@@ -41,8 +65,62 @@
     <link rel="stylesheet" href="css/layout.css">
     <link rel="stylesheet" href="css/canvas.css">
     <link rel="stylesheet" href="css/theme.css">
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "EasyTrace5000",
+        "alternateName": "EasyTrace",
+        "operatingSystem": "Any (Browser-based)",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "CAM Software",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "EUR",
+            "availability": "https://schema.org/InStock"
+        },
+        "description": "Browser-based CAM tool for generating G-code from PCB manufacturing files. Supports Gerber, Excellon, and SVG input with optimized toolpath generation.",
+        "author": {
+            "@type": "Organization",
+            "name": "Eltryus",
+            "url": "https://eltryus.design",
+            "logo": "https://eltryus.design/images/logo.png"
+        },
+        "screenshot": {
+            "@type": "ImageObject",
+            "url": "https://cam.eltryus.design/images/social-preview.jpg",
+            "caption": "EasyTrace5000 main workspace"
+        },
+        "featureList": [
+            "Gerber RS-274X parsing",
+            "Excellon drill file support", 
+            "SVG import with Bézier curve support",
+            "Multi-pass isolation routing",
+            "Intelligent drill strategy selection",
+            "Toolpath optimizations",
+            "Arc reconstruction from polygonized data",
+            "Multiple post-processor support (GRBL, Marlin, LinuxCNC)"
+        ],
+        "softwareVersion": "1.0.2",
+        "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
+        "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000",
+        "installUrl": "https://cam.eltryus.design/",
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+        "isAccessibleForFree": true,
+        "browserRequirements": "Requires JavaScript and WebAssembly support",
+        "sameAs": [
+            "https://github.com/RicardoJCMarques/EasyTrace5000"
+        ]
+    }
+    </script>
 </head>
 <body>
+
+    <!-- Skip link for keyboard accessibility -->
+    <a href="#preview-canvas" class="skip-link">Skip to canvas</a>
+
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-spinner spinner"></div>
@@ -51,7 +129,7 @@
     </div>
 
     <!-- Top Toolbar -->
-    <header class="cam-toolbar toolbar" id="cam-toolbar">
+    <header class="cam-toolbar toolbar" id="cam-toolbar" role="toolbar" aria-label="Main toolbar">
         <div class="toolbar-section toolbar-left">
             <div class="dropdown-menu dropdown">
                 <button class="btn--menu btn" id="quick-actions-btn">
@@ -83,26 +161,26 @@
 
         <div class="toolbar-section toolbar-right">
             <button class="btn--tool btn" id="zoom-fit-btn" title="Fit to View" aria-label="Fit to View">
-                <svg width="20" height="20" viewBox="0 0 20 20">
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20">
                     <rect x="3" y="3" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"/>
                     <circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
                 </svg>
             </button>
             <button class="btn--tool btn" id="zoom-in-btn" title="Zoom In" aria-label="Zoom In">
-                <svg width="20" height="20" viewBox="0 0 20 20">
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20">
                     <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M12.5 12.5l5 5M5 8h6M8 5v6" stroke="currentColor" stroke-width="1.5"/>
                 </svg>
             </button>
             <button class="btn--tool btn" id="zoom-out-btn" title="Zoom Out" aria-label="Zoom Out">
-                <svg width="20" height="20" viewBox="0 0 20 20">
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20">
                     <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M12.5 12.5l5 5M5 8h6" stroke="currentColor" stroke-width="1.5"/>
                 </svg>
             </button>
             <div class="toolbar-separator separator"></div>
             <button class="btn btn--icon theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
-                <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <svg aria-hidden="true" class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <circle cx="12" cy="12" r="5"></circle>
                     <line x1="12" y1="1" x2="12" y2="3"></line>
                     <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -113,7 +191,7 @@
                     <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
                     <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
                 </svg>
-                <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <svg aria-hidden="true" class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                 </svg>
             </button>
@@ -123,7 +201,7 @@
     <!-- Main CAM Workspace -->
     <div class="cam-workspace workspace" id="cam-workspace">
         <!-- Left Sidebar -->
-        <aside class="sidebar sidebar-left" id="sidebar-left">
+        <aside class="sidebar sidebar-left" id="sidebar-left" role="region" aria-label="Operations">
             <div class="sidebar-section browser-section">
                 <header class="section-header">
                     <h2>Operations</h2>
@@ -155,7 +233,7 @@
                             </span>
                             <span class="category-label">Isolation Routing</span>
                             <button class="btn--icon btn--tiny add-file-btn btn btn--icon btn--compact" data-op-type="isolation" title="Add File" aria-label="Add Isolation File">
-                                <svg width="12" height="12" viewBox="0 0 20 20">
+                                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.5"/>
                                 </svg>
                             </button>
@@ -166,7 +244,7 @@
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
                             <span class="category-icon">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
                                     <circle cx="10" cy="10" r="6"/>
                                     <line x1="10" y1="4" x2="10" y2="16"/>
                                     <line x1="4" y1="10" x2="16" y2="10"/>
@@ -174,7 +252,7 @@
                             </span>
                             <span class="category-label">Drilling</span>
                             <button class="btn--icon btn--tiny add-file-btn btn btn--icon btn--compact" data-op-type="drill" title="Add File" aria-label="Add Drill File">
-                                <svg width="12" height="12" viewBox="0 0 20 20">
+                                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.5"/>
                                 </svg>
                             </button>
@@ -185,14 +263,14 @@
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
                             <span class="category-icon">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
                                     <path d="M14 8 A6 6 0 1 1 6 8"/>
                                     <polyline points="14,4 14,8 10,8"/>
                                 </svg>
                             </span>
                             <span class="category-label">Copper Clearing</span>
                             <button class="btn--icon btn--tiny add-file-btn btn btn--icon btn--compact" data-op-type="clearing" title="Add File" aria-label="Add Clearing File">
-                                <svg width="12" height="12" viewBox="0 0 20 20">
+                                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.5"/>
                                 </svg>
                             </button>
@@ -203,7 +281,7 @@
                         <div class="category-header">
                             <span class="tree-expand-icon">▶</span>
                             <span class="category-icon">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
                                     <circle cx="6" cy="6" r="3"/>
                                     <circle cx="6" cy="16" r="3"/>
                                     <line x1="9" y1="8" x2="20" y2="2"/>
@@ -212,7 +290,7 @@
                             </span>
                             <span class="category-label">Board Cutout</span>
                             <button class="btn--icon btn--tiny add-file-btn btn btn--icon btn--compact" data-op-type="cutout" title="Add File" aria-label="Add Cutout File">
-                                <svg width="12" height="12" viewBox="0 0 20 20">
+                                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
                                     <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.5"/>
                                 </svg>
                             </button>
@@ -224,9 +302,9 @@
         </aside>
 
         <!-- Main Canvas Area -->
-        <main class="workspace-main">
+        <main class="workspace-main" role="main" aria-label="Canvas">
             <div class="canvas-container">
-                <canvas id="preview-canvas"></canvas>
+                <canvas id="preview-canvas" tabindex="-1"></canvas>
                 
                 <div id="canvas-loading-overlay" class="canvas-loading-overlay hidden">
                     <div class="loading-spinner spinner"></div>
@@ -236,7 +314,7 @@
         </main>
 
         <!-- Right Sidebar -->
-        <aside class="sidebar sidebar-right" id="sidebar-right">
+        <aside class="sidebar sidebar-right" id="sidebar-right" role="complementary" aria-label="Properties">
             <!-- Board Placement -->
             <div class="sidebar-section coordinate-section">
                 <header class="section-header collapsible-header collapsible" data-target="coordinate-controls">
@@ -529,14 +607,14 @@
         </div>
        <div class="status-bar" id="status-bar" title="Click to expand log">
             <span class="log-toggle-icon" id="log-toggle-icon">▲</span>
-            <span class="status-text" id="status-text">Ready</span>
+            <span class="status-text" id="status-text" role="status" aria-live="polite">Ready</span>
             <span class="status-progress progress hidden" id="status-progress">
                 <span class="progress-bar" id="progress-bar"></span>
             </span>
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <span title="Version">Version 1.0.1</span> |
+                <span title="Version">Version 1.0.2</span> |
                 <a href="/LICENSE" target="_blank" title="View License" draggable="false">AGPLv3 Licensed</a> |
                 <a href="doc" target="_blank" title="Documentation" draggable="false">Doc</a> |
                 <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo" draggable="false">GitHub</a> |
@@ -558,18 +636,18 @@
                 <span class="file-label"></span>
                 <span class="unsaved-indicator hidden" title="Unsaved changes">●</span>
                 <button class="btn--icon btn--tiny visibility-btn btn btn--icon btn--compact" title="Toggle Visibility" aria-label="Toggle Visibility">
-                    <svg class="icon-eye" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg aria-hidden="true" class="icon-eye" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z"/>
                         <circle cx="10" cy="10" r="3"/>
                     </svg>
-                    <svg class="icon-eye-slash" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg aria-hidden="true" class="icon-eye-slash" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6z"/>
                         <circle cx="10" cy="10" r="3"/>
                         <line x1="3" y1="17" x2="17" y2="3" stroke-width="1.5"/>
                     </svg>
                 </button>
                 <button class="btn--icon btn--tiny delete-btn btn btn--icon btn--compact" title="Delete" aria-label="Delete">
-                    <svg width="12" height="12" viewBox="0 0 20 20">
+                    <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
                         <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="1.5"/>
                         <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="1.5"/>
                     </svg>

@@ -42,10 +42,10 @@
             this.lang = ui.lang;
             this.toolLibrary = null;
             this.parameterManager = null;
-            
+
             this.currentOperation = null;
             this.currentGeometryStage = 'geometry';
-            
+
             // Track input changes for auto-save
             this.changeTimeout = null;
         }
@@ -65,6 +65,109 @@
         clearProperties() {
             this.currentOperation = null;
             this.currentGeometryStage = 'geometry';
+        }
+
+        setupPropertyGridNavigation(container) {
+            const getNavigableItems = () => {
+                return Array.from(container.querySelectorAll(
+                    '.property-field, .tooltip-trigger, input:not([disabled]), select:not([disabled]), button:not([disabled])'
+                )).filter(el => {
+                    if (el.offsetParent === null) return false;
+                    // Avoid duplicates: skip inputs/selects/buttons inside property-field if the field already exists
+                    if (el.matches('input, select') && el.closest('.property-field')) {
+                        return false; // Navigate to row first, then Enter to edit
+                    }
+                    return true;
+                });
+            };
+
+            const items = getNavigableItems();
+            if (items.length === 0) return;
+
+            items.forEach((el, idx) => {
+                el.setAttribute('tabindex', idx === 0 ? '0' : '-1');
+            });
+
+            container.addEventListener('keydown', (e) => {
+                const focused = document.activeElement;
+                if (!container.contains(focused)) return;
+
+                const currentItems = getNavigableItems();
+                const currentIdx = currentItems.indexOf(focused);
+
+                const isEditing = focused.matches('input, select, textarea') && 
+                                  focused.closest('.property-field');
+                const isTooltip = focused.classList.contains('tooltip-trigger');
+
+                // Up/Down: always navigate (except open select dropdown)
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    if (focused.tagName === 'SELECT') return; // let native handle
+
+                    e.preventDefault();
+
+                    // Close tooltip if open
+                    if (window.TooltipManager) {
+                        window.TooltipManager.hide();
+                    }
+
+                    const nextIdx = e.key === 'ArrowDown' ? currentIdx + 1 : currentIdx - 1;
+                    if (currentItems[nextIdx]) {
+                        focused.setAttribute('tabindex', '-1');
+                        currentItems[nextIdx].setAttribute('tabindex', '0');
+                        currentItems[nextIdx].focus();
+                    }
+                    return;
+                }
+
+                // Enter/Space on row: enter edit mode
+                if ((e.key === 'Enter' || e.key === ' ') && focused.classList.contains('property-field')) {
+                    e.preventDefault();
+                    const input = focused.querySelector('input:not([disabled]), select:not([disabled])');
+                    if (input) {
+                        input.focus();
+                        if (input.select) input.select();
+                    }
+                    return;
+                }
+
+                // Enter in input: commit and move to next item
+                if (e.key === 'Enter' && isEditing && !focused.matches('textarea')) {
+                    e.preventDefault();
+                    focused.blur();
+                    const nextIdx = currentIdx + 1;
+                    if (currentItems[nextIdx]) {
+                        currentItems[nextIdx].setAttribute('tabindex', '0');
+                        currentItems[nextIdx].focus();
+                    }
+                    return;
+                }
+
+                // Escape: exit edit mode or close tooltip
+                if (e.key === 'Escape') {
+                    if (isEditing) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        focused.blur();
+                        const row = focused.closest('.property-field');
+                        if (row) {
+                            row.setAttribute('tabindex', '0');
+                            row.focus();
+                        }
+                    } else if (isTooltip) {
+                        e.preventDefault();
+                        if (window.TooltipManager) {
+                            window.TooltipManager.hide();
+                        }
+                        // Move to next item (typically the row below)
+                        const nextIdx = currentIdx + 1;
+                        if (currentItems[nextIdx]) {
+                            focused.setAttribute('tabindex', '-1');
+                            currentItems[nextIdx].setAttribute('tabindex', '0');
+                            currentItems[nextIdx].focus();
+                        }
+                    }
+                }
+            });
         }
 
         showOperationProperties(operation, geometryStage = 'geometry') {
@@ -120,6 +223,7 @@
             }
 
             this.attachEventHandlers(container);
+            this.setupPropertyGridNavigation(container);
         }
 
         groupByCategory(params) {
@@ -175,7 +279,10 @@
                 // Will be evaluated in attachEventHandlers
             }
 
+            const inputId = `prop-${param.name}`;
+
             const label = document.createElement('label');
+            label.setAttribute('for', inputId);
 
             // Use param.name as the key (e.g., "toolDiameter", "passes")
             const helpKey = param.name; 
@@ -569,7 +676,7 @@
             const stage = this.currentGeometryStage; 
 
             if (stage === 'geometry') {
-                // 1: Geometry -> Strategy
+                // Geometry -> Strategy
                 if (op.type === 'drill') { 
                     await this.generateDrillStrategy(op); 
                 } else if (op.type === 'cutout') { 
@@ -585,8 +692,10 @@
                     }, transitionDelay);
                 }
 
+                // Return focus to tree after action completes
+                this.returnFocusToTree();
             } else if (stage === 'strategy') {
-                // 2: Strategy -> Machine
+                // Strategy -> Machine
                 try {
                     this.ui.statusManager?.showStatus('Generating toolpath preview...', 'info'); 
                     const previewSuccess = await this.generatePreview(op);
@@ -613,13 +722,15 @@
                         }, transitionDelay);
                     }
 
+                    // Return focus to tree
+                    this.returnFocusToTree();
+
                 } catch (error) {
                     console.error('[OperationPanel] Preview generation failed:', error); 
                     this.ui.statusManager?.showStatus('Preview failed: ' + error.message, 'error'); 
                 }
-
             } else if (stage === 'machine') {
-                // 3: Machine -> Modal
+                // Machine -> Modal
                 if (window.pcbcam?.modalManager) {
                     const readyOps = this.ui.core.operations.filter(o => o.preview?.ready); 
                     if (readyOps.length === 0) { 
@@ -631,6 +742,17 @@
                 } else {
                     this.ui.statusManager?.showStatus('Operations manager not available', 'error'); 
                 }
+            }
+        }
+
+        returnFocusToTree() {
+            const selected = document.querySelector(
+                '.file-node-content.selected, .geometry-node-content.selected, .geometry-node.selected'
+            );
+            if (selected) {
+                const focusTarget = selected.querySelector('.file-node-content, .geometry-node-content') || selected;
+                focusTarget.setAttribute('tabindex', '0');
+                focusTarget.focus();
             }
         }
 
@@ -782,7 +904,7 @@
         }
 
         debug(message, data = null) {
-            if (this.ui && this.ui.debug) {
+            if (this.ui.debug) {
                 this.ui.debug(`[OperationPanel] ${message}`, data);
             }
         }

@@ -370,7 +370,6 @@ window.PCBCAMConfig = {
         },
 
         edgeKeyPrecision: 3,                         // [ADDED] [HARDCODED in parser-core.js]
-        zeroLengthTolerance: 0.0001,                 // [ADDED] [HARDCODED in parser-gerber.js]
         svgPointMatchTolerance: 1e-2,                // [ADDED] [HARDCODED in parser-svg.js]
         svgZeroLengthTolerance: 1e-6                 // [ADDED] [HARDCODED in parser-svg.js]
     },
@@ -390,6 +389,7 @@ window.PCBCAMConfig = {
         coordinate: 0.001,          // General coordinate precision
         pointMatch: 0.01,           // Two points are "same location"
         closedPath: 0.01,           // Path closure detection
+        zeroLength: 0.0001,         // For degenerate geometry detection
         
         // Display (output formatting)
         display: 3,                  // Decimal places for UI/export

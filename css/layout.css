@@ -68,7 +68,7 @@
 .toolbar-separator,
 .toolbar .separator {
     width: 1px;
-    height: 20px;
+    height: 1.25rem;
     background: var(--color-border-secondary);
     margin: 0 var(--spacing-sm);
 }
@@ -180,14 +180,6 @@
 }
 
 /* End of section highlights */
-
-/* Collapsed State: Standard border
-.sidebar-section.coordinate-section,
-.sidebar-section.machine-section {
-    border: 0px;
-} */
-
-/* Expanded State: Highlight Color */
 .sidebar-section.coordinate-section:has(.section-content:not(.collapsed)),
 .sidebar-section.machine-section:has(.section-content:not(.collapsed)) {
     border-bottom: 2px solid var(--color-accent-primary);
@@ -209,7 +201,7 @@
     grid-template-columns: var(--sidebar-left-width) 1fr auto;
     align-items: center;
     font-size: var(--font-size-sm);
-    z-index: var(--z-sticky); /* Ensures footer is on top */
+    z-index: var(--z-sticky);
 }
 
 /* Left-aligned content in the left grid cell */
@@ -217,7 +209,7 @@
     display: flex;
     align-items: center;
     padding-left: var(--spacing-lg);
-    position: relative; /* For the viz-panel */
+    position: relative;
     height: 100%;
 }
 
@@ -239,31 +231,31 @@
     height: 100%;
     cursor: pointer;
     overflow: hidden;
-    position: relative; /* For progress bar */
+    position: relative;
 }
 
 /* Clickable icon for the log toggle */
 .log-toggle-icon {
-    font-size: 10px;
+    font-size: 0.625rem;
     color: var(--color-text-secondary);
-    transform: rotate(180deg); /* Start pointing up */
+    transform: rotate(180deg);
 }
 
 .status-text {
-    flex: 1; /* Takes up remaining space */
+    flex: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--color-text-secondary);
 }
 
-/* Status colors (Unchanged) */
+/* Status colors */
 .status-text.success { color: var(--color-success); }
 .status-text.warning { color: var(--color-warning); }
 .status-text.error { color: var(--color-error); }
 .status-text.info { color: var(--color-info); }
 
-/* Progress bar (Unchanged) */
+/* Progress bar */
 .status-progress {
     position: absolute;
     bottom: 0;
@@ -275,21 +267,18 @@
 /* Log Panel */
 .status-log-panel {
     position: fixed;
-    bottom: var(--status-bar-height); /* Sits right on top of the footer */
-
-    /* Aligns to the canvas area */
+    bottom: var(--status-bar-height);
     left: var(--sidebar-left-width);
     right: var(--sidebar-right-width);
-
-    height: 0; /* Hidden by default */
-    background: var(--color-bg-primary); /* Darker background for contrast */
+    height: 0;
+    background: var(--color-bg-primary);
     border-top: 1px solid var(--color-border-primary);
     border-left: 1px solid var(--color-border-primary);
     border-right: 1px solid var(--color-border-primary);
     opacity: 0;
     visibility: hidden;
     overflow: hidden;
-    z-index: var(--z-dropdown); /* Sits just below the footer */
+    z-index: var(--z-dropdown);
 }
 
 .status-log-history {
@@ -302,12 +291,13 @@
     word-break: break-word;
 }
 
-/* This is the "expanded" state */
+/* Expanded state */
 .footer-bar.is-expanded .log-toggle-icon {
-    transform: rotate(0deg); /* Point down */
+    transform: rotate(0deg);
 }
+
 .status-log-panel.is-expanded {
-    height: 200px; /* New expanded height */
+    height: 12.5rem;
     opacity: 1;
     visibility: visible;
 }
@@ -336,12 +326,12 @@
     text-decoration: underline;
 }
 
-/* --- Viz Panel --- */
+/* Viz Panel */
 .viz-panel {
     position: absolute;
-    bottom: calc(100% + var(--spacing-sm)); /* Position above the status bar */
+    bottom: calc(100% + var(--spacing-sm));
     left: 0;
-    min-width: 260px;
+    min-width: 16.25rem;
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-primary);
     border-radius: var(--radius);
@@ -359,7 +349,7 @@
 }
 
 .viz-panel .section-content {
-    max-height: 360px;
+    max-height: 22.5rem;
     overflow-y: auto;
     padding: var(--spacing-md);
 }
@@ -368,7 +358,7 @@
    OPERATIONS TREE
    ============================================================================ */
 
-.browser-section{
+.browser-section {
     flex: 1;
     min-height: 0;
 }
@@ -400,7 +390,7 @@
 }
 
 .tree-expand-icon {
-    width: 16px;
+    width: 1rem;
     font-size: var(--font-size-xs);
     color: var(--color-text-secondary);
 }
@@ -417,8 +407,8 @@
 }
 
 .category-icon svg {
-    width: 20px;
-    height: 20px;
+    width: 1.25rem;
+    height: 1.25rem;
 }
 
 .category-label {
@@ -514,7 +504,7 @@
 }
 
 .geometry-icon {
-    width: 16px;
+    width: 1rem;
     text-align: center;
     margin-right: var(--spacing-xs);
 }
@@ -588,6 +578,15 @@
     margin-bottom: var(--spacing-xs);
 }
 
+.property-field[tabindex] {
+    cursor: pointer;
+}
+
+.property-field[tabindex]:hover {
+    background: var(--color-bg-hover);
+    border-radius: var(--radius);
+}
+
 .property-actions {
     background: var(--color-bg-secondary);
     padding: var(--spacing-md) 0 0 0;
@@ -624,26 +623,17 @@
    ============================================================================ */
 
 .coordinate-display {
-    /* Remove absolute positioning */
     position: static;
-    
-    /* Layout */
     display: flex;
     align-items: center;
     gap: var(--spacing-lg);
-    
-    /* Spacing & Borders */
     margin-left: var(--spacing-md);
     padding-left: var(--spacing-md);
-    border-left: 1px solid var(--color-border-secondary); /* Vertical separator */
-    height: 60%; /* vertical alignment helper */
-    
-    /* Typography */
+    border-left: 1px solid var(--color-border-secondary);
+    height: 60%;
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
     color: var(--color-text-secondary);
-    
-    /* Reset Box styling */
     background: transparent;
     border-radius: 0;
     box-shadow: none;
@@ -661,7 +651,7 @@
 
 .coord-value {
     color: var(--color-text-primary);
-    min-width: 40px; /* Prevent jitter when numbers change */
+    min-width: 2.5rem;
 }
 
 /* ============================================================================
@@ -698,7 +688,7 @@
 }
 
 .file-drop-zone {
-    min-height: 120px;
+    min-height: 7.5rem;
     border: 2px dashed var(--color-border-secondary);
     border-radius: var(--radius);
     padding: var(--spacing-lg);
@@ -730,7 +720,7 @@
 .zone-status {
     margin-top: var(--spacing-sm);
     font-size: var(--font-size-sm);
-    min-height: 20px;
+    min-height: 1.25rem;
 }
 
 .zone-status.success {
@@ -770,4 +760,35 @@
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);
     color: var(--color-text-secondary);
+}
+
+/* ============================================================================
+   RESPONSIVE
+   ============================================================================ */
+
+/* Narrower screens (< 1024px) */
+@media (max-width: 1024px) {
+    /* Simplify footer license info */
+    .license-info span:not(:first-child):not(:last-child) {
+        display: none;
+    }
+}
+
+/* Small screens (< 768px) */
+@media (max-width: 768px) {
+    .toolbar {
+        padding: 0 var(--spacing-sm);
+    }
+
+    .toolbar-separator {
+        display: none;
+    }
+
+    .status-left {
+        padding-left: var(--spacing-sm);
+    }
+
+    .status-right {
+        padding-right: var(--spacing-sm);
+    }
 }

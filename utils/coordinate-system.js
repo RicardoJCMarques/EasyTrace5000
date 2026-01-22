@@ -31,7 +31,6 @@
     // Get config reference
     const config = window.PCBCAMConfig;
     const debugConfig = config.debug;
-    const geomConfig = config.geometry;
 
     class CoordinateSystemManager {
         constructor(options = {}) {
@@ -513,7 +512,7 @@
             const offset = this.getOffsetFromSaved();
 
             // Use config precision for comparison
-            const precision = geomConfig.coordinatePrecision;
+            const precision = config.precision.coordinate;
 
             // Mirror center is board center for correct visual mirroring
             const mirrorCenter = this.boardBounds ? {

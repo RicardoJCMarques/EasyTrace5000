@@ -501,10 +501,10 @@
 
             let toolDiameter; 
 
-            // We access the global controller to find the initialized library
+            // Access the global controller to find the initialized library
             if (defaultToolId && window.pcbcam?.ui?.toolLibrary) {
                 const libraryDiameter = window.pcbcam.ui.toolLibrary.getToolDiameter(defaultToolId);
-                // Ensure we get a valid number (0 is technically valid for logic, but invalid for tools, check for null/undefined)
+                // Ensure a valid number (0 is technically valid for logic, but invalid for tools, check for null/undefined)
                 if (libraryDiameter !== null && libraryDiameter !== undefined) {
                     toolDiameter = libraryDiameter;
                 }
@@ -584,8 +584,12 @@
         }
 
         debug(message, data = null) {
-            if (this.ui && this.ui.debug) {
-                this.ui.debug(`[ParameterManager] ${message}`, data);
+            if (window.PCBCAMConfig.debug.enabled) {
+                if (data !== null) {
+                    console.log(`[ParameterManager] ${message}`, data);
+                } else {
+                    console.log(`[ParameterManager] ${message}`);
+                }
             }
         }
     }

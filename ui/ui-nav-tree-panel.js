@@ -60,6 +60,9 @@
                 expandAllBtn.addEventListener('click', () => this.expandAll());
             }
 
+            // Add keyboard navigation
+            this.setupKeyboardNavigation();
+
             this.initialized = true;
 
             this.debug('NavTreePanel initialized');
@@ -144,9 +147,22 @@
             const content = nodeElement.querySelector('.file-node-content');
             const label = nodeElement.querySelector('.file-label');
 
+            // Add ARIA attributes for keyboard navigation
+            content.setAttribute('role', 'treeitem');
+            content.setAttribute('tabindex', '-1');
+            content.setAttribute('aria-selected', 'false');
+
             // Find the buttons already in your template
             const deleteBtn = nodeElement.querySelector('.delete-btn');
             const visBtn = nodeElement.querySelector('.visibility-btn');
+
+            // Set dynamic accessible names
+            if (deleteBtn) {
+                deleteBtn.setAttribute('aria-label', `Delete ${operation.file.name}`);
+            }
+            if (visBtn) {
+                visBtn.setAttribute('aria-label', `Toggle visibility of ${operation.file.name}`);
+            }
 
             // Attach listener for the visibility button
             if (visBtn) {
@@ -334,6 +350,11 @@
             const visBtn = nodeElement.querySelector('.visibility-btn');
             const deleteBtn = nodeElement.querySelector('.delete-geometry-btn');
 
+            // ARIA attributes for keyboard navigation
+            content.setAttribute('role', 'treeitem');
+            content.setAttribute('tabindex', '-1');
+            content.setAttribute('aria-selected', 'false');
+
             const icons = { // Review icons
                 'offsets_combined': iconConfig.offsetCombined,
                 'offset': iconConfig.offsetPass,
@@ -457,8 +478,16 @@
                 const content = fileData.element.querySelector('.file-node-content');
                 if (content) {
                     content.classList.add('selected');
+                    content.setAttribute('aria-selected', 'true');
                 }
             }
+
+            // Clear aria-selected from others
+            document.querySelectorAll('[aria-selected="true"]').forEach(el => {
+                if (el !== fileData?.element.querySelector('.file-node-content')) {
+                    el.setAttribute('aria-selected', 'false');
+                }
+            });
 
             this.selectedNode = { type: 'file', id: fileId, operation };
 
@@ -469,14 +498,21 @@
         }
 
         selectGeometry(geometryId, operation, geometryType) {
-            // Manage its own state
+            // Clear previous selections
             document.querySelectorAll('.file-node-content.selected, .geometry-node.selected').forEach(el => {
                 el.classList.remove('selected');
+            });
+            document.querySelectorAll('[aria-selected="true"]').forEach(el => {
+                el.setAttribute('aria-selected', 'false');
             });
 
             const geometryNode = document.querySelector(`.geometry-node[data-geometry-id="${geometryId}"]`);
             if (geometryNode) {
                 geometryNode.classList.add('selected');
+                const content = geometryNode.querySelector('.geometry-node-content');
+                if (content) {
+                    content.setAttribute('aria-selected', 'true');
+                }
             }
 
             this.selectedNode = { type: 'geometry', id: geometryId, operation, geometryType };
@@ -531,7 +567,7 @@
                 // Toggle only that layer
                 layer.visible = !layer.visible;
                 this.ui.renderer.render();
-                
+
                 // Update the button's appearance
                 button.classList.toggle('is-hidden', !layer.visible);
             } else {
@@ -591,8 +627,345 @@
             });
         }
 
+        setupKeyboardNavigation() {
+            const treeView = document.getElementById('operations-tree');
+            if (!treeView) return;
+
+            // Set ARIA role on container
+            treeView.setAttribute('role', 'tree');
+            treeView.setAttribute('aria-label', 'Operations');
+
+            // Setup categories with ARIA
+            this.setupCategoryARIA();
+
+            // Single keydown listener on tree container
+            treeView.addEventListener('keydown', (e) => this.handleTreeKeydown(e));
+        }
+
+        setupCategoryARIA() {
+            const categories = document.querySelectorAll('.operation-category');
+
+            categories.forEach((category, index) => {
+                const header = category.querySelector('.category-header');
+                const filesContainer = category.querySelector('.category-files');
+
+                if (header) {
+                    header.setAttribute('role', 'treeitem');
+                    header.setAttribute('aria-expanded', 
+                        category.classList.contains('expanded').toString());
+                    header.setAttribute('tabindex', index === 0 ? '0' : '-1');
+                }
+
+                if (filesContainer) {
+                    filesContainer.setAttribute('role', 'group');
+                }
+            });
+        }
+
+        handleTreeKeydown(e) {
+            const focused = document.activeElement;
+            if (!focused) return;
+
+            const isCategory = focused.classList.contains('category-header');
+            const isFileContent = focused.classList.contains('file-node-content');
+            const isGeometryContent = focused.classList.contains('geometry-node-content');
+
+            switch (e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    this.moveFocusDown(focused);
+                    break;
+
+                case 'ArrowUp':
+                    e.preventDefault();
+                    this.moveFocusUp(focused);
+                    break;
+
+                case 'ArrowRight':
+                    e.preventDefault();
+                    if (isCategory) {
+                        const category = focused.closest('.operation-category');
+                        if (!category.classList.contains('expanded')) {
+                            this.expandCategoryByHeader(focused);
+                        } else {
+                            const firstFile = category.querySelector('.file-node-content');
+                            if (firstFile) this.setFocusOnItem(focused, firstFile);
+                        }
+                    } else if (isFileContent) {
+                        const firstGeo = focused.closest('.file-node')?.querySelector('.geometry-node-content');
+                        if (firstGeo) this.setFocusOnItem(focused, firstGeo);
+                    }
+                    break;
+
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    if (isCategory) {
+                        this.collapseCategoryByHeader(focused);
+                    } else if (isGeometryContent) {
+                        const parentFile = focused.closest('.file-node')?.querySelector('.file-node-content');
+                        if (parentFile) this.setFocusOnItem(focused, parentFile);
+                    } else if (isFileContent) {
+                        const header = focused.closest('.operation-category')?.querySelector('.category-header');
+                        if (header) this.setFocusOnItem(focused, header);
+                    }
+                    break;
+
+                case 'Enter':
+                case ' ':
+                    e.preventDefault();
+                    if (isCategory) {
+                        this.toggleCategory(focused.closest('.operation-category').dataset.opType);
+                        focused.setAttribute('aria-expanded', 
+                            focused.closest('.operation-category').classList.contains('expanded').toString());
+                    } else if (isFileContent) {
+                        this.activateFileNode(focused);
+                    } else if (isGeometryContent) {
+                        this.activateGeometryNode(focused);
+                    }
+                    break;
+
+                case 'Home':
+                    e.preventDefault();
+                    this.focusFirstItem();
+                    break;
+
+                case 'End':
+                    e.preventDefault();
+                    this.focusLastItem();
+                    break;
+
+                case 'Delete':
+                    e.preventDefault();
+                    this.handleDeleteOnFocused(focused, isFileContent, isGeometryContent);
+                    break;
+
+                case 'v':
+                case 'V':
+                    // Toggle visibility of focused item
+                    if (isFileContent || isGeometryContent) {
+                        e.preventDefault();
+                        const visBtn = focused.querySelector('.visibility-btn');
+                        if (visBtn) visBtn.click();
+                    }
+                    break;
+            }
+        }
+
+        activateFileNode(fileContent) {
+            const fileNode = fileContent.closest('.file-node');
+            const fileId = fileNode?.dataset.fileId;
+            const nodeData = this.nodes.get(fileId);
+
+            if (nodeData?.operation) {
+                this.selectFile(fileId, nodeData.operation);
+                this.focusParameterPanel();
+            }
+        }
+
+        activateGeometryNode(geometryContent) {
+            const geometryNode = geometryContent.closest('.geometry-node');
+            const geometryId = geometryNode?.dataset.geometryId;
+            const geometryType = geometryNode?.dataset.geometryType;
+
+            // Find parent file node to get operation
+            const fileNode = geometryNode.closest('.file-node');
+            const fileId = fileNode?.dataset.fileId;
+            const nodeData = this.nodes.get(fileId);
+
+            if (nodeData?.operation) {
+                this.selectGeometry(geometryId, nodeData.operation, geometryType);
+                this.focusParameterPanel();
+            }
+        }
+
+        focusParameterPanel() {
+            // Delay to allow panel to render
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const paramForm = document.getElementById('property-form');
+                    if (!paramForm) return;
+
+                    // Focus the first property ROW, not input
+                    const firstRow = paramForm.querySelector('.property-field[tabindex]');
+                    if (firstRow) {
+                        firstRow.focus();
+                        return;
+                    }
+
+                    // Fallback: first focusable if no rows
+                    const firstFocusable = paramForm.querySelector(
+                        'button:not([disabled]), [tabindex="0"]'
+                    );
+                    if (firstFocusable) firstFocusable.focus();
+                });
+            });
+        }
+
+        getVisibleTreeItems() {
+            const items = [];
+            const categories = document.querySelectorAll('.operation-category');
+
+            categories.forEach(cat => {
+                const header = cat.querySelector('.category-header');
+                if (header) items.push(header);
+
+                if (cat.classList.contains('expanded')) {
+                    const fileNodes = cat.querySelectorAll('.file-node');
+                    fileNodes.forEach(fileNode => {
+                        // Add file content
+                        const fileContent = fileNode.querySelector('.file-node-content');
+                        if (fileContent) {
+                            items.push(fileContent);
+                            // Add buttons within file node
+                            const buttons = fileContent.querySelectorAll('.btn-icon');
+                            buttons.forEach(btn => items.push(btn));
+                        }
+
+                        // Add geometry nodes and their buttons
+                        const geoNodes = fileNode.querySelectorAll('.geometry-node');
+                        geoNodes.forEach(geoNode => {
+                            const geoContent = geoNode.querySelector('.geometry-node-content');
+                            if (geoContent) {
+                                items.push(geoContent);
+                                const buttons = geoContent.querySelectorAll('.btn-icon');
+                                buttons.forEach(btn => items.push(btn));
+                            }
+                        });
+                    });
+                }
+            });
+
+            return items;
+        }
+
+        moveFocusDown(current) {
+            const items = this.getVisibleTreeItems();
+            const currentIndex = items.indexOf(current);
+            const next = items[currentIndex + 1];
+
+            if (next) {
+                this.setFocusOnItem(current, next);
+            }
+        }
+
+        moveFocusUp(current) {
+            const items = this.getVisibleTreeItems();
+            const currentIndex = items.indexOf(current);
+            const prev = items[currentIndex - 1];
+
+            if (prev) {
+                this.setFocusOnItem(current, prev);
+            }
+        }
+
+        setFocusOnItem(oldItem, newItem) {
+            if (oldItem) oldItem.setAttribute('tabindex', '-1');
+            if (newItem) {
+                newItem.setAttribute('tabindex', '0');
+                newItem.focus();
+            }
+        }
+
+        expandCategoryByHeader(header) {
+            const category = header.closest('.operation-category');
+            if (category && !category.classList.contains('expanded')) {
+                category.classList.add('expanded');
+                header.setAttribute('aria-expanded', 'true');
+                this.expandedCategories.add(category.dataset.opType);
+            }
+        }
+
+        collapseCategoryByHeader(header) {
+            const category = header.closest('.operation-category');
+            if (category && category.classList.contains('expanded')) {
+                category.classList.remove('expanded');
+                header.setAttribute('aria-expanded', 'false');
+                this.expandedCategories.delete(category.dataset.opType);
+            }
+        }
+
+        moveFocusToParent(item) {
+            const fileNode = item.closest('.file-node');
+            const category = item.closest('.operation-category');
+
+            if (fileNode && item.closest('.geometry-node')) {
+                // Geometry -> File
+                const fileContent = fileNode.querySelector('.file-node-content');
+                this.setFocusOnItem(item, fileContent);
+            } else if (category) {
+                // File -> Category
+                const header = category.querySelector('.category-header');
+                this.setFocusOnItem(item, header);
+            }
+        }
+
+        moveFocusToFirstChild(fileContent) {
+            const fileNode = fileContent.closest('.file-node');
+            const firstGeo = fileNode?.querySelector('.geometry-node-content');
+            if (firstGeo) {
+                this.setFocusOnItem(fileContent, firstGeo);
+            }
+        }
+
+        focusFirstItem() {
+            const items = this.getVisibleTreeItems();
+            if (items[0]) {
+                const current = document.activeElement;
+                this.setFocusOnItem(current, items[0]);
+            }
+        }
+
+        focusLastItem() {
+            const items = this.getVisibleTreeItems();
+            if (items.length) {
+                const current = document.activeElement;
+                this.setFocusOnItem(current, items[items.length - 1]);
+            }
+        }
+
+        handleDeleteOnFocused(focused, isFileContent, isGeometryContent) {
+            if (isFileContent) {
+                const fileNode = focused.closest('.file-node');
+                const fileId = fileNode?.dataset.fileId;
+                const nodeData = this.nodes.get(fileId);
+                if (nodeData?.operation) {
+                    // Store next focusable before deletion
+                    const items = this.getVisibleTreeItems();
+                    const idx = items.indexOf(focused);
+                    const nextFocus = items[idx + 1] || items[idx - 1];
+
+                    this.ui.removeOperation(nodeData.operation.id);
+
+                    // Restore focus
+                    if (nextFocus && document.body.contains(nextFocus)) {
+                        this.setFocusOnItem(null, nextFocus);
+                    }
+                }
+            } else if (isGeometryContent) {
+                const geoNode = focused.closest('.geometry-node');
+                const fileNode = focused.closest('.file-node');
+                const geometryId = geoNode?.dataset.geometryId;
+                const fileId = fileNode?.dataset.fileId;
+                const fileData = this.nodes.get(fileId);
+                const geoData = fileData?.geometries.get(geometryId);
+
+                if (fileData && geoData) {
+                    // Store next focusable
+                    const items = this.getVisibleTreeItems();
+                    const idx = items.indexOf(focused);
+                    const nextFocus = items[idx + 1] || items[idx - 1];
+
+                    this.ui.handleDeleteGeometry(fileId, fileData, geometryId, geoData);
+
+                    if (nextFocus && document.body.contains(nextFocus)) {
+                        this.setFocusOnItem(null, nextFocus);
+                    }
+                }
+            }
+        }
+
         debug(message, data = null) {
-            if (this.ui && this.ui.debug) {
+            if (this.ui.debug) {
                 this.ui.debug(`[NavTreePanel] ${message}`, data);
             }
         }
