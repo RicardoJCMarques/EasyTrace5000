@@ -361,14 +361,14 @@
             // Calculate length
             const gridConfig = config.rendering.grid;
             const possibleLengths = gridConfig.steps;
-            const visibleLength = possibleLengths.find(len => len * this.core.viewScale >= minPixels);
+            const niceLength = possibleLengths.find(len => len * this.core.viewScale >= minPixels);
             
-            if (!visibleLength) {
+            if (!niceLength) {
                 this.ctx.restore();
                 return;
             }
 
-            const barWidth = visibleLength * this.core.viewScale;
+            const barWidth = niceLength * this.core.viewScale;
             const x = this.canvas.width - padding - barWidth;
 
             // Center Y of the bar
