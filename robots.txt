@@ -2,28 +2,6 @@
 
 User-agent: *
 Allow: /
-Allow: /doc
-Allow: /cnc
-Allow: /laser
-
-# Prevent indexing of application source code
-Disallow: /geometry/
-Disallow: /gcode/
-Disallow: /parsers/
-Disallow: /toolpath/
-Disallow: /ui/
-Disallow: /utils/
-Disallow: /themes/
-Disallow: /language/
-Disallow: /renderer/
-
-# Prevent indexing of example files
-Disallow: /examples/
-
-# Prevent indexing of configuration and build files
-Disallow: /*.js$
-Disallow: /*.json$
-Disallow: /*.css$
 
 # Primary sitemap
 Sitemap: https://cam.eltryus.design/sitemap.xml

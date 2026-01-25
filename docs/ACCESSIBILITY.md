@@ -44,6 +44,18 @@ A **skip link** appears on Tab from page load, allowing keyboard users to jump d
 
 ## Zone Navigation
 
+To reduce repetitive tabbing, the interface is divided into **Focus Zones**.
+
+### Global Keys
+
+| Key | Action |
+|-----|--------|
+| `F6` | Cycle focus forward: **Toolbar** → **Left Sidebar** (Tree) → **Right Sidebar** (Properties) |
+| `Shift` + `F6` | Cycle focus backwards |
+| `Tab` | Navigate sequentially within the current zone |
+
+**Note:** The Canvas is excluded from the `F6` cycle to prevent focus getting "stuck" in complex SVGs. Use the **Skip Link** (appears on first Tab) to jump directly to the Canvas.
+
 ### Toolbar
 
 | Key | Action |
@@ -84,11 +96,21 @@ The operations tree uses a hierarchical structure with categories, files, and ge
 | `Delete` | Remove selected file or geometry |
 | `V` | Toggle visibility of selected layer |
 
-### ARIA Roles
+### ARIA Roles & Hierarchy
 
-- Tree container: `role="tree"`
-- Category headers: `role="treeitem"` with `aria-expanded`
-- File/geometry nodes: `role="treeitem"` with `aria-selected`
+The tree structure follows the [WAI-ARIA Tree View Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/treeview/):
+
+1.  **Container:** `role="tree"` with a label "Operations".
+2.  **Groups:** Nested lists (files inside categories, geometry inside files) use `role="group"`.
+3.  **Items:**
+    * **Level 1 (Categories):** `role="treeitem"`, `aria-level="1"`, `aria-expanded="..."`.
+    * **Level 2 (Files):** `role="treeitem"`, `aria-level="2"`, `aria-selected="..."`, `aria-expanded="..."`.
+    * **Level 3 (Geometry):** `role="treeitem"`, `aria-level="3"`, `aria-selected="..."`.
+
+Focus is managed via **roving tabindex**:
+* The active item has `tabindex="0"`.
+* All other items have `tabindex="-1"`.
+* Arrow keys move the `tabindex="0"` to the adjacent item and focus it.
 
 ---
 
@@ -135,7 +157,7 @@ When focus is on the canvas or workspace (not in input fields):
 
 | Key | Action |
 |-----|--------|
-| `?` / `F1` | Show keyboard shortcuts summary |
+| `F1` | Show Help modal with initial steps & keyboard shortcuts/navigation |
 
 ---
 

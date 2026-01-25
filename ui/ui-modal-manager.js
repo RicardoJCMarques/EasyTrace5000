@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        ui/ui-modal-manager.js
  * @description Unified modal management
  * @author      Eltryus - Ricardo Marques
@@ -47,7 +47,8 @@
                 welcome: document.getElementById('welcome-modal'),
                 quickstart: document.getElementById('quickstart-modal'),
                 gcode: document.getElementById('gcode-export-modal'),
-                support: document.getElementById('support-modal')
+                support: document.getElementById('support-modal'),
+                help: document.getElementById('help-modal')
             };
 
             // Track selected pipeline
@@ -124,7 +125,7 @@
             const hash = window.location.hash.substring(1);
 
             // List of modals that are safe to open directly via URL
-            const allowList = ['support', 'welcome', 'quickstart']; // (Excludes 'gcode' because it needs app state to work)
+            const allowList = ['support', 'welcome', 'quickstart', 'help']; // (Excludes 'gcode' because it needs app state)
 
             if (allowList.includes(hash)) {
                 this.showModal(hash);
@@ -154,6 +155,12 @@
             if (!modal) {
                 console.error(`[UI-ModalManager] Modal - '${modalName}' - not found`);
                 return;
+            }
+
+            // Only update hash for content modals
+            const hashableModals = ['welcome', 'quickstart', 'support'];
+            if (hashableModals.includes(modalName)) {
+                history.pushState(null, null, `#${modalName}`);
             }
 
             // Store return focus target
@@ -189,9 +196,21 @@
                 this[handler](options);
             }
 
-            // Setup focus trap and move focus
+            // Setup focus trap
             this.setupFocusTrap(modal);
             this.setupModalFieldNavigation(modal);
+
+            // Move focus to first focusable element inside modal
+            requestAnimationFrame(() => {
+                const content = modal.querySelector('.modal-content');
+                if (content) {
+                    // -1 allows JS to focus it, but users can't Tab to it
+                    // This satisfies ARIA requirements without showing a button ring
+                    content.setAttribute('tabindex', '-1'); 
+                    content.style.outline = 'none'; // Ensure no visual ring on the box itself
+                    content.focus();
+                }
+            });
         }
 
         closeModal() {
@@ -201,11 +220,22 @@
             this.activeModal.classList.remove('active');
 
             if (this.modalStack.length > 0) {
+                // Returning to previous modal
                 this.activeModal = this.modalStack.pop();
                 this.activeModal.classList.add('active');
                 this.setupFocusTrap(this.activeModal);
+
+                // Update hash to reflect the modal being returning to
+                const returnModalName = this.getActiveModalName();
+                if (returnModalName) {
+                    history.replaceState(null, null, `#${returnModalName}`);
+                }
             } else {
+                // Fully closing removes hash
                 this.activeModal = null;
+                if (window.location.hash) {
+                    history.replaceState(null, null, window.location.pathname);
+                }
 
                 // Restore focus - but never to canvas
                 if (this.previousActiveElement && 
@@ -345,6 +375,22 @@
             }
         }
 
+        showHelpHandler() {
+            const modal = this.modals.help;
+
+            // Close button
+            const closeBtn = modal?.querySelector('.modal-close');
+            if (closeBtn) {
+                closeBtn.onclick = () => this.closeModal();
+            }
+
+            // "Got it" button
+            const gotItBtn = document.getElementById('help-close-btn');
+            if (gotItBtn) {
+                gotItBtn.onclick = () => this.closeModal();
+            }
+        }
+
         showWelcomeHandler(options) {
             const modal = this.modals.welcome;
 
@@ -382,6 +428,15 @@
                     };
                 }
             });
+
+            // Help link in footer
+            const helpLink = document.getElementById('welcome-help-link');
+            if (helpLink) {
+                helpLink.onclick = (e) => {
+                    e.preventDefault();
+                    this.showModal('help');
+                };
+            }
 
             // Close button - same behavior as click-outside
             const closeBtn = modal?.querySelector('.modal-close');

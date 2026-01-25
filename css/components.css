@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        components.css
  * @description Reusable UI components - buttons, inputs, modals, tooltips
  * @author      Eltryus - Ricardo Marques
@@ -664,6 +664,43 @@ input[type="radio"] {
     border-color: var(--color-pipeline-laser);
 }
 
+.welcome-intro {
+    text-align: center;
+    max-width: 38rem;
+    margin: 0 auto var(--spacing-lg);
+    font-size: var(--font-size-lg);
+    line-height: var(--line-height-relaxed);
+    color: var(--color-text-primary);
+}
+
+.welcome-footer-links {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-hint);
+}
+
+.welcome-footer-links a {
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.welcome-footer-links a:hover {
+    color: var(--color-accent-primary);
+    text-decoration: underline;
+}
+
+/* Ensure the separators inside the links look correct */
+.welcome-footer-links .separator {
+    background: var(--color-border-secondary);
+    height: 1em; /* Adjust height to match text */
+}
+
 /* ============================================================================
    SPONSOR SYSTEM
    ============================================================================ */
@@ -1103,6 +1140,148 @@ input[type="radio"] {
 #support-modal .modal-footer {
     justify-content: flex-start;
 }
+
+/* ============================================================================
+   HELP MODAL
+   ============================================================================ */
+
+.modal--help .modal-body {
+    max-height: 80vh;
+}
+
+.help-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+}
+
+.help-section h3 {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--color-border-primary);
+}
+
+/* Workflow Steps */
+.workflow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.workflow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius);
+}
+
+.step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    background: var(--color-accent-primary);
+    color: white;
+    border-radius: 50%;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.step-content strong {
+    display: block;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-primary);
+    margin-bottom: 2px;
+}
+
+.step-content p {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    margin: 0;
+}
+
+/* Shortcut Groups */
+.shortcut-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.shortcut-group:last-child {
+    margin-bottom: 0;
+}
+
+.shortcut-group h4 {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.shortcut-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.shortcut-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+}
+
+.shortcut-keys {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: center;
+}
+
+.shortcut-keys kbd {
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-secondary);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: var(--font-size-xs);
+    font-family: var(--font-mono);
+    box-shadow: 0 1px 0 var(--color-border-primary);
+    min-width: 1.5rem;
+    text-align: center;
+}
+
+.shortcut-desc {
+    color: var(--color-text-secondary);
+}
+
+/* Tips List */
+.help-tips {
+    margin: 0;
+    padding-left: var(--spacing-lg);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.help-tips li {
+    margin-bottom: var(--spacing-xs);
+}
+
+.help-tips li:last-child {
+    margin-bottom: 0;
+}
+
+/* Help Modal Footer */
+.modal--help .modal-footer {
+    justify-content: space-between;
+}
+
 
 /* ============================================================================
    OPERATIONS & G-CODE MODAL

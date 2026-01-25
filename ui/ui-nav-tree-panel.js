@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        ui/ui-nav-tree-panel.js
  * @description Manages the operations tree nav (left sidebar)
  * @author      Eltryus - Ricardo Marques
@@ -101,14 +101,17 @@
             const category = document.querySelector(`.operation-category[data-op-type="${opType}"]`);
             if (!category) return;
 
+            const header = category.querySelector('.category-header');
             const isExpanded = category.classList.contains('expanded');
 
             if (isExpanded) {
                 category.classList.remove('expanded');
                 this.expandedCategories.delete(opType);
+                if (header) header.setAttribute('aria-expanded', 'false');
             } else {
                 category.classList.add('expanded');
                 this.expandedCategories.add(opType);
+                if (header) header.setAttribute('aria-expanded', 'true');
             }
         }
 
@@ -147,10 +150,17 @@
             const content = nodeElement.querySelector('.file-node-content');
             const label = nodeElement.querySelector('.file-label');
 
-            // Add ARIA attributes for keyboard navigation
+            // ARIA attributes for keyboard navigation
             content.setAttribute('role', 'treeitem');
             content.setAttribute('tabindex', '-1');
             content.setAttribute('aria-selected', 'false');
+            content.setAttribute('aria-level', '2');
+
+            // Setup geometries container with group role
+            const geometriesContainer = nodeElement.querySelector('.file-geometries');
+            if (geometriesContainer) {
+                geometriesContainer.setAttribute('role', 'group');
+            }
 
             // Find the buttons already in your template
             const deleteBtn = nodeElement.querySelector('.delete-btn');
@@ -216,10 +226,17 @@
 
             category.appendChild(fileNode);
 
+            // Update category aria-expanded since it now has files
             const categoryElement = category.closest('.operation-category');
-            if (categoryElement && !categoryElement.classList.contains('expanded')) {
-                categoryElement.classList.add('expanded');
-                this.expandedCategories.add(operation.type);
+            if (categoryElement) {
+                const categoryHeader = categoryElement.querySelector('.category-header');
+                if (!categoryElement.classList.contains('expanded')) {
+                    categoryElement.classList.add('expanded');
+                    this.expandedCategories.add(operation.type);
+                }
+                if (categoryHeader) {
+                    categoryHeader.setAttribute('aria-expanded', 'true');
+                }
             }
 
             this.updateFileGeometries(fileId, operation);
@@ -327,6 +344,16 @@
                         path.primitives?.length || 0);
                 });
             }
+
+            // Update aria-expanded based on populated geometries
+            const fileContent = fileData.element.querySelector('.file-node-content');
+            if (fileContent) {
+                if (geometriesContainer.children.length > 0) {
+                    fileContent.setAttribute('aria-expanded', 'true');
+                } else {
+                    fileContent.removeAttribute('aria-expanded');
+                }
+            }
         }
 
         addGeometryNode(fileId, geometryType, label, count, extraData = {}) {
@@ -354,8 +381,9 @@
             content.setAttribute('role', 'treeitem');
             content.setAttribute('tabindex', '-1');
             content.setAttribute('aria-selected', 'false');
+            content.setAttribute('aria-level', '3');
 
-            const icons = { // Review icons
+            const icons = {
                 'offsets_combined': iconConfig.offsetCombined,
                 'offset': iconConfig.offsetPass,
                 'preview': iconConfig.preview,
@@ -368,7 +396,6 @@
                             geometryType === 'preview' ? 'preview' : geometryType;
 
             iconEl.textContent = icons[baseType] || iconConfig.defaultGeometry;
-
             labelEl.textContent = label;
 
             if (extraData.offset) {
@@ -419,7 +446,6 @@
                         const hasPreview = fileData.operation.preview && fileData.operation.preview.ready;
                         // Be visible only if there is no preview and the global toggle is on.
                         isVisible = !hasPreview && this.ui.renderer.options.showOffsets;
-
                     } else if (geometryType === 'preview') {
                         // Preview visibility is just the global toggle.
                         isVisible = this.ui.renderer.options.showPreviews;
@@ -464,6 +490,9 @@
             const container = fileData.element.querySelector('.file-geometries');
             if (container) {
                 container.appendChild(geometryNode);
+
+                // Update aria-setsize and aria-posinset for all geometry siblings
+                this.updateGeometrySetInfo(fileId);
             }
         }
 
@@ -546,6 +575,22 @@
             }
         }
 
+        updateGeometrySetInfo(fileId) {
+            const fileData = this.nodes.get(fileId);
+            if (!fileData) return;
+
+            const container = fileData.element.querySelector('.file-geometries');
+            if (!container) return;
+
+            const geometryContents = container.querySelectorAll('.geometry-node-content');
+            const total = geometryContents.length;
+
+            geometryContents.forEach((content, index) => {
+                content.setAttribute('aria-setsize', total.toString());
+                content.setAttribute('aria-posinset', (index + 1).toString());
+            });
+        }
+
         removeGeometryNode(fileId, geometryId) {
             const fileData = this.nodes.get(fileId);
             if (!fileData) return;
@@ -554,6 +599,19 @@
             if (geoData && geoData.element) {
                 geoData.element.remove();
                 fileData.geometries.delete(geometryId);
+
+                // Recalculate aria-expanded and setsize after removal
+                const geometriesContainer = fileData.element.querySelector('.file-geometries');
+                const fileContent = fileData.element.querySelector('.file-node-content');
+
+                if (fileContent && geometriesContainer) {
+                    if (geometriesContainer.children.length > 0) {
+                        fileContent.setAttribute('aria-expanded', 'true');
+                        this.updateGeometrySetInfo(fileId);
+                    } else {
+                        fileContent.removeAttribute('aria-expanded');
+                    }
+                }
             }
         }
 
@@ -577,9 +635,12 @@
 
         removeFileNode(operationId) {
             let nodeToRemove = null;
+            let operationType = null;
+
             this.nodes.forEach((node, id) => {
                 if (node.operation?.id === operationId) {
                     nodeToRemove = id;
+                    operationType = node.operation.type;
                 }
             });
 
@@ -594,6 +655,21 @@
                     this.selectedNode = null;
                     if (this.ui.operationPanel) {
                         this.ui.operationPanel.clearProperties();
+                    }
+                }
+
+                // Update category aria-expanded if now empty
+                if (operationType) {
+                    const category = document.querySelector(`.operation-category[data-op-type="${operationType}"]`);
+                    if (category) {
+                        const filesContainer = category.querySelector('.category-files');
+                        const categoryHeader = category.querySelector('.category-header');
+
+                        if (categoryHeader && filesContainer) {
+                            if (filesContainer.children.length === 0) {
+                                categoryHeader.removeAttribute('aria-expanded');
+                            }
+                        }
                     }
                 }
             }
@@ -651,9 +727,16 @@
 
                 if (header) {
                     header.setAttribute('role', 'treeitem');
-                    header.setAttribute('aria-expanded', 
-                        category.classList.contains('expanded').toString());
                     header.setAttribute('tabindex', index === 0 ? '0' : '-1');
+                    header.setAttribute('aria-level', '1');
+
+                    const hasFiles = filesContainer && filesContainer.children.length > 0;
+                    if (hasFiles) {
+                        header.setAttribute('aria-expanded', 
+                            category.classList.contains('expanded').toString());
+                    } else {
+                        header.removeAttribute('aria-expanded');
+                    }
                 }
 
                 if (filesContainer) {

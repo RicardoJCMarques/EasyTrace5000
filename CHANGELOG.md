@@ -4,6 +4,15 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-01-25
+
+### Added
+- **Added Help Modal:** Pressing F1 or clicking the link in the Welcome modal opens the Help modal with starter tips and keyboard shortcuts/navigation.
+- **Better ARIA Tags:** Improved Accessible Rich Internet Applications tags related to geometry object hierarchy and interaction.
+- **Upgraded Gerber Parsing:** The Gerber Parsing Module can now handle more MACRO commands.
+- **Improved HTML:** Fixed index.html following [W3's Validator](https://validator.w3.org/).
+- **More SEO Changes**
+
 ## [1.0.2] - 2026-01-22
 
 ### Added

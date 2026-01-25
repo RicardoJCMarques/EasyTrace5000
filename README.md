@@ -5,7 +5,7 @@
 An open-source, browser-based CAM tool for generating G-code from PCB manufacturing files. Featuring an interactive 2D Canvas renderer, high-performance Clipper2 geometry engine with a custom arc-reconstruction system and intelligent toolpath optimization.
 
 <div align="center">
-  <img src="./images/EasyTrace5000_workspace.jpg" width="830" alt="EasyTrace5000 Workspace screenshot">
+  <img src="./images/EasyTrace5000_workspace.webp" width="830" alt="EasyTrace5000 Workspace screenshot">
 </div>
 
 ## Live Access
@@ -146,7 +146,7 @@ EasyTrace5000 supports keyboard navigation for efficient workflow. All shortcuts
 | Shortcut | Action |
 |----------|--------|
 | `Home` | Fit all geometry to view |
-| `R` | Fit to view |
+| `F` | Fit to view |
 | `=` | Fit to view |
 | `+` | Zoom in |
 | `-` | Zoom out |
@@ -435,4 +435,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.0.2 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.0.3 | **Platform**: Client-side Web

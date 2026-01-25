@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        parser/parser-gerber.js
  * @description Gerber parsing module (RS-274X)
  * @author      Eltryus - Ricardo Marques
@@ -168,64 +168,130 @@
         }
 
         parseExtendedCommand(block, lineNumber) {
-            // Aperture Macro Definition (e.g., %AMMACRO1*...%)
+            // Aperture Macro Definition
+            // Handles both single-line (EasyEDA) and multi-line (KiCad) formats
             if (block.startsWith('AM')) {
-                const match = block.match(/AM([^*]+)\*(.*)/);
+                // Use [\s\S]* to match across newlines
+                const match = block.match(/^AM([A-Za-z_][A-Za-z0-9_]*)\*([\s\S]*)/);
                 if (match) {
                     const macroName = match[1];
-                    const macroContent = match[2];
-                    this.state.macros.set(macroName, { name: macroName, content: macroContent });
-                    this.debug(`Defined Macro: ${macroName}`);
+                    // Clean up content: remove trailing asterisks and whitespace
+                    let macroContent = match[2].trim();
+                    // Remove trailing * if present (common in single-line macros)
+                    if (macroContent.endsWith('*')) {
+                        macroContent = macroContent.slice(0, -1);
+                    }
+                    
+                    this.state.macros.set(macroName, { 
+                        name: macroName, 
+                        content: macroContent 
+                    });
+                    this.debug(`Defined Macro: ${macroName} (${macroContent.length} chars)`);
                     return { type: 'MACRO_DEF', params: { name: macroName }, line: lineNumber };
                 }
             }
 
-            // Aperture Definition (e.g., %ADD13R,...% or %ADD11MACRO1,...%)
+            // Aperture Definition - check macro shapes before standard shapes to prevent partial matches (e.g., 'R' from 'RoundRect')
             if (block.startsWith('AD')) {
-                // Regex for standard shapes (Circle, Rectangle, Obround, Polygon)
-                const stdMatch = block.match(/^ADD(\d+)([CROP]),(.*)/);
+                const dCode = block.match(/^ADD(\d+)/);
+                if (!dCode) {
+                    this.warnings.push(`Line ${lineNumber}: Invalid aperture definition: ${block}`);
+                    return { type: 'UNKNOWN', params: { content: block }, line: lineNumber };
+                }
+
+                const code = `D${dCode[1]}`;
+                const afterDCode = block.slice(dCode[0].length);
+
+                // Try to match standard shapes first (single letter followed by comma)
+                const stdMatch = afterDCode.match(/^([CROP]),(.*)$/);
                 if (stdMatch) {
+                    const shapeChar = stdMatch[1];
+                    const paramStr = stdMatch[2].replace(/\*$/, ''); // Remove trailing *
                     return {
                         type: 'DEFINE_APERTURE',
                         params: {
-                            code: `D${stdMatch[1]}`,
-                            shape: this.getApertureShape(stdMatch[2]),
-                            parameters: stdMatch[3].split('X').map(p => parseFloat(p))
+                            code: code,
+                            shape: this.getApertureShape(shapeChar),
+                            parameters: this._parseApertureParameters(paramStr)
                         },
                         line: lineNumber
                     };
                 }
 
-                // Regex for macro shapes (e.g., ADD11MACRO1,2X2X90.0000)
-                const macroMatch = block.match(/^ADD(\d+)(\w+),(.*)/);
-                if (macroMatch && this.state.macros.has(macroMatch[2])) {
+                // Try macro shapes (word followed by comma)
+                const macroMatch = afterDCode.match(/^([A-Za-z_][A-Za-z0-9_]*),(.*)$/);
+                if (macroMatch) {
+                    const macroName = macroMatch[1];
+                    const paramStr = macroMatch[2].replace(/\*$/, ''); // Remove trailing *
+
+                    if (this.state.macros.has(macroName)) {
+                        return {
+                            type: 'DEFINE_APERTURE',
+                            params: {
+                                code: code,
+                                shape: 'macro',
+                                macroName: macroName,
+                                variables: this._parseApertureParameters(paramStr)
+                            },
+                            line: lineNumber
+                        };
+                    } else {
+                        this.warnings.push(`Line ${lineNumber}: Undefined macro '${macroName}' in aperture ${code}`);
+                    }
+                }
+
+                // Handle apertures without parameters (e.g., %ADD10C*%)
+                const noParamMatch = afterDCode.match(/^([CROP])\*?$/);
+                if (noParamMatch) {
                     return {
                         type: 'DEFINE_APERTURE',
                         params: {
-                            code: `D${macroMatch[1]}`,
-                            shape: 'macro',
-                            macroName: macroMatch[2],
-                            variables: macroMatch[3].split('X').map(p => parseFloat(p))
+                            code: code,
+                            shape: this.getApertureShape(noParamMatch[1]),
+                            parameters: []
                         },
                         line: lineNumber
                     };
                 }
+
+                this.warnings.push(`Line ${lineNumber}: Could not parse aperture definition: ${block}`);
             }
 
             if (block.startsWith('FS')) {
-                const match = block.match(/FS[LT][AI]X(\d)(\d)Y(\d)(\d)/);
+                const match = block.match(/FS([LT])([AI])X(\d)(\d)Y(\d)(\d)/);
                 if (match) {
-                    return { type: 'SET_FORMAT', params: { xInteger: parseInt(match[1]), xDecimal: parseInt(match[2]), yInteger: parseInt(match[3]), yDecimal: parseInt(match[4]) }, line: lineNumber };
+                    return { 
+                        type: 'SET_FORMAT', 
+                        params: { 
+                            leadingZeros: match[1] === 'L' ? 'omit' : 'keep',
+                            coordinates: match[2] === 'A' ? 'absolute' : 'incremental',
+                            xInteger: parseInt(match[3]), 
+                            xDecimal: parseInt(match[4]), 
+                            yInteger: parseInt(match[5]), 
+                            yDecimal: parseInt(match[6]) 
+                        }, 
+                        line: lineNumber 
+                    };
                 }
             }
+
             if (block.startsWith('MO')) {
                 return { type: 'SET_UNITS', params: { units: block.includes('MM') ? 'mm' : 'inch' }, line: lineNumber };
             }
+
             if (block.startsWith('LP')) {
                 return { type: 'SET_POLARITY', params: { polarity: block.includes('D') ? 'dark' : 'clear' }, line: lineNumber };
             }
-            
+
             return { type: 'UNKNOWN', params: { content: block }, line: lineNumber };
+        }
+
+        _parseApertureParameters(paramStr) {
+            if (!paramStr || paramStr.trim() === '') return [];
+            return paramStr.split('X').map(p => {
+                const val = parseFloat(p);
+                return isNaN(val) ? 0 : val;
+            });
         }
 
         parseStandardCommand(block, lineNumber) {
@@ -316,6 +382,332 @@
             }
             
             return commands;
+        }
+
+        /**
+         * Parses aperture macro content into executable primitive list
+         */
+        parseMacroContent(content) {
+            const primitives = [];
+            if (!content || content.trim() === '') return primitives;
+
+            // Split by '*' to get individual statements
+            // Handle both formats: newline-separated and single-line
+            const statements = content
+                .split('*')
+                .map(s => s.trim())
+                .filter(s => {
+                    if (!s) return false;
+                    // Filter out comments (lines starting with 0 followed by space)
+                    if (/^0\s/.test(s)) return false;
+                    // Filter out empty lines and pure whitespace
+                    if (/^\s*$/.test(s)) return false;
+                    return true;
+                });
+
+            for (const statement of statements) {
+                // Handle variable assignments ($N=expression)
+                if (statement.includes('=') && statement.startsWith('$')) {
+                    // Variable assignment - store for later use
+                    // (Currently not fully implemented, but don't crash)
+                    continue;
+                }
+
+                // Parse primitive: code,params...
+                const parts = statement.split(',');
+                const code = parseInt(parts[0]);
+
+                if (isNaN(code)) {
+                    this.debug(`Skipping non-numeric macro statement: ${statement}`);
+                    continue;
+                }
+
+                primitives.push({
+                    code: code,
+                    params: parts.slice(1).map(p => p.trim())
+                });
+            }
+
+            return primitives;
+        }
+
+        /**
+         * Evaluates a macro parameter expression, substituting variables
+         */
+        evaluateMacroParam(param, variables) {
+            if (typeof param === 'number') return param;
+            
+            let expr = String(param);
+
+            // Substitute $N variables
+            expr = expr.replace(/\$(\d+)/g, (match, num) => {
+                const idx = parseInt(num) - 1;
+                return variables[idx] !== undefined ? variables[idx] : 0;
+            });
+
+            // Handle simple arithmetic: +, -, *, /
+            // Use Function for safe evaluation of numeric expressions
+            try {
+                // Only allow numbers, operators, parentheses, and whitespace
+                if (!/^[\d\s.+\-*/()]+$/.test(expr)) {
+                    return parseFloat(expr) || 0;
+                }
+                return Function('"use strict"; return (' + expr + ')')();
+            } catch (e) {
+                return parseFloat(expr) || 0;
+            }
+        }
+
+        /**
+         * Executes macro primitives and returns polygon points
+         */
+        executeMacro(macro, variables, position) {
+            const primitives = this.parseMacroContent(macro.content);
+            const shapes = [];
+
+            if (primitives.length === 0) {
+                this.warnings.push(`Macro ${macro.name} has no valid primitives`);
+                return shapes;
+            }
+
+            for (const prim of primitives) {
+                const params = prim.params.map(p => this.evaluateMacroParam(p, variables));
+
+                switch (prim.code) {
+                    case 1: // Circle: exposure, diameter, centerX, centerY [, rotation]
+                        if (params[0] === 1) {
+                            const diameter = params[1];
+                            const cx = params[2] || 0;
+                            const cy = params[3] || 0;
+                            shapes.push({
+                                type: 'circle',
+                                x: position.x + cx,
+                                y: position.y + cy,
+                                radius: diameter / 2
+                            });
+                        }
+                        break;
+
+                    case 4: // Outline: exposure, numVertices, x0,y0, x1,y1, ..., rotation
+                        if (params[0] === 1) {
+                            const numVertices = Math.floor(params[1]);
+                            const points = [];
+                            for (let i = 0; i <= numVertices; i++) {
+                                const px = params[2 + i * 2];
+                                const py = params[3 + i * 2];
+                                if (px !== undefined && py !== undefined) {
+                                    points.push({
+                                        x: position.x + px,
+                                        y: position.y + py
+                                    });
+                                }
+                            }
+                            if (points.length >= 3) {
+                                // Close the polygon if not already closed
+                                const first = points[0];
+                                const last = points[points.length - 1];
+                                if (Math.abs(first.x - last.x) > 0.0001 || Math.abs(first.y - last.y) > 0.0001) {
+                                    points.push({ ...first });
+                                }
+                                shapes.push({ type: 'polygon', points: points });
+                            }
+                        }
+                        break;
+
+                    case 5: // Polygon: exposure, numVertices, centerX, centerY, diameter, rotation
+                        if (params[0] === 1) {
+                            const numVertices = Math.floor(params[1]);
+                            const cx = position.x + (params[2] || 0);
+                            const cy = position.y + (params[3] || 0);
+                            const diameter = params[4] || 0;
+                            const rotation = (params[5] || 0) * Math.PI / 180;
+                            const radius = diameter / 2;
+                            const points = [];
+                            
+                            for (let i = 0; i < numVertices; i++) {
+                                const angle = rotation + (2 * Math.PI * i / numVertices);
+                                points.push({
+                                    x: cx + radius * Math.cos(angle),
+                                    y: cy + radius * Math.sin(angle)
+                                });
+                            }
+                            points.push({ ...points[0] }); // Close
+                            shapes.push({ type: 'polygon', points: points });
+                        }
+                        break;
+
+                    case 20: // Vector Line: exposure, width, startX, startY, endX, endY, rotation
+                        if (params[0] === 1) {
+                            const width = params[1];
+                            const x1 = position.x + (params[2] || 0);
+                            const y1 = position.y + (params[3] || 0);
+                            const x2 = position.x + (params[4] || 0);
+                            const y2 = position.y + (params[5] || 0);
+                            shapes.push({
+                                type: 'line',
+                                start: { x: x1, y: y1 },
+                                end: { x: x2, y: y2 },
+                                width: width
+                            });
+                        }
+                        break;
+
+                    case 21: // Center Line (rectangle): exposure, width, height, centerX, centerY, rotation
+                        if (params[0] === 1) {
+                            const w = params[1] || 0;
+                            const h = params[2] || 0;
+                            const cx = position.x + (params[3] || 0);
+                            const cy = position.y + (params[4] || 0);
+                            const rotation = params[5] || 0;
+
+                            if (rotation !== 0) {
+                                // Create rotated rectangle as polygon
+                                const rad = rotation * Math.PI / 180;
+                                const cos = Math.cos(rad);
+                                const sin = Math.sin(rad);
+                                const hw = w / 2, hh = h / 2;
+                                const corners = [
+                                    { x: -hw, y: -hh },
+                                    { x: hw, y: -hh },
+                                    { x: hw, y: hh },
+                                    { x: -hw, y: hh }
+                                ];
+                                const points = corners.map(c => ({
+                                    x: cx + c.x * cos - c.y * sin,
+                                    y: cy + c.x * sin + c.y * cos
+                                }));
+                                points.push({ ...points[0] });
+                                shapes.push({ type: 'polygon', points: points });
+                            } else {
+                                shapes.push({
+                                    type: 'rectangle',
+                                    x: cx - w / 2,
+                                    y: cy - h / 2,
+                                    width: w,
+                                    height: h
+                                });
+                            }
+                        }
+                        break;
+
+                    case 22: // Lower-Left Line (rectangle): exposure, width, height, lowerLeftX, lowerLeftY, rotation
+                        if (params[0] === 1) {
+                            const w = params[1] || 0;
+                            const h = params[2] || 0;
+                            const llx = position.x + (params[3] || 0);
+                            const lly = position.y + (params[4] || 0);
+                            shapes.push({
+                                type: 'rectangle',
+                                x: llx,
+                                y: lly,
+                                width: w,
+                                height: h
+                            });
+                        }
+                        break;
+
+                    default:
+                        this.debug(`Unhandled macro primitive code: ${prim.code}`);
+                }
+            }
+
+            return shapes;
+        }
+
+        /**
+         * Converts macro shapes to flash polygon points
+         */
+        macroShapesToPolygon(shapes, position) {
+            // For RoundRect-style macros, tessellate circles and combine
+            const allPoints = [];
+            const tolerance = config.precision.coordinate || 0.001;
+
+            // If it's a simple case (circles at corners + lines), build rounded rect directly
+            const circles = shapes.filter(s => s.type === 'circle');
+            const lines = shapes.filter(s => s.type === 'line');
+            const polygons = shapes.filter(s => s.type === 'polygon');
+
+            // RoundRect pattern: 4 circles + 4 lines (or polygon outline)
+            if (circles.length === 4 && (lines.length === 4 || polygons.length === 1)) {
+                // Sort circles by angle from center to get corner order
+                const cx = circles.reduce((sum, c) => sum + c.x, 0) / 4;
+                const cy = circles.reduce((sum, c) => sum + c.y, 0) / 4;
+
+                const sortedCircles = circles.slice().sort((a, b) => {
+                    const angleA = Math.atan2(a.y - cy, a.x - cx);
+                    const angleB = Math.atan2(b.y - cy, b.x - cx);
+                    return angleA - angleB;
+                });
+
+                const radius = circles[0].radius;
+                const segments = 8; // Per quarter circle
+                const points = [];
+
+                // Build rounded rectangle by going around corners
+                for (let cornerIdx = 0; cornerIdx < 4; cornerIdx++) {
+                    const circle = sortedCircles[cornerIdx];
+                    const nextCircle = sortedCircles[(cornerIdx + 1) % 4];
+
+                    // Determine which quadrant arc to draw
+                    const dx = circle.x - cx;
+                    const dy = circle.y - cy;
+
+                    // Arc from edge coming in to edge going out
+                    let startAngle, endAngle;
+                    if (dx > 0 && dy > 0) { // Top-right
+                        startAngle = 0;
+                        endAngle = Math.PI / 2;
+                    } else if (dx < 0 && dy > 0) { // Top-left
+                        startAngle = Math.PI / 2;
+                        endAngle = Math.PI;
+                    } else if (dx < 0 && dy < 0) { // Bottom-left
+                        startAngle = Math.PI;
+                        endAngle = 3 * Math.PI / 2;
+                    } else { // Bottom-right
+                        startAngle = 3 * Math.PI / 2;
+                        endAngle = 2 * Math.PI;
+                    }
+
+                    // Add arc points
+                    for (let i = 0; i <= segments; i++) {
+                        const t = i / segments;
+                        const angle = startAngle + t * (endAngle - startAngle);
+                        points.push({
+                            x: circle.x + radius * Math.cos(angle),
+                            y: circle.y + radius * Math.sin(angle)
+                        });
+                    }
+                }
+                
+                return points;
+            }
+
+            // Fallback: just use polygon outline if available
+            if (polygons.length > 0) {
+                return polygons[0].points;
+            }
+
+            // Ultimate fallback: create bounding box
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const shape of shapes) {
+                if (shape.type === 'circle') {
+                    minX = Math.min(minX, shape.x - shape.radius);
+                    minY = Math.min(minY, shape.y - shape.radius);
+                    maxX = Math.max(maxX, shape.x + shape.radius);
+                    maxY = Math.max(maxY, shape.y + shape.radius);
+                }
+            }
+
+            if (isFinite(minX)) {
+                return [
+                    { x: minX, y: minY },
+                    { x: maxX, y: minY },
+                    { x: maxX, y: maxY },
+                    { x: minX, y: maxY }
+                ];
+            }
+
+            return null;
         }
 
         extractCoordinates(text) {
@@ -586,30 +978,38 @@
                     break;
 
                 case 'macro':
-                    if (aperture.macroName === 'MACRO1') {
-                        flash.shape = 'polygon'; // The plotter receives a polygon
-                        const [width, height, rotation] = aperture.variables;
+                    // Execute the macro with provided variables
+                    const macro = this.state.macros.get(aperture.macroName);
+                    if (!macro) {
+                        this.warnings.push(`Undefined macro: ${aperture.macroName}`);
+                        return;
+                    }
 
-                        const half_w = width / 2;
-                        const half_h = height / 2;
-                        const angleRad = rotation * Math.PI / 180;
-                        const cosA = Math.cos(angleRad);
-                        const sinA = Math.sin(angleRad);
+                    const macroShapes = this.executeMacro(macro, aperture.variables || [], position);
 
-                        const corners = [
-                            { x: -half_w, y: -half_h }, // Top-left
-                            { x: -half_w, y:  half_h }, // Bottom-left
-                            { x:  half_w, y:  half_h }, // Bottom-right
-                            { x:  half_w, y: -half_h }  // Top-right
-                        ];
+                    if (macroShapes.length === 0) {
+                        this.warnings.push(`Macro ${aperture.macroName} produced no geometry`);
+                        return;
+                    }
 
-                        flash.points = corners.map(p => ({
-                            x: position.x + (p.x * cosA - p.y * sinA),
-                            y: position.y + (p.x * sinA + p.y * cosA)
-                        }));
+                    // Convert to polygon points
+                    const polyPoints = this.macroShapesToPolygon(macroShapes, position);
+
+                    if (polyPoints && polyPoints.length >= 3) {
+                        flash.shape = 'polygon';
+                        flash.points = polyPoints;
                     } else {
-                        this.warnings.push(`Unsupported macro flash: ${aperture.macroName}`);
-                        return; 
+                        // Fallback to circles if polygon conversion failed
+                        const circles = macroShapes.filter(s => s.type === 'circle');
+                        if (circles.length > 0) {
+                            // Use first circle as approximation
+                            flash.shape = 'circle';
+                            flash.position = { x: circles[0].x, y: circles[0].y };
+                            flash.radius = circles[0].radius;
+                        } else {
+                            this.warnings.push(`Could not convert macro ${aperture.macroName} to geometry`);
+                            return;
+                        }
                     }
                     break;
 

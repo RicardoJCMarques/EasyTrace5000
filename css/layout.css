@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        layout.css
  * @description Layout structure - grid, toolbar, sidebars, panels
  * @author      Eltryus - Ricardo Marques
@@ -71,6 +71,15 @@
     height: 1.25rem;
     background: var(--color-border-secondary);
     margin: 0 var(--spacing-sm);
+}
+
+.workspace-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    margin: 0;
+    line-height: 1;
+    color: var(--color-text-primary);
+    white-space: nowrap;
 }
 
 /* ============================================================================

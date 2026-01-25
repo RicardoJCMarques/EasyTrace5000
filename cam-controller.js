@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        cam-controller.js
  * @description Initializes and connects core and UI
  * @author      Eltryus - Ricardo Marques
@@ -639,14 +639,12 @@
             }
 
             /* Help */
-            // ? or F1: Show help (future implementation)
-            if (key === '?' || (isShift && code === 'Slash') || key === 'F1') {
+            // F1: Show help
+            if (key === 'F1') {
                 e.preventDefault();
-                // TODO: Show keyboard shortcuts modal
-                this.ui?.statusManager?.showStatus(
-                    'Keyboard shortcuts: Home=Fit, +/-=Zoom, Arrows=Pan, W=Wireframe, G=Grid',
-                    'info'
-                );
+                if (this.modalManager) {
+                    this.modalManager.showModal('help');
+                }
                 return;
             }
         });

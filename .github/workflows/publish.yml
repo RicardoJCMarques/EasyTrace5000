@@ -9,8 +9,19 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - name: Minify
-        uses: dra1ex/minify-action@v1.0.3
+      - name: Minify Assets
+        run: |
+          npm install clean-css-cli terser html-minifier-terser --no-save
+          
+          find dist -name "*.css" -exec npx cleancss --format 'specialComments:all' -o {} {} \;
+          
+          find dist -name "*.js" -exec npx terser {} --compress --mangle --comments '/^!/' -o {} \;
+          
+          find dist -name "*.html" -exec npx html-minifier-terser \
+            --collapse-whitespace \
+            --remove-comments \
+            --ignore-custom-comments "^!" \
+            -o {} {} \;
       
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
@@ -22,7 +33,7 @@ jobs:
           exclude: |
             **/.git*
             .github/**
-            images/EasyTrace5000_workspace.jpg
+            images/EasyTrace5000_workspace.webp
             README.md
             docs/ACCESSIBILITY.md
             CONTRIBUTING.md

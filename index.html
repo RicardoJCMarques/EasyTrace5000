@@ -1,36 +1,32 @@
-<!--!
-/**
- * @file        index.html
- * @description EasyTrace5000 entry point
- * @author      Eltryus - Ricardo Marques
- * @copyright   2025-2026 Eltryus - Ricardo Marques
- * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
--->
-
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
+    <!--!
+        @file        index.html
+        @description EasyTrace5000 entry point
+        @author      Eltryus - Ricardo Marques
+        @copyright   2025-2026 Eltryus - Ricardo Marques
+        @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+        @license     AGPL-3.0-or-later
+    -->
+    <!--
+        EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+        Copyright (C) 2025-2026 Eltryus
+
+        This program is free software: you can redistribute it and/or modify
+        it under the terms of the GNU Affero General Public License as published by
+        the Free Software Foundation, either version 3 of the License, or
+        (at your option) any later version.
+
+        This program is distributed in the hope that it will be useful,
+        but WITHOUT ANY WARRANTY; without even the implied warranty of
+        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        GNU Affero General Public License for more details.
+
+        You should have received a copy of the GNU Affero General Public License
+        along with this program.  If not, see <https://www.gnu.org/licenses/>.
+    -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EasyTrace5000 | Browser-Based PCB CAM Tool</title>
 
@@ -53,11 +49,11 @@
     <meta property="og:image:alt" content="EasyTrace5000 workspace showing PCB geometry">
     <meta property="og:locale" content="en_US">
 
-    <link rel="icon" type="image/png" href="/images/favicon/favicon-96x96.png" sizes="96x96" />
-    <link rel="icon" type="image/svg+xml" href="/images/favicon/favicon.svg" />
-    <link rel="shortcut icon" href="/images/favicon/favicon.ico" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon/apple-touch-icon.png" />
-    <link rel="manifest" href="/images/favicon/site.webmanifest" />
+    <link rel="icon" type="image/png" href="/images/favicon/favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="/images/favicon/favicon.svg">
+    <link rel="shortcut icon" href="/images/favicon/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="/images/favicon/site.webmanifest">
 
     <!-- Modular CSS Architecture -->
     <link rel="stylesheet" href="css/base.css">
@@ -82,11 +78,23 @@
             "availability": "https://schema.org/InStock"
         },
         "description": "Browser-based CAM tool for generating G-code from PCB manufacturing files. Supports Gerber, Excellon, and SVG input with optimized toolpath generation.",
+        "potentialAction": [
+            {
+                "@type": "ViewAction",
+                "target": "https://cam.eltryus.design/#quickstart",
+                "name": "Quick Start Guide"
+            },
+            {
+                "@type": "DonateAction",
+                "target": "https://cam.eltryus.design/#support",
+                "name": "Support Development"
+            }
+        ],
         "author": {
             "@type": "Organization",
             "name": "Eltryus",
-            "url": "https://eltryus.design",
-            "logo": "https://eltryus.design/images/logo.png"
+            "url": "https://www.eltryus.design",
+            "logo": "https://www.eltryus.design/images/logo.png"
         },
         "screenshot": {
             "@type": "ImageObject",
@@ -103,7 +111,7 @@
             "Arc reconstruction from polygonized data",
             "Multiple post-processor support (GRBL, Marlin, LinuxCNC)"
         ],
-        "softwareVersion": "1.0.2",
+        "softwareVersion": "1.0.3",
         "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
         "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000",
         "installUrl": "https://cam.eltryus.design/",
@@ -121,6 +129,15 @@
     <!-- Skip link for keyboard accessibility -->
     <a href="#preview-canvas" class="skip-link">Skip to canvas</a>
 
+    <!-- For non-JS crawlers -->
+    <noscript>
+        <div style="padding: 2rem; text-align: center; background: #1a1a1a; color: #fff;">
+            <h1>EasyTrace5000 - PCB CAM Tool</h1>
+            <p>JavaScript required for application functionality.</p>
+            <p><a href="/doc" style="color: #3b82f6;">View Documentation</a></p>
+        </div>
+    </noscript>
+
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-spinner spinner"></div>
@@ -129,7 +146,7 @@
     </div>
 
     <!-- Top Toolbar -->
-    <header class="cam-toolbar toolbar" id="cam-toolbar" role="toolbar" aria-label="Main toolbar">
+    <div class="cam-toolbar toolbar" id="cam-toolbar" role="toolbar" aria-label="Main toolbar">
         <div class="toolbar-section toolbar-left">
             <div class="dropdown-menu dropdown">
                 <button class="btn--menu btn" id="quick-actions-btn">
@@ -156,7 +173,7 @@
         </div>
 
         <div class="toolbar-section toolbar-center">
-            <span class="workspace-title">EasyTrace5000 Workspace</span>
+            <h1 class="workspace-title">EasyTrace5000 PCB CAM Workspace</h1>
         </div>
 
         <div class="toolbar-section toolbar-right">
@@ -196,7 +213,7 @@
                 </svg>
             </button>
         </div>
-    </header>
+    </div>
 
     <!-- Main CAM Workspace -->
     <div class="cam-workspace workspace" id="cam-workspace">
@@ -302,7 +319,7 @@
         </aside>
 
         <!-- Main Canvas Area -->
-        <main class="workspace-main" role="main" aria-label="Canvas">
+        <main class="workspace-main" aria-label="Canvas">
             <div class="canvas-container">
                 <canvas id="preview-canvas" tabindex="-1"></canvas>
                 
@@ -314,7 +331,7 @@
         </main>
 
         <!-- Right Sidebar -->
-        <aside class="sidebar sidebar-right" id="sidebar-right" role="complementary" aria-label="Properties">
+        <aside class="sidebar sidebar-right" id="sidebar-right" aria-label="Properties">
             <!-- Board Placement -->
             <div class="sidebar-section coordinate-section">
                 <header class="section-header collapsible-header collapsible" data-target="coordinate-controls">
@@ -509,10 +526,10 @@
             </div>
 
             <div class="viz-panel collapsed" id="viz-panel">
-                <header class="section-header" id="viz-panel-header">
+                <div class="section-header" id="viz-panel-header">
                     <h2>Visualization</h2>
                     <span class="collapse-indicator">▲</span>
-                </header>
+                </div>
                 <div class="section-content" id="viz-controls">
                     <div class="control-group">
                         <h3>Display</h3>
@@ -614,7 +631,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <span title="Version">Version 1.0.2</span> |
+                <span title="Version">Version 1.0.3</span> |
                 <a href="/LICENSE" target="_blank" title="View License" draggable="false">AGPLv3 Licensed</a> |
                 <a href="doc" target="_blank" title="Documentation" draggable="false">Doc</a> |
                 <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo" draggable="false">GitHub</a> |
@@ -697,10 +714,13 @@
                 </button>
             </div>
             <div class="modal-body">
+
+                <p class="welcome-intro">EasyTrace5000 is a CAM tool for PCB fabrication.<br>It's 100% web-based, client-side, open-source, and free to use.</p>
+
                 <p class="pipeline-subtitle">Select your manufacturing workflow</p>
 
                 <div class="pipeline-selection">
-                    <a href="#" class="pipeline-card pipeline-card--active" id="pipeline-cnc" draggable="false">
+                    <a href="#quickstart" class="pipeline-card pipeline-card--active" id="pipeline-cnc" draggable="false">
                         <div class="pipeline-icon">
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <circle cx="12" cy="12" r="3"/>
@@ -713,7 +733,7 @@
                         <span class="pipeline-action">Start with CNC</span>
                     </a>
 
-                    <a href="#" class="pipeline-card pipeline-card--dev" id="pipeline-laser" draggable="false">
+                    <a href="#support" class="pipeline-card pipeline-card--dev" id="pipeline-laser" draggable="false">
                         <div class="pipeline-icon">
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path d="M12 2v8"/>
@@ -758,11 +778,13 @@
                             </div>
                         </a>
                     </div>
-                    <a href="#" class="sponsor-cta" id="sponsor-contact-cta" draggable="false">Learn about becoming a sponsor</a>
+                    <a href="#support" class="sponsor-cta" id="sponsor-contact-cta" draggable="false">Learn about becoming a sponsor</a>
                 </div>
             </div>
             <div class="modal-footer welcome-footer">
                 <div class="welcome-footer-links">
+                    <a href="#help" id="welcome-help-link" draggable="false">Help</a>
+                    <span class="separator"></span>
                     <a href="LICENSE" target="_blank" draggable="false">AGPLv3</a>
                     <span class="separator"></span>
                     <a href="doc" target="_blank" draggable="false">Documentation</a>
@@ -950,12 +972,183 @@
         </div>
     </div>
 
+     <!-- Help Modal -->
+    <div id="help-modal" class="modal">
+        <div class="modal-content modal--help">
+            <div class="modal-header">
+                <h2>Starting + Keyboard Shortcuts</h2>
+                <button class="modal-close" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="help-content">
+                    <!-- Workflow Overview -->
+                    <section class="help-section">
+                        <h3>Workflow Overview</h3>
+                        <div class="workflow-steps">
+                            <div class="workflow-step">
+                                <span class="step-number">1</span>
+                                <div class="step-content">
+                                    <strong>Load Source Files</strong>
+                                    <p>Add Gerber, Excellon, or SVG files to operation categories</p>
+                                </div>
+                            </div>
+                            <div class="workflow-step">
+                                <span class="step-number">2</span>
+                                <div class="step-content">
+                                    <strong>Set Board Placement</strong>
+                                    <p>Configure origin, rotation, and machine settings</p>
+                                </div>
+                            </div>
+                            <div class="workflow-step">
+                                <span class="step-number">3</span>
+                                <div class="step-content">
+                                    <strong>Generate Geometry</strong>
+                                    <p>Select a file, set tool parameters, click "Generate Offsets"</p>
+                                </div>
+                            </div>
+                            <div class="workflow-step">
+                                <span class="step-number">4</span>
+                                <div class="step-content">
+                                    <strong>Preview & Export</strong>
+                                    <p>Generate preview, then use Operations Manager to export G-code</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Keyboard Shortcuts -->
+                    <section class="help-section">
+                        <h3>Keyboard Shortcuts</h3>
+
+                        <div class="shortcut-group">
+                            <h4>View Controls</h4>
+                            <div class="shortcut-list">
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>Home</kbd> <kbd>F</kbd> <kbd>=</kbd></span>
+                                    <span class="shortcut-desc">Fit geometry to view</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>+</kbd></span>
+                                    <span class="shortcut-desc">Zoom in</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>-</kbd></span>
+                                    <span class="shortcut-desc">Zoom out</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></span>
+                                    <span class="shortcut-desc">Pan canvas</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>Shift</kbd> + Arrows</span>
+                                    <span class="shortcut-desc">Pan faster</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="shortcut-group">
+                            <h4>Origin Controls</h4>
+                            <div class="shortcut-list">
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>B</kbd></span>
+                                    <span class="shortcut-desc">Origin to bottom-left</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>C</kbd></span>
+                                    <span class="shortcut-desc">Origin to center</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>O</kbd></span>
+                                    <span class="shortcut-desc">Save current origin</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="shortcut-group">
+                            <h4>Display Toggles</h4>
+                            <div class="shortcut-list">
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>G</kbd></span>
+                                    <span class="shortcut-desc">Toggle grid</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>W</kbd></span>
+                                    <span class="shortcut-desc">Toggle wireframe</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <section class="help-section">
+                        <h3>Accessibility Navigation</h3>
+                        <div class="shortcut-group">
+                            <h4>Focus Zones</h4>
+                            <p class="help-text">
+                                The interface is divided into zones. Press <kbd>F6</kbd> to cycle focus between them:
+                            </p>
+                            <ol class="zone-list" style="margin-left: 1.5rem; margin-bottom: 1rem; color: var(--color-text-secondary);">
+                                <li><strong>Toolbar:</strong> Top actions and view modes</li>
+                                <li><strong>Operations Tree:</strong> Left sidebar (File navigation)</li>
+                                <li><strong>Properties:</strong> Right sidebar (Settings)</li>
+                            </ol>
+                            <p class="help-text">
+                                <small>Note: Use the <strong>Skip Link</strong> (Tab on load) to jump to Canvas.</small>
+                            </p>
+                        </div>
+                    </section>
+
+                        <div class="shortcut-group">
+                            <h4>Base Navigation</h4>
+                            <div class="shortcut-list">
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>F6</kbd></span>
+                                    <span class="shortcut-desc">Cycle focus zones</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>Delete</kbd></span>
+                                    <span class="shortcut-desc">Remove selected operation</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>Esc</kbd></span>
+                                    <span class="shortcut-desc">Deselect / Close modal</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>F1</kbd></span>
+                                    <span class="shortcut-desc">Show this help</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Tips -->
+                    <section class="help-section">
+                        <h3>Quick Tips</h3>
+                        <ul class="help-tips">
+                            <li>Drag files directly onto the canvas to auto-detect operation type</li>
+                            <li>Use the eye icon in the tree to toggle layer visibility</li>
+                            <li>Mouse wheel zooms; middle-click or right-click drags to pan</li>
+                            <li>Check the Visualization panel (bottom-left) for debug options</li>
+                        </ul>
+                    </section>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="doc" target="_blank" class="btn btn--secondary" draggable="false">Full Documentation</a>
+                <button class="btn btn--primary" id="help-close-btn">Got it</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toolpath Management & G-code Export Modal -->
     <div id="gcode-export-modal" class="modal">
         <div class="modal-content modal--gcode">
             <div class="modal-header">
                 <h2>Toolpath Manager & Export</h2>
-                <button class="modal-close" id="welcome-close" aria-label="Close">
+                <button class="modal-close" id="gcode-close" aria-label="Close">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>

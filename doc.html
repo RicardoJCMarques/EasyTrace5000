@@ -1,36 +1,32 @@
-<!--
-/**
- * @file        doc.html
- * @description EasyTrace5000 Documentation
- * @author      Eltryus - Ricardo Marques
- * @copyright   2025-2026 Eltryus - Ricardo Marques
- * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
--->
-
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
+    <!--!
+        @file        doc.html
+        @description EasyTrace5000 Documentation
+        @author      Eltryus - Ricardo Marques
+        @copyright   2025-2026 Eltryus - Ricardo Marques
+        @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+        @license     AGPL-3.0-or-later
+    -->
+    <!--
+        EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+        Copyright (C) 2025-2026 Eltryus
+
+        This program is free software: you can redistribute it and/or modify
+        it under the terms of the GNU Affero General Public License as published by
+        the Free Software Foundation, either version 3 of the License, or
+        (at your option) any later version.
+
+        This program is distributed in the hope that it will be useful,
+        but WITHOUT ANY WARRANTY; without even the implied warranty of
+        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        GNU Affero General Public License for more details.
+
+        You should have received a copy of the GNU Affero General Public License
+        along with this program.  If not, see <https://www.gnu.org/licenses/>.
+    -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EasyTrace5000 | Documentation</title>
 
@@ -118,7 +114,7 @@
                 <p class="tagline">Browser-based CAM for PCB prototyping</p>
 
                 <figure>
-                    <img src="https://placehold.co/800x400/1a1a1a/666666?text=EasyTrace5000%0AWorkspace+Screenshot" alt="EasyTrace5000 Workspace">
+                    <img src="/images/EasyTrace5000_workspace.webp" alt="EasyTrace5000 Workspace">
                     <figcaption>The EasyTrace5000 workspace with loaded PCB geometry</figcaption>
                 </figure>
 
@@ -220,21 +216,58 @@
             </section>
 
             <!-- Keyboard Shortcuts -->
-            <!-- <section id="keyboard-shortcuts">
-                <h2>Keyboard Shortcuts</h2>
-                <table>
-                    <thead>
-                        <tr><th>Shortcut</th><th>Action</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td><kbd>Ctrl</kbd> + <kbd>O</kbd></td><td>Open file dialog</td></tr>
-                        <tr><td><kbd>Ctrl</kbd> + <kbd>S</kbd></td><td>Export SVG</td></tr>
-                        <tr><td><kbd>F</kbd></td><td>Fit view to geometry</td></tr>
-                        <tr><td><kbd>G</kbd></td><td>Toggle grid</td></tr>
-                        <tr><td><kbd>W</kbd></td><td>Toggle wireframe</td></tr>
-                    </tbody>
-                </table>
-            </section> -->
+            <section id="shortcuts-accessibility">
+                <h2>Controls & Accessibility</h2>
+                <p>EasyTrace5000 is optimized for keyboard efficiency and screen reader support.</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h3>Global Navigation</h3>
+                        <ul class="key-list">
+                            <li><kbd>F6</kbd> Cycle focus zones (Toolbar / Sidebars)</li>
+                            <li><kbd>Tab</kbd> Navigate focusable items</li>
+                            <li><kbd>Esc</kbd> Context-aware close/deselect</li>
+                            <li><kbd>F1</kbd> Open in-app help</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3>View Controls</h3>
+                        <ul class="key-list">
+                            <li><kbd>Home</kbd> / <kbd>F</kbd> Fit to view</li>
+                            <li><kbd>+</kbd> / <kbd>-</kbd> Zoom in/out</li>
+                            <li><kbd>Arrow Keys</kbd> Pan canvas</li>
+                            <li><kbd>Shift</kbd> + <kbd>Arrows</kbd> Fast pan</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3>Operations Tree</h3>
+                        <ul class="key-list">
+                            <li><kbd>↑</kbd> / <kbd>↓</kbd> Navigate items</li>
+                            <li><kbd>→</kbd> / <kbd>←</kbd> Expand/Collapse</li>
+                            <li><kbd>Space</kbd> Select / Toggle</li>
+                            <li><kbd>V</kbd> Toggle visibility</li>
+                            <li><kbd>Del</kbd> Delete selected</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>Accessibility Features</h3>
+                <p>
+                    The application targets <strong>WCAG 2.1 Level AA</strong> compliance.
+                </p>
+                <ul>
+                    <li><strong>Focus Zones:</strong> Use <kbd>F6</kbd> to jump between the Toolbar, Operations Tree, and Property Panel without tabbing through every element.</li>
+                    <li><strong>Skip Links:</strong> A hidden link appears on the first <kbd>Tab</kbd> press to jump directly to the main canvas.</li>
+                    <li><strong>Screen Readers:</strong> All icons include `aria-label` descriptions. Status updates (file loading, errors) are announced via Live Regions.</li>
+                    <li><strong>High Contrast:</strong> A theme system is already implemented and high-contrast themes will be introduced alongside custom themes.</li>
+                </ul>
+                <p>
+                    For a detailed breakdown of ARIA roles and compliance status, view the 
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/ACCESSIBILITY.md" target="_blank">Accessibility Report on GitHub</a>.
+                </p>
+            </section>
 
             <section id="sponsors" class="sponsors-section">
                 <h2>Project Sponsors</h2>
