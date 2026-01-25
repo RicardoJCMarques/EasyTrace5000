@@ -8,11 +8,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      # 1. Stage: Create clean dist folder
+      - name: Stage Files for Production
+        run: |
+          mkdir dist
+          # Copy source to dist, ignoring git/system files
+          rsync -av --progress . dist/ --exclude .git --exclude .github --exclude node_modules --exclude dist
+
+      # 2. Optimize: Minify files in-place inside dist/
       - name: Minify Assets
         run: |
           npm install clean-css-cli terser html-minifier-terser --no-save
-          
+
           find dist -name "*.css" -exec npx cleancss --format 'specialComments:all' -o {} {} \;
           
           find dist -name "*.js" -exec npx terser {} --compress --mangle --comments '/^!/' -o {} \;
@@ -22,13 +35,15 @@ jobs:
             --remove-comments \
             --ignore-custom-comments "^!" \
             -o {} {} \;
-      
+
+      # 3. Deploy: Upload only the dist folder
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./dist/
           server-dir: /
           exclude: |
             **/.git*
