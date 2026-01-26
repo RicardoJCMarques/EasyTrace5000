@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        cam-ui.js
  * @description Tooltip integration, status manager usage
  * @author      Eltryus - Ricardo Marques

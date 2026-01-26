@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        renderer/renderer-layer.js
  * @description Manages canvas layers
  * @author      Eltryus - Ricardo Marques

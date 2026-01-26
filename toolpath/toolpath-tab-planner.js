@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        toolpath/toolpath-tab-planner.js
  * @description Calculates tab positions for cutout polygons
  * @author      Eltryus - Ricardo Marques

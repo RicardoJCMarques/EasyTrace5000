@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        ui/ui-controls.js
  * @description Manages the user interactivity
  * @author      Eltryus - Ricardo Marques

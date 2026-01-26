@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        geometry/geometry-processor.js
  * @description Processes geometric boolean operations
  * @author      Eltryus - Ricardo Marques

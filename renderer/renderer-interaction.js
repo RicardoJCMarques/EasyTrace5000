@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        renderer/renderer-interaction.js
  * @description Manages canvas user interactions
  * @author      Eltryus - Ricardo Marques

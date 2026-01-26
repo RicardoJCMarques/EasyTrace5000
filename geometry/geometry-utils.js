@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        geometry/geometry-utils.js
  * @description Contains general auxiliary functions
  * @author      Eltryus - Ricardo Marques

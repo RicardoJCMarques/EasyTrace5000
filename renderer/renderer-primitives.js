@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        renderer/renderer-primitives.js
  * @description Dedicated geometry object definitions
  * @author      Eltryus - Ricardo Marques

@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        cam-core.js
  * @description Core application logic
  * @author      Eltryus - Ricardo Marques
@@ -103,29 +103,6 @@
             this.isInitializing = true;
 
             this.debug('Initializing processors with Clipper2...');
-
-            // Check required classes
-            const requiredClasses = ['GerberParser', 'ExcellonParser', 'ParserPlotter', 'GeometryProcessor'];
-
-            if (typeof ParserCore === 'undefined') {
-                console.error('ParserCore base class not available');
-                this.isInitializing = false;
-                return false;
-            }
-
-            let allAvailable = true;
-            requiredClasses.forEach(className => {
-                if (typeof window[className] === 'undefined') {
-                    console.error(`❌ ${className} not available`); // Review - replace emoji for character like ✓
-                    allAvailable = false;
-                } else this.debug(`✓ ${className} available`);
-
-            });
-
-            if (!allAvailable) {
-                this.isInitializing = false;
-                return false;
-            }
 
             // Initialize GeometryProcessor
             if (typeof GeometryProcessor !== 'undefined') {

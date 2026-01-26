@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        gcode/processors/roland-processor.js
  * @description ROLAND post-processing module
  * @author      Eltryus - Ricardo Marques

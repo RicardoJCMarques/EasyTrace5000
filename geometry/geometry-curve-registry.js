@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        geometry/geometry-curve-registry.js
  * @description Curve Registry required for arc-reconstruction
  * @author      Eltryus - Ricardo Marques

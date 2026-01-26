@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        renderer/renderer-core.js
  * @description Coordinates canvas, view and layer states
  * @author      Eltryus - Ricardo Marques

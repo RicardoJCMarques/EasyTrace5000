@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        parser/parser-plotter.js
  * @description Converts parsed objects into geometric primitives
  * @author      Eltryus - Ricardo Marques

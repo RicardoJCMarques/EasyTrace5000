@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        parser/parser-excellon.js
  * @description Excellon parsing module
  * @author      Eltryus - Ricardo Marques

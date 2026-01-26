@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        toolpath/toolpath-machine-processor.js
  * @description Adds machine operations and defines special cycles (e.g. Helix entry milled holes and slots)
  * @author      Eltryus - Ricardo Marques

@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        language/language-manager.js
  * @description Language & translation manager
  * @author      Eltryus - Ricardo Marques

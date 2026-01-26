@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        ui/ui-parameter-manager.js
  * @description Parameter input management and validation
  * @author      Eltryus - Ricardo Marques

@@ -62,6 +62,8 @@
     <link rel="stylesheet" href="css/canvas.css">
     <link rel="stylesheet" href="css/theme.css">
 
+    <link rel="preload" href="geometry/clipper2z.wasm" as="fetch" crossorigin>
+
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -127,7 +129,7 @@
 <body>
 
     <!-- Skip link for keyboard accessibility -->
-    <a href="#preview-canvas" class="skip-link">Skip to canvas</a>
+    <a href="#cam-workspace" class="skip-link">Skip to Canvas</a>
 
     <!-- For non-JS crawlers -->
     <noscript>
@@ -142,7 +144,7 @@
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-spinner spinner"></div>
         <div id="loading-text">Loading EasyTrace5000...</div>
-        <div id="loading-progress" class="loading-progress">0%</div>
+        <div id="loading-progress" class="loading-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Application loading progress">0%</div>
     </div>
 
     <!-- Top Toolbar -->
@@ -1226,140 +1228,79 @@
 
     <!-- Theme Loader (must load before other scripts) -->
     <script src="themes/theme-loader.js"></script>
-    
-    <!-- Scripts -->
-    <script src="config.js"></script>
-    <script>
-        const scripts = [
-            // Language (& Translations)
-            'language/language-manager.js',
 
-            // Geometry and processing
-            'geometry/clipper2z.js',
-            'geometry/geometry-processor.js',
-            'geometry/geometry-curve-registry.js',
-            'geometry/geometry-arc-reconstructor.js',
-            'geometry/geometry-clipper-wrapper.js',
-            'geometry/geometry-utils.js',
-            'geometry/geometry-offsetter.js',
+    <!-- Application Scripts (defer = parallel download) -->
+    <script defer src="config.js"></script>
+    <script defer src="language/language-manager.js"></script>
+    <script defer src="geometry/clipper2z.js"></script>
+    <script defer src="geometry/geometry-processor.js"></script>
+    <script defer src="geometry/geometry-curve-registry.js"></script>
+    <script defer src="geometry/geometry-arc-reconstructor.js"></script>
+    <script defer src="geometry/geometry-clipper-wrapper.js"></script>
+    <script defer src="geometry/geometry-utils.js"></script>
+    <script defer src="geometry/geometry-offsetter.js"></script>
+    <script defer src="parsers/primitives.js"></script>
+    <script defer src="parsers/parser-core.js"></script>
+    <script defer src="parsers/parser-gerber.js"></script>
+    <script defer src="parsers/parser-excellon.js"></script>
+    <script defer src="parsers/parser-svg.js"></script>
+    <script defer src="parsers/parser-plotter.js"></script>
+    <script defer src="renderer/renderer-core.js"></script>
+    <script defer src="renderer/renderer-primitives.js"></script>
+    <script defer src="renderer/renderer-overlay.js"></script>
+    <script defer src="renderer/renderer-interaction.js"></script>
+    <script defer src="renderer/renderer-layer.js"></script>
+    <script defer src="ui/ui-tooltip.js"></script>
+    <script defer src="ui/tool-library.js"></script>
+    <script defer src="ui/ui-parameter-manager.js"></script>
+    <script defer src="ui/ui-nav-tree-panel.js"></script>
+    <script defer src="ui/ui-operation-panel.js"></script>
+    <script defer src="ui/ui-status-manager.js"></script>
+    <script defer src="ui/ui-controls.js"></script>
+    <script defer src="ui/ui-modal-manager.js"></script>
+    <script defer src="toolpath/toolpath-primitives.js"></script>
+    <script defer src="toolpath/toolpath-optimizer.js"></script>
+    <script defer src="toolpath/toolpath-machine-processor.js"></script>
+    <script defer src="toolpath/toolpath-tab-planner.js"></script>
+    <script defer src="toolpath/toolpath-geometry-translator.js"></script>
+    <script defer src="gcode/processors/base-processor.js"></script>
+    <script defer src="gcode/processors/grbl-processor.js"></script>
+    <script defer src="gcode/processors/grblHAL-processor.js"></script>
+    <script defer src="gcode/processors/roland-processor.js"></script>
+    <script defer src="gcode/processors/marlin-processor.js"></script>
+    <script defer src="gcode/processors/mach3-processor.js"></script>
+    <script defer src="gcode/processors/linuxcnc-processor.js"></script>
+    <script defer src="gcode/gcode-generator.js"></script>
+    <script defer src="utils/coordinate-system.js"></script>
+    <script defer src="utils/unit-converter.js"></script>
+    <script defer src="utils/svg-exporter.js"></script>
+    <script defer src="cam-core.js"></script>
+    <script defer src="cam-ui.js"></script>
+    <script defer src="cam-controller.js"></script>
 
-            // Parsers and primitives
-            'parsers/primitives.js',
-            'parsers/parser-core.js',
-            'parsers/parser-gerber.js',
-            'parsers/parser-excellon.js',
-            'parsers/parser-svg.js',
-            'parsers/parser-plotter.js',
-
-            // Rendering
-            'renderer/renderer-core.js',
-            'renderer/renderer-primitives.js',
-            'renderer/renderer-overlay.js',
-            'renderer/renderer-interaction.js',
-            'renderer/renderer-layer.js',
-
-            // UI Components
-            'ui/ui-tooltip.js',
-            'ui/tool-library.js',
-            'ui/ui-parameter-manager.js',
-            'ui/ui-nav-tree-panel.js',
-            'ui/ui-operation-panel.js',
-            'ui/ui-status-manager.js',
-            'ui/ui-controls.js',
-            'ui/ui-modal-manager.js',
-
-            // Toolpath system
-            'toolpath/toolpath-primitives.js',
-            'toolpath/toolpath-optimizer.js',
-            'toolpath/toolpath-machine-processor.js',
-            'toolpath/toolpath-tab-planner.js',
-            'toolpath/toolpath-geometry-translator.js',
-
-            // G-code generation
-            "gcode/processors/base-processor.js",
-            "gcode/processors/grbl-processor.js",
-            "gcode/processors/grblHAL-processor.js",
-            "gcode/processors/roland-processor.js",
-            "gcode/processors/marlin-processor.js",
-            "gcode/processors/mach3-processor.js",
-            "gcode/processors/linuxcnc-processor.js",
-            "gcode/gcode-generator.js",
-
-            // Utils
-            'utils/coordinate-system.js',
-            'utils/unit-converter.js',
-            'utils/svg-exporter.js',
-
-            // Core application
-            'cam-core.js',
-            'cam-ui.js',
-            'cam-controller.js'
-        ];
-
-        let loadedCount = 0;
-        const totalScripts = scripts.length;
-        let loadingStartTime = Date.now();
-        let failedScripts = [];
-
-        function loadScript(src) {
-            return new Promise((resolve) => {
-                const script = document.createElement('script');
-                script.src = src;
-                script.async = false;
-                script.onload = () => {
-                    console.log(`✓ Loaded: ${src}`);
-                    loadedCount++;
-                    updateLoadingProgress();
-                    resolve();
-                };
-                script.onerror = () => {
-                    console.error(`✗ Failed: ${src}`);
-                    failedScripts.push(src);
-                    loadedCount++;
-                    updateLoadingProgress();
-                    resolve();
-                };
-                document.head.appendChild(script);
-            });
-        }
-
-        function updateLoadingProgress() {
-            const progress = Math.round((loadedCount / totalScripts) * 100);
-            const progressElement = document.getElementById('loading-progress');
-            const textElement = document.getElementById('loading-text');
-
-            if (progressElement) {
-                progressElement.textContent = `${progress}%`;
-            }
-
-            if (loadedCount === totalScripts) {
-                const loadTime = Date.now() - loadingStartTime;
-                if (failedScripts.length > 0) {
-                    textElement.textContent = `Ready with warnings (${loadTime}ms)`;
-                    console.warn('Failed modules:', failedScripts);
-                } else {
-                    textElement.textContent = `Ready (${loadTime}ms)`;
-                }
-
-                // All scripts are loaded, now start the application controller
-                if (typeof window.startApplication === 'function') {
-                    window.startApplication();
-                } else {
-                    console.error('Fatal: startApplication() not found after script load.');
-                    textElement.textContent = 'Fatal Error: Failed to start application.';
-                }
-            }
-        }
-
-        async function initializeApp() {
+    <!-- Initialization (Also defered, runs after all other modules are loaded) -->
+    <script defer>
+        document.addEventListener('DOMContentLoaded', function() {
             console.log('EasyTrace5000 Advanced Workspace v2.0');
-            for (const scriptPath of scripts) {
-                await loadScript(scriptPath);
+            
+            const loadingText = document.getElementById('loading-text');
+            const loadingProgress = document.getElementById('loading-progress');
+            
+            if (loadingText) loadingText.textContent = 'Ready';
+            if (loadingProgress) {
+                loadingProgress.textContent = '100%';
+                loadingProgress.setAttribute('aria-valuenow', 100);
             }
-            console.log('All modules loaded');
-        }
-
-        document.addEventListener('DOMContentLoaded', initializeApp);
+            
+            if (typeof window.startApplication === 'function') {
+                window.startApplication();
+            } else {
+                console.error('Fatal: startApplication() not found after script load');
+                if (loadingText) loadingText.textContent = 'Fatal Error: App failed to load';
+                // Help developers debug
+                console.error('Check browser console for script loading errors');
+            }
+        });
     </script>
 </body>
 </html>

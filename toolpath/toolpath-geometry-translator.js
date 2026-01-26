@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        toolpath/toolpath-geometry-translator.js
  * @description Translates offset geometry into pure toolpath plans
  * @author      Eltryus - Ricardo Marques

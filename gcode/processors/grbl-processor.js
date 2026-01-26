@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        gcode/processors/grbl-processor.js
  * @description GRBL post-processing module
  * @author      Eltryus - Ricardo Marques

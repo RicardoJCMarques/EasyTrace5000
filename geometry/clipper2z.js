@@ -1,4 +1,4 @@
-/*
+/*!
  * Clipper2-WASM
  * Pulled from: https://github.com/ErikSom/Clipper2-WASM
  *

@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        ui/ui-tooltip.js
  * @description Manages all UI tooltips
  * @author      Eltryus - Ricardo Marques

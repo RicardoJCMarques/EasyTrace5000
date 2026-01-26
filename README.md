@@ -92,7 +92,9 @@ The application has been developed and tested with files generated from **KiCAD*
 * **Excellon:** `.drl`, `.xln`, `.txt`, `.drill`, `.exc`
 * **SVG**
 
-Note: The parser understands all SVG data including complex Bézier curves and creates the corresponding Cubic or Quadratic primitives. Bézier primitives are then interpolated by the plotter into line segments, as the geometry engine does not support analytic Bézier offsetting, yet.
+Note 1: Exporting Gerber files with Protel file extensions allows drag'n'drop to automatically assign files to the expected operation.
+
+Note 2: The parser understands all SVG data including complex Bézier curves and creates the corresponding Cubic or Quadratic primitives. Bézier primitives are then interpolated by the plotter into line segments, as the geometry engine does not support analytic Bézier offsetting, yet.
 
 ## Usage
 

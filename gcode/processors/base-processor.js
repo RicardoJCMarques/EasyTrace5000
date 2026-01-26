@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        gcode/processors/base-processor.js
  * @description Base post-processing orchestrator
  * @author      Eltryus - Ricardo Marques

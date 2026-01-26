@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        utils/unit-converter.js
  * @description Handles unit conversions across the application
  * @author      Eltryus - Ricardo Marques

@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        geometry/geometry-arc-reconstructor.js
  * @description Custom built system to recover arcs after Clipper2 booleans
  * @author      Eltryus - Ricardo Marques

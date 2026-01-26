@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        parser/parser-svg.js
  * @description SVG parsing module
  * @author      Eltryus - Ricardo Marques

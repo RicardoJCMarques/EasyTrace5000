@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        ui/tool-library.js
  * @description Manages tool definitions and tool selection functionality
  * @author      Eltryus - Ricardo Marques

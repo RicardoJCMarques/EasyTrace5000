@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        gcode/processors/grblHAL-processor.js
  * @description grblHAL post-processing module
  * @author      Eltryus - Ricardo Marques

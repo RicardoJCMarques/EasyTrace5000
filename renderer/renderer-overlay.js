@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        renderer/renderer-overlay.js
  * @description Handles grid, rulers, origin, scale indicator, and other UI overlays
  * @author      Eltryus - Ricardo Marques

@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        geometry/geometry-clipper-wrapper.js
  * @description Clipper2 WASM library intermediary
  * @author      Eltryus - Ricardo Marques

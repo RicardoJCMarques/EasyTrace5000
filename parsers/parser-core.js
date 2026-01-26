@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        parsers/parser-core.js
  * @description Shared parsing infrastructure for all file formats
  * @author      Eltryus - Ricardo Marques

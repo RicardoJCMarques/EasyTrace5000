@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        toolpath/toolpath-optimizer.js
  * @description Optimizes toolpath plan objects and movement between them
  * @author      Eltryus - Ricardo Marques

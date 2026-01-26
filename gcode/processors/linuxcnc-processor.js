@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        gcode/processors/linuxcnc-processor.js
  * @description LinuxCNC post-processing module
  * @author      Eltryus - Ricardo Marques

@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        utils/svg-exporter.js
  * @description Logic for exporting canvas contents as optimized SVG
  * @author      Eltryus - Ricardo Marques

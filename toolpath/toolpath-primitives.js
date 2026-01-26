@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        toolpath/toolpath-primitives.js
  * @description Shared primitive classes for toolpath generation
  * @author      Eltryus - Ricardo Marques

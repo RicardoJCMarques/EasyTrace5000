@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        ui/ui-operation-panel.js
  * @description Parameter input builder (right sidebar)
  * @author      Eltryus - Ricardo Marques

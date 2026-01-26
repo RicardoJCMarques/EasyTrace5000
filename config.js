@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        config.js
  * @description Configuration - Single file (to be split later) - Under review
  * @author      Eltryus - Ricardo Marques

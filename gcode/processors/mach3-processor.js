@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        gcode/processors/mach3-processor.js
  * @description Mach3 post-processing module
  * @author      Eltryus - Ricardo Marques

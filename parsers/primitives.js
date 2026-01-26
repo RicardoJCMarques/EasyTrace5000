@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        parsers/primitives.js
  * @description Defines geometric primitive data structures
  * @author      Eltryus - Ricardo Marques

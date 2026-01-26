@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        ui/ui-status-manager.js
  * @description Manages the status bar and log panel
  * @author      Eltryus - Ricardo Marques

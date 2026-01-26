@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        gcode/gcode-generator.js
  * @description Complete G-code generation from toolpath plans
  * @author      Eltryus - Ricardo Marques

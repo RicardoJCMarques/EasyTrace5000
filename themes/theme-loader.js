@@ -34,107 +34,53 @@
             this.themes = new Map();
             this.storageKey = 'pcbcam-theme';
             this.initialized = false;
+
+            // Registry of available themes and their paths
+            this.themeRegistry = {
+                'dark': 'themes/dark.json',
+                'light': 'themes/light.json'
+            };
         }
 
-        /**
-         * Initialize theme system
-         * @param {string} defaultTheme - Default theme ID ('dark' or 'light')
-         * @returns {Promise<boolean>} Success status
-         */
         async init(defaultTheme = 'dark') {
             if (this.initialized) return true;
 
+            const savedTheme = localStorage.getItem(this.storageKey) || defaultTheme;
+
             try {
-                // Load both themes
-                await Promise.all([
-                    this.loadTheme('dark', 'themes/dark.json'),
-                    this.loadTheme('light', 'themes/light.json')
-                ]);
-
-                // Get saved theme or use default
-                const savedTheme = localStorage.getItem(this.storageKey) || defaultTheme;
-
-                // Apply theme
+                // Only load the one we actually need right now
                 await this.applyTheme(savedTheme);
-
                 this.initialized = true;
                 return true;
-
             } catch (error) {
                 console.error('Theme initialization failed:', error);
-                // Apply fallback theme from CSS
                 this.applyFallbackTheme(defaultTheme);
                 return false;
             }
         }
 
-        /**
-         * Load theme from JSON file
-         * @param {string} id - Theme ID
-         * @param {string} url - Theme JSON file URL
-         * @returns {Promise<Object>} Theme data
-         */
-        async loadTheme(id, url) {
-            try {
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const themeData = await response.json();
-
-                // Validate theme structure
-                if (!this.validateTheme(themeData)) {
-                    throw new Error(`Invalid theme structure in ${url}`);
-                }
-
-                this.themes.set(id, themeData);
-                return themeData;
-
-            } catch (error) {
-                console.error(`Failed to load theme ${id} from ${url}:`, error);
-                throw error;
-            }
-        }
-
-        /**
-         * Validate theme data structure
-         * @param {Object} theme - Theme data
-         * @returns {boolean} Valid
-         */
-        validateTheme(theme) {
-            if (!theme || typeof theme !== 'object') return false;
-            if (!theme.id || !theme.colors) return false;
-
-            const requiredCategories = ['background', 'text', 'border', 'accent'];
-            return requiredCategories.every(cat => theme.colors[cat]);
-        }
-
-        /**
-         * Apply theme to document
-         * @param {string} themeId - Theme ID to apply
-         * @returns {Promise<boolean>} Success status
-         */
         async applyTheme(themeId) {
+            // 1. Check if already loaded in memory
+            if (!this.themes.has(themeId)) {
+                
+                // 2. If not, check if we know where to find it
+                if (this.themeRegistry[themeId]) {
+                    // Lazy load it now
+                    await this.loadTheme(themeId, this.themeRegistry[themeId]);
+                } else {
+                    console.warn(`Theme ${themeId} not found in registry`);
+                    return false;
+                }
+            }
+
             const theme = this.themes.get(themeId);
 
-            if (!theme) {
-                console.warn(`Theme ${themeId} not found`);
-                return false;
-            }
-
-            // Set theme attribute on document
+            // Set attribute
             document.documentElement.setAttribute('data-theme', themeId);
-
-            // Apply all color variables to :root
             this.applyColorVariables(theme.colors);
-
-            // Save preference
             localStorage.setItem(this.storageKey, themeId);
-
             this.currentTheme = themeId;
 
-            // Dispatch theme change event
             window.dispatchEvent(new CustomEvent('themechange', {
                 detail: { themeId, theme }
             }));
@@ -142,10 +88,30 @@
             return true;
         }
 
-        /**
-         * Apply color variables to CSS
-         * @param {Object} colors - Color definitions
-         */
+        async loadTheme(id, url) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const themeData = await response.json();
+
+                if (this.validateTheme(themeData)) {
+                    this.themes.set(id, themeData);
+                    return themeData;
+                }
+                throw new Error(`Invalid theme structure: ${url}`);
+            } catch (error) {
+                console.error(`Failed to load theme ${id}:`, error);
+                throw error;
+            }
+        }
+
+        validateTheme(theme) {
+            if (!theme || typeof theme !== 'object') return false;
+            if (!theme.id || !theme.colors) return false;
+            const requiredCategories = ['background', 'text', 'border', 'accent'];
+            return requiredCategories.every(cat => theme.colors[cat]);
+        }
+
         applyColorVariables(colors) {
             const root = document.documentElement;
 
@@ -268,62 +234,29 @@
             }
         }
 
-        /**
-         * Apply fallback theme (uses CSS defaults)
-         * @param {string} themeId - Theme ID
-         */
         applyFallbackTheme(themeId) {
             document.documentElement.setAttribute('data-theme', themeId);
             localStorage.setItem(this.storageKey, themeId);
             this.currentTheme = themeId;
         }
 
-        /**
-         * Toggle between light and dark themes
-         * @returns {Promise<string>} New theme ID
-         */
         async toggleTheme() {
             const newTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+            // This will now fetch 'light' if it hasn't been loaded yet
             await this.applyTheme(newTheme);
             return newTheme;
         }
 
-        /**
-         * Get current theme ID
-         * @returns {string|null} Current theme ID
-         */
-        getCurrentTheme() {
-            return this.currentTheme;
-        }
-
-        /**
-         * Get theme data
-         * @param {string} themeId - Theme ID
-         * @returns {Object|null} Theme data
-         */
-        getTheme(themeId) {
-            return this.themes.get(themeId) || null;
-        }
-
-        /**
-         * Check if themes are loaded
-         * @returns {boolean} Loaded status
-         */
-        isLoaded() {
-            return this.initialized;
-        }
+        getCurrentTheme() { return this.currentTheme; }
+        getTheme(themeId) { return this.themes.get(themeId) || null; }
+        isLoaded() { return this.initialized; }
     }
 
-    // Create global instance
     window.ThemeLoader = new ThemeLoader();
 
-    // Auto-initialize on DOM ready
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            window.ThemeLoader.init();
-        });
+        document.addEventListener('DOMContentLoaded', () => window.ThemeLoader.init());
     } else {
         window.ThemeLoader.init();
     }
-
 })();

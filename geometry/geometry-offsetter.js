@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        geometry/geometry-offsetter.js
  * @description Handles geometry offsetting
  * @author      Eltryus - Ricardo Marques

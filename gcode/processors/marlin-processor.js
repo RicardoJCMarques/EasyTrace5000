@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        gcode/processors/marlin-processor.js
  * @description Marlin post-processing module
  * @author      Eltryus - Ricardo Marques
