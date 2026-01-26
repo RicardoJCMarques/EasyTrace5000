@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-svg-exporter.js
  * @description Standalone module for generating SVG strings from geometry
  * @author      Eltryus - Ricardo Marques

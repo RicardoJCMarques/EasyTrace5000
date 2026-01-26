@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-operations.js
  * @description Boolean operations, offsets, and path manipulations
  * @author      Eltryus - Ricardo Marques

@@ -37,11 +37,18 @@
     align-items: center;
     justify-content: center;
     background: var(--color-canvas-bg);
+    overflow: hidden;
 }
 
 #preview-canvas {
-    max-width: 100%;
-    max-height: 100%;
+    /* Layout Stability Fixes */
+    position: absolute;    /* Take out of document flow to prevent pushing */
+    inset: 0;             /* Snap to all four corners of .canvas-container */
+    width: 100%;          /* Force filling width immediately */
+    height: 100%;         /* Force filling height immediately */
+    display: block;       /* Removes inline spacing quirks */
+
+    /* Existing interactive styles */
     cursor: grab;
     touch-action: none;
     user-select: none;

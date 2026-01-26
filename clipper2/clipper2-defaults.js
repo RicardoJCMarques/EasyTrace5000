@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-defaults.js
  * @description Central configuration for geometry, algorithms, and test data
  * @author      Eltryus - Ricardo Marques

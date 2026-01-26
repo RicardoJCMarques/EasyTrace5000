@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-renderings.js
  * @description Rendering for Paths64, PolyTree, and JS coordinate arrays
  * @author      Eltryus - Ricardo Marques

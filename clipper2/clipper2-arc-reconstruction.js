@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-arc-reconstruction.js
  * @description Demonstrates metadata preservation through boolean operations and reconstruction of analytic curves from tessellated results
  * @author      Eltryus - Ricardo Marques

@@ -5,7 +5,6 @@
 *.sublime-workspace
 
 # Development server configs
-fiveserver.config.js
 .liveserver.json
 bs-config.js
 
@@ -23,6 +22,7 @@ node_modules/
 # Temporary files
 *.tmp
 *.temp
+/dist
 
 # Extras
 licensepasta.txt
