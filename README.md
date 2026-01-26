@@ -298,18 +298,29 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 
 ## Running Locally
 
+> **Note:** The source files run directly in the browser; no build required. Production deployment uses `.github/scripts/build.js` to bundle assets, but this is handled automatically by CI and doesn't affect local usage/development.
+
 1. Clone the repository:
-   ```bash
+```bash
    git clone https://github.com/RicardoJCMarques/Eltryus_CAM.git
-   ```
+```
 
-2. No build step required - pure client-side application
+2. Serve locally (required for WASM loading):
+   - **VS Code:** Use [Five Server](https://github.com/yandeu/five-server-vscode) extension (A fiveserver.config.js file is included in the repo)
+   - **Python:** `python -m http.server 8000`
+   - **Node:** `npx serve`
 
-3. Recommended: Use VS Code with [Five Server](https://github.com/yandeu/five-server-vscode) extension
-   - Right-click `index.html` → "Open with Five Server"
-   - Browser should open at `http://127.0.0.1:5500/`
+3. Open `http://127.0.0.1:5500/` (The included fiveserver.config.js opens :5500 but use the one you set)
 
-4. Optional: Create `fiveserver.config.js` for custom server configuration
+### Testing the Production Build (Optional)
+```bash
+node .github/scripts/build.js --src . --dist ./dist
+```
+Output in `./dist/` mirrors the deployed site (inlined CSS, embedded default JSONs and bundled JS).
+
+### Debugging Notes
+- **Local development:** Use source files directly (easier debugging, regular refresh/reloading works)
+- **Production issues:** Test within `./dist/` output to reproduce online, post-build.js compacted behavior
 
 ## Testing & Debugging
 
@@ -437,4 +448,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.0.3 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.0.4 | **Platform**: Client-side Web

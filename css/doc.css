@@ -7,24 +7,6 @@
  * @license     AGPL-3.0-or-later
  */
 
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
  /* ============================================================================
    DOC-SPECIFIC VARIABLES
    ============================================================================ */
@@ -34,10 +16,6 @@
     --doc-wrapper-max-width: 1440px;
     --spacing-xxxl: 48px;
 }
-
-/* ============================================================================
-   BASE LAYOUT
-   ============================================================================ */
 
 /* ============================================================================
    HEADER
@@ -103,25 +81,8 @@
     margin: 0 var(--spacing-xs);
 }
 
-/* Theme Toggle */
 .doc-header .theme-toggle {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    background: transparent;
-    border: 1px solid var(--color-border-secondary);
-    border-radius: var(--radius);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    overflow: hidden;
-}
-
-.doc-header .theme-toggle:hover {
-    border-color: var(--color-accent-primary);
-    color: var(--color-text-primary);
+    border-color: var(--color-border-secondary);
 }
 
 /* ============================================================================
@@ -486,7 +447,7 @@ aside.callout--warning {
 }
 
 /* ============================================================================
-   PIPELINE CARDS
+   PIPELINE / FEATURE GRIDS
    ============================================================================ */
 .pipeline-grid {
     display: grid;
@@ -495,68 +456,6 @@ aside.callout--warning {
     margin-top: 2rem;
 }
 
-.pipeline-card {
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border-primary);
-    border-radius: var(--radius-lg);
-    padding: 2rem;
-    display: flex;
-    flex-direction: column;
-}
-
-.pipeline-card h3 {
-    margin-top: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.pipeline-card .status-badge {
-    display: inline-block;
-    font-size: 0.75rem;
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-left: auto;
-}
-
-.pipeline-card--active .status-badge {
-    background: rgba(34, 197, 94, 0.15);
-    color: var(--color-success);
-}
-
-.pipeline-card--dev .status-badge {
-    background: rgba(245, 158, 11, 0.15);
-    color: var(--color-warning);
-}
-
-
-.pipeline-card .btn {
-    pointer-events: none;
-    margin-top: auto;
-}
-
-.pipeline-card--active:hover {
-    border-color: var(--color-accent-primary);
-}
-
-.pipeline-card--active:hover .btn--primary {
-    background: var(--color-accent-hover);
-    border-color: var(--color-accent-hover);
-}
-
-.pipeline-card--dev:hover {
-    border-color: var(--color-pipeline-laser);
-}
-
-.pipeline-card--dev:hover .btn--secondary {
-    border-color: var(--color-pipeline-laser);
-    color: var(--color-pipeline-laser);
-    background: var(--color-bg-hover);
-}
-
-/* ============================================================================
-   FEATURE GRID
-   ============================================================================ */
 .feature-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));

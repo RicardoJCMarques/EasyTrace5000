@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-core.js
  * @description Module initialization, state management, and memory cleanup
  * @author      Eltryus - Ricardo Marques

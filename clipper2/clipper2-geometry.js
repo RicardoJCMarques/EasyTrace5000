@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-geometry.js
  * @description Converts between coordinate arrays and Clipper2 objects
  * @author      Eltryus - Ricardo Marques

@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-tests.js
  * @description Tests Module
  * @author      Eltryus - Ricardo Marques

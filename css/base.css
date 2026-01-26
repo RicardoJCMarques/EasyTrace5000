@@ -34,6 +34,12 @@
     box-sizing: border-box;
 }
 
+a {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
+
 /* ============================================================================
    ROOT BASELINE
    ============================================================================ */
@@ -98,7 +104,24 @@ html {
     /* Touch Targets - converted to rem */
     --touch-target-min: 2.75rem;      /* 44px */
     --touch-target-compact: 2.25rem;  /* 36px */
+
+    /* Modal Dimensions */
+    --modal-max-width: min(700px, 95vw);
+    --modal-max-height: 90dvh;
+    --modal-padding-block: var(--spacing-lg);
+    --modal-padding-inline: var(--spacing-lg);
+    --modal-header-min-height: 3.5rem;
+    --modal-footer-min-height: 3.5rem;
+    --modal-gap: var(--spacing-xl);
 }
+
+/* Fallback for browsers without dvh support */
+@supports not (height: 1dvh) {
+    :root {
+        --modal-max-height: 90vh;
+    }
+}
+
 
 /* ============================================================================
    TYPOGRAPHY
@@ -130,6 +153,21 @@ h6 { font-size: var(--font-size-xs); }
 code, pre {
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);
+}
+
+/*
+   Standard Text Links
+   Target anchors that don't have a class (like .btn, .nav-item, etc.)
+   This catches links in paragraphs, lists, and docs automatically.
+*/
+a:not([class]) {
+    color: var(--color-accent-primary);
+    font-weight: 500;
+}
+
+a:not([class]):hover {
+    color: var(--color-accent-hover);
+    text-decoration: underline;
 }
 
 /* ============================================================================

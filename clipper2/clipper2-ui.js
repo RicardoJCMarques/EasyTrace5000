@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        clipper2-ui.js
  * @description UI Module
  * @author      Eltryus - Ricardo Marques

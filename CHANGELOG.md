@@ -4,6 +4,14 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-01-27
+
+### Added
+- **Reworked Tool Loading Logic:** Complete re-writting of js module loading and initialization logic (cut load times by 50-90%).
+- **New Node Build.js Optimizer:** Further expands css, json and js loading to optimize the deployed files that reach web users.
+- **Fixed Modal Flexibility:** All UI elements should now be fully usable on smaller screens, even **landscape** smarphones.
+- **Couple More SEO Changes**
+
 ## [1.0.3] - 2026-01-25
 
 ### Added

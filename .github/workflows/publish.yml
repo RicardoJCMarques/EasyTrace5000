@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,29 +15,39 @@ jobs:
         with:
           node-version: '18'
 
-      # 1. Stage: Create clean dist folder
-      - name: Stage Files for Production
-        run: |
-          mkdir dist
-          # Copy source to dist, ignoring git/system files
-          rsync -av --progress . dist/ --exclude .git --exclude .github --exclude node_modules --exclude dist
+      # 1. Build: Run custom build script (creates dist, inlines CSS, bundles JS)
+      - name: Build Production Assets
+        run: node .github/scripts/build.js --src . --dist ./dist
 
-      # 2. Optimize: Minify files in-place inside dist/
+      # 2. Minify: Compress bundled assets
       - name: Minify Assets
         run: |
-          npm install clean-css-cli terser html-minifier-terser --no-save
+          npm install terser html-minifier-terser --no-save
 
-          find dist -name "*.css" -exec npx cleancss --format 'specialComments:all' -o {} {} \;
-          
-          find dist -name "*.js" -exec npx terser {} --compress --mangle --comments '/^!/' -o {} \;
-          
-          find dist -name "*.html" -exec npx html-minifier-terser \
-            --collapse-whitespace \
-            --remove-comments \
-            --ignore-custom-comments "^!" \
-            -o {} {} \;
+          # Minify JS bundle
+          npx terser dist/app.bundle.js \
+            --compress --mangle \
+            --comments '/^!/' \
+            -o dist/app.bundle.js
 
-      # 3. Deploy: Upload only the dist folder
+          # Minify theme-loader.js (contains embedded theme)
+          npx terser dist/themes/theme-loader.js \
+            --compress --mangle \
+            --comments '/^!/' \
+            -o dist/themes/theme-loader.js
+
+          # Minify all HTML files (includes inlined CSS)
+          for html in dist/*.html; do
+            npx html-minifier-terser "$html" \
+              --collapse-whitespace \
+              --remove-comments \
+              --ignore-custom-comments "^!" \
+              --minify-css true \
+              --minify-js true \
+              -o "$html"
+          done
+
+      # 3. Deploy: Upload dist folder via FTP
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -47,11 +58,5 @@ jobs:
           server-dir: /
           exclude: |
             **/.git*
-            .github/**
-            images/EasyTrace5000_workspace.webp
-            README.md
-            docs/ACCESSIBILITY.md
-            CONTRIBUTING.md
-            SECURITY.md
-            CITATION.cff
             **/.DS_Store
+            **/.build-manifest.json
