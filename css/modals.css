@@ -37,7 +37,10 @@
     z-index: var(--z-modal);
     align-items: center;
     justify-content: center;
-    padding: clamp(var(--spacing-xs), 2vmin, var(--spacing-md));
+    padding: var(--spacing-md);
+    /* Use svh for modals - guaranteed minimum viewport */
+    padding-top: max(var(--spacing-md), env(safe-area-inset-top, 0px));
+    padding-bottom: max(var(--spacing-md), var(--safe-area-bottom));
 }
 
 .modal.active {
@@ -72,6 +75,7 @@
     font-weight: 600;
     color: var(--color-text-primary);
     line-height: 1.2;
+    min-width: 0;
 }
 
 .header-text-group {
@@ -79,6 +83,7 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+    flex: 1;
 }
 
 .modal-subtitle {
@@ -121,10 +126,6 @@
     padding: var(--modal-padding-block) var(--modal-padding-inline);
     overflow-y: auto;
     min-height: 0;
-}
-
-.modal-body:has(+ .modal-footer) {
-    padding-bottom: var(--modal-padding-block);
 }
 
 .modal-footer {
@@ -924,7 +925,9 @@
     background: var(--color-bg-primary);
     border-radius: var(--radius);
     padding: var(--spacing-sm);
-    flex-shrink: 0; 
+    max-height: 12rem;
+    overflow-y: auto;
+    flex-shrink: 0;
 }
 
 .help-text {
@@ -935,21 +938,20 @@
 
 /* ============================================================================
    MODAL RESPONSIVE - HEIGHT CONSTRAINTS
+   Using progressive reduction of chrome to maximize content space
    ============================================================================ */
 
-/* Medium constraint: < 600px height */
-@media (max-height: 600px) {
+/* Tight: 650px and below - reduce padding, shrink chrome */
+@media (max-height: 650px) {
     :root {
-        --modal-max-height: 95dvh;
         --modal-padding-block: var(--spacing-md);
-        --modal-padding-inline: var(--spacing-md);
-        --modal-header-min-height: 2.75rem;
-        --modal-footer-min-height: 2.75rem;
-        --modal-gap: var(--spacing-md);
+        --modal-header-min-height: 3rem;
+        --modal-footer-min-height: 3rem;
+        --modal-gap: var(--spacing-lg);
     }
 
     .modal {
-        padding: var(--spacing-xs);
+        padding: var(--spacing-sm);
     }
 
     .modal-header h2 {
@@ -960,67 +962,29 @@
         font-size: var(--font-size-xs);
     }
 
-    /* Welcome */
-    .welcome-intro {
-        margin-bottom: var(--spacing-sm);
-    }
-
-    .pipeline-desc {
+    /* Truncate long descriptions */
+    .pipeline-desc,
+    .support-card p {
         display: -webkit-box;
-        line-clamp: 2;
-        -webkit-line-clamp: 2;
+        line-clamp: 3;
+        -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
-
-    /* G-code */
-    .modal--gcode .modal-body {
-        flex-direction: column;
-    }
-
-    .gcode-options {
-        flex: 0 0 auto;
-        max-height: 40%;
-        padding-right: 0;
-        padding-bottom: var(--spacing-sm);
-        border-bottom: 1px solid var(--color-border-primary);
-        overflow-y: auto;
-    }
-
-    .gcode-preview {
-        flex: 1;
-        min-height: 0;
-    }
-
 }
 
-/* Severe constraint: < 500px height (typical landscape phone) */
-@media (max-height: 500px) {
+/* Very tight: 550px and below - minimal chrome, stack where needed */
+@media (max-height: 550px) {
     :root {
-        --modal-max-height: 98dvh;
         --modal-padding-block: var(--spacing-sm);
-        --modal-padding-inline: var(--spacing-sm);
-        --modal-header-min-height: 2.25rem;
-        --modal-footer-min-height: 2.25rem;
-        --modal-gap: var(--spacing-sm);
+        --modal-padding-inline: var(--spacing-md);
+        --modal-header-min-height: 2.5rem;
+        --modal-footer-min-height: 2.5rem;
+        --modal-gap: var(--spacing-md);
     }
 
     .modal {
-        padding: 2px;
-        align-items: stretch;
-    }
-
-    .modal-content {
-        max-height: 100%;
-        border-radius: var(--radius);
-    }
-
-    .modal-header {
-        padding: var(--spacing-xs) var(--spacing-sm);
-    }
-
-    .modal-footer {
-        padding: var(--spacing-xs) var(--spacing-sm);
+        padding: var(--spacing-xs);
     }
 
     .modal-close {
@@ -1034,140 +998,124 @@
         height: 16px;
     }
 
-    /* Welcome */
-
-    .pipeline-card {
-        padding: var(--spacing-sm);
+    /* G-code modal: stack vertically */
+    .modal--gcode .modal-body {
+        flex-direction: column;
     }
 
-    .pipeline-desc {
-        line-clamp: 1;
-        -webkit-line-clamp: 1;
-        margin-bottom: var(--spacing-sm);
+    .gcode-options {
+        flex: 0 0 auto;
+        max-height: 45%;
+        padding-right: 0;
+        padding-bottom: var(--spacing-sm);
+        border-right: none;
+        border-bottom: 1px solid var(--color-border-primary);
+        overflow-y: auto;
     }
 
-    /* Quickstart */
-
-    .quickstart-drop-zone {
-        min-height: 3rem;
-        padding: var(--spacing-xs);
+    .gcode-preview {
+        flex: 1;
+        min-height: 0;
     }
 
-    /* Support */
-
+    /* Truncate more aggressively */
+    .pipeline-desc,
     .support-card p {
         display: -webkit-box;
         line-clamp: 2;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
-        margin-bottom: var(--spacing-sm);
     }
-
-    /* Help */
-    .workflow-steps {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    /* G-code */
-    .gcode-options {
-        max-height: 35%;
-    }
-
-    .gcode-options h3 {
-        font-size: var(--font-size-xs);
-        margin-top: var(--spacing-sm);
-    }
-
-    .preview-stats {
-        padding: var(--spacing-xs);
-        gap: var(--spacing-sm);
-    }
-
 }
 
-/* Extreme constraint: < 400px height */
-@media (max-height: 400px) {
+/* Extreme: 450px and below - emergency compact mode */
+@media (max-height: 450px) {
     :root {
         --modal-padding-block: var(--spacing-xs);
-        --modal-header-min-height: 2rem;
-        --modal-footer-min-height: 2rem;
+        --modal-padding-inline: var(--spacing-sm);
+        --modal-header-min-height: 2.25rem;
+        --modal-footer-min-height: 2.25rem;
+        --modal-gap: var(--spacing-sm);
+    }
+
+    .modal {
+        padding: 2px;
+    }
+
+    .modal-content {
+        border-radius: var(--radius);
     }
 
     .modal-header h2 {
         font-size: var(--font-size-sm);
     }
 
-    .modal-footer {
-        border-top: none;
-        padding-top: 0;
-        margin-top: auto;
+    /* Single line descriptions */
+    .pipeline-desc,
+    .support-card p {
+        display: -webkit-box;
+        line-clamp: 1;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
     }
 
-    /* Welcome */
-    .pipeline-selection {
-        gap: var(--spacing-sm);
-    }
-
-    .welcome-footer {
-        padding: var(--spacing-xs);
-    }
-
-    .welcome-footer-links {
-        gap: var(--spacing-xs);
-    }
-
-    /* Quickstart */
+    /* Quickstart: 4-column grid */
     .quickstart-upload-grid {
         grid-template-columns: repeat(4, 1fr);
         gap: var(--spacing-xs);
     }
 
-    .zone-label {
-        font-size: var(--font-size-xs);
+    .quickstart-drop-zone {
+        min-height: 3rem;
+        padding: var(--spacing-xs);
     }
 
-    /* Support */
-    .support-options {
-        grid-template-columns: 1fr;
-        gap: var(--spacing-sm);
+    .zone-types,
+    .zone-hint {
+        display: none;
     }
 
-    /* Help */
+    /* Help: compact workflow */
     .workflow-steps {
-        grid-template-columns: repeat(4, 1fr);
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
         gap: var(--spacing-xs);
     }
 
     .workflow-step {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
         padding: var(--spacing-xs);
     }
 
-    .step-content strong {
-        font-size: var(--font-size-xs);
+    .step-content p {
+        display: none;
     }
 
-    /* G-code */
+    /* G-code: maximize preview */
     .gcode-options {
-        max-height: 30%;
+        max-height: 35%;
     }
 
-    #gcode-preview-text {
-        padding: var(--spacing-xs);
+    .gcode-options h3 {
+        font-size: var(--font-size-xs);
+        margin-top: var(--spacing-xs);
+        margin-bottom: var(--spacing-xs);
+    }
+
+    .operation-order {
+        max-height: 6rem;
+        overflow-y: auto;
     }
 }
 
-/* Landscape orientation + height constraint combo */
-@media (orientation: landscape) and (max-height: 500px) {
+/* Landscape + height constrained: prefer side-by-side */
+@media (orientation: landscape) and (max-height: 550px) {
     .modal-content {
-        max-width: min(90vw, 800px);
+        max-width: min(90vw, 850px);
     }
 
-    /* G-code stays side-by-side on landscape */
+    /* G-code stays horizontal on landscape */
     .modal--gcode .modal-body {
         flex-direction: row;
     }
@@ -1179,6 +1127,11 @@
         border-right: 1px solid var(--color-border-primary);
         padding-right: var(--spacing-sm);
         padding-bottom: 0;
+    }
+
+    /* Support: side by side */
+    .support-options {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 
@@ -1196,6 +1149,10 @@
         grid-template-columns: 1fr;
     }
 
+    .quickstart-example-row {
+        flex-wrap: wrap;
+    }
+
     .quickstart-example-row label {
         width: 100%;
         margin-bottom: var(--spacing-xs);
@@ -1210,5 +1167,32 @@
         order: 3;
         width: 100%;
         justify-content: flex-start;
+    }
+}
+
+/* Both dimensions tight */
+@media (max-width: 480px) and (max-height: 650px) {
+    .pipeline-selection {
+        grid-template-columns: 1fr 1fr;
+        gap: var(--spacing-sm);
+    }
+
+    .pipeline-card {
+        padding: var(--spacing-sm);
+    }
+
+    .pipeline-icon svg {
+        width: 28px;
+        height: 28px;
+    }
+
+    .pipeline-badge {
+        font-size: 0.625rem;
+        padding: 1px 4px;
+    }
+
+    .pipeline-action {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: var(--font-size-xs);
     }
 }

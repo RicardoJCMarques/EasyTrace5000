@@ -1,4 +1,4 @@
-/**
+/*!
  * @file        theme-loader.js
  * @description Theme loading and switching utility
  * @author      Eltryus - Ricardo Marques
@@ -30,7 +30,7 @@
 
     class ThemeLoader {
         constructor() {
-            this.currentTheme = null;
+            this.currentTheme = 'dark'; // Matches CSS default
             this.themes = new Map();
             this.storageKey = 'pcbcam-theme';
             this.initialized = false;
@@ -45,39 +45,49 @@
         async init(defaultTheme = 'dark') {
             if (this.initialized) return true;
 
-            const savedTheme = localStorage.getItem(this.storageKey) || defaultTheme;
+            const savedTheme = localStorage.getItem(this.storageKey);
 
+            // If the user wants the default theme, do nothing because theme.css should be synced to dark.json
+            if (!savedTheme || savedTheme === defaultTheme) {
+                this.currentTheme = defaultTheme;
+                // Ensure the attribute matches for icon logic (sun/moon)
+                document.documentElement.setAttribute('data-theme', defaultTheme);
+                this.initialized = true;
+                return true;
+            }
+
+            // User wants a different theme (e.g., light). Load and apply it.
             try {
-                // Only load the one we actually need right now
                 await this.applyTheme(savedTheme);
                 this.initialized = true;
                 return true;
             } catch (error) {
-                console.error('Theme initialization failed:', error);
-                this.applyFallbackTheme(defaultTheme);
+                console.error('Theme initialization failed, falling back to default CSS:', error);
                 return false;
             }
         }
 
         async applyTheme(themeId) {
-            // 1. Check if already loaded in memory
+            // Check if already loaded in memory
             if (!this.themes.has(themeId)) {
-                
-                // 2. If not, check if we know where to find it
+
+                // If not, check if it can be found
                 if (this.themeRegistry[themeId]) {
                     // Lazy load it now
                     await this.loadTheme(themeId, this.themeRegistry[themeId]);
                 } else {
-                    console.warn(`Theme ${themeId} not found in registry`);
+                    console.warn(`Theme ${themeId} not found`);
                     return false;
                 }
             }
 
             const theme = this.themes.get(themeId);
 
-            // Set attribute
+            // DOM Updates
             document.documentElement.setAttribute('data-theme', themeId);
-            this.applyColorVariables(theme.colors);
+            this.applyColorVariables(theme.colors); // Overwrites the static CSS vars
+
+            // Persist
             localStorage.setItem(this.storageKey, themeId);
             this.currentTheme = themeId;
 
@@ -89,166 +99,52 @@
         }
 
         async loadTheme(id, url) {
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const themeData = await response.json();
-
-                if (this.validateTheme(themeData)) {
-                    this.themes.set(id, themeData);
-                    return themeData;
-                }
-                throw new Error(`Invalid theme structure: ${url}`);
-            } catch (error) {
-                console.error(`Failed to load theme ${id}:`, error);
-                throw error;
-            }
-        }
-
-        validateTheme(theme) {
-            if (!theme || typeof theme !== 'object') return false;
-            if (!theme.id || !theme.colors) return false;
-            const requiredCategories = ['background', 'text', 'border', 'accent'];
-            return requiredCategories.every(cat => theme.colors[cat]);
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const themeData = await response.json();
+            this.themes.set(id, themeData);
+            return themeData;
         }
 
         applyColorVariables(colors) {
             const root = document.documentElement;
+            const set = (k, v) => root.style.setProperty(k, v);
 
-            // Background colors
-            if (colors.background) {
-                root.style.setProperty('--color-bg-primary', colors.background.primary);
-                root.style.setProperty('--color-bg-secondary', colors.background.secondary);
-                root.style.setProperty('--color-bg-tertiary', colors.background.tertiary);
-                root.style.setProperty('--color-bg-hover', colors.background.hover);
-                root.style.setProperty('--color-bg-active', colors.background.active);
-            }
+            const flatten = (prefix, obj) => {
+                Object.entries(obj).forEach(([key, value]) => {
+                    const kebabKey = key.replace(/[A-Z]/g, m => "-" + m.toLowerCase());
+                    const newPrefix = prefix ? `${prefix}-${kebabKey}` : kebabKey;
 
-            // Text colors
-            if (colors.text) {
-                root.style.setProperty('--color-text-primary', colors.text.primary);
-                root.style.setProperty('--color-text-secondary', colors.text.secondary);
-                root.style.setProperty('--color-text-disabled', colors.text.disabled);
-                root.style.setProperty('--color-text-hint', colors.text.hint);
-            }
+                    if (typeof value === 'object' && value !== null) {
+                        flatten(newPrefix, value);
+                    } else {
+                        set(`--${newPrefix}`, value);
+                    }
+                });
+            };
 
-            // Border colors
-            if (colors.border) {
-                root.style.setProperty('--color-border-primary', colors.border.primary);
-                root.style.setProperty('--color-border-secondary', colors.border.secondary);
-                root.style.setProperty('--color-border-focus', colors.border.focus);
-            }
-
-            // Accent colors
-            if (colors.accent) {
-                root.style.setProperty('--color-accent-primary', colors.accent.primary);
-                root.style.setProperty('--color-accent-hover', colors.accent.hover);
-                root.style.setProperty('--color-accent-active', colors.accent.active);
-            }
-
-            // Semantic colors
-            if (colors.semantic) {
-                root.style.setProperty('--color-success', colors.semantic.success);
-                root.style.setProperty('--color-warning', colors.semantic.warning);
-                root.style.setProperty('--color-error', colors.semantic.error);
-                root.style.setProperty('--color-info', colors.semantic.info);
-            }
-
-            // Operation colors
-            if (colors.operations) {
-                root.style.setProperty('--color-operation-isolation', colors.operations.isolation);
-                root.style.setProperty('--color-operation-drill', colors.operations.drill);
-                root.style.setProperty('--color-operation-clearing', colors.operations.clearing);
-                root.style.setProperty('--color-operation-cutout', colors.operations.cutout);
-                root.style.setProperty('--color-operation-toolpath', colors.operations.toolpath);
-            }
-
-            // Canvas colors
-            if (colors.canvas) {
-                root.style.setProperty('--color-canvas-bg', colors.canvas.background);
-                root.style.setProperty('--color-canvas-grid', colors.canvas.grid);
-                root.style.setProperty('--color-canvas-origin', colors.canvas.origin);
-                root.style.setProperty('--color-canvas-origin-outline', colors.canvas.originOutline);
-                root.style.setProperty('--color-canvas-bounds', colors.canvas.bounds);
-                root.style.setProperty('--color-canvas-ruler', colors.canvas.ruler);
-                root.style.setProperty('--color-canvas-ruler-text', colors.canvas.rulerText);
-            }
-
-            // Debug colors
-            if (colors.debug) {
-                root.style.setProperty('--color-debug-points', colors.debug.points);
-                root.style.setProperty('--color-debug-arcs', colors.debug.arcs);
-                root.style.setProperty('--color-debug-wireframe', colors.debug.wireframe);
-                root.style.setProperty('--color-debug-bounds', colors.debug.bounds);
-            }
-
-            // Geometry colors
-            if (colors.geometry) {
-                if (colors.geometry.source) {
-                    root.style.setProperty('--color-geometry-source-isolation', colors.geometry.source.isolation);
-                    root.style.setProperty('--color-geometry-source-drill', colors.geometry.source.drill);
-                    root.style.setProperty('--color-geometry-source-clearing', colors.geometry.source.clearing);
-                    root.style.setProperty('--color-geometry-source-cutout', colors.geometry.source.cutout);
-                }
-                if (colors.geometry.offset) {
-                    root.style.setProperty('--color-geometry-offset-external', colors.geometry.offset.external);
-                    root.style.setProperty('--color-geometry-offset-internal', colors.geometry.offset.internal);
-                    root.style.setProperty('--color-geometry-offset-on', colors.geometry.offset.on);
-                }
-                root.style.setProperty('--color-geometry-preview', colors.geometry.preview);
-                root.style.setProperty('--color-geometry-toolpath', colors.geometry.toolpath);
-                root.style.setProperty('--color-geometry-selection', colors.geometry.selection);
-            }
-
-            // Primitive-specific colors
-            if (colors.primitives) {
-                root.style.setProperty('--color-primitive-offset-internal', colors.primitives.offsetInternal);
-                root.style.setProperty('--color-primitive-offset-external', colors.primitives.offsetExternal);
-                root.style.setProperty('--color-primitive-peck-good', colors.primitives.peckMarkGood);
-                root.style.setProperty('--color-primitive-peck-warn', colors.primitives.peckMarkWarn);
-                root.style.setProperty('--color-primitive-peck-error', colors.primitives.peckMarkError);
-                root.style.setProperty('--color-primitive-peck-slow', colors.primitives.peckMarkSlow);
-                root.style.setProperty('--color-primitive-reconstructed', colors.primitives.reconstructed);
-                root.style.setProperty('--color-primitive-reconstructed-path', colors.primitives.reconstructedPath);
-                root.style.setProperty('--color-primitive-debug-label', colors.primitives.debugLabel);
-                root.style.setProperty('--color-primitive-debug-label-stroke', colors.primitives.debugLabelStroke);
-            }
-
-            // Black and White
-            if (colors.bw) {
-                root.style.setProperty('--color-bw-white', colors.bw.white);
-                root.style.setProperty('--color-bw-black', colors.bw.black);
-            }
-
-            // Pipelines
-            if (colors.pipelines) {
-                root.style.setProperty('--color-pipeline-cnc', colors.pipelines.cnc);
-                root.style.setProperty('--color-pipeline-laser', colors.pipelines.laser);
-            }
-
-            // Interaction (Sponsor & Support)
-            if (colors.interaction) {
-                root.style.setProperty('--color-interaction-sponsorship', colors.interaction.sponsorship);
-                root.style.setProperty('--color-interaction-sponsorship-text', colors.interaction.sponsorshipText);
-                root.style.setProperty('--color-interaction-kofi', colors.interaction.kofi);
-            }
-        }
-
-        applyFallbackTheme(themeId) {
-            document.documentElement.setAttribute('data-theme', themeId);
-            localStorage.setItem(this.storageKey, themeId);
-            this.currentTheme = themeId;
+            if (colors.background) flatten('color-bg', colors.background);
+            if (colors.text) flatten('color-text', colors.text);
+            if (colors.border) flatten('color-border', colors.border);
+            if (colors.accent) flatten('color-accent', colors.accent);
+            if (colors.semantic) flatten('color', colors.semantic);
+            if (colors.operations) flatten('color-operation', colors.operations);
+            if (colors.canvas) flatten('color-canvas', colors.canvas);
+            if (colors.debug) flatten('color-debug', colors.debug);
+            if (colors.geometry) flatten('color-geometry', colors.geometry);
+            if (colors.primitives) flatten('color-primitive', colors.primitives);
+            if (colors.bw) flatten('color-bw', colors.bw);
+            if (colors.pipelines) flatten('color-pipeline', colors.pipelines);
+            if (colors.interaction) flatten('color-interaction', colors.interaction);
         }
 
         async toggleTheme() {
             const newTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
-            // This will now fetch 'light' if it hasn't been loaded yet
             await this.applyTheme(newTheme);
             return newTheme;
         }
 
         getCurrentTheme() { return this.currentTheme; }
-        getTheme(themeId) { return this.themes.get(themeId) || null; }
         isLoaded() { return this.initialized; }
     }
 

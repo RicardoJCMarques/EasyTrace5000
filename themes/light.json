@@ -31,9 +31,9 @@
       "focus": "#4080ff"
     },
     "accent": {
-    "primary": "#2563eb",
-    "hover": "#1d4ed8",
-    "active": "#1e40af"
+      "primary": "#2563eb",
+      "hover": "#1d4ed8",
+      "active": "#1e40af"
     },
     "semantic": {
       "success": "#22c55e",
@@ -49,13 +49,13 @@
       "toolpath": "#ff8844"
     },
     "canvas": {
-      "background": "#b0b0b0",
-      "grid": "#cccccc",
-      "origin": "#000000",
+      "background": "#cdcdcd",
+      "grid": "#373737",
+      "origin": "#373737",
       "originOutline": "#ffffff",
-      "bounds": "#ff0000",
-      "ruler": "#000000",
-      "rulerText": "#929292"
+      "bounds": "#373737",
+      "ruler": "373737",
+      "rulerText": "#373737"
     },
     "geometry": {
       "source": {

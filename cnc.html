@@ -83,14 +83,14 @@
 <body>
     <!-- Header -->
     <header class="doc-header">
-        <h1><a href="/">EasyTrace5000</a></h1>
+        <div class="doc-brand"><a href="/">EasyTrace5000</a></div>
         <nav class="doc-nav">
-            <a href="/">← Application</a>
-            <a href="doc">Docs</a>
-            <a href="cnc" class="active">CNC Guide</a>
-            <a href="laser">Laser Guide</a>
+            <a href="/" draggable="false">← Application</a>
+            <a href="doc" draggable="false">Docs</a>
+            <a href="cnc" draggable="false" class="active">CNC Guide</a>
+            <a href="laser" draggable="false">Laser Guide</a>
             <span class="separator"></span>
-            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank">GitHub</a>
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a>
             <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
                 <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <circle cx="12" cy="12" r="5"></circle>
@@ -115,30 +115,30 @@
         <nav class="doc-sidebar" id="toc">
             <h2>Contents <span class="doc-badge doc-badge--stable">Stable</span></h2>
             <ol>
-                <li><a href="#interface">Interface Overview</a></li>
+                <li><a href="#interface" draggable="false">Interface Overview</a></li>
                 <li>
-                    <a href="#workflow">The Workflow</a>
+                    <a href="#workflow" draggable="false">The Workflow</a>
                     <ol>
-                        <li><a href="#workflow-loading">Loading Files</a></li>
-                        <li><a href="#workflow-coordinates">Setting Up Coordinates</a></li>
-                        <li><a href="#workflow-machine">Machine Settings</a></li>
-                        <li><a href="#workflow-offsets">Generating Offsets</a></li>
-                        <li><a href="#workflow-preview">Generating Preview</a></li>
-                        <li><a href="#workflow-export">Exporting G-code</a></li>
+                        <li><a href="#workflow-loading" draggable="false">Loading Files</a></li>
+                        <li><a href="#workflow-coordinates" draggable="false">Setting Up Coordinates</a></li>
+                        <li><a href="#workflow-machine" draggable="false">Machine Settings</a></li>
+                        <li><a href="#workflow-offsets" draggable="false">Generating Offsets</a></li>
+                        <li><a href="#workflow-preview" draggable="false">Generating Preview</a></li>
+                        <li><a href="#workflow-export" draggable="false">Exporting G-code</a></li>
                     </ol>
                 </li>
                 <li>
-                    <a href="#operations">Operation Types</a>
+                    <a href="#operations" draggable="false">Operation Types</a>
                     <ol>
-                        <li><a href="#op-isolation">Isolation Routing</a></li>
-                        <li><a href="#op-drilling">Drilling</a></li>
-                        <li><a href="#op-clearing">Copper Clearing</a></li>
-                        <li><a href="#op-cutout">Board Cutout</a></li>
+                        <li><a href="#op-isolation" draggable="false">Isolation Routing</a></li>
+                        <li><a href="#op-drilling" draggable="false">Drilling</a></li>
+                        <li><a href="#op-clearing" draggable="false">Copper Clearing</a></li>
+                        <li><a href="#op-cutout" draggable="false">Board Cutout</a></li>
                     </ol>
                 </li>
-                <li><a href="#machine-settings">Machine Settings Reference</a></li>
-                <li><a href="#visualization">Visualization Options</a></li>
-                <li><a href="#tips">Tips &amp; Troubleshooting</a></li>
+                <li><a href="#machine-settings" draggable="false">Machine Settings Reference</a></li>
+                <li><a href="#visualization" draggable="false">Visualization Options</a></li>
+                <li><a href="#tips" draggable="false">Tips & Troubleshooting</a></li>
             </ol>
         </nav>
 
@@ -151,14 +151,14 @@
 
             <section id="safety-warning">
                 <div class="callout callout--warning">
-                    <h4>Safety & Material Warning</h4>
+                    <h2>Safety & Material Warning</h2>
                     <p><strong>Please read this before machining your first board.</strong></p>
                     
-                    <h5>PCB Substrate Selection (FR4 vs FR1)</h5>
+                    <h3>PCB Substrate Selection (FR4 vs FR1)</h3>
                     <p><strong>Avoid FR4 for home milling:</strong> Standard FR4 PCB stock is made of epoxy reinforced with <strong>fiberglass</strong>. Milling FR4 creates fine glass dust which is hazardous to health (silicosis risk) and highly abrasive to machines and tooling.</p>
                     <p><strong>FR1 (Phenolic Paper):</strong> is strongly recommended as it contains no fiberglass, making it safer to machine and extends tool life significantly.</p>
 
-                    <h5>Dust Extraction</h5>
+                    <h3>Dust Extraction</h5>
                     <p>Always use a vacuum system or enclosure. Even FR1 dust should not be inhaled. Good feeds and speeds also help make dust less fine and easier to contain.</p>
                 </div>
             </section>
@@ -296,7 +296,7 @@
                 <p>The footer bar at the bottom serves two purposes:</p>
                 
                 <h4>Visualization Panel</h4>
-                <p>Click the eye icon to expand the visualization settings. Here you can toggle display elements (grid, rulers, wireframe), control layer visibility (traces, pads, drills, offsets, previews), and enable advanced debug features. See the <a href="#visualization">Visualization Options</a> section for details.</p>
+                <p>Click the eye icon to expand the visualization settings. Here you can toggle display elements (grid, rulers, wireframe), control layer visibility (traces, pads, drills, offsets, previews), and enable advanced debug features. See the <a href="#visualization" draggable="false">Visualization Options</a> section for details.</p>
 
                 <h4>Status Bar</h4>
                 <p>Shows status messages and progress for operations like file loading, offset generation, and export. Click the status bar to expand a log history showing recent messages—useful for troubleshooting.</p>
@@ -1002,10 +1002,10 @@
             <!-- Footer -->
             <footer class="doc-footer">
                 <p>
-                    <a href="#toc">Back to Top</a> |
-                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank">GitHub</a> |
-                    <a href="https://ko-fi.com/eltryus" target="_blank">Support Development</a> |
-                    <a href="LICENSE" target="_blank">AGPLv3 Licensed</a>
+                    <a href="#toc" draggable="false">Back to Top</a> |
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a> |
+                    <a href="https://ko-fi.com/eltryus" target="_blank" draggable="false">Support Development</a> |
+                    <a href="LICENSE" target="_blank" draggable="false">AGPLv3 Licensed</a>
                 </p>
             </footer>
         </main>
@@ -1014,7 +1014,7 @@
 
 
     <!-- Scripts -->
-    <script src="themes/theme-loader.js"></script>
+    <script defer src="themes/theme-loader.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const toggle = document.getElementById('theme-toggle');

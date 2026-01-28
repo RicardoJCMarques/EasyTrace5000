@@ -700,7 +700,7 @@
                     cutout: read('--color-operation-cutout'),
                 },
                 canvas: {
-                    background: read('--color-canvas-bg'),
+                    background: read('--color-canvas-background'),
                     grid: read('--color-canvas-grid'),
                     origin: read('--color-canvas-origin'),
                     originOutline: read('--color-canvas-origin-outline'),
@@ -719,10 +719,10 @@
                 primitives: {
                     offsetInternal: read('--color-primitive-offset-internal'),
                     offsetExternal: read('--color-primitive-offset-external'),
-                    peckMarkGood: read('--color-primitive-peck-good'),
-                    peckMarkWarn: read('--color-primitive-peck-warn'),
-                    peckMarkError: read('--color-primitive-peck-error'),
-                    peckMarkSlow: read('--color-primitive-peck-slow'),
+                    peckMarkGood: read('--color-primitive-peck-mark-good'), 
+                    peckMarkWarn: read('--color-primitive-peck-mark-warn'),
+                    peckMarkError: read('--color-primitive-peck-mark-error'),
+                    peckMarkSlow: read('--color-primitive-peck-mark-slow'),
                     reconstructed: read('--color-primitive-reconstructed'),
                     reconstructedPath: read('--color-primitive-reconstructed-path'),
                     debugLabel: read('--color-primitive-debug-label'),

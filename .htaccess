@@ -7,6 +7,8 @@ RewriteRule ^(.*)$ https://cam.eltryus.design/$1 [R=301,L]
 
 # MIME types
 <IfModule mod_mime.c>
+    AddDefaultCharset UTF-8
+
     AddType text/javascript .js
     AddType application/wasm .wasm
     AddType application/json .json

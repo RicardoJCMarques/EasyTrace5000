@@ -66,13 +66,7 @@
     --color-error: #ef4444;
     --color-info: #06b6d4;
 
-    /* Source Geometry Colors */
-    --color-geometry-source-isolation: #ff8844;
-    --color-geometry-source-drill: #4488ff;
-    --color-geometry-source-clearing: #44ff88;
-    --color-geometry-source-cutout: #333333;
-
-    /* Operation Colors */
+    /* Operations Colors */
     --color-operation-isolation: #ff8844;
     --color-operation-drill: #4488ff;
     --color-operation-clearing: #44ff88;
@@ -80,30 +74,66 @@
     --color-operation-toolpath: #00ffff;
 
     /* Canvas Colors */
-    --color-canvas-bg: #0f0f0f;
-    --color-canvas-grid: #333333;
-    --color-canvas-origin: #ffffff;
+    --color-canvas-background: #0f0f0f;
+    --color-canvas-grid: #aaaaaa;
+    --color-canvas-origin: #aaaaaa;
     --color-canvas-origin-outline: #000000;
-    --color-canvas-bounds: #ff0000;
-    --color-canvas-ruler: #888888;
-    --color-canvas-ruler-text: #cccccc;
+    --color-canvas-bounds: #aaaaaa;
+    --color-canvas-ruler: #aaaaaa;
+    --color-canvas-ruler-text: #aaaaaa;
 
     /* Debug Colors */
     --color-debug-points: #ff00ff;
     --color-debug-arcs: #00ffff;
-    --color-debug-wireframe: #00ff00;
+    --color-debug-wireframe: #00aa00;
     --color-debug-bounds: #ff0000;
+
+    /* Geometry Colors */
+    --color-geometry-source-isolation: #ff8844;
+    --color-geometry-source-drill: #4488ff;
+    --color-geometry-source-clearing: #44ff88;
+    --color-geometry-source-cutout: #333333;
+    --color-geometry-offset-external: #a60000;
+    --color-geometry-offset-internal: #00a600;
+    --color-geometry-offset-on: #bcbc02;
+    --color-geometry-preview: #0060dd;
+    --color-geometry-toolpath: #00ffff;
+    --color-geometry-selection: #00ffff;
+
+    /* Primitives Colors */
+    --color-primitive-offset-internal: #00aa00;
+    --color-primitive-offset-external: #ff0000;
+    --color-primitive-peck-mark-good: #16d329ff;
+    --color-primitive-peck-mark-warn: #d2cb00ff;
+    --color-primitive-peck-mark-error: #ff0000;
+    --color-primitive-peck-mark-slow: #ff5e00ff;
+    --color-primitive-reconstructed: #00ffff;
+    --color-primitive-reconstructed-path: #ffff00;
+    --color-primitive-debug-contour-colors-0: #00ff00;
+    --color-primitive-debug-contour-colors-1: #ff0000;
+    --color-primitive-debug-contour-colors-2: #0000ff;
+    --color-primitive-debug-contour-colors-3: #ffff00;
+    --color-primitive-debug-contour-colors-4: #ff00ff;
+    --color-primitive-debug-contour-colors-5: #00ffff;
+    --color-primitive-debug-curve-colors-0: #ff0000;
+    --color-primitive-debug-curve-colors-1: #00ff00;
+    --color-primitive-debug-curve-colors-2: #0000ff;
+    --color-primitive-debug-curve-colors-3: #ffff00;
+    --color-primitive-debug-curve-colors-4: #ff00ff;
+    --color-primitive-debug-curve-colors-5: #00ffff;
+    --color-primitive-debug-label: #FFFFFF;
+    --color-primitive-debug-label-stroke: #000000;
 
     /* B&W Colors */
     --color-bw-black: #000000;
     --color-bw-white: #ffffff;
 
-    /* Pipelines */
+    /* Pipelines Colors */
     --color-pipeline-cnc: #ff8844;
     --color-pipeline-laser: #a855f7;
 
-    /* Interaction */
-    --color-interaction-sponsorship: #8b5cf6;
+    /* Interaction Colors */
+    --color-interaction-sponsorship: #6366f1;
     --color-interaction-sponsorship-text: #e9d5ff;
     --color-interaction-kofi: #42d6aa;
 }
@@ -111,13 +141,6 @@
 /* ============================================================================
    THEME TOGGLE BUTTON
    ============================================================================ */
-
-/* Icon switching */
-.theme-toggle svg {
-    position: absolute;
-    width: 24px;
-    height: 24px;
-}
 
 /* Dark theme (default): Show sun icon */
 .theme-toggle .sun-icon {

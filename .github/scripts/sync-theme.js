@@ -1,0 +1,110 @@
+/*!
+ * @file        .github/scripts/sync-theme.js
+ * @description Syncs dark.json with theme.css - must run manually on .json changes
+ * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025-2026 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// Resolve paths relative to this script location (.github/scripts/)
+const THEME_JSON_PATH = path.resolve(__dirname, '../../themes/dark.json');
+const CSS_PATH = path.resolve(__dirname, '../../css/theme.css');
+
+// Validation
+if (!fs.existsSync(THEME_JSON_PATH)) {
+    console.error(`❌ Error: Theme source not found at ${THEME_JSON_PATH}`);
+    process.exit(1);
+}
+if (!fs.existsSync(CSS_PATH)) {
+    console.error(`❌ Error: Target CSS not found at ${CSS_PATH}`);
+    process.exit(1);
+}
+
+const themeData = JSON.parse(fs.readFileSync(THEME_JSON_PATH, 'utf8'));
+const colors = themeData.colors;
+let cssLines = [];
+
+/**
+ * RECURSIVE FLATTENER
+ * Automatically converts JSON hierarchy to CSS kebab-case variables.
+ * e.g. { primitives: { peckMarkGood: "#..." } } -> --color-primitive-peck-mark-good
+ * * @param {string} prefix - The current CSS var prefix (e.g., 'color-primitive')
+ * @param {object} obj - The JSON object to traverse
+ */
+function flattenVars(prefix, obj) {
+    Object.entries(obj).forEach(([key, value]) => {
+        // Convert JSON camelCase key to CSS kebab-case
+        // e.g. "peckMarkGood" -> "peck-mark-good"
+        const kebabKey = key.replace(/[A-Z]/g, m => "-" + m.toLowerCase());
+        const newPrefix = prefix ? `${prefix}-${kebabKey}` : kebabKey;
+
+        if (typeof value === 'object' && value !== null) {
+            flattenVars(newPrefix, value);
+        } else {
+            cssLines.push(`    --${newPrefix}: ${value};`);
+        }
+    });
+}
+
+// Map JSON categories to their CSS variable prefixes
+// Manually map the "Root" categories to ensure they match existing CSS usage
+const mappings = [
+    { key: 'background', prefix: 'color-bg' }, // Note: changed from 'color-background' to match renderer-core usage of 'color-bg-primary'
+    { key: 'text', prefix: 'color-text' },
+    { key: 'border', prefix: 'color-border' },
+    { key: 'accent', prefix: 'color-accent' },
+    { key: 'semantic', prefix: 'color' }, // Semantic usually maps directly (e.g. --color-success)
+    { key: 'operations', prefix: 'color-operation' },
+    { key: 'canvas', prefix: 'color-canvas' },
+    { key: 'debug', prefix: 'color-debug' },
+    { key: 'geometry', prefix: 'color-geometry' },
+    { key: 'primitives', prefix: 'color-primitive' },
+    { key: 'bw', prefix: 'color-bw' },
+    { key: 'pipelines', prefix: 'color-pipeline' },
+    { key: 'interaction', prefix: 'color-interaction' }
+];
+
+mappings.forEach(map => {
+    if (colors[map.key]) {
+        // Add a nice comment header
+        const title = map.key.charAt(0).toUpperCase() + map.key.slice(1);
+        cssLines.push(`\n    /* ${title} Colors */`);
+        flattenVars(map.prefix, colors[map.key]);
+    }
+});
+
+// Read and Replace CSS File content
+let cssContent = fs.readFileSync(CSS_PATH, 'utf8');
+const rootBlockRegex = /(:root\s*\{)([\s\S]*?)(\})/i;
+const newRootBody = cssLines.join('\n') + '\n';
+
+if (rootBlockRegex.test(cssContent)) {
+    const updatedCss = cssContent.replace(rootBlockRegex, `$1${newRootBody}$3`);
+    fs.writeFileSync(CSS_PATH, updatedCss, 'utf8');
+    console.log(`✅ theme.css synced with dark.json (${cssLines.length} variables)`);
+} else {
+    console.error('❌ Error: Could not find :root { ... } block in theme.css');
+    process.exit(1);
+}

@@ -35,17 +35,19 @@
     z-index: var(--z-sticky);
 }
 
-.doc-header h1 {
+.doc-header .doc-brand {
     font-size: var(--font-size-xl);
+    font-weight: 600;
     margin: 0;
+    line-height: var(--line-height-tight);
 }
 
-.doc-header h1 a {
+.doc-header .doc-brand a {
     color: inherit;
     text-decoration: none;
 }
 
-.doc-header h1 a:hover {
+.doc-header .doc-brand a:hover {
     color: var(--color-accent-primary);
 }
 

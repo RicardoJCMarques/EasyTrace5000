@@ -57,9 +57,15 @@ html {
     --status-bar-height: 2.75rem;         /* 44px */
     --section-header-height: 2.25rem;     /* 36px */
     
-    /* Sidebar widths with responsive clamp */
-    --sidebar-left-width: clamp(17.5rem, 20vw, 20rem);    /* 280px-320px */
-    --sidebar-right-width: clamp(20rem, 25vw, 23.75rem);  /* 320px-380px */
+    /* Safe area - used for footer expansion on notched devices */
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    
+    /* Total footer height including safe area */
+    --footer-total-height: calc(var(--status-bar-height) + var(--safe-area-bottom));
+    
+    /* Sidebar widths - slightly narrower, same flexibility */
+    --sidebar-left-width: clamp(15.5rem, 20vw, 21rem);
+    --sidebar-right-width: clamp(15.5rem, 20vw, 22rem);
 
     /* Spacing Scale */
     --spacing-xs: 0.25rem;    /* 4px */
@@ -105,9 +111,13 @@ html {
     --touch-target-min: 2.75rem;      /* 44px */
     --touch-target-compact: 2.25rem;  /* 36px */
 
+    /* Viewport height - progressive enhancement */
+    --vh-full: 100vh;
+    --vh-small: 100vh;  /* Minimum guaranteed (for modals) */
+    
     /* Modal Dimensions */
     --modal-max-width: min(700px, 95vw);
-    --modal-max-height: 90dvh;
+    --modal-max-height: calc(var(--vh-small) - var(--spacing-xl) * 2);
     --modal-padding-block: var(--spacing-lg);
     --modal-padding-inline: var(--spacing-lg);
     --modal-header-min-height: 3.5rem;
@@ -115,13 +125,25 @@ html {
     --modal-gap: var(--spacing-xl);
 }
 
-/* Fallback for browsers without dvh support */
-@supports not (height: 1dvh) {
+/* Progressive viewport height enhancement */
+@supports (height: 100dvh) {
     :root {
-        --modal-max-height: 90vh;
+        --vh-full: 100dvh;
     }
 }
 
+@supports (height: 100svh) {
+    :root {
+        --vh-small: 100svh;
+    }
+}
+
+/* Fallback for browsers without svh - use vh with safety margin */
+@supports not (height: 1svh) {
+    :root {
+        --vh-small: calc(100vh - 3rem); /* Account for mobile browser chrome */
+    }
+}
 
 /* ============================================================================
    TYPOGRAPHY

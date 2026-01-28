@@ -89,7 +89,7 @@
 .workspace {
     display: grid;
     grid-template-columns: var(--sidebar-left-width) 1fr var(--sidebar-right-width);
-    height: calc(100vh - var(--toolbar-height) - var(--status-bar-height));
+    height: calc(var(--vh-full) - var(--toolbar-height) - var(--footer-total-height));
     margin-top: var(--toolbar-height);
     width: 100vw;
     overflow: hidden;
@@ -111,6 +111,7 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sidebar-left {
@@ -121,24 +122,15 @@
     border-left: 1px solid var(--color-border-primary);
 }
 
-/* Account for fixed footer overlap */
-.sidebar-right {
-    padding-bottom: var(--status-bar-height);
-}
-
 /* Ensure last section content is accessible */
 .sidebar-section:last-child .section-content {
-    padding-bottom: var(--spacing-xl);
+    padding-bottom: var(--spacing-md);
 }
 
 .sidebar-section {
     display: flex;
     flex-direction: column;
     border-bottom: 2px solid var(--color-border-primary);
-}
-
-.sidebar-section:last-child {
-    border-bottom: none;
 }
 
 .sidebar-section + .sidebar-section .section-header {
@@ -221,6 +213,8 @@
     align-items: center;
     font-size: var(--font-size-sm);
     z-index: var(--z-sticky);
+    padding-bottom: var(--safe-area-bottom);
+    box-sizing: border-box; /* border-box so padding doesn't add to height unexpectedly */
 }
 
 /* Left-aligned content in the left grid cell */
@@ -286,7 +280,7 @@
 /* Log Panel */
 .status-log-panel {
     position: fixed;
-    bottom: var(--status-bar-height);
+    bottom: var(--footer-total-height);
     left: var(--sidebar-left-width);
     right: var(--sidebar-right-width);
     height: 0;
@@ -789,10 +783,9 @@
    RESPONSIVE
    ============================================================================ */
 
-/* Narrower screens (< 1024px) */
-@media (max-width: 1024px) {
+@media (max-width: 965px) {
     /* Simplify footer license info */
-    .license-info span:not(:first-child):not(:last-child) {
+    .license-info:first-child span {
         display: none;
     }
 }

@@ -135,7 +135,7 @@
     <!-- For non-JS crawlers -->
     <noscript>
         <div style="padding: 2rem; text-align: center; background: #1a1a1a; color: #fff;">
-            <h1>EasyTrace5000 - PCB CAM Tool</h1>
+            <h1>EasyTrace5000 - PCB CAM Workspace</h1>
             <p>JavaScript required for application functionality.</p>
             <p><a href="/doc" style="color: #3b82f6;">View Documentation</a></p>
         </div>
@@ -176,7 +176,7 @@
         </div>
 
         <div class="toolbar-section toolbar-center">
-            <h1 class="workspace-title">EasyTrace5000 PCB CAM Workspace</h1>
+            <h1 class="workspace-title">EasyTrace5000 - PCB CAM Workspace</h1>
         </div>
 
         <div class="toolbar-section toolbar-right">
@@ -349,14 +349,14 @@
                             <span id="board-size">Not loaded</span>
                         </div>
                         <div class="property-field">
-                            <label>Origin Offset</label>
+                            <label id="origin-offset-label">Origin Offset</label>
                             <div class="input-row">
                                 <div class="input-with-unit">
-                                    <input type="number" id="x-offset" value="0" step="0.1">
+                                    <input type="number" id="x-offset" value="0" step="0.01" aria-labelledby="origin-offset-label" aria-label="X offset in millimeters">
                                     <span class="unit">X mm</span>
                                 </div>
                                 <div class="input-with-unit">
-                                    <input type="number" id="y-offset" value="0" step="0.1">
+                                    <input type="number" id="y-offset" value="0" step="0.01" aria-labelledby="origin-offset-label" aria-label="Y offset in millimeters">
                                     <span class="unit">Y mm</span>
                                 </div>
                             </div>
@@ -371,8 +371,9 @@
                         </div>
                     </div>
                     
-                    <div class="property-section"> <div class="property-field">
-                            <label>Board Rotation</label>
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label for="rotation-angle">Board Rotation</label>
                             <div class="input-with-unit">
                                 <input type="number" id="rotation-angle" value="0" step="5">
                                 <span class="unit">degrees</span>
@@ -422,7 +423,7 @@
 
                     <div class="property-section">
                         <div class="property-field">
-                            <label>Post-Processor</label>
+                            <label for="post-processor">Post-Processor</label>
                             <select id="post-processor">
                             </select>
                         </div>
@@ -435,7 +436,7 @@
                             <textarea id="end-code-ta" rows="5"></textarea>
                         </div>
                         <div class="property-field">
-                            <label>G-Code Units</label>
+                            <label for="gcode-units">G-Code Units</label>
                             <select id="gcode-units">
                                 <option value="mm">Millimeters (G21)</option>
                                 <option value="inch">Inches (G20)</option>
@@ -445,7 +446,7 @@
                     
                     <div class="property-section">
                         <div class="property-field">
-                            <label>PCB Thickness</label>
+                            <label for="pcb-thickness">PCB Thickness</label>
                             <div class="input-with-unit">
                                 <input type="number" id="pcb-thickness" step="0.1">
                                 <span class="unit">mm</span>
@@ -455,14 +456,14 @@
 
                     <div class="property-section">
                         <div class="property-field">
-                            <label>Safe Z</label>
+                            <label for="safe-z">Safe Z</label>
                             <div class="input-with-unit">
                                 <input type="number" id="safe-z" step="0.5">
                                 <span class="unit">mm</span>
                             </div>
                         </div>
                         <div class="property-field">
-                            <label>Travel Z</label>
+                            <label for="travel-z">Travel Z</label>
                             <div class="input-with-unit">
                                 <input type="number" id="travel-z" step="0.5">
                                 <span class="unit">mm</span>
@@ -472,7 +473,7 @@
 
                     <div class="property-section">
                         <div class="property-field">
-                            <label>Rapid Feed</label>
+                            <label for="rapid-feed">Rapid Feed</label>
                             <div class="input-with-unit">
                                 <input type="number" id="rapid-feed" step="100">
                                 <span class="unit">mm/min</span>
@@ -720,7 +721,7 @@
 
                 <p class="welcome-intro">EasyTrace5000 is a CAM tool for PCB fabrication.<br>It's 100% web-based, client-side, open-source, and free to use.</p>
 
-                <p class="pipeline-subtitle">Select your manufacturing workflow</p>
+                <p class="pipeline-subtitle">Select your PCB manufacturing workflow</p>
 
                 <div class="pipeline-selection">
                     <a href="#quickstart" class="pipeline-card pipeline-card--active" id="pipeline-cnc" draggable="false">
@@ -888,13 +889,9 @@
                             </div>
                         </div>
 
-                        <button class="btn btn--primary btn--block" id="process-quickstart-files-btn" disabled>
-                            Process Files
-                        </button>
+                        <button class="btn btn--primary btn--block" id="process-quickstart-files-btn" disabled>Process Files</button>
 
-                        <p class="quickstart-canvas-hint">
-                            Note: You can also drag files onto the workspace canvas or use the sidebar + buttons.
-                        </p>
+                        <p class="quickstart-canvas-hint">Note: You can also drag files onto the workspace canvas or use the sidebar + buttons.</p>
                     </div>
                 </div>
             </div>
@@ -923,9 +920,7 @@
             </div>
             <div class="modal-body">
                 <div class="support-content">
-                    <p class="support-intro">
-                        This project is free and open-source. Your support helps cover development time, hosting costs, and the test hardware needed to build the upcoming Laser pipeline
-                    </p>
+                    <p class="support-intro">This project is free and open-source. Your support helps cover development time, hosting costs, and the test hardware needed to build the upcoming Laser pipeline</p>
 
                     <div class="support-options">
                         <div class="support-card support-card--sponsorship">
@@ -935,9 +930,7 @@
                                 </svg>
                                 Become a Sponsor
                             </h3>
-                            <p>
-                                Gain visibility with your logo on the welcome screen, documentation, and repository. We are also actively seeking hardware partnerships for testing the upcoming Laser pipeline.
-                            </p>
+                            <p>Gain visibility with your logo on the welcome screen, documentation, and repository. We are also actively seeking hardware partnerships for testing the upcoming Laser pipeline.</p>
                             <div class="support-email-container">
                                 <span class="support-email-hint">Click to copy email</span>
                                 <button class="support-email-btn" id="support-email-copy" type="button">
@@ -957,13 +950,9 @@
                                 </svg>
                                 Support the Project
                             </h3>
-                            <p>
-                                Individual contributions directly fund the project's infrastructure and development time. Any amount helps keep the lights on.
-                            </p>
+                            <p>Individual contributions directly fund the project's infrastructure and development time. Any amount helps keep the lights on.</p>
                             <div style="margin-top: auto;">
-                                <a href="https://ko-fi.com/eltryus" target="_blank" class="btn btn--kofi" draggable="false">
-                                    Support on Ko-fi
-                                </a>
+                                <a href="https://ko-fi.com/eltryus" target="_blank" class="btn btn--kofi" draggable="false">Support on Ko-fi</a>
                             </div>
                         </div>
                     </div>
@@ -1158,6 +1147,7 @@
                     </svg>
                 </button>
             </div>
+
             <div class="modal-body">
                 <div class="gcode-options">
                     <h3>Select Operations to Process</h3>
@@ -1178,7 +1168,7 @@
                             <span>Export as single file</span>
                         </label>
                     </div>
-                    
+
                     <div class="property-field field-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="gcode-include-comments" checked>
@@ -1228,7 +1218,7 @@
     <input type="file" id="file-input-hidden" class="hidden" multiple>
 
     <!-- Theme Loader (must load before other scripts) -->
-    <script src="themes/theme-loader.js"></script>
+    <script defer src="themes/theme-loader.js"></script>
 
     <!-- Application Scripts (defer = parallel download) -->
     <script defer src="config.js"></script>
@@ -1279,20 +1269,20 @@
     <script defer src="cam-ui.js"></script>
     <script defer src="cam-controller.js"></script>
 
-    <!-- Initialization (Also defered, runs after all other modules are loaded) -->
-    <script defer>
+    <!-- Initialization -->
+    <script>
         document.addEventListener('DOMContentLoaded', function() {
             console.log('EasyTrace5000 Advanced Workspace v2.0');
-            
+
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');
-            
+
             if (loadingText) loadingText.textContent = 'Ready';
             if (loadingProgress) {
                 loadingProgress.textContent = '100%';
                 loadingProgress.setAttribute('aria-valuenow', 100);
             }
-            
+
             if (typeof window.startApplication === 'function') {
                 window.startApplication();
             } else {

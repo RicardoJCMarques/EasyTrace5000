@@ -3,7 +3,26 @@
  * @description Production build script - CSS inlining, JSON embedding, JS bundling
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
  * @license     AGPL-3.0-or-later
+ */
+
+/*
+ * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+ * Copyright (C) 2025-2026 Eltryus
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 const fs = require('fs');
@@ -26,6 +45,7 @@ const CONFIG = {
 
     // JavaScript files in load order (from index.html)
     jsFiles: [
+        'themes/theme-loader.js',
         'config.js',
         'language/language-manager.js',
         'geometry/clipper2z.js',
@@ -110,7 +130,6 @@ const CONFIG = {
     ],
 
     // Embedded assets
-    embedTheme: 'themes/dark.json',
     embedLanguage: 'language/en.json',
     embedTools: 'tools.json',
 
@@ -219,7 +238,6 @@ class Builder {
 
         this.cleanDist();
         this.copySource();
-        this.embedThemeJSON();
         this.embedLanguageJSON();
         this.embedToolsJSON();
         this.inlineDocCSS();
@@ -239,39 +257,6 @@ class Builder {
     copySource() {
         log('Copying source files...');
         copyRecursive(this.srcDir, this.distDir, CONFIG.excludePatterns);
-    }
-
-    embedThemeJSON() {
-        log('Embedding dark theme into theme-loader.js...');
-
-        const themePath = path.join(this.distDir, CONFIG.embedTheme);
-        const loaderPath = path.join(this.distDir, 'themes/theme-loader.js');
-
-        if (!fs.existsSync(themePath) || !fs.existsSync(loaderPath)) {
-            log('  Warning: Theme files not found, skipping');
-            return;
-        }
-
-        const theme = JSON.parse(readFile(themePath));
-        const themeJSON = JSON.stringify(theme);
-        let loader = readFile(loaderPath);
-
-        // Insert embedded theme constant
-        const embedCode = `\n    // BUILD: Embedded dark theme\n    const EMBEDDED_DARK_THEME = ${themeJSON};\n`;
-        loader = loader.replace(
-            /\(function\(\)\s*\{\s*'use strict';/,
-            `(function() {\n    'use strict';${embedCode}`
-        );
-
-        // Pre-populate the themes Map in constructor with embedded dark.json
-        loader = loader.replace(
-            /this\.themes\s*=\s*new Map\(\);/,
-            `this.themes = new Map();\n            this.themes.set('dark', EMBEDDED_DARK_THEME);`
-        );
-
-        writeFile(loaderPath, loader);
-        deleteFile(themePath);
-        log('  Embedded and removed dark.json');
     }
 
     embedLanguageJSON() {
@@ -488,9 +473,18 @@ class Builder {
         const bundlePath = path.join(this.distDir, CONFIG.bundleName);
         writeFile(bundlePath, bundle);
 
+        // Files to preserve (used by doc pages separately)
+        const preserveFiles = ['themes/theme-loader.js'];
+
         // Delete individual JS files and track directories
         const jsDirs = new Set();
         CONFIG.jsFiles.forEach(file => {
+            // Skip files that should be preserved
+            if (preserveFiles.includes(file)) {
+                log(`  Preserving ${file} for doc pages`);
+                return;
+            }
+
             const filepath = path.join(this.distDir, file);
             deleteFile(filepath);
             const dir = path.dirname(file);
@@ -519,16 +513,22 @@ class Builder {
         const htmlPath = path.join(this.distDir, 'index.html');
         let html = readFile(htmlPath);
 
-        // Remove all deferred script tags (the individual JS files)
+        // Remove all deferred script tags (the individual JS files, including theme-loader)
         html = html.replace(/<script defer src="[^"]+\.js"><\/script>\s*/g, '');
 
         // Remove the "Application Scripts" comment
-        html = html.replace(/\s*<!-- Application Scripts -->\s*/g, '\n');
+        html = html.replace(/\s*<!-- Application Scripts[^>]*-->\s*/g, '\n');
 
-        // Insert bundle after theme-loader
+        // Remove any standalone theme loader comment if present
+        html = html.replace(/\s*<!-- Theme Loader[^>]*-->\s*/g, '\n');
+
+        // Insert bundle before the inline initialization script
+        const bundleTag = `    <!-- BUILD: Bundled application js logic -->\n    <script defer src="${CONFIG.bundleName}"></script>\n\n    `;
+
+        // Insert before the inline init script
         html = html.replace(
-            '<script src="themes/theme-loader.js"></script>',
-            '<script src="themes/theme-loader.js"></script>\n\n    <!-- BUILD: Bundled application -->\n    <script defer src="' + CONFIG.bundleName + '"></script>'
+            /(<script>\s*document\.addEventListener\('DOMContentLoaded')/,
+            `${bundleTag}$1`
         );
 
         // Update loading progress UI

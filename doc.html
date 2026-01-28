@@ -77,16 +77,19 @@
     </script>
 </head>
 <body>
+    <!-- Skip link for keyboard accessibility -->
+    <a href="#doc-main" class="skip-link">Skip to Main Content</a>
+
     <!-- Header -->
     <header class="doc-header">
-        <h1><a href="/">EasyTrace5000</a></h1>
+        <div class="doc-brand"><a href="/">EasyTrace5000</a></div>
         <nav class="doc-nav">
-            <a href="/">← Application</a>
-            <a href="doc" class="active">Docs</a>
-            <a href="cnc">CNC Guide</a>
-            <a href="laser">Laser Guide</a>
+            <a href="/" draggable="false">← Application</a>
+            <a href="doc" class="active" draggable="false">Docs</a>
+            <a href="cnc" draggable="false">CNC Guide</a>
+            <a href="laser" draggable="false">Laser Guide</a>
             <span class="separator"></span>
-            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank">GitHub</a>
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a>
             <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
                 <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <circle cx="12" cy="12" r="5"></circle>
@@ -119,8 +122,8 @@
                 </figure>
 
                 <div class="hero-actions">
-                    <a href="/" class="btn btn--primary">Launch Application</a>
-                    <a href="#pipelines" class="btn btn--secondary">Choose Your Pipeline</a>
+                    <a href="/" class="btn btn--primary" draggable="false">Launch Application</a>
+                    <a href="#pipelines" class="btn btn--secondary" draggable="false">Choose Your Pipeline</a>
                 </div>
             </section>
 
@@ -146,7 +149,7 @@
                 </p>
 
                 <div class="pipeline-grid">
-                    <a href="cnc" class="pipeline-card pipeline-card--active">
+                    <a href="cnc" class="pipeline-card pipeline-card--active" draggable="false">
                         <h3>
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <circle cx="12" cy="12" r="3"/>
@@ -162,7 +165,7 @@
                         <span class="btn btn--primary btn--block">CNC Guide →</span>
                     </a>
 
-                    <a href="laser" class="pipeline-card pipeline-card--dev">
+                    <a href="laser" class="pipeline-card pipeline-card--dev" draggable="false">
                         <h3>
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path d="M12 2v8"/>
@@ -265,7 +268,7 @@
                 </ul>
                 <p>
                     For a detailed breakdown of ARIA roles and compliance status, view the 
-                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/ACCESSIBILITY.md" target="_blank">Accessibility Report on GitHub</a>.
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/ACCESSIBILITY.md" target="_blank" draggable="false">Accessibility Report on GitHub</a>.
                 </p>
             </section>
 
@@ -274,7 +277,7 @@
                 <p>EasyTrace5000 is open-source software supported by community sponsors.</p>
 
                 <div class="sponsor-grid">
-                    <a href="mailto:sponsor@eltryus.design?subject=EasyTrace5000%20Sponsorship" class="sponsor-slot sponsor-slot--empty" title="Become a Sponsor">
+                    <a href="mailto:sponsor@eltryus.design?subject=EasyTrace5000%20Sponsorship" class="sponsor-slot sponsor-slot--empty" title="Become a Sponsor" draggable="false">
                         <div class="slot-content">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                                 <path d="M12 5v14M5 12h14"/>
@@ -282,7 +285,7 @@
                             <span>Your Logo</span>
                         </div>
                     </a>
-                    <a href="mailto:sponsor@eltryus.design?subject=EasyTrace5000%20Sponsorship" class="sponsor-slot sponsor-slot--empty" title="Become a Sponsor">
+                    <a href="mailto:sponsor@eltryus.design?subject=EasyTrace5000%20Sponsorship" class="sponsor-slot sponsor-slot--empty" title="Become a Sponsor" draggable="false">
                         <div class="slot-content">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                                 <path d="M12 5v14M5 12h14"/>
@@ -290,7 +293,7 @@
                             <span>Your Logo</span>
                         </div>
                     </a>
-                    <a href="mailto:sponsor@eltryus.design?subject=EasyTrace5000%20Sponsorship" class="sponsor-slot sponsor-slot--empty" title="Become a Sponsor">
+                    <a href="mailto:sponsor@eltryus.design?subject=EasyTrace5000%20Sponsorship" class="sponsor-slot sponsor-slot--empty" title="Become a Sponsor" draggable="false">
                         <div class="slot-content">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                                 <path d="M12 5v14M5 12h14"/>
@@ -301,7 +304,7 @@
                 </div>
 
                 <p>
-                    <a href="mailto:sponsor@eltryus.design?subject=EasyTrace5000%20Sponsorship">Become a sponsor →</a>
+                    <a href="mailto:sponsor@eltryus.design?subject=EasyTrace5000%20Sponsorship" draggable="false">Become a sponsor →</a>
                 </p>
                 <p class="sponsor-note">Your logo displayed here and in documentation</p>
             </section>
@@ -309,10 +312,10 @@
             <!-- Footer -->
             <footer class="doc-footer">
                 <p>
-                    <a href="#introduction">Back to Top</a> |
-                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank">GitHub</a> |
-                    <a href="https://ko-fi.com/eltryus" target="_blank">Support Development</a> |
-                    <a href="LICENSE" target="_blank">AGPLv3 Licensed</a>
+                    <a href="#introduction" draggable="false">Back to Top</a> |
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a> |
+                    <a href="https://ko-fi.com/eltryus" target="_blank" draggable="false">Support Development</a> |
+                    <a href="LICENSE" target="_blank" draggable="false">AGPLv3 Licensed</a>
                 </p>
             </footer>
         </main>
@@ -320,7 +323,7 @@
     </div>
 
     <!-- Scripts -->
-    <script src="themes/theme-loader.js"></script>
+    <script defer src="themes/theme-loader.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const toggle = document.getElementById('theme-toggle');
