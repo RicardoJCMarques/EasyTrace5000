@@ -37,8 +37,8 @@
 
             // Registry of available themes and their paths
             this.themeRegistry = {
-                'dark': 'themes/dark.json',
-                'light': 'themes/light.json'
+                'dark': '/themes/dark.json',
+                'light': '/themes/light.json'
             };
         }
 

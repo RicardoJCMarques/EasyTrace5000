@@ -345,12 +345,18 @@
             if (param.max !== undefined) input.max = param.max;
             if (param.step !== undefined) input.step = param.step;
 
+            // If the parameter has a unit (e.g., "mm"), attach it with the label for screen readers
+            if (param.unit) {
+                input.setAttribute('aria-label', `${param.label} in ${param.unit}`);
+            }
+
             wrapper.appendChild(input);
 
             if (param.unit) {
                 const unitSpan = document.createElement('span');
                 unitSpan.className = 'unit';
                 unitSpan.textContent = param.unit;
+                unitSpan.setAttribute('aria-hidden', 'true'); // Hide visual unit from SR since it's in the label now
                 wrapper.appendChild(unitSpan);
             }
 

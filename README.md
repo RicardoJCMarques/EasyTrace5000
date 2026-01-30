@@ -195,7 +195,7 @@ Note: Shortcuts are disabled when typing in input fields, textareas, or select d
 
 ## Accessibility
 
-EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Accessibility Documentation](docs/ACCESSIBILITY.md) for complete keyboard controls and WCAG 2.1 compliance details.
+EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Accessibility Documentation](doc/ACCESSIBILITY.md) for complete keyboard controls and WCAG 2.1 compliance details.
 
 ## Project Structure
 
@@ -289,9 +289,13 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   ├── LineTest.svg                      # Precision test pattern
 │   └── 100mmSquare.svg                   # 100*100mm square to check steps/mm
 │
-├── doc.html                              # Documentation entry point
-├── cnc.html                              # Documentation for the CNC Pipeline (AI placeholder)
-├── laser.html                            # Documentation for the Laser Pipeline (General idea)
+├── doc/
+│   ├── index.html                        # Documentation entry point
+│   ├── cnc.html                          # Documentation for the CNC Pipeline (AI placeholder)
+│   ├── laser.html                        # Documentation for the Laser Pipeline (General idea)
+│   └── accessibility.html                # Documentation for built-in accessibility features
+├── 
+├── 
 │
 └── clipper2/                             # Clipper2 test page
 ```

@@ -34,13 +34,14 @@
     top: 0;
     left: 0;
     right: 0;
-    height: var(--toolbar-height);
+    height: var(--header-layout-height);
     background: var(--color-bg-secondary);
     border-bottom: 1px solid var(--color-border-primary);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--spacing-xl);
+    padding-top: var(--safe-area-top);
     z-index: var(--z-sticky);
 }
 
@@ -89,8 +90,8 @@
 .workspace {
     display: grid;
     grid-template-columns: var(--sidebar-left-width) 1fr var(--sidebar-right-width);
-    height: calc(var(--vh-full) - var(--toolbar-height) - var(--footer-total-height));
-    margin-top: var(--toolbar-height);
+    height: calc(var(--vh-full) - var(--header-layout-height) - var(--footer-total-height));
+    margin-top: var(--header-layout-height);
     width: 100vw;
     overflow: hidden;
 }
@@ -213,7 +214,7 @@
     align-items: center;
     font-size: var(--font-size-sm);
     z-index: var(--z-sticky);
-    padding-bottom: var(--safe-area-bottom);
+    padding-bottom: var(--safe-area-bottom, 0px);
     box-sizing: border-box; /* border-box so padding doesn't add to height unexpectedly */
 }
 

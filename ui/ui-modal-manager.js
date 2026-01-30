@@ -157,8 +157,8 @@
                 return;
             }
 
-            // Only update hash for content modals
-            const hashableModals = ['welcome', 'quickstart', 'support'];
+            // Only update hash for content modals, except welcome
+            const hashableModals = ['quickstart', 'support'];
             if (hashableModals.includes(modalName)) {
                 history.pushState(null, null, `#${modalName}`);
             }
@@ -227,8 +227,11 @@
 
                 // Update hash to reflect the modal being returning to
                 const returnModalName = this.getActiveModalName();
-                if (returnModalName) {
+                if (returnModalName && returnModalName !== 'welcome') {
                     history.replaceState(null, null, `#${returnModalName}`);
+                } else {
+                    // If returning to welcome (or unknown), clean the URL to root
+                    history.replaceState(null, null, window.location.pathname);
                 }
             } else {
                 // Fully closing removes hash

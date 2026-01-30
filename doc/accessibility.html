@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <!--!
+        @file        doc/accessibility.html
+        @description Accessibility Guide
+        @author      Eltryus - Ricardo Marques
+        @copyright   2025-2026 Eltryus - Ricardo Marques
+        @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+        @license     AGPL-3.0-or-later
+    -->
+    <!--
+        EasyTrace5000 - Advanced PCB Isolation CAM Workspace
+        Copyright (C) 2025-2026 Eltryus
+
+        This program is free software: you can redistribute it and/or modify
+        it under the terms of the GNU Affero General Public License as published by
+        the Free Software Foundation, either version 3 of the License, or
+        (at your option) any later version.
+
+        This program is distributed in the hope that it will be useful,
+        but WITHOUT ANY WARRANTY; without even the implied warranty of
+        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        GNU Affero General Public License for more details.
+
+        You should have received a copy of the GNU Affero General Public License
+        along with this program.  If not, see <https://www.gnu.org/licenses/>.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EasyTrace5000 | Accessibility Information</title>
+
+    <meta name="description" content="Accessibility information for EasyTrace5000. Details on keyboard navigation, focus management, screen reader support, and WCAG 2.1 compliance.">
+    <meta name="author" content="Eltryus">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#1a1a1a">
+
+    <link rel="canonical" href="https://cam.eltryus.design/doc/accessibility">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://cam.eltryus.design/doc/accessibility">
+    <meta property="og:title" content="EasyTrace5000 | Accessibility">
+    <meta property="og:description" content="Keyboard controls and accessibility compliance for EasyTrace5000.">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-preview.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="EasyTrace5000">
+    <meta property="og:locale" content="en_US">
+
+    <link rel="icon" type="image/png" href="../images/favicon/favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="../images/favicon/favicon.svg">
+    <link rel="shortcut icon" href="../images/favicon/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="../images/favicon/site.webmanifest">
+
+    <link rel="stylesheet" href="../css/base.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/theme.css">
+    <link rel="stylesheet" href="../css/doc.css">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "EasyTrace5000", "item": "https://cam.eltryus.design/" },
+        { "@type": "ListItem", "position": 2, "name": "Documentation", "item": "https://cam.eltryus.design/doc" },
+        { "@type": "ListItem", "position": 3, "name": "Accessibility", "item": "https://cam.eltryus.design/doc/accessibility" }
+      ]
+    }
+    </script>
+</head>
+<body>
+    <!-- Skip link for keyboard accessibility -->
+    <a href="#doc-content" class="skip-link" aria-label="Skip to main content">Skip to Main Content</a>
+
+    <!-- Header -->
+    <header class="doc-header">
+        <div class="doc-brand">
+            <a href="/" aria-label="EasyTrace5000 Homepage">EasyTrace5000</a>
+        </div>
+
+        <button class="doc-menu-toggle" aria-label="Toggle Navigation Menu" aria-expanded="false">
+            <svg class="icon-menu" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+            <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <nav class="doc-nav" aria-label="Main Navigation">
+            <a href="../" draggable="false" aria-label="Return to Application">← Application</a>
+            <a href="./" draggable="false" aria-label="Documentation Index">Docs</a>
+            <a href="cnc" draggable="false" aria-label="CNC Milling Guide">CNC Guide</a>
+            <a href="laser" draggable="false" aria-label="Laser Processing Guide">Laser Guide</a>
+            <a href="accessibility" class="active" draggable="false" aria-current="page" aria-label="Accessibility Information">Accessibility</a>
+            <span class="separator" aria-hidden="true"></span>
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
+
+            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle between light and dark theme">
+                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            </button>
+        </nav>
+    </header>
+
+    <div class="doc-wrapper has-sidebar">
+        <!-- Sidebar TOC -->
+        <nav class="doc-sidebar" aria-label="Table of Contents">
+            <h2>Accessibility</h2>
+            <ol>
+                <li>
+                    <a href="#keyboard-navigation-overview" draggable="false">Keyboard Navigation Overview</a>
+                </li>
+                <li>
+                    <a href="#zone-navigation" draggable="false">Zone Navigation</a>
+                </li>
+                <li>
+                    <a href="#operations-tree" draggable="false">Operations Tree</a>
+                </li>
+                <li>
+                    <a href="#canvas-controls" draggable="false">Canvas Controls</a>
+                </li>
+                <li>
+                    <a href="#property-panel" draggable="false">Property Panel</a>
+                </li>
+                <li>
+                    <a href="#modals" draggable="false">Modals</a>
+                </li>
+                <li>
+                    <a href="#screen-reader-support" draggable="false">Screen Reader Support</a>
+                </li>
+                <li>
+                    <a href="#wcag-21-compliance" draggable="false">WCAG 2.1 Compliance</a>
+                </li>
+                <li>
+                    <a href="#known-limitations" draggable="false">Known Limitations</a>
+                </li>
+                <li>
+                    <a href="#reporting-issues" draggable="false">Reporting Issues</a>
+                </li>
+            </ol>
+        </nav>
+
+        <!-- Main Content -->
+        <main id="doc-content" class="doc-main" aria-label="Main Content">
+            <section class="hero hero--compact">
+                <h1>Accessibility Information</h1>
+                <p class="tagline">Keyboard navigation, screen reader support, and WCAG compliance</p>
+            </section>
+            
+            <h1>
+                Accessibility
+            </h1>
+            <p>
+                EasyTrace5000 is designed to be usable with keyboard-only navigation and compatible with assistive technologies. This document details keyboard controls, focus management, and WCAG 2.1 compliance efforts.
+            </p>
+            <h2 id="keyboard-navigation-overview">
+                Keyboard Navigation Overview
+            </h2>
+            <p>
+                The interface is divided into navigable zones.
+            </p>
+            <h3 id="global-navigation">
+                Global Navigation
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>F6</code>
+                        </td>
+                        <td>
+                            Cycle forward through zones (Toolbar → Sidebar → Canvas)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Shift</code> + <code>F6</code>
+                        </td>
+                        <td>
+                            Cycle backwards through zones
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Tab</code>
+                        </td>
+                        <td>
+                            Navigate focusable elements within a zone
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="zones">
+                Zones
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Zone
+                        </th>
+                        <th>
+                            Description
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            Toolbar
+                        </td>
+                        <td>
+                            Top menu bar with actions and view controls
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            Operations Tree
+                        </td>
+                        <td>
+                            Left sidebar with file/operation hierarchy
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            Canvas
+                        </td>
+                        <td>
+                            Central preview area
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            Properties Panel
+                        </td>
+                        <td>
+                            Right sidebar with parameters and settings
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>
+                A <strong>skip link</strong> appears on Tab from page load, allowing keyboard users to jump directly to the canvas.
+            </p>
+            <hr>
+            <h2 id="zone-navigation">
+                Zone Navigation
+            </h2>
+            <p>
+                To reduce repetitive tabbing, the interface is divided into <strong>Focus Zones</strong>.
+            </p>
+            <h3 id="global-keys">
+                Global Keys
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>F6</code>
+                        </td>
+                        <td>
+                            Cycle focus forward: <strong>Toolbar</strong> → <strong>Left Sidebar</strong> (Tree) → <strong>Right Sidebar</strong> (Properties)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Shift</code> + <code>F6</code>
+                        </td>
+                        <td>
+                            Cycle focus backwards
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Tab</code>
+                        </td>
+                        <td>
+                            Navigate sequentially within the current zone
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>
+                <strong>Note:</strong> The Canvas is excluded from the <code>F6</code> cycle to prevent focus getting &quot;stuck&quot; in complex SVGs. Use the <strong>Skip Link</strong> (appears on first Tab) to jump directly to the Canvas.
+            </p>
+            <h3 id="toolbar">
+                Toolbar
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>←</code> / <code>→</code>
+                        </td>
+                        <td>
+                            Navigate between toolbar buttons
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Enter</code> / <code>Space</code>
+                        </td>
+                        <td>
+                            Activate focused button
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Escape</code>
+                        </td>
+                        <td>
+                            Close open dropdown menus
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="sidebar-sections-collapsible">
+                Sidebar Sections (Collapsible)
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>Enter</code> / <code>Space</code>
+                        </td>
+                        <td>
+                            Toggle section expand/collapse
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>↓</code> / <code>↑</code>
+                        </td>
+                        <td>
+                            Navigate between sections or fields within
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <hr>
+            <h2 id="operations-tree">
+                Operations Tree
+            </h2>
+            <p>
+                The operations tree uses a hierarchical structure with categories, files, and geometry nodes.
+            </p>
+            <h3 id="navigation">
+                Navigation
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>↓</code>
+                        </td>
+                        <td>
+                            Move to next visible item
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>↑</code>
+                        </td>
+                        <td>
+                            Move to previous visible item
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>→</code>
+                        </td>
+                        <td>
+                            Expand category/file, or move into children
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>←</code>
+                        </td>
+                        <td>
+                            Collapse category/file, or move to parent
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Home</code>
+                        </td>
+                        <td>
+                            Jump to first item
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>End</code>
+                        </td>
+                        <td>
+                            Jump to last item
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="actions">
+                Actions
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>Enter</code> / <code>Space</code>
+                        </td>
+                        <td>
+                            Select item and open properties; toggle category expand
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Delete</code>
+                        </td>
+                        <td>
+                            Remove selected file or geometry
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>V</code>
+                        </td>
+                        <td>
+                            Toggle visibility of selected layer
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="aria-roles-amp-hierarchy">
+                ARIA Roles &amp; Hierarchy
+            </h3>
+            <p>
+                The tree structure follows the <a href="https://www.w3.org/WAI/ARIA/apg/patterns/treeview/">WAI-ARIA Tree View Pattern</a>:
+            </p>
+            <ol>
+                <li>
+                    <strong>Container:</strong> <code>role=&quot;tree&quot;</code> with a label &quot;Operations&quot;.
+                </li>
+                <li>
+                    <strong>Groups:</strong> Nested lists (files inside categories, geometry inside files) use <code>role=&quot;group&quot;</code>.
+                </li>
+                <li>
+                    <strong>Items:</strong>
+                    <ul>
+                        <li>
+                            <strong>Level 1 (Categories):</strong> <code>role=&quot;treeitem&quot;</code>, <code>aria-level=&quot;1&quot;</code>, <code>aria-expanded=&quot;...&quot;</code>.
+                        </li>
+                        <li>
+                            <strong>Level 2 (Files):</strong> <code>role=&quot;treeitem&quot;</code>, <code>aria-level=&quot;2&quot;</code>, <code>aria-selected=&quot;...&quot;</code>, <code>aria-expanded=&quot;...&quot;</code>.
+                        </li>
+                        <li>
+                            <strong>Level 3 (Geometry):</strong> <code>role=&quot;treeitem&quot;</code>, <code>aria-level=&quot;3&quot;</code>, <code>aria-selected=&quot;...&quot;</code>.
+                        </li>
+                    </ul>
+                </li>
+            </ol>
+            <p>
+                Focus is managed via <strong>roving tabindex</strong>:
+            </p>
+            <ul>
+                <li>
+                    The active item has <code>tabindex=&quot;0&quot;</code>.
+                </li>
+                <li>
+                    All other items have <code>tabindex=&quot;-1&quot;</code>.
+                </li>
+                <li>
+                    Arrow keys move the <code>tabindex=&quot;0&quot;</code> to the adjacent item and focus it.
+                </li>
+            </ul>
+            <hr>
+            <h2 id="canvas-controls">
+                Canvas Controls
+            </h2>
+            <p>
+                When focus is on the canvas or workspace (not in input fields):
+            </p>
+            <h3 id="view-controls">
+                View Controls
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>Home</code>
+                        </td>
+                        <td>
+                            Fit all geometry to view
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>F</code>
+                        </td>
+                        <td>
+                            Fit to view (alternative)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>=</code>
+                        </td>
+                        <td>
+                            Fit to view (alternative)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>+</code> / <code>NumpadAdd</code>
+                        </td>
+                        <td>
+                            Zoom in
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>-</code> / <code>NumpadSubtract</code>
+                        </td>
+                        <td>
+                            Zoom out
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="panning">
+                Panning
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>←</code>
+                        </td>
+                        <td>
+                            Pan left
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>→</code>
+                        </td>
+                        <td>
+                            Pan right
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>↑</code>
+                        </td>
+                        <td>
+                            Pan up
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>↓</code>
+                        </td>
+                        <td>
+                            Pan down
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Shift</code> + Arrow
+                        </td>
+                        <td>
+                            Fast pan
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="display-toggles">
+                Display Toggles
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>W</code>
+                        </td>
+                        <td>
+                            Toggle wireframe mode
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>G</code>
+                        </td>
+                        <td>
+                            Toggle grid visibility
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="origin-controls">
+                Origin Controls
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>B</code>
+                        </td>
+                        <td>
+                            Set origin to bottom-left
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>O</code>
+                        </td>
+                        <td>
+                            Save current origin
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>C</code>
+                        </td>
+                        <td>
+                            Set origin to center
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="help">
+                Help
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>F1</code>
+                        </td>
+                        <td>
+                            Show Help modal with initial steps &amp; keyboard shortcuts/navigation
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <hr>
+            <h2 id="property-panel">
+                Property Panel
+            </h2>
+            <p>
+                When a file or geometry is selected, the property panel displays editable parameters.
+            </p>
+            <h3 id="field-navigation">
+                Field Navigation
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>↓</code>
+                        </td>
+                        <td>
+                            Move to next field/row
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>↑</code>
+                        </td>
+                        <td>
+                            Move to previous field/row
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Enter</code> / <code>Space</code>
+                        </td>
+                        <td>
+                            Enter edit mode on focused row
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Enter</code> (in input)
+                        </td>
+                        <td>
+                            Commit value and move to next field
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Escape</code>
+                        </td>
+                        <td>
+                            Exit edit mode, return focus to row
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Tab</code>
+                        </td>
+                        <td>
+                            Standard tab navigation between focusable elements
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="tooltip-icons">
+                Tooltip Icons
+            </h3>
+            <p>
+                Help icons (<code>?</code>) next to labels can be focused with Tab and activated to show tooltips.
+            </p>
+            <hr>
+            <h2 id="modals">
+                Modals
+            </h2>
+            <p>
+                Modals (Welcome, Quickstart, G-code Export, Support) implement focus trapping and keyboard controls.
+            </p>
+            <h3 id="general-modal-controls">
+                General Modal Controls
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>Escape</code>
+                        </td>
+                        <td>
+                            Close modal (context-aware: may return to previous modal)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Tab</code>
+                        </td>
+                        <td>
+                            Cycle through focusable elements (trapped within modal)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Shift+Tab</code>
+                        </td>
+                        <td>
+                            Cycle backwards
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>↓</code> / <code>↑</code>
+                        </td>
+                        <td>
+                            Navigate form fields
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="g-code-export-modal---sortable-list">
+                G-code Export Modal - Sortable List
+            </h3>
+            <p>
+                The operation order list supports keyboard reordering:
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Key
+                        </th>
+                        <th>
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <code>Space</code>
+                        </td>
+                        <td>
+                            Grab/drop item for reordering
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>↓</code> / <code>↑</code> (while grabbed)
+                        </td>
+                        <td>
+                            Move item up/down in list
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <code>Escape</code>
+                        </td>
+                        <td>
+                            Cancel reorder operation
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <hr>
+            <h2 id="screen-reader-support">
+                Screen Reader Support
+            </h2>
+            <h3 id="live-regions">
+                Live Regions
+            </h3>
+            <ul>
+                <li>
+                    <strong>Status bar</strong>: Uses <code>aria-live=&quot;polite&quot;</code> for general updates, <code>aria-live=&quot;assertive&quot;</code> for errors
+                </li>
+                <li>
+                    Status messages announce file loading, operation completion, and errors
+                </li>
+            </ul>
+            <h3 id="semantic-structure">
+                Semantic Structure
+            </h3>
+            <ul>
+                <li>
+                    Main landmarks: <code>&lt;header&gt;</code> (toolbar), <code>&lt;main&gt;</code> (canvas), <code>&lt;aside&gt;</code> (sidebars), <code>&lt;footer&gt;</code> (status bar)
+                </li>
+                <li>
+                    Headings hierarchy maintained within sections
+                </li>
+                <li>
+                    Form labels associated with inputs via <code>for</code>/<code>id</code>
+                </li>
+            </ul>
+            <h3 id="button-labels">
+                Button Labels
+            </h3>
+            <p>
+                All icon-only buttons include <code>aria-label</code> attributes describing their function:
+            </p>
+            <ul>
+                <li>
+                    &quot;Fit to View&quot;, &quot;Zoom In&quot;, &quot;Zoom Out&quot;
+                </li>
+                <li>
+                    &quot;Toggle Visibility&quot;, &quot;Delete&quot;, etc.
+                </li>
+            </ul>
+            <h3 id="svg-icons">
+                SVG Icons
+            </h3>
+            <p>
+                Decorative icons include <code>aria-hidden=&quot;true&quot;</code> to prevent screen reader noise.
+            </p>
+            <hr>
+            <h2 id="wcag-21-compliance">
+                WCAG 2.1 Compliance
+            </h2>
+            <p>
+                EasyTrace5000 targets <strong>WCAG 2.1 Level AA</strong> compliance. While the application is fully functional for keyboard users, some visual aspects (such as complex canvas geometry) have inherent limitations.
+            </p>
+            <h3 id="implemented-guidelines">
+                Implemented Guidelines
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Guideline
+                        </th>
+                        <th>
+                            Description
+                        </th>
+                        <th>
+                            Status
+                        </th>
+                        <th>
+                            Implementation Notes
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <strong>1.1.1</strong>
+                        </td>
+                        <td>
+                            Non-text Content
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Icon-only buttons include <code>aria-label</code> attributes; decorative icons use <code>aria-hidden=&quot;true&quot;</code>.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>1.3.1</strong>
+                        </td>
+                        <td>
+                            Info and Relationships
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Semantic HTML5 landmarks (<code>&lt;main&gt;</code>, <code>&lt;aside&gt;</code>, <code>&lt;nav&gt;</code>) and proper ARIA tree roles for the Operations panel.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>1.3.2</strong>
+                        </td>
+                        <td>
+                            Meaningful Sequence
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            DOM order matches the visual layout; focus order flows logically through sidebars and canvas.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>1.4.1</strong>
+                        </td>
+                        <td>
+                            Use of Color
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Status messages (Success/Error) use both text labels and color indicators.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>1.4.3</strong>
+                        </td>
+                        <td>
+                            Contrast (Minimum)
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Default text-to-background contrast ratios meet the 4.5:1 standard.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>1.4.13</strong>
+                        </td>
+                        <td>
+                            Content on Hover/Focus
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Custom <code>TooltipManager</code> ensures tooltips are persistent on focus, hoverable, and do not obscure active content.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>2.1.1</strong>
+                        </td>
+                        <td>
+                            Keyboard
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            All interactive elements (buttons, inputs, tree nodes, canvas) are keyboard accessible.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>2.1.2</strong>
+                        </td>
+                        <td>
+                            No Keyboard Trap
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Modal dialogs trap focus intentionally while open but release it correctly upon closing.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>2.1.4</strong>
+                        </td>
+                        <td>
+                            Character Key Shortcuts
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Single-key shortcuts (e.g., <code>V</code> for visibility, <code>Del</code> for delete) are scoped to the active region (Tree/Canvas) and disabled during text entry.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>2.4.1</strong>
+                        </td>
+                        <td>
+                            Bypass Blocks
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            A &quot;Skip to Canvas&quot; link appears on the first Tab press.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>2.4.3</strong>
+                        </td>
+                        <td>
+                            Focus Order
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Modals and panels manage focus logically; closing a modal returns focus to the triggering element.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>2.4.6</strong>
+                        </td>
+                        <td>
+                            Headings and Labels
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Descriptive headings identify all major workspace sections; inputs have associated <code>&lt;label&gt;</code> elements.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>2.4.7</strong>
+                        </td>
+                        <td>
+                            Focus Visible
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            High-contrast CSS focus rings (<code>:focus-visible</code>) appear on all interactive elements.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>2.5.3</strong>
+                        </td>
+                        <td>
+                            Label in Name
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Accessible names for icon buttons match their visual tooltips (e.g., &quot;Fit to View&quot;).
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>3.2.1</strong>
+                        </td>
+                        <td>
+                            On Focus
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Focusing on input fields or tree items never triggers a context change (submit/navigation).
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>3.2.2</strong>
+                        </td>
+                        <td>
+                            On Input
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Parameter changes update the preview or require explicit confirmation; no unexpected page reloads.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>4.1.2</strong>
+                        </td>
+                        <td>
+                            Name, Role, Value
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Custom controls (Tree View, Toggles) use correct ARIA roles (<code>tree</code>, <code>treeitem</code>, <code>button</code>).
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>4.1.3</strong>
+                        </td>
+                        <td>
+                            Status Messages
+                        </td>
+                        <td>
+                            ✓
+                        </td>
+                        <td>
+                            Dynamic updates (file loading, success messages) are announced via <code>aria-live</code> regions.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <h3 id="partial-or-planned-support">
+                Partial or Planned Support
+            </h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>
+                            Guideline
+                        </th>
+                        <th>
+                            Description
+                        </th>
+                        <th>
+                            Status
+                        </th>
+                        <th>
+                            Notes
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <strong>1.4.11</strong>
+                        </td>
+                        <td>
+                            Non-text Contrast
+                        </td>
+                        <td>
+                            Partial
+                        </td>
+                        <td>
+                            Some UI borders and disabled states in the default theme may fall below 3:1. High Contrast themes are supported by the engine and are currently in development.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>1.2.x</strong>
+                        </td>
+                        <td>
+                            Time-based Media
+                        </td>
+                        <td>
+                            N/A
+                        </td>
+                        <td>
+                            The application does not contain audio or video content.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <hr>
+            <h2 id="known-limitations">
+                Known Limitations
+            </h2>
+            <ol>
+                <li>
+                    <p>
+                        <strong>Canvas interaction</strong>: The 2D canvas preview is visual-only. Geometry data is available via the operations tree, but spatial relationships require visual inspection.
+                    </p>
+                </li>
+                <li>
+                    <p>
+                        <strong>Complex geometry feedback</strong>: When generating offsets or previews, detailed geometric results are shown visually but not fully announced to screen readers beyond success/failure status.
+                    </p>
+                </li>
+                <li>
+                    <p>
+                        <strong>Drag-and-drop file upload</strong>: Requires mouse. Alternative: Click drop zones or use the file input buttons in the operations tree.
+                    </p>
+                </li>
+                <li>
+                    <p>
+                        <strong>Touch devices</strong>: Touch zoom/pan works but keyboard navigation is primary accessibility path.
+                    </p>
+                </li>
+                <li>
+                    <p>
+                        <strong>Color-coded warnings</strong>: Drill operation warnings use color coding (green/yellow/red). Status messages provide text descriptions.
+                    </p>
+                </li>
+            </ol>
+            <hr>
+            <h2 id="reporting-issues">
+                Reporting Issues
+            </h2>
+            <p>
+                If you encounter accessibility barriers, please report them via <strong>GitHub Issues</strong>.
+            </p>
+            <p>
+                We have a dedicated template for these reports to ensure we get the necessary technical details.
+            </p>
+            <ol>
+                <li>
+                    Go to the <a href="https://github.com/RicardoJCMarques/Eltryus_CAM/issues/new/choose">New Issue page</a>
+                </li>
+                <li>
+                    Select the <strong>Accessibility Report</strong> template
+                </li>
+                <li>
+                    Fill in the required details (Browser, OS, Assistive Technology)
+                </li>
+            </ol>
+            <hr>
+            <h2 id="resources">
+                Resources
+            </h2>
+            <ul>
+                <li>
+                    <a href="https://www.w3.org/WAI/WCAG21/quickref/">WCAG 2.1 Guidelines</a>
+                </li>
+                <li>
+                    <a href="https://www.w3.org/WAI/ARIA/apg/">WAI-ARIA Authoring Practices</a>
+                </li>
+                <li>
+                    <a href="https://webaim.org/techniques/keyboard/">WebAIM Keyboard Testing</a>
+                </li>
+            </ul>
+
+        </main>
+        <!-- Footer -->
+        <footer class="doc-footer" aria-label="Footer">
+            <p>
+                <a href="#doc-content" draggable="false" aria-label="Scroll back to top">Back to Top</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a> |
+                <a href="/#support" draggable="false" aria-label="Support Development via Sponsorship">Support Development</a> |
+                <a href="../LICENSE" target="_blank" draggable="false" aria-label="AGPLv3 License (opens in a new tab)">AGPLv3 Licensed</a>
+            </p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script defer src="../themes/theme-loader.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggle = document.getElementById('theme-toggle');
+            if (toggle && window.ThemeLoader) toggle.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+
+            const menuBtn = document.querySelector('.doc-menu-toggle');
+            const nav = document.querySelector('.doc-nav');
+            if (menuBtn && nav) {
+                menuBtn.addEventListener('click', () => {
+                    const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                    menuBtn.setAttribute('aria-expanded', !isExpanded);
+                    nav.classList.toggle('is-open');
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -39,7 +39,7 @@
     justify-content: center;
     padding: var(--spacing-md);
     /* Use svh for modals - guaranteed minimum viewport */
-    padding-top: max(var(--spacing-md), env(safe-area-inset-top, 0px));
+    padding-top: max(var(--spacing-md), var(--safe-area-top, 0px));
     padding-bottom: max(var(--spacing-md), var(--safe-area-bottom));
 }
 

@@ -97,9 +97,10 @@ const CONFIG = {
 
     // Documentation pages to process (CSS inlining only)
     docPages: [
-        'doc.html',
-        'cnc.html', 
-        'laser.html'
+        'doc/index.html',
+        'doc/cnc.html', 
+        'doc/laser.html',
+        'doc/accessibility.html'
     ],
 
     // CSS files for documentation pages
@@ -419,7 +420,7 @@ class Builder {
             let html = readFile(pagePath);
 
             // Remove CSS link tags
-            html = html.replace(/<link rel="stylesheet" href="css\/[^"]+\.css">\s*/g, '');
+            html = html.replace(/<link rel="stylesheet" href="(\.\.\/)?css\/[^"]+\.css">\s*/g, '');
 
             // Insert inline style before </head>
             const styleTag = `\n    <!-- BUILD: Inlined CSS -->\n    <style>\n${cssContents}\n    </style>\n`;

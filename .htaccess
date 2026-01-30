@@ -5,6 +5,12 @@ RewriteEngine On
 RewriteCond %{HTTPS} off
 RewriteRule ^(.*)$ https://cam.eltryus.design/$1 [R=301,L]
 
+# Redirect /cnc or /cnc.html to /doc/cnc
+RewriteRule ^cnc(\.html)?$ /doc/cnc [R=301,L]
+
+# Redirect /laser or /laser.html to /doc/laser
+RewriteRule ^laser(\.html)?$ /doc/laser [R=301,L]
+
 # MIME types
 <IfModule mod_mime.c>
     AddDefaultCharset UTF-8

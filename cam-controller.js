@@ -346,10 +346,8 @@
         setupGlobalHandlers() {
             // Handle resize
             window.addEventListener('resize', () => {
-                window.addEventListener('resize', () => {
-                    this.ui.renderer.core.resizeCanvas();
-                    this.ui.renderer.render();
-                });
+                this.ui.renderer.core.resizeCanvas();
+                this.ui.renderer.render();
             });
 
             // Handle file drops on entire window
@@ -378,276 +376,275 @@
 
             /* Keyboard shortcuts */
             document.addEventListener('keydown', (e) => {
-            // Don't intercept if modal is open
-            if (window.pcbcam?.modalManager?.activeModal) {
-                return;
-            }
-
-            // Guard: Skip if in any interactive element
-            const isInputFocused = e.target.matches(
-                'input, textarea, select, [contenteditable="true"], .property-field'
-            );
-
-            // Guard: Skip if on skip-link
-            if (e.target.classList.contains('skip-link')) {
-                return;
-            }
-
-            // Toolbar Arrow Navigation
-            const toolbar = document.getElementById('cam-toolbar');
-            if (toolbar && toolbar.contains(document.activeElement)) {
-                if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                    e.preventDefault();
-                    this.navigateToolbar(e.key === 'ArrowRight' ? 1 : -1);
-                    return;
-                }
-            }
-
-            // Guard: Let tree handle its own arrow navigation
-            const isInTree = e.target.closest('#operations-tree');
-            const isArrowKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
-
-            if (isInputFocused) {
-                // Allow Escape to blur inputs
-                if (e.key === 'Escape') {
-                    e.target.blur();
-                }
-                return;
-            }
-
-            if (isInTree && isArrowKey) {
-                return;
-            }
-
-            const key = e.key;
-            const code = e.code;
-            const isShift = e.shiftKey;
-
-            // Escape: Context-aware handling
-            if (key === 'Escape') {
-                // Check if a select dropdown is open (let browser handle it)
-                if (document.activeElement?.tagName === 'SELECT') {
-                    // Let the native select close itself, don't prevent
+                // Don't intercept if modal is open
+                if (window.pcbcam?.modalManager?.activeModal) {
                     return;
                 }
 
-                // Check if in an input - blur it first
-                if (document.activeElement?.matches('input, textarea')) {
-                    e.preventDefault();
-                    document.activeElement.blur();
+                // Guard: Skip if in any interactive element
+                const isInputFocused = e.target.matches(
+                    'input, textarea, select, [contenteditable="true"], .property-field'
+                );
+
+                // Guard: Skip if on skip-link
+                if (e.target.classList.contains('skip-link')) {
                     return;
                 }
 
-                // Check if dropdown menu is open
-                const openDropdown = document.querySelector('.dropdown-content.show');
-                if (openDropdown) {
-                    e.preventDefault();
-                    openDropdown.classList.remove('show');
-                    const btn = openDropdown.previousElementSibling;
-                    if (btn) {
-                        btn.classList.remove('active');
-                        btn.setAttribute('aria-expanded', 'false');
-                    }
-                    return;
-                }
-
-                e.preventDefault();
-
-                // If in right sidebar, return to tree
-                const rightSidebar = document.getElementById('sidebar-right');
-                if (rightSidebar && rightSidebar.contains(document.activeElement)) {
-                    this.returnFocusToTree();
-                    return;
-                }
-
-                // If in canvas, return to tree
-                const canvas = document.getElementById('preview-canvas');
-                if (document.activeElement === canvas) {
-                    this.returnFocusToTree();
-                    return;
-                }
-
-                // Otherwise deselect
-                if (this.ui?.navTreePanel?.selectedNode) {
-                    this.ui.navTreePanel.selectedNode = null;
-                    document.querySelectorAll('.file-node-content.selected, .geometry-node.selected')
-                        .forEach(el => el.classList.remove('selected'));
-                    this.ui?.operationPanel?.clearProperties();
-                }
-                return;
-            }
-
-            /* View Controls */
-            // Home: Fit to view (standard CAD shortcut)
-            if (key === 'Home') {
-                e.preventDefault();
-                this.ui?.renderer?.core?.zoomFit();
-                this.ui?.renderer?.render();
-                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
-                return;
-            }
-
-            // F: Fit view (alternative)
-            if (key === 'f' || key === 'F') {
-                e.preventDefault();
-                this.ui?.renderer?.core?.zoomFit();
-                this.ui?.renderer?.render();
-                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
-                return;
-            }
-
-            // =: Fit view (alternative)
-            if (key === '=' || code === 'Equal') {
-                e.preventDefault();
-                this.ui?.renderer?.core?.zoomFit();
-                this.ui?.renderer?.render();
-                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
-                return;
-            }
-
-            // + : Zoom in
-            if (key === '+' || code === 'NumpadAdd') {
-                e.preventDefault();
-                this.ui?.renderer?.core?.zoomIn();
-                this.ui?.renderer?.render();
-                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
-                return;
-            }
-
-            // -: Zoom out
-            if (key === '-' || code === 'Minus' || code === 'NumpadSubtract') {
-                e.preventDefault();
-                this.ui?.renderer?.core?.zoomOut();
-                this.ui?.renderer?.render();
-                this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
-                return;
-            }
-
-            /* Canvas Panning (Arrow Keys) */
-            const panAmount = isShift ? 100 : 25; // Fast pan with Shift
-
-            const inSidebar = document.activeElement?.closest('#sidebar-left, #sidebar-right');
-
-            if (key === 'ArrowLeft' && !inSidebar) {
-                e.preventDefault();
-                this.ui?.renderer?.core?.pan(panAmount, 0);
-                this.ui?.renderer?.render();
-                return;
-            }
-
-            if (key === 'ArrowRight' && !inSidebar) {
-                e.preventDefault();
-                this.ui?.renderer?.core?.pan(-panAmount, 0);
-                this.ui?.renderer?.render();
-                return;
-            }
-
-            if (key === 'ArrowUp' && !inSidebar) {
-                e.preventDefault();
-                this.ui?.renderer?.core?.pan(0, panAmount);
-                this.ui?.renderer?.render();
-                return;
-            }
-
-            if (key === 'ArrowDown' && !inSidebar) {
-                e.preventDefault();
-                this.ui?.renderer?.core?.pan(0, -panAmount);
-                this.ui?.renderer?.render();
-                return;
-            }
-
-            /* DisplayToggles */
-            // W: Toggle wireframe
-            if (key === 'w' || key === 'W') {
-                e.preventDefault();
-                const toggle = document.getElementById('show-wireframe');
-                if (toggle) {
-                    toggle.checked = !toggle.checked;
-                    toggle.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-                return;
-            }
-
-            // G: Toggle grid
-            if (key === 'g' || key === 'G') {
-                e.preventDefault();
-                const toggle = document.getElementById('show-grid');
-                if (toggle) {
-                    toggle.checked = !toggle.checked;
-                    toggle.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-                return;
-            }
-
-            /* Operations */
-            // Delete: Remove selected operation
-            if (key === 'Delete' || code === 'Delete') {
-                e.preventDefault();
-                this.removeSelectedOperation();
-                return;
-            }
-
-            // Escape: Deselect / Close modal
-            if (key === 'Escape') {
-                e.preventDefault();
-
-                // If in parameter panel, return to tree
-                const paramForm = document.getElementById('property-form');
-                if (paramForm && paramForm.contains(document.activeElement)) {
-                    const selected = document.querySelector('.file-node-content.selected, .geometry-node-content.selected');
-                    if (selected) {
-                        selected.focus();
+                // Toolbar Arrow Navigation
+                const toolbar = document.getElementById('cam-toolbar');
+                if (toolbar && toolbar.contains(document.activeElement)) {
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        this.navigateToolbar(e.key === 'ArrowRight' ? 1 : -1);
                         return;
                     }
                 }
 
-                // Otherwise deselect current selection
-                if (this.ui?.navTreePanel?.selectedNode) {
-                    this.ui.navTreePanel.selectedNode = null;
-                    document.querySelectorAll('.file-node-content.selected, .geometry-node.selected')
-                        .forEach(el => el.classList.remove('selected'));
-                    this.ui?.operationPanel?.clearProperties();
+                // Guard: Let tree handle its own arrow navigation
+                const isInTree = e.target.closest('#operations-tree');
+                const isArrowKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+
+                if (isInputFocused) {
+                    // Allow Escape to blur inputs
+                    if (e.key === 'Escape') {
+                        e.target.blur();
+                    }
+                    return;
                 }
-                return;
-            }
 
-            // ═══════════════════════════════════════════════════════════════
-            // Add a function to 1-0 numeric characters?
-            // Select source files?
-            // ═══════════════════════════════════════════════════════════════
-
-            /* Origin Controls */
-            // B: Bottom-left origin
-            if (key === 'b' || key === 'B') {
-                e.preventDefault();
-                this.ui?.controls?.bottomLeftOrigin();
-                return;
-            }
-
-            // O: Apply/save origin
-            if (key === 'o' || key === 'O') {
-                e.preventDefault();
-                this.ui?.controls?.applyOffsetAndSetOrigin();
-                return;
-            }
-
-            // C: Center origin (change to Shift+C to avoid conflicts if necessary)
-            if (key === 'c' ||key === 'C' ) {
-                e.preventDefault();
-                this.ui?.controls?.centerOrigin();
-                return;
-            }
-
-            /* Help */
-            // F1: Show help
-            if (key === 'F1') {
-                e.preventDefault();
-                if (this.modalManager) {
-                    this.modalManager.showModal('help');
+                if (isInTree && isArrowKey) {
+                    return;
                 }
-                return;
-            }
-        });
+
+                const key = e.key;
+                const code = e.code;
+                const isShift = e.shiftKey;
+
+                // Escape: Context-aware handling
+                if (key === 'Escape') {
+                    // Check if a select dropdown is open (let browser handle it)
+                    if (document.activeElement?.tagName === 'SELECT') {
+                        // Let the native select close itself, don't prevent
+                        return;
+                    }
+
+                    // Check if in an input - blur it first
+                    if (document.activeElement?.matches('input, textarea')) {
+                        e.preventDefault();
+                        document.activeElement.blur();
+                        return;
+                    }
+
+                    // Check if dropdown menu is open
+                    const openDropdown = document.querySelector('.dropdown-content.show');
+                    if (openDropdown) {
+                        e.preventDefault();
+                        openDropdown.classList.remove('show');
+                        const btn = openDropdown.previousElementSibling;
+                        if (btn) {
+                            btn.classList.remove('active');
+                            btn.setAttribute('aria-expanded', 'false');
+                        }
+                        return;
+                    }
+
+                    e.preventDefault();
+
+                    // If in right sidebar, return to tree
+                    const rightSidebar = document.getElementById('sidebar-right');
+                    if (rightSidebar && rightSidebar.contains(document.activeElement)) {
+                        this.returnFocusToTree();
+                        return;
+                    }
+
+                    // If in canvas, return to tree
+                    const canvas = document.getElementById('preview-canvas');
+                    if (document.activeElement === canvas) {
+                        this.returnFocusToTree();
+                        return;
+                    }
+
+                    // Otherwise deselect
+                    if (this.ui?.navTreePanel?.selectedNode) {
+                        this.ui.navTreePanel.selectedNode = null;
+                        document.querySelectorAll('.file-node-content.selected, .geometry-node.selected')
+                            .forEach(el => el.classList.remove('selected'));
+                        this.ui?.operationPanel?.clearProperties();
+                    }
+                    return;
+                }
+
+                /* View Controls */
+                // Home: Fit to view (standard CAD shortcut)
+                if (key === 'Home') {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.zoomFit();
+                    this.ui?.renderer?.render();
+                    this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                    return;
+                }
+
+                // F: Fit view (alternative)
+                if (key === 'f' || key === 'F') {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.zoomFit();
+                    this.ui?.renderer?.render();
+                    this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                    return;
+                }
+
+                // =: Fit view (alternative)
+                if (key === '=' || code === 'Equal') {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.zoomFit();
+                    this.ui?.renderer?.render();
+                    this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                    return;
+                }
+
+                // + : Zoom in
+                if (key === '+' || code === 'NumpadAdd') {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.zoomIn();
+                    this.ui?.renderer?.render();
+                    this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                    return;
+                }
+
+                // -: Zoom out
+                if (key === '-' || code === 'Minus' || code === 'NumpadSubtract') {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.zoomOut();
+                    this.ui?.renderer?.render();
+                    this.ui?.renderer?.interactionHandler?.updateZoomDisplay();
+                    return;
+                }
+
+                /* Canvas Panning (Arrow Keys) */
+                const panAmount = isShift ? 100 : 25; // Fast pan with Shift
+
+                const inSidebar = document.activeElement?.closest('#sidebar-left, #sidebar-right');
+
+                if (key === 'ArrowLeft' && !inSidebar) {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.pan(panAmount, 0);
+                    this.ui?.renderer?.render();
+                    return;
+                }
+
+                if (key === 'ArrowRight' && !inSidebar) {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.pan(-panAmount, 0);
+                    this.ui?.renderer?.render();
+                    return;
+                }
+
+                if (key === 'ArrowUp' && !inSidebar) {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.pan(0, panAmount);
+                    this.ui?.renderer?.render();
+                    return;
+                }
+
+                if (key === 'ArrowDown' && !inSidebar) {
+                    e.preventDefault();
+                    this.ui?.renderer?.core?.pan(0, -panAmount);
+                    this.ui?.renderer?.render();
+                    return;
+                }
+
+                /* DisplayToggles */
+                // W: Toggle wireframe
+                if (key === 'w' || key === 'W') {
+                    e.preventDefault();
+                    const toggle = document.getElementById('show-wireframe');
+                    if (toggle) {
+                        toggle.checked = !toggle.checked;
+                        toggle.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    return;
+                }
+
+                // G: Toggle grid
+                if (key === 'g' || key === 'G') {
+                    e.preventDefault();
+                    const toggle = document.getElementById('show-grid');
+                    if (toggle) {
+                        toggle.checked = !toggle.checked;
+                        toggle.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    return;
+                }
+
+                /* Operations */
+                // Delete: Remove selected operation
+                if (key === 'Delete' || code === 'Delete') {
+                    e.preventDefault();
+                    this.removeSelectedOperation();
+                    return;
+                }
+
+                // Escape: Deselect / Close modal
+                if (key === 'Escape') {
+                    e.preventDefault();
+
+                    // If in parameter panel, return to tree
+                    const paramForm = document.getElementById('property-form');
+                    if (paramForm && paramForm.contains(document.activeElement)) {
+                        const selected = document.querySelector('.file-node-content.selected, .geometry-node-content.selected');
+                        if (selected) {
+                            selected.focus();
+                            return;
+                        }
+                    }
+
+                    // Otherwise deselect current selection
+                    if (this.ui?.navTreePanel?.selectedNode) {
+                        this.ui.navTreePanel.selectedNode = null;
+                        document.querySelectorAll('.file-node-content.selected, .geometry-node.selected')
+                            .forEach(el => el.classList.remove('selected'));
+                        this.ui?.operationPanel?.clearProperties();
+                    }
+                    return;
+                }
+
+                // ═══════════════════════════════════════════════════════════════
+                // Add a function to 1-0 numeric characters?
+                // Select source files?
+                // ═══════════════════════════════════════════════════════════════
+
+                /* Origin Controls */
+                // B: Bottom-left origin
+                if (key === 'b' || key === 'B') {
+                    e.preventDefault();
+                    this.ui?.controls?.bottomLeftOrigin();
+                    return;
+                }
+
+                // O: Apply/save origin
+                if (key === 'o' || key === 'O') {
+                    e.preventDefault();
+                    this.ui?.controls?.applyOffsetAndSetOrigin();
+                    return;
+                }
+
+                if (key === 'c' || key === 'C') {
+                    e.preventDefault();
+                    this.ui?.controls?.centerOrigin();
+                    return;
+                }
+
+                /* Help */
+                // F1: Show help
+                if (key === 'F1') {
+                    e.preventDefault();
+                    if (this.modalManager) {
+                        this.modalManager.showModal('help');
+                    }
+                    return;
+                }
+            });
 
             // Theme toggle button
             const themeToggle = document.getElementById('theme-toggle');
@@ -659,14 +656,6 @@
                         this.ui.renderer.setOptions({ theme: currentTheme });
                         this.ui.renderer.render();
                     }
-                });
-            }
-            // Footer support link
-            const footerSupportLink = document.getElementById('footer-support-link');
-            if (footerSupportLink) {
-                footerSupportLink.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.modalManager.showModal('support');
                 });
             }
         }

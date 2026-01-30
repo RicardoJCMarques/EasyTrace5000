@@ -53,17 +53,23 @@ html {
    ============================================================================ */
 :root {
     /* Layout Dimensions */
-    --toolbar-height: 3.375rem;           /* 54px */
+    --toolbar-height-base: 3.375rem;      /* The actual content height */
     --status-bar-height: 2.75rem;         /* 44px */
     --section-header-height: 2.25rem;     /* 36px */
     
-    /* Safe area - used for footer expansion on notched devices */
+    /* Safe Area Environment Variables */
+    --safe-area-top: env(safe-area-inset-top, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    
+    /* Calculated Header Height: Toolbar Content + Notch Space */
+    --header-layout-height: calc(var(--toolbar-height-base) + var(--safe-area-top));
     
     /* Total footer height including safe area */
     --footer-total-height: calc(var(--status-bar-height) + var(--safe-area-bottom));
     
-    /* Sidebar widths - slightly narrower, same flexibility */
+    /* Sidebar widths */
     --sidebar-left-width: clamp(15.5rem, 20vw, 21rem);
     --sidebar-right-width: clamp(15.5rem, 20vw, 22rem);
 
@@ -107,13 +113,9 @@ html {
     --z-modal: 1000;
     --z-tooltip: 10000;
 
-    /* Touch Targets - converted to rem */
+    /* Touch Targets */
     --touch-target-min: 2.75rem;      /* 44px */
     --touch-target-compact: 2.25rem;  /* 36px */
-
-    /* Viewport height - progressive enhancement */
-    --vh-full: 100vh;
-    --vh-small: 100vh;  /* Minimum guaranteed (for modals) */
     
     /* Modal Dimensions */
     --modal-max-width: min(700px, 95vw);
@@ -123,11 +125,17 @@ html {
     --modal-header-min-height: 3.5rem;
     --modal-footer-min-height: 3.5rem;
     --modal-gap: var(--spacing-xl);
+
+    /* Set DEFAULTS to the safe fallback */
+    --vh-dynamic: 100vh;
+    --vh-full: 100vh;
+    --vh-small: 100vh;
 }
 
-/* Progressive viewport height enhancement */
+/* Overwrite with modern units only if supported */
 @supports (height: 100dvh) {
     :root {
+        --vh-dynamic: 100dvh;
         --vh-full: 100dvh;
     }
 }
@@ -135,13 +143,6 @@ html {
 @supports (height: 100svh) {
     :root {
         --vh-small: 100svh;
-    }
-}
-
-/* Fallback for browsers without svh - use vh with safety margin */
-@supports not (height: 1svh) {
-    :root {
-        --vh-small: calc(100vh - 3rem); /* Account for mobile browser chrome */
     }
 }
 

@@ -47,11 +47,7 @@ const colors = themeData.colors;
 let cssLines = [];
 
 /**
- * RECURSIVE FLATTENER
  * Automatically converts JSON hierarchy to CSS kebab-case variables.
- * e.g. { primitives: { peckMarkGood: "#..." } } -> --color-primitive-peck-mark-good
- * * @param {string} prefix - The current CSS var prefix (e.g., 'color-primitive')
- * @param {object} obj - The JSON object to traverse
  */
 function flattenVars(prefix, obj) {
     Object.entries(obj).forEach(([key, value]) => {
@@ -71,11 +67,11 @@ function flattenVars(prefix, obj) {
 // Map JSON categories to their CSS variable prefixes
 // Manually map the "Root" categories to ensure they match existing CSS usage
 const mappings = [
-    { key: 'background', prefix: 'color-bg' }, // Note: changed from 'color-background' to match renderer-core usage of 'color-bg-primary'
+    { key: 'background', prefix: 'color-bg' },
     { key: 'text', prefix: 'color-text' },
     { key: 'border', prefix: 'color-border' },
     { key: 'accent', prefix: 'color-accent' },
-    { key: 'semantic', prefix: 'color' }, // Semantic usually maps directly (e.g. --color-success)
+    { key: 'semantic', prefix: 'color' },
     { key: 'operations', prefix: 'color-operation' },
     { key: 'canvas', prefix: 'color-canvas' },
     { key: 'debug', prefix: 'color-debug' },

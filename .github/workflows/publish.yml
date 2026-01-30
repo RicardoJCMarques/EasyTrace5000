@@ -36,8 +36,9 @@ jobs:
             --comments '/^!/' \
             -o dist/themes/theme-loader.js
 
-          # Minify all HTML files (includes inlined CSS)
-          for html in dist/*.html; do
+          # Minify all HTML files recursively
+          find dist -name "*.html" -type f | while read html; do
+            echo "Minifying $html..."
             npx html-minifier-terser "$html" \
               --collapse-whitespace \
               --remove-comments \
