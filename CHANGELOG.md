@@ -2,7 +2,31 @@
 
 All notable changes to the **EasyTrace5000** project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Unreleased
+- **Laser Pipeline:**  I am looking for hardware partners and sponsors, especially laser manufacturers to help hasten laser pipeline development. <3
+
+
+## [1.0.5] - 2026-02-03
+
+### Added
+- **Accessibility Documentation:** Included a [new script](.github/scripts/sync-accessibility.js) that generates doc/accessibility.html from doc/ACCESSIBILITY.md
+- **Narrow Screen Warnings:** Added @media triggered nag messages to the Welcome, Quickstart modals and Workspace about narrow screens breaking the UI.
+
+### Fixed
+- **Enforced Climb Cutting:** Mirroring addition broke cutting direction enforcement, now there's a single enforcement point before toolpath translation.
+- **Improved Documentation:** Changed hierarchy to include a doc/ folder with other content articles inside of it, reworked CSS for consistency across all pages.
+- **Improved Theme Loading:** Added a [new script](.github/scripts/sync-theme.js) to sync dark theme to theme.css and made both theme .jsons lazy load only when necessary.
+- **Improved Responsive CSS:** Reworked tool and documentation responsive CSS for very small screens to handle mobile browser safety margins better.
+
+### Removed
+- **Nav-tree Object Tooltip:** It was inconsistent and mostly useless. May try to add object statistics another way in the future.
+
+### Changed
+- **Small README Re-write**
+- **Minor SEO Updates**
+
 
 ## [1.0.4] - 2026-01-27
 
@@ -12,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Fixed Modal Flexibility:** All UI elements should now be fully usable on smaller screens, even **landscape** smarphones.
 - **Couple More SEO Changes**
 
+
 ## [1.0.3] - 2026-01-25
 
 ### Added
@@ -20,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Upgraded Gerber Parsing:** The Gerber Parsing Module can now handle more MACRO commands.
 - **Improved HTML:** Fixed index.html following [W3's Validator](https://validator.w3.org/).
 - **More SEO Changes**
+
 
 ## [1.0.2] - 2026-01-22
 
@@ -31,11 +57,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Added Favicons**
 - **SEO Changes**
 
+
 ## [1.0.1] - 2026-01-16
 
 ### Added
 - **Mirroring:** Added support for Horizontal (X) and Vertical (Y) board mirroring. Toggles under board rotation inside the Board Placement section.
 - **Coordinate System:** Upgraded the transformation engine to support complex combinations of rotation and mirroring.
+
 
 ## [1.0.0] - 2026-01-12
 

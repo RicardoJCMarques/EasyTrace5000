@@ -781,17 +781,305 @@
 }
 
 /* ============================================================================
-   RESPONSIVE
+   VIEWPORT WIDTH WARNINGS
    ============================================================================ */
 
+.viewport-warning {
+    display: none; /* Hidden on wide screens */
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius);
+    margin-bottom: var(--modal-gap);
+    line-height: var(--line-height-base);
+}
+
+.viewport-warning-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.viewport-warning-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.viewport-warning-content strong {
+    font-size: var(--font-size-sm);
+}
+
+.viewport-warning-content span {
+    font-size: var(--font-size-xs);
+    opacity: 0.9;
+}
+
+/* Info variant (Welcome modal) */
+.viewport-warning--info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: var(--color-info);
+}
+
+.viewport-warning--info .viewport-warning-icon {
+    color: var(--color-info);
+    animation: gentle-rotate 3s ease-in-out infinite;
+}
+
+/* Caution variant (Quickstart modal) */
+.viewport-warning--caution {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution .viewport-warning-icon {
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution strong {
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution span {
+    color: var(--color-text-primary);
+}
+
+/* Gentle rotation animation for the phone icon */
+@keyframes gentle-rotate {
+    0%, 15% { transform: rotate(0deg); }
+    35%, 65% { transform: rotate(-90deg); }
+    85%, 100% { transform: rotate(0deg); }
+}
+
+/* Workspace persistent bar */
+.workspace-viewport-bar {
+    display: none;
+    position: fixed;
+    top: var(--header-layout-height);
+    left: 0;
+    right: 0;
+    z-index: var(--z-sticky);
+    background: var(--color-warning);
+    color: #000;
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    text-align: center;
+}
+
+.workspace-viewport-bar-icon {
+    flex-shrink: 0;
+    stroke: #000;
+}
+
+.workspace-viewport-bar span {
+    flex: 1;
+}
+
+.workspace-viewport-bar-dismiss {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #000;
+    cursor: pointer;
+    padding: var(--spacing-xs);
+    flex-shrink: 0;
+}
+
+.workspace-viewport-bar-dismiss:hover {
+    opacity: 1;
+}
+
+.workspace-viewport-bar-dismiss svg {
+    stroke: #000;
+}
+
+.workspace-viewport-bar.dismissed {
+    display: none !important;
+}
+
+/* ============================================================================
+   VIEWPORT WIDTH WARNINGS
+   Revealed via CSS media query when viewport is too narrow for 3-section UI
+   ============================================================================ */
+
+.viewport-warning {
+    display: none;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius);
+    margin-bottom: var(--modal-gap);
+    line-height: var(--line-height-base);
+}
+
+.viewport-warning-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.viewport-warning-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.viewport-warning-content strong {
+    font-size: var(--font-size-sm);
+}
+
+.viewport-warning-content span {
+    font-size: var(--font-size-xs);
+    opacity: 0.9;
+}
+
+/* Info variant (Welcome modal) */
+.viewport-warning--info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: var(--color-info);
+}
+
+.viewport-warning--info .viewport-warning-icon {
+    color: var(--color-info);
+    animation: gentle-rotate 3s ease-in-out infinite;
+}
+
+/* Caution variant (Quickstart modal) */
+.viewport-warning--caution {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution .viewport-warning-icon {
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution strong {
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution span {
+    color: var(--color-text-primary);
+}
+
+@keyframes gentle-rotate {
+    0%, 15% { transform: rotate(0deg); }
+    35%, 65% { transform: rotate(-90deg); }
+    85%, 100% { transform: rotate(0deg); }
+}
+
+/* Workspace persistent bar */
+.workspace-viewport-bar {
+    display: none;
+    position: fixed;
+    top: var(--header-layout-height);
+    left: 0;
+    right: 0;
+    z-index: var(--z-sticky);
+    background: var(--color-warning);
+    color: #000;
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    text-align: center;
+}
+
+.workspace-viewport-bar svg {
+    flex-shrink: 0;
+    stroke: #000;
+}
+
+.workspace-viewport-bar span {
+    flex: 1;
+}
+
+.workspace-viewport-bar-dismiss {
+    background: transparent;
+    border: none;
+    color: #000;
+    font-size: var(--font-size-lg);
+    cursor: pointer;
+    padding: 0 var(--spacing-xs);
+    opacity: 0.7;
+    line-height: 1;
+}
+
+.workspace-viewport-bar-dismiss:hover {
+    opacity: 1;
+}
+
+.workspace-viewport-bar.dismissed {
+    display: none !important;
+}
+
+/* ============================================================================
+   RESPONSIVE BREAKPOINTS
+   ============================================================================ */
+
+@media (max-width: 1000px) {
+    /* Compact sidebars and stacked controls */
+    :root {
+        --sidebar-left-width: clamp(12rem, 18vw, 18rem);
+        --sidebar-right-width: clamp(11rem, 18vw, 17rem);
+    }
+
+    /* Stack origin buttons and mirror toggles */
+    .origin-buttons {
+        grid-template-columns: 1fr;
+    }
+
+    .mirror-section .field-row {
+        flex-direction: column;
+        gap: var(--spacing-xs);
+    }
+
+    /* Tighter property spacing */
+    .property-section {
+        margin-bottom: var(--spacing-lg);
+    }
+
+    .property-field {
+        margin-bottom: var(--spacing-md);
+    }
+
+    /* Replace expand triangles with border indicator - Consider using both on winder screens */
+    .tree-expand-icon {
+        display: none;
+    }
+
+    .category-icon {
+        margin-left: 0;
+    }
+
+    .operation-category .category-header {
+        border-left: 3px solid var(--color-text-disabled);
+        padding-left: calc(var(--spacing-md) - 3px);
+    }
+
+    .operation-category.expanded .category-header {
+        border-left-color: var(--color-accent-primary);
+    }
+}
+
+/* Smaller screens (≤965px) */
 @media (max-width: 965px) {
-    /* Simplify footer license info */
     .license-info:first-child span {
         display: none;
     }
 }
 
-/* Small screens (< 768px) */
+/* Small screens (≤768px) - Viewport warnings visible */
 @media (max-width: 768px) {
     .toolbar {
         padding: 0 var(--spacing-sm);
@@ -807,5 +1095,14 @@
 
     .status-right {
         padding-right: var(--spacing-sm);
+    }
+
+    /* Show viewport warnings */
+    .viewport-warning {
+        display: flex;
+    }
+
+    .workspace-viewport-bar:not(.dismissed) {
+        display: flex;
     }
 }

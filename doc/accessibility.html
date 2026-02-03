@@ -111,8 +111,7 @@
     <div class="doc-wrapper has-sidebar">
         <!-- Sidebar TOC -->
         <nav class="doc-sidebar" aria-label="Table of Contents">
-            <h2>Accessibility</h2>
-            <ol>
+            <h2>Accessibility Info</h2>             <ol>
                 <li>
                     <a href="#keyboard-navigation-overview" draggable="false">Keyboard Navigation Overview</a>
                 </li>
@@ -149,13 +148,10 @@
         <!-- Main Content -->
         <main id="doc-content" class="doc-main" aria-label="Main Content">
             <section class="hero hero--compact">
-                <h1>Accessibility Information</h1>
+                <h1>Accessibility Info</h1>
                 <p class="tagline">Keyboard navigation, screen reader support, and WCAG compliance</p>
             </section>
-            
-            <h1>
-                Accessibility
-            </h1>
+
             <p>
                 EasyTrace5000 is designed to be usable with keyboard-only navigation and compatible with assistive technologies. This document details keyboard controls, focus management, and WCAG 2.1 compliance efforts.
             </p>
@@ -163,780 +159,483 @@
                 Keyboard Navigation Overview
             </h2>
             <p>
-                The interface is divided into navigable zones.
+                The interface is designed for full keyboard operability using a <strong>Focus Zone</strong> strategy. This reduces repetitive tabbing by allowing users to jump between major workspace areas.
             </p>
             <h3 id="global-navigation">
                 Global Navigation
             </h3>
+            <p>
+                These shortcuts work globally to navigate the application structure.
+            </p>
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th align="left">
                             Key
                         </th>
-                        <th>
+                        <th align="left">
                             Action
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>F6</code>
                         </td>
-                        <td>
-                            Cycle forward through zones (Toolbar → Sidebar → Canvas)
+                        <td align="left">
+                            Cycle focus forward through zones: <strong>Toolbar</strong> → <strong>Operations Tree</strong> → <strong>Canvas</strong> → <strong>Properties Panel</strong>
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>Shift</code> + <code>F6</code>
                         </td>
-                        <td>
-                            Cycle backwards through zones
+                        <td align="left">
+                            Cycle focus backward through zones
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>Tab</code>
                         </td>
-                        <td>
-                            Navigate focusable elements within a zone
+                        <td align="left">
+                            Move focus to the next interactive element within the current zone
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>Shift</code> + <code>Tab</code>
+                        </td>
+                        <td align="left">
+                            Move focus to the previous interactive element
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>F1</code>
+                        </td>
+                        <td align="left">
+                            Open the Help &amp; Shortcuts modal
                         </td>
                     </tr>
                 </tbody>
             </table>
-            <h3 id="zones">
-                Zones
-            </h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>
-                            Zone
-                        </th>
-                        <th>
-                            Description
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
-                            Toolbar
-                        </td>
-                        <td>
-                            Top menu bar with actions and view controls
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            Operations Tree
-                        </td>
-                        <td>
-                            Left sidebar with file/operation hierarchy
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            Canvas
-                        </td>
-                        <td>
-                            Central preview area
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            Properties Panel
-                        </td>
-                        <td>
-                            Right sidebar with parameters and settings
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <p>
-                A <strong>skip link</strong> appears on Tab from page load, allowing keyboard users to jump directly to the canvas.
-            </p>
-            <hr>
-            <h2 id="zone-navigation">
-                Zone Navigation
+            <blockquote>
+                <p>
+                    <strong>Note:</strong> A <strong>Skip Link</strong> is available on the first <code>Tab</code> press after page load to jump directly to the Canvas.
+                </p>
+            </blockquote>
+            <h2 id="zone-specific-controls">
+                Zone-Specific Controls
             </h2>
             <p>
-                To reduce repetitive tabbing, the interface is divided into <strong>Focus Zones</strong>.
+                Each zone has specific interactions once it receives focus.
             </p>
-            <h3 id="global-keys">
-                Global Keys
+            <h3 id="toolbar-amp-sidebar-headers">
+                Toolbar &amp; Sidebar Headers
             </h3>
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th align="left">
                             Key
                         </th>
-                        <th>
+                        <th align="left">
                             Action
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>
-                            <code>F6</code>
+                        <td align="left">
+                            <code>Tab</code> / <code>Shift</code> + <code>Tab</code>
                         </td>
-                        <td>
-                            Cycle focus forward: <strong>Toolbar</strong> → <strong>Left Sidebar</strong> (Tree) → <strong>Right Sidebar</strong> (Properties)
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>Shift</code> + <code>F6</code>
-                        </td>
-                        <td>
-                            Cycle focus backwards
+                        <td align="left">
+                            Navigate between buttons and menu items
                         </td>
                     </tr>
                     <tr>
-                        <td>
-                            <code>Tab</code>
-                        </td>
-                        <td>
-                            Navigate sequentially within the current zone
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <p>
-                <strong>Note:</strong> The Canvas is excluded from the <code>F6</code> cycle to prevent focus getting &quot;stuck&quot; in complex SVGs. Use the <strong>Skip Link</strong> (appears on first Tab) to jump directly to the Canvas.
-            </p>
-            <h3 id="toolbar">
-                Toolbar
-            </h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>
-                            Key
-                        </th>
-                        <th>
-                            Action
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
+                        <td align="left">
                             <code>←</code> / <code>→</code>
                         </td>
-                        <td>
-                            Navigate between toolbar buttons
+                        <td align="left">
+                            Navigate horizontally between toolbar buttons
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>Enter</code> / <code>Space</code>
                         </td>
-                        <td>
-                            Activate focused button
+                        <td align="left">
+                            Activate the focused button or toggle a dropdown
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>Escape</code>
                         </td>
-                        <td>
-                            Close open dropdown menus
+                        <td align="left">
+                            Close an open dropdown menu
                         </td>
                     </tr>
                 </tbody>
             </table>
-            <h3 id="sidebar-sections-collapsible">
-                Sidebar Sections (Collapsible)
+            <h3 id="operations-tree-left-sidebar">
+                Operations Tree (Left Sidebar)
             </h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>
-                            Key
-                        </th>
-                        <th>
-                            Action
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
-                            <code>Enter</code> / <code>Space</code>
-                        </td>
-                        <td>
-                            Toggle section expand/collapse
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>↓</code> / <code>↑</code>
-                        </td>
-                        <td>
-                            Navigate between sections or fields within
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <hr>
-            <h2 id="operations-tree">
-                Operations Tree
-            </h2>
             <p>
-                The operations tree uses a hierarchical structure with categories, files, and geometry nodes.
+                The tree uses a <strong>roving tabindex</strong> pattern. Press <code>Tab</code> to enter the tree list, then use arrow keys to navigate.
             </p>
-            <h3 id="navigation">
-                Navigation
-            </h3>
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th align="left">
                             Key
                         </th>
-                        <th>
+                        <th align="left">
                             Action
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>
-                            <code>↓</code>
+                        <td align="left">
+                            <code>↑</code> / <code>↓</code>
                         </td>
-                        <td>
-                            Move to next visible item
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>↑</code>
-                        </td>
-                        <td>
-                            Move to previous visible item
+                        <td align="left">
+                            Move focus to the previous or next visible item
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>→</code>
                         </td>
-                        <td>
-                            Expand category/file, or move into children
+                        <td align="left">
+                            Expand a category/file, or move focus to the first child
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>←</code>
                         </td>
-                        <td>
-                            Collapse category/file, or move to parent
+                        <td align="left">
+                            Collapse a category/file, or move focus to the parent
                         </td>
                     </tr>
                     <tr>
-                        <td>
-                            <code>Home</code>
+                        <td align="left">
+                            <code>Home</code> / <code>End</code>
                         </td>
-                        <td>
-                            Jump to first item
+                        <td align="left">
+                            Jump to the first or last item in the tree
                         </td>
                     </tr>
                     <tr>
-                        <td>
-                            <code>End</code>
-                        </td>
-                        <td>
-                            Jump to last item
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <h3 id="actions">
-                Actions
-            </h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>
-                            Key
-                        </th>
-                        <th>
-                            Action
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
+                        <td align="left">
                             <code>Enter</code> / <code>Space</code>
                         </td>
-                        <td>
-                            Select item and open properties; toggle category expand
+                        <td align="left">
+                            Select the item (opens properties) or toggle category expansion
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>Delete</code>
                         </td>
-                        <td>
-                            Remove selected file or geometry
+                        <td align="left">
+                            Remove the selected file or geometry layer
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>V</code>
                         </td>
-                        <td>
-                            Toggle visibility of selected layer
+                        <td align="left">
+                            Toggle visibility of the selected layer
                         </td>
                     </tr>
                 </tbody>
             </table>
-            <h3 id="aria-roles-amp-hierarchy">
-                ARIA Roles &amp; Hierarchy
-            </h3>
-            <p>
-                The tree structure follows the <a href="https://www.w3.org/WAI/ARIA/apg/patterns/treeview/">WAI-ARIA Tree View Pattern</a>:
-            </p>
-            <ol>
-                <li>
-                    <strong>Container:</strong> <code>role=&quot;tree&quot;</code> with a label &quot;Operations&quot;.
-                </li>
-                <li>
-                    <strong>Groups:</strong> Nested lists (files inside categories, geometry inside files) use <code>role=&quot;group&quot;</code>.
-                </li>
-                <li>
-                    <strong>Items:</strong>
-                    <ul>
-                        <li>
-                            <strong>Level 1 (Categories):</strong> <code>role=&quot;treeitem&quot;</code>, <code>aria-level=&quot;1&quot;</code>, <code>aria-expanded=&quot;...&quot;</code>.
-                        </li>
-                        <li>
-                            <strong>Level 2 (Files):</strong> <code>role=&quot;treeitem&quot;</code>, <code>aria-level=&quot;2&quot;</code>, <code>aria-selected=&quot;...&quot;</code>, <code>aria-expanded=&quot;...&quot;</code>.
-                        </li>
-                        <li>
-                            <strong>Level 3 (Geometry):</strong> <code>role=&quot;treeitem&quot;</code>, <code>aria-level=&quot;3&quot;</code>, <code>aria-selected=&quot;...&quot;</code>.
-                        </li>
-                    </ul>
-                </li>
-            </ol>
-            <p>
-                Focus is managed via <strong>roving tabindex</strong>:
-            </p>
-            <ul>
-                <li>
-                    The active item has <code>tabindex=&quot;0&quot;</code>.
-                </li>
-                <li>
-                    All other items have <code>tabindex=&quot;-1&quot;</code>.
-                </li>
-                <li>
-                    Arrow keys move the <code>tabindex=&quot;0&quot;</code> to the adjacent item and focus it.
-                </li>
-            </ul>
-            <hr>
-            <h2 id="canvas-controls">
+            <h3 id="canvas-controls">
                 Canvas Controls
-            </h2>
-            <p>
-                When focus is on the canvas or workspace (not in input fields):
-            </p>
-            <h3 id="view-controls">
-                View Controls
             </h3>
+            <p>
+                These controls are active when the <strong>Canvas</strong> zone has focus.
+            </p>
+            <p>
+                <strong>View Manipulation</strong>
+            </p>
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th align="left">
                             Key
                         </th>
-                        <th>
+                        <th align="left">
                             Action
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>
-                            <code>Home</code>
+                        <td align="left">
+                            <code>↑</code> / <code>↓</code> / <code>←</code> / <code>→</code>
                         </td>
-                        <td>
+                        <td align="left">
+                            Pan the view
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>Shift</code> + <code>Arrow</code>
+                        </td>
+                        <td align="left">
+                            Pan faster
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>+</code> / <code>-</code>
+                        </td>
+                        <td align="left">
+                            Zoom in / Zoom out
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>Home</code> / <code>F</code> / <code>=</code>
+                        </td>
+                        <td align="left">
                             Fit all geometry to view
                         </td>
                     </tr>
-                    <tr>
-                        <td>
-                            <code>F</code>
-                        </td>
-                        <td>
-                            Fit to view (alternative)
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>=</code>
-                        </td>
-                        <td>
-                            Fit to view (alternative)
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>+</code> / <code>NumpadAdd</code>
-                        </td>
-                        <td>
-                            Zoom in
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>-</code> / <code>NumpadSubtract</code>
-                        </td>
-                        <td>
-                            Zoom out
-                        </td>
-                    </tr>
                 </tbody>
             </table>
-            <h3 id="panning">
-                Panning
-            </h3>
+            <p>
+                <strong>Display &amp; Tools</strong>
+            </p>
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th align="left">
                             Key
                         </th>
-                        <th>
+                        <th align="left">
                             Action
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>
-                            <code>←</code>
-                        </td>
-                        <td>
-                            Pan left
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>→</code>
-                        </td>
-                        <td>
-                            Pan right
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>↑</code>
-                        </td>
-                        <td>
-                            Pan up
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>↓</code>
-                        </td>
-                        <td>
-                            Pan down
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>Shift</code> + Arrow
-                        </td>
-                        <td>
-                            Fast pan
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <h3 id="display-toggles">
-                Display Toggles
-            </h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>
-                            Key
-                        </th>
-                        <th>
-                            Action
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
+                        <td align="left">
                             <code>W</code>
                         </td>
-                        <td>
-                            Toggle wireframe mode
+                        <td align="left">
+                            Toggle Wireframe mode
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>G</code>
                         </td>
-                        <td>
-                            Toggle grid visibility
+                        <td align="left">
+                            Toggle Grid visibility
                         </td>
                     </tr>
-                </tbody>
-            </table>
-            <h3 id="origin-controls">
-                Origin Controls
-            </h3>
-            <table>
-                <thead>
                     <tr>
-                        <th>
-                            Key
-                        </th>
-                        <th>
-                            Action
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
+                        <td align="left">
                             <code>B</code>
                         </td>
-                        <td>
-                            Set origin to bottom-left
+                        <td align="left">
+                            Set Origin to Bottom-Left (Preview)
                         </td>
                     </tr>
                     <tr>
-                        <td>
-                            <code>O</code>
-                        </td>
-                        <td>
-                            Save current origin
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
+                        <td align="left">
                             <code>C</code>
                         </td>
-                        <td>
-                            Set origin to center
+                        <td align="left">
+                            Set Origin to Center (Preview)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>O</code>
+                        </td>
+                        <td align="left">
+                            Save/Confirm current origin position
                         </td>
                     </tr>
                 </tbody>
             </table>
-            <h3 id="help">
-                Help
+            <h3 id="property-panel-right-sidebar">
+                Property Panel (Right Sidebar)
             </h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>
-                            Key
-                        </th>
-                        <th>
-                            Action
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
-                            <code>F1</code>
-                        </td>
-                        <td>
-                            Show Help modal with initial steps &amp; keyboard shortcuts/navigation
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <hr>
-            <h2 id="property-panel">
-                Property Panel
-            </h2>
             <p>
-                When a file or geometry is selected, the property panel displays editable parameters.
+                This panel handles parameter inputs for selected operations.
             </p>
-            <h3 id="field-navigation">
-                Field Navigation
-            </h3>
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th align="left">
                             Key
                         </th>
-                        <th>
+                        <th align="left">
                             Action
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>
-                            <code>↓</code>
-                        </td>
-                        <td>
-                            Move to next field/row
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>↑</code>
-                        </td>
-                        <td>
-                            Move to previous field/row
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>Enter</code> / <code>Space</code>
-                        </td>
-                        <td>
-                            Enter edit mode on focused row
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>Enter</code> (in input)
-                        </td>
-                        <td>
-                            Commit value and move to next field
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>Escape</code>
-                        </td>
-                        <td>
-                            Exit edit mode, return focus to row
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
+                        <td align="left">
                             <code>Tab</code>
                         </td>
-                        <td>
-                            Standard tab navigation between focusable elements
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <h3 id="tooltip-icons">
-                Tooltip Icons
-            </h3>
-            <p>
-                Help icons (<code>?</code>) next to labels can be focused with Tab and activated to show tooltips.
-            </p>
-            <hr>
-            <h2 id="modals">
-                Modals
-            </h2>
-            <p>
-                Modals (Welcome, Quickstart, G-code Export, Support) implement focus trapping and keyboard controls.
-            </p>
-            <h3 id="general-modal-controls">
-                General Modal Controls
-            </h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>
-                            Key
-                        </th>
-                        <th>
-                            Action
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
-                            <code>Escape</code>
-                        </td>
-                        <td>
-                            Close modal (context-aware: may return to previous modal)
+                        <td align="left">
+                            Move to next field, button, or help icon
                         </td>
                     </tr>
                     <tr>
-                        <td>
-                            <code>Tab</code>
+                        <td align="left">
+                            <code>Shift</code> + <code>Tab</code>
                         </td>
-                        <td>
-                            Cycle through focusable elements (trapped within modal)
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>Shift+Tab</code>
-                        </td>
-                        <td>
-                            Cycle backwards
+                        <td align="left">
+                            Move to previous field
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
                             <code>↓</code> / <code>↑</code>
                         </td>
-                        <td>
-                            Navigate form fields
+                        <td align="left">
+                            Navigate focus between property rows (Grid Navigation)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>Enter</code>
+                        </td>
+                        <td align="left">
+                            Enter &quot;Edit Mode&quot; on a focused row
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>Enter</code> <em>(while editing)</em>
+                        </td>
+                        <td align="left">
+                            Commit change and move to next field
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>Escape</code>
+                        </td>
+                        <td align="left">
+                            Cancel edit/tooltip and return focus to the row
                         </td>
                     </tr>
                 </tbody>
             </table>
-            <h3 id="g-code-export-modal---sortable-list">
-                G-code Export Modal - Sortable List
-            </h3>
+            <h2 id="modals-amp-dialogs">
+                Modals &amp; Dialogs
+            </h2>
             <p>
-                The operation order list supports keyboard reordering:
+                When a modal (e.g., <strong>G-code Export</strong>) is open, focus is trapped within it until closed. Global navigation keys (<code>F6</code>) are disabled.
             </p>
+            <h3 id="general-navigation">
+                General Navigation
+            </h3>
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th align="left">
                             Key
                         </th>
-                        <th>
+                        <th align="left">
                             Action
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>
-                            <code>Space</code>
+                        <td align="left">
+                            <code>Tab</code>
                         </td>
-                        <td>
-                            Grab/drop item for reordering
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <code>↓</code> / <code>↑</code> (while grabbed)
-                        </td>
-                        <td>
-                            Move item up/down in list
+                        <td align="left">
+                            Cycle forward through inputs and buttons
                         </td>
                     </tr>
                     <tr>
-                        <td>
+                        <td align="left">
+                            <code>Shift</code> + <code>Tab</code>
+                        </td>
+                        <td align="left">
+                            Cycle backward through inputs and buttons
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
                             <code>Escape</code>
                         </td>
-                        <td>
-                            Cancel reorder operation
+                        <td align="left">
+                            Close the modal or cancel the current action
                         </td>
                     </tr>
                 </tbody>
             </table>
-            <hr>
+            <h3 id="sortable-lists-g-code-export">
+                Sortable Lists (G-code Export)
+            </h3>
+            <p>
+                For reordering operations in the export list:
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        <th align="left">
+                            Key
+                        </th>
+                        <th align="left">
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td align="left">
+                            <code>Space</code>
+                        </td>
+                        <td align="left">
+                            <strong>Grab</strong> the focused item for reordering
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>↑</code> / <code>↓</code>
+                        </td>
+                        <td align="left">
+                            Move the grabbed item up or down the list
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>Space</code>
+                        </td>
+                        <td align="left">
+                            <strong>Drop</strong> the item in its new position
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left">
+                            <code>Escape</code>
+                        </td>
+                        <td align="left">
+                            Cancel the grab action and reset position
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
             <h2 id="screen-reader-support">
                 Screen Reader Support
             </h2>
@@ -985,7 +684,6 @@
             <p>
                 Decorative icons include <code>aria-hidden=&quot;true&quot;</code> to prevent screen reader noise.
             </p>
-            <hr>
             <h2 id="wcag-21-compliance">
                 WCAG 2.1 Compliance
             </h2>
@@ -1318,7 +1016,6 @@
                     </tr>
                 </tbody>
             </table>
-            <hr>
             <h2 id="known-limitations">
                 Known Limitations
             </h2>
@@ -1349,7 +1046,6 @@
                     </p>
                 </li>
             </ol>
-            <hr>
             <h2 id="reporting-issues">
                 Reporting Issues
             </h2>
@@ -1370,7 +1066,6 @@
                     Fill in the required details (Browser, OS, Assistive Technology)
                 </li>
             </ol>
-            <hr>
             <h2 id="resources">
                 Resources
             </h2>

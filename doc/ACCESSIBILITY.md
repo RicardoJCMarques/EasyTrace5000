@@ -1,4 +1,6 @@
-# Accessibility
+# Accessibility Info
+
+Keyboard navigation, screen reader support, and WCAG compliance
 
 EasyTrace5000 is designed to be usable with keyboard-only navigation and compatible with assistive technologies. This document details keyboard controls, focus management, and WCAG 2.1 compliance efforts.
 
@@ -19,191 +21,111 @@ EasyTrace5000 is designed to be usable with keyboard-only navigation and compati
 
 ## Keyboard Navigation Overview
 
-The interface is divided into navigable zones.
+The interface is designed for full keyboard operability using a **Focus Zone** strategy. This reduces repetitive tabbing by allowing users to jump between major workspace areas.
 
 ### Global Navigation
 
+These shortcuts work globally to navigate the application structure.
+
 | Key | Action |
-|-----|--------|
-| `F6` | Cycle forward through zones (Toolbar → Sidebar → Canvas) |
-| `Shift` + `F6` | Cycle backwards through zones |
-| `Tab` | Navigate focusable elements within a zone |
+| :--- | :--- |
+| `F6` | Cycle focus forward through zones: **Toolbar** → **Operations Tree** → **Canvas** → **Properties Panel** |
+| `Shift` + `F6` | Cycle focus backward through zones |
+| `Tab` | Move focus to the next interactive element within the current zone |
+| `Shift` + `Tab` | Move focus to the previous interactive element |
+| `F1` | Open the Help & Shortcuts modal |
 
-### Zones
-
-| Zone | Description |
-|------|-------------|
-| Toolbar | Top menu bar with actions and view controls |
-| Operations Tree | Left sidebar with file/operation hierarchy |
-| Canvas | Central preview area |
-| Properties Panel | Right sidebar with parameters and settings |
-
-A **skip link** appears on Tab from page load, allowing keyboard users to jump directly to the canvas.
+> **Note:** A **Skip Link** is available on the first `Tab` press after page load to jump directly to the Canvas.
 
 ---
 
-## Zone Navigation
+## Zone-Specific Controls
 
-To reduce repetitive tabbing, the interface is divided into **Focus Zones**.
+Each zone has specific interactions once it receives focus.
 
-### Global Keys
-
-| Key | Action |
-|-----|--------|
-| `F6` | Cycle focus forward: **Toolbar** → **Left Sidebar** (Tree) → **Right Sidebar** (Properties) |
-| `Shift` + `F6` | Cycle focus backwards |
-| `Tab` | Navigate sequentially within the current zone |
-
-**Note:** The Canvas is excluded from the `F6` cycle to prevent focus getting "stuck" in complex SVGs. Use the **Skip Link** (appears on first Tab) to jump directly to the Canvas.
-
-### Toolbar
+### Toolbar & Sidebar Headers
 
 | Key | Action |
-|-----|--------|
-| `←` / `→` | Navigate between toolbar buttons |
-| `Enter` / `Space` | Activate focused button |
-| `Escape` | Close open dropdown menus |
+| :--- | :--- |
+| `Tab` / `Shift` + `Tab` | Navigate between buttons and menu items |
+| `←` / `→` | Navigate horizontally between toolbar buttons |
+| `Enter` / `Space` | Activate the focused button or toggle a dropdown |
+| `Escape` | Close an open dropdown menu |
 
-### Sidebar Sections (Collapsible)
+### Operations Tree (Left Sidebar)
+
+The tree uses a **roving tabindex** pattern. Press `Tab` to enter the tree list, then use arrow keys to navigate.
 
 | Key | Action |
-|-----|--------|
-| `Enter` / `Space` | Toggle section expand/collapse |
-| `↓` / `↑` | Navigate between sections or fields within |
+| :--- | :--- |
+| `↑` / `↓` | Move focus to the previous or next visible item |
+| `→` | Expand a category/file, or move focus to the first child |
+| `←` | Collapse a category/file, or move focus to the parent |
+| `Home` / `End` | Jump to the first or last item in the tree |
+| `Enter` / `Space` | Select the item (opens properties) or toggle category expansion |
+| `Delete` | Remove the selected file or geometry layer |
+| `V` | Toggle visibility of the selected layer |
+
+### Canvas Controls
+
+These controls are active when the **Canvas** zone has focus.
+
+**View Manipulation**
+
+| Key | Action |
+| :--- | :--- |
+| `↑` / `↓` / `←` / `→` | Pan the view |
+| `Shift` + `Arrow` | Pan faster |
+| `+` / `-` | Zoom in / Zoom out |
+| `Home` / `F` / `=` | Fit all geometry to view |
+
+**Display & Tools**
+
+| Key | Action |
+| :--- | :--- |
+| `W` | Toggle Wireframe mode |
+| `G` | Toggle Grid visibility |
+| `B` | Set Origin to Bottom-Left (Preview) |
+| `C` | Set Origin to Center (Preview) |
+| `O` | Save/Confirm current origin position |
+
+### Property Panel (Right Sidebar)
+
+This panel handles parameter inputs for selected operations.
+
+| Key | Action |
+| :--- | :--- |
+| `Tab` | Move to next field, button, or help icon |
+| `Shift` + `Tab` | Move to previous field |
+| `↓` / `↑` | Navigate focus between property rows (Grid Navigation) |
+| `Enter` | Enter "Edit Mode" on a focused row |
+| `Enter` *(while editing)* | Commit change and move to next field |
+| `Escape` | Cancel edit/tooltip and return focus to the row |
 
 ---
 
-## Operations Tree
+## Modals & Dialogs
 
-The operations tree uses a hierarchical structure with categories, files, and geometry nodes.
+When a modal (e.g., **G-code Export**) is open, focus is trapped within it until closed. Global navigation keys (`F6`) are disabled.
 
-### Navigation
-
-| Key | Action |
-|-----|--------|
-| `↓` | Move to next visible item |
-| `↑` | Move to previous visible item |
-| `→` | Expand category/file, or move into children |
-| `←` | Collapse category/file, or move to parent |
-| `Home` | Jump to first item |
-| `End` | Jump to last item |
-
-### Actions
+### General Navigation
 
 | Key | Action |
-|-----|--------|
-| `Enter` / `Space` | Select item and open properties; toggle category expand |
-| `Delete` | Remove selected file or geometry |
-| `V` | Toggle visibility of selected layer |
+| :--- | :--- |
+| `Tab` | Cycle forward through inputs and buttons |
+| `Shift` + `Tab` | Cycle backward through inputs and buttons |
+| `Escape` | Close the modal or cancel the current action |
 
-### ARIA Roles & Hierarchy
+### Sortable Lists (G-code Export)
 
-The tree structure follows the [WAI-ARIA Tree View Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/treeview/):
-
-1.  **Container:** `role="tree"` with a label "Operations".
-2.  **Groups:** Nested lists (files inside categories, geometry inside files) use `role="group"`.
-3.  **Items:**
-    * **Level 1 (Categories):** `role="treeitem"`, `aria-level="1"`, `aria-expanded="..."`.
-    * **Level 2 (Files):** `role="treeitem"`, `aria-level="2"`, `aria-selected="..."`, `aria-expanded="..."`.
-    * **Level 3 (Geometry):** `role="treeitem"`, `aria-level="3"`, `aria-selected="..."`.
-
-Focus is managed via **roving tabindex**:
-* The active item has `tabindex="0"`.
-* All other items have `tabindex="-1"`.
-* Arrow keys move the `tabindex="0"` to the adjacent item and focus it.
-
----
-
-## Canvas Controls
-
-When focus is on the canvas or workspace (not in input fields):
-
-### View Controls
+For reordering operations in the export list:
 
 | Key | Action |
-|-----|--------|
-| `Home` | Fit all geometry to view |
-| `F` | Fit to view (alternative) |
-| `=` | Fit to view (alternative) |
-| `+` / `NumpadAdd` | Zoom in |
-| `-` / `NumpadSubtract` | Zoom out |
-
-### Panning
-
-| Key | Action |
-|-----|--------|
-| `←` | Pan left |
-| `→` | Pan right |
-| `↑` | Pan up |
-| `↓` | Pan down |
-| `Shift` + Arrow | Fast pan |
-
-### Display Toggles
-
-| Key | Action |
-|-----|--------|
-| `W` | Toggle wireframe mode |
-| `G` | Toggle grid visibility |
-
-### Origin Controls
-
-| Key | Action |
-|-----|--------|
-| `B` | Set origin to bottom-left |
-| `O` | Save current origin |
-| `C` | Set origin to center |
-
-### Help
-
-| Key | Action |
-|-----|--------|
-| `F1` | Show Help modal with initial steps & keyboard shortcuts/navigation |
-
----
-
-## Property Panel
-
-When a file or geometry is selected, the property panel displays editable parameters.
-
-### Field Navigation
-
-| Key | Action |
-|-----|--------|
-| `↓` | Move to next field/row |
-| `↑` | Move to previous field/row |
-| `Enter` / `Space` | Enter edit mode on focused row |
-| `Enter` (in input) | Commit value and move to next field |
-| `Escape` | Exit edit mode, return focus to row |
-| `Tab` | Standard tab navigation between focusable elements |
-
-### Tooltip Icons
-
-Help icons (`?`) next to labels can be focused with Tab and activated to show tooltips.
-
----
-
-## Modals
-
-Modals (Welcome, Quickstart, G-code Export, Support) implement focus trapping and keyboard controls.
-
-### General Modal Controls
-
-| Key | Action |
-|-----|--------|
-| `Escape` | Close modal (context-aware: may return to previous modal) |
-| `Tab` | Cycle through focusable elements (trapped within modal) |
-| `Shift+Tab` | Cycle backwards |
-| `↓` / `↑` | Navigate form fields |
-
-### G-code Export Modal - Sortable List
-
-The operation order list supports keyboard reordering:
-
-| Key | Action |
-|-----|--------|
-| `Space` | Grab/drop item for reordering |
-| `↓` / `↑` (while grabbed) | Move item up/down in list |
-| `Escape` | Cancel reorder operation |
+| :--- | :--- |
+| `Space` | **Grab** the focused item for reordering |
+| `↑` / `↓` | Move the grabbed item up or down the list |
+| `Space` | **Drop** the item in its new position |
+| `Escape` | Cancel the grab action and reset position |
 
 ---
 

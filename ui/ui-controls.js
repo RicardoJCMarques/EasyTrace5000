@@ -51,6 +51,7 @@
             this.focusZones = [
                 { id: 'cam-toolbar', selector: '#cam-toolbar' },
                 { id: 'sidebar-left', selector: '#sidebar-left' },
+                { id: 'preview-canvas', selector: '#preview-canvas' },
                 { id: 'sidebar-right', selector: '#sidebar-right' }
             ];
             this.currentZoneIndex = 1;
@@ -135,6 +136,17 @@
             if (this.coordinateSystem) {
                 this.coordinateSystem.addChangeListener(() => {
                     this.updateOffsetInputsWithTracking();
+                });
+            }
+
+            // Viewport warning bar dismiss
+            const viewportBarDismiss = document.getElementById('dismiss-viewport-bar');
+            if (viewportBarDismiss) {
+                viewportBarDismiss.addEventListener('click', () => {
+                    const bar = document.getElementById('workspace-viewport-bar');
+                    if (bar) {
+                        bar.classList.add('dismissed');
+                    }
                 });
             }
 

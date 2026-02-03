@@ -1,20 +1,17 @@
-# EasyTrace5000 - Advanced Workspace
+# EasyTrace5000 - Browser-Based PCB CAM Tool
 
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg) ![Status: Active](https://img.shields.io/badge/status-active-success.svg) ![Tech: VanillaJS](https://img.shields.io/badge/tech-Vanilla_JS-yellow.svg) ![Tech: WebAssembly](https://img.shields.io/badge/tech-WebAssembly-blueviolet.svg) ![Accessibility: WCAG 2.1 AA Partial](https://img.shields.io/badge/accessibility-WCAG_2.1_AA_partial-yellow.svg)
 
-An open-source, browser-based CAM tool for generating G-code from PCB manufacturing files. Featuring an interactive 2D Canvas renderer, high-performance Clipper2 geometry engine with a custom arc-reconstruction system and intelligent toolpath optimization.
+EasyTrace5000 is a browser-based CAM workspace that converts standard fabrication files (Gerber, Excellon, SVG) into G-code for CNC milling. It runs entirely client-side on any browser, removing the need for software installation or cloud processing. The pipeline includes custom arc-reconstruction to generate G2/G3 commands from the original geometry preventing the machine stuttering inherent to segmented toolpaths.
 
 <div align="center">
-  <img src="./images/EasyTrace5000_workspace.webp" width="830" alt="EasyTrace5000 Workspace screenshot">
+  <img src="./images/EasyTrace5000_workspace.webp" width="830" height="467" alt="EasyTrace5000 Workspace screenshot">
 </div>
 
-## Live Access
+## Try it!
 
-The latest version of EasyTrace5000 is automatically deployed and available online:
-
-* **Main Application:** [cam.eltryus.design](https://cam.eltryus.design)
-* **Extra Documentation:** [cam.eltryus.design/doc](https://cam.eltryus.design/doc)
-* **Clipper2 Test Suite:** [cam.eltryus.design/clipper2/](https://cam.eltryus.design/clipper2/)
+* **[→ Open Workspace ←](https://cam.eltryus.design)** - Runs entirely in your browser. No installation, accounts or cloud dependencies.
+* **[Extra Documentation](https://cam.eltryus.design/doc/)** - Guides for CNC milling and accessibility features, plus a laser pipeline preview.
 
 ## Safety & Material Guide
 
@@ -76,7 +73,7 @@ Note: Jury's still out on UV lasers but until proven otherwise, use them with th
 # Tech Stack
 
 * **Frontend:** Vanilla JavaScript (ES6+), HTML5, CSS3
-* **Geometry Engine:** [Clipper2](https://github.com/AngusJohnson/Clipper2) via [WebAssembly](https://github.com/ErikSom/Clipper2-WASM/)
+* **Geometry Engine:** [Clipper2](https://github.com/AngusJohnson/Clipper2) via [WebAssembly](https://github.com/ErikSom/Clipper2-WASM)
 * **Rendering:** Custom 2D Canvas-based layer renderer with an overlay system for grids, rulers, and origin points.
 * **File Parsing:** Native parsers for Gerber (RS-274X), Excellon and SVG formats.
 * **Toolpath Generation:** A three-stage pipeline (Translate, Optimize, Process) to convert geometry into machine-ready plans.
@@ -310,7 +307,7 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 ```
 
 2. Serve locally (required for WASM loading):
-   - **VS Code:** Use [Five Server](https://github.com/yandeu/five-server-vscode) extension (A fiveserver.config.js file is included in the repo)
+   - **VS Code:** Use [Five Server](https://github.com/yandeu/five-server-vscode) extension (A [fiveserver.config.js](fiveserver.config.js) file is included)
    - **Python:** `python -m http.server 8000`
    - **Node:** `npx serve`
 
@@ -452,4 +449,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.0.4 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.0.5 | **Platform**: Client-side Web

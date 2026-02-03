@@ -553,10 +553,8 @@
             machinePlan.addRapid(startX, startY, null);
             machinePlan.addLinear(startX, startY, 0, plungeRate);
 
-            // Determine arc direction based on mirror state
-            const transforms = this.context.transforms || {};
-            const isMirrored = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-            const arcCW = !isMirrored;
+            // Always CW for climb milling (coordinates already transformed)
+            const arcCW = true;
 
             // Negative angleSpan = CW traversal, Positive = CCW
             const angleSpan = revolutions * 2 * Math.PI * (arcCW ? -1 : 1);
@@ -606,12 +604,8 @@
             const feedRate = purePlan.metadata.feedRate;
             const plungeRate = purePlan.metadata.plungeRate;
 
-            // If the coordinate system is mirrored (flipped parity), arc direction must be inverted to maintain the convex shape of the caps.
-            const transforms = this.context.transforms || {};
-            const isMirrored = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-
-            // Standard slots use CW (true) arcs. Mirrored slots must use CCW (false).
-            const arcCW = !isMirrored; 
+            // Always CW for climb milling (coordinates already transformed)
+            const arcCW = true;
 
             // Move to Start of Helix Loop (pA)
             machinePlan.addRapid(pA.x, pA.y, null);

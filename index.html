@@ -46,7 +46,6 @@
     <meta property="og:image" content="https://cam.eltryus.design/images/social-preview.jpg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:site_name" content="EasyTrace5000">
     <meta property="og:locale" content="en_US">
 
     <link rel="icon" type="image/png" href="images/favicon/favicon-96x96.png" sizes="96x96">
@@ -114,7 +113,7 @@
             "Arc reconstruction from polygonized data",
             "Multiple post-processor support (GRBL, Marlin, LinuxCNC)"
         ],
-        "softwareVersion": "1.0.4",
+        "softwareVersion": "1.0.5",
         "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
         "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000",
         "installUrl": "https://cam.eltryus.design/",
@@ -128,6 +127,22 @@
     </script>
 </head>
 <body>
+
+    <!-- Workspace viewport warning bar - shows after modals close -->
+    <div class="workspace-viewport-bar" id="workspace-viewport-bar">
+        <svg class="workspace-viewport-bar-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 22h20L12 2z"/>
+            <line x1="12" y1="10" x2="12" y2="14"/>
+            <circle cx="12" cy="18" r="0.5" fill="currentColor"/>
+        </svg>
+        <span>If workspace interface is broken -> Rotate device.</span>
+        <button class="workspace-viewport-bar-dismiss" id="dismiss-viewport-bar" aria-label="Dismiss warning">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <line x1="6" y1="6" x2="18" y2="18"/>
+                <line x1="18" y1="6" x2="6" y2="18"/>
+            </svg>
+        </button>
+    </div>
 
     <!-- Skip link for keyboard accessibility -->
     <a href="#cam-workspace" class="skip-link">Skip to Canvas</a>
@@ -635,7 +650,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <span title="Version">Version 1.0.4</span> |
+                <span title="Version">Version 1.0.5</span> |
                 <a href="/LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
                 <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a> |
@@ -718,6 +733,16 @@
                 </button>
             </div>
             <div class="modal-body">
+                <div class="viewport-warning viewport-warning--info" id="welcome-viewport-warning">
+                    <svg class="viewport-warning-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="5" y="2" width="14" height="20" rx="2"/>
+                        <path d="M12 18h.01"/>
+                    </svg>
+                    <div class="viewport-warning-content">
+                        <strong>Screen too narrow. If possible, rotate your device or switch to a larger screen.</strong>
+                        <span>UI is optimized for small screens but only in a horizontal orientation.</span>
+                    </div>
+                </div>
 
                 <p class="welcome-intro">EasyTrace5000 is a CAM tool for PCB fabrication.<br>It's 100% web-based, client-side, open-source, and free to use.</p>
 
@@ -821,6 +846,18 @@
                 </div>
             </div>
             <div class="modal-body">
+                <div class="viewport-warning viewport-warning--caution" id="quickstart-viewport-warning">
+                    <svg class="viewport-warning-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div class="viewport-warning-content">
+                        <strong>This tool recommends/requires a wider screen. UI may be harder to use or fully broken.</strong>
+                        <span> If possible, rotate your device or switch to a larger screen.</span>
+                    </div>
+                </div>
+
                 <div class="quickstart-content">
                     <!-- Example loader row -->
                     <div class="quickstart-example-row">

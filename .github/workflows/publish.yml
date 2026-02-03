@@ -30,7 +30,7 @@ jobs:
             --comments '/^!/' \
             -o dist/app.bundle.js
 
-          # Minify theme-loader.js (contains embedded theme)
+          # Minify theme-loader.js
           npx terser dist/themes/theme-loader.js \
             --compress --mangle \
             --comments '/^!/' \

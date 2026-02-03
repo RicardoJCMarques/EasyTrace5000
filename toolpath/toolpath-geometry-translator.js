@@ -129,21 +129,7 @@
                 }
 
                 this.calculatePlanBounds(plan);
-
-                // Enforce CW winding for climb milling
-                if (plan.commands.length > 0) {
-                    const commandPoints = [];
-                    let pos = { ...plan.metadata.entryPoint };
-                    for (const cmd of plan.commands) {
-                        if (cmd.x !== null) pos.x = cmd.x;
-                        if (cmd.y !== null) pos.y = cmd.y;
-                        commandPoints.push({ x: pos.x, y: pos.y });
-                    }
-                    if (commandPoints.length >= 3 && !GeometryUtils.isClockwise(commandPoints)) {
-                        this.reversePlan(plan);
-                    }
-                }
-
+                this._enforceClimbMilling(plan, isHole);
                 plans.push(plan);
             }
 
@@ -171,7 +157,7 @@
             for (const offset of operation.offsets) {
                 for (const primitive of offset.primitives) {
 
-                    // Centerline paths
+                    // Centerline paths (open, no winding enforcement)
                     if (primitive.properties?.isCenterlinePath) {
                         plans.push(...this.translateCenterlinePath(primitive, ctx, depthLevels));
                         continue;
@@ -187,10 +173,22 @@
                         if (converted?.contours?.length > 0) {
                             processable = converted;
                         } else {
-                            // Fallback: simple depth passes
+                            // Fallback: direct primitive processing (circles, obrounds, etc.)
+                            const isHole = primitive.properties?.isHole || primitive.properties?.polarity === 'clear';
+                            const isClosed = primitive.type === 'circle' || 
+                                            primitive.type === 'obround' || 
+                                            primitive.type === 'rectangle' ||
+                                            (primitive.closed !== false);
+
                             for (const depth of depthLevels) {
-                                const plan = this.createPurePlan(primitive, ctx, depth, primitive.closed, primitive.properties?.isHole || false);
-                                if (plan) plans.push(plan);
+                                const plan = this.createPurePlan(primitive, ctx, depth, isClosed, isHole, true);
+                                if (plan) {
+                                    this.calculatePlanBounds(plan);
+                                    if (isClosed) {
+                                        this._enforceClimbMilling(plan, isHole);
+                                    }
+                                    plans.push(plan);
+                                }
                             }
                             continue;
                         }
@@ -209,9 +207,13 @@
                             plans.push(...this._processCutoutContour(contour, operation, ctx, depthLevels, isHole));
                         } else {
                             for (const depth of depthLevels) {
-                                const plan = this.createPurePlan(contour, ctx, depth, processable.closed ?? true, isHole, true);
+                                const isClosed = processable.closed ?? true;
+                                const plan = this.createPurePlan(contour, ctx, depth, isClosed, isHole, true);
                                 if (plan) {
                                     this.calculatePlanBounds(plan);
+                                    if (isClosed) {
+                                        this._enforceClimbMilling(plan, isHole);
+                                    }
                                     plans.push(plan);
                                 }
                             }
@@ -489,12 +491,8 @@
             };
             const transformedStart = this.applyTransforms(rawStart, transforms);
 
-            // Adjust direction for mirror
-            let actualClockwise = clockwise;
-            if (transforms) {
-                const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                if (flipped) actualClockwise = !actualClockwise;
-            }
+            // Always CW for climb milling (coordinates already transformed)
+            const actualClockwise = true;
 
             // Generate Arc
             const i = center.x - transformedStart.x;
@@ -553,12 +551,8 @@
             const i2 = endCapCenter.x - pC_x;
             const j2 = endCapCenter.y - pC_y;
 
-            // Adjust direction for mirror
-            let actualClockwise = clockwise;
-            if (transforms) {
-                const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                if (flipped) actualClockwise = !actualClockwise;
-            }
+            // Always CW for climb milling (coordinates already transformed)
+            const actualClockwise = true;
 
             if (actualClockwise) {
                 plan.addLinear(pD_x, pD_y, depth, feedRate);
@@ -652,31 +646,19 @@
 
                 if (isFullCircle) {
                     const transformedCenter = this.applyTransforms(first.center, transforms);
-
                     // Use the actual start point of the path, not 3 o'clock
                     const transformedStart = this.applyTransforms(points[0], transforms);
-
-                    let clockwise = first.clockwise || false;
-
-                    // Flip for mirror
-                    if (transforms) {
-                        const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                        if (flipped) clockwise = !clockwise;
-                    }
-
                     // Calculate I/J relative to the transformed start
                     const i = transformedCenter.x - transformedStart.x;
                     const j = transformedCenter.y - transformedStart.y;
 
-                    const gcodeClockwise = !clockwise;
-
-                    // Target is same as Start for full circle
+                    // Always CW (true) for climb milling
                     plan.addArc(
                         transformedStart.x, 
                         transformedStart.y, 
                         depth, 
                         i, j, 
-                        gcodeClockwise, 
+                        true, 
                         feedRate
                     );
                     return;
@@ -802,7 +784,7 @@
 
                     // Identify the Geometry Entity
                     let geometryEntity = null;
-                    
+
                     if (primitive.type === 'path') {
                         // Extract the contour because 'PathPrimitive' is a container.
                         if (primitive.contours && primitive.contours.length > 0) {
@@ -815,22 +797,34 @@
 
                     if (!geometryEntity) continue;
 
+                    // Determine if closed (circles, obrounds are always closed)
+                    const isClosed = primitive.type === 'circle' || 
+                                    primitive.type === 'obround' || 
+                                    (geometryEntity.points && geometryEntity.points.length >= 3);
+
                     // Process the Geometry
                     if (strategy.entryType === 'helix') {
                         // Helix handles its own Z-depths internally
                         // Note: Helix logic expects Analytic geometry (Circle/Obround)
-                        const plan = this.createPurePlan(geometryEntity, drillMillCtx, finalDepth, 0, true, false); 
+                        const plan = this.createPurePlan(geometryEntity, drillMillCtx, finalDepth, isClosed, false, false); 
                         if (plan) {
                             plan.metadata.isDrillMilling = true;
+                            if (isClosed) {
+                                this._enforceClimbMilling(plan, false);
+                            }
                             plans.push(plan);
                         }
                     } else {
                         // Standard Path Milling (Multi-depth)
                         for (const depth of depthLevels) {
                             // Pass the unwrapper geometry Entity (Contour or Analytic)
-                            const plan = this.createPurePlan(geometryEntity, drillMillCtx, depth, 0, true, false);
+                            const plan = this.createPurePlan(geometryEntity, drillMillCtx, depth, isClosed, false, true);
                             if (plan) {
                                 plan.metadata.isDrillMilling = true;
+                                this.calculatePlanBounds(plan);
+                                if (isClosed) {
+                                    this._enforceClimbMilling(plan, false);
+                                }
                                 plans.push(plan);
                             }
                         }
@@ -925,6 +919,39 @@
             const oldEntry = plan.metadata.entryPoint;
             plan.metadata.entryPoint = plan.metadata.exitPoint;
             plan.metadata.exitPoint = oldEntry;
+        }
+
+        /**
+         * Enforces climb milling direction on generated commands and must be called AFTER commands are generated (post-transform).
+         * Climb milling direction:
+         * - External contours: CW
+         * - Hole contours: CCW
+         */
+        _enforceClimbMilling(plan, isHole = false) {
+            // Skip open paths and empty plans
+            if (!plan.commands || plan.commands.length < 2) return false;
+            if (!plan.metadata.isClosed && !plan.metadata.isClosedLoop) return false;
+
+            // Build point list from generated commands
+            const commandPoints = [];
+            let pos = { ...plan.metadata.entryPoint };
+
+            for (const cmd of plan.commands) {
+                if (cmd.x !== null && cmd.x !== undefined) pos.x = cmd.x;
+                if (cmd.y !== null && cmd.y !== undefined) pos.y = cmd.y;
+                commandPoints.push({ x: pos.x, y: pos.y });
+            }
+
+            if (commandPoints.length < 3) return false;
+
+            const isCW = GeometryUtils.isClockwise(commandPoints);
+            const wantCW = !isHole; // External = CW (climb), Hole = CCW (climb)
+
+            if (isCW !== wantCW) {
+                this.reversePlan(plan);
+                return true;
+            }
+            return false;
         }
 
         /**

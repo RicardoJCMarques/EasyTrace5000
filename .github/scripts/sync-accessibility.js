@@ -95,8 +95,8 @@ function formatAndIndent(html, baseSpaces) {
     const voidTags = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'];
 
     let formatted = tokens.map(line => {
-        const isClosing = line.match(/^<\//); 
-        const isOpening = line.match(/^<[a-zA-Z]/); 
+        const isClosing = line.match(/^<\//);
+        const isOpening = line.match(/^<[a-zA-Z]/);
         const isSelfClosing = line.match(/\/>$/);
 
         let tagName = '';
@@ -167,7 +167,7 @@ function injectHeadingIds(htmlContent) {
 }
 
 // HTML Template
-const getTemplate = (sidebarHtml, mainBodyHtml) => `<!DOCTYPE html>
+const getTemplate = (sidebarHtml, mainBodyHtml, heroTitle, tagline) => `<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
@@ -280,17 +280,16 @@ const getTemplate = (sidebarHtml, mainBodyHtml) => `<!DOCTYPE html>
     <div class="doc-wrapper has-sidebar">
         <!-- Sidebar TOC -->
         <nav class="doc-sidebar" aria-label="Table of Contents">
-            <h2>Accessibility</h2>
-${sidebarHtml}
+            <h2>${heroTitle}</h2> ${sidebarHtml}
         </nav>
 
         <!-- Main Content -->
         <main id="doc-content" class="doc-main" aria-label="Main Content">
             <section class="hero hero--compact">
-                <h1>Accessibility Information</h1>
-                <p class="tagline">Keyboard navigation, screen reader support, and WCAG compliance</p>
+                <h1>${heroTitle}</h1>
+                <p class="tagline">${tagline}</p>
             </section>
-            
+
 ${mainBodyHtml}
 
         </main>
@@ -328,47 +327,51 @@ ${mainBodyHtml}
 
 function main() {
     try {
-        console.log(`Reading ${CONFIG.input}...`);
-        const inputPath = path.resolve(CONFIG.input);
+        const mdContent = fs.readFileSync(path.resolve(CONFIG.input), 'utf8');
 
-        if (!fs.existsSync(inputPath)) {
-            console.error(`Error: File not found at ${inputPath}`);
-            return;
-        }
+        // Split by double-newlines to get separate blocks
+        const blocks = mdContent.split(/\r?\n\s*\r?\n/).filter(b => b.trim().length > 0);
 
-        const mdContent = fs.readFileSync(inputPath, 'utf8');
+        // Extract Hero Title (Block 0)
+        const heroTitle = blocks[0].replace(/^#+\s*/, '').trim();
 
-        // Generate Sidebar
-        const sidebarHtml = parseSidebar(mdContent);
+        // Extract Tagline (Block 1)
+        const tagline = blocks[1].trim();
 
         // Prepare Body Content
-        const bodyContent = mdContent
-            .replace(/^# Accessibility\n/, '')
-            .replace(/## Table of Contents[\s\S]*?---/, '');
+        // Filter out any block that contains "Table of Contents" OR consists of just the horizontal rule "---" OR contains only markdown links formatted like [Title](#slug)
+        const bodyBlocks = blocks.slice(2).filter(block => {
+            const isTOCHeader = block.includes('## Table of Contents');
+            const isHorizontalRule = block.trim() === '---';
+            const isTOCList = block.trim().match(/^[-*]\s+\[.*\]\(#.*\)/m);
 
-        // Convert Markdown
+            return !isTOCHeader && !isHorizontalRule && !isTOCList;
+        });
+
+        const bodyMd = bodyBlocks.join('\n\n');
+
+        // Convert remaining Markdown to HTML
         const tempFile = 'temp_acc_body.md';
-        fs.writeFileSync(tempFile, bodyContent);
-
-        console.log('Converting Markdown using npx marked...');
+        fs.writeFileSync(tempFile, bodyMd);
         const rawHtmlBody = execSync(`npx marked -i ${tempFile} --gfm --breaks`, { encoding: 'utf8' });
         fs.unlinkSync(tempFile);
 
-        // Inject IDs for Links
+        // Generate Sidebar and Post-Process Body
+        const sidebarHtml = parseSidebar(mdContent);
         const finalHtmlBody = injectHeadingIds(rawHtmlBody);
 
-        // Identation
-        console.log('Formatting and indenting HTML...');
+        // Formatting & Indentation
         const indentedSidebar = formatAndIndent(sidebarHtml, 12);
         const indentedBody = formatAndIndent(finalHtmlBody, 12);
 
-        // Write Output
-        const fullHtml = getTemplate(indentedSidebar, indentedBody);
+        // Write final file using the updated template
+        const fullHtml = getTemplate(indentedSidebar, indentedBody, heroTitle, tagline);
+
         const outputDir = path.dirname(CONFIG.output);
         if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
         fs.writeFileSync(path.resolve(CONFIG.output), fullHtml);
-        console.log(`✅ Success! Generated ${CONFIG.output} (Cleanly formatted)`);
+        console.log(`✅ Success! Generated ${CONFIG.output}.`);
 
     } catch (error) {
         console.error('❌ Build failed:', error.message);

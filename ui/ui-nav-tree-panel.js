@@ -193,11 +193,6 @@
                 });
             }
 
-            // Add statistics tooltip
-            if (content && window.TooltipManager) {
-                this.attachFileTooltip(content, operation);
-            }
-
             label.textContent = operation.file.name;
 
             // Attach listener for the main content click
@@ -242,56 +237,6 @@
             this.updateFileGeometries(fileId, operation);
 
             return fileId;
-        }
-
-        attachFileTooltip(element, operation) {
-            const bounds = operation.bounds || { width: 0, height: 0 };
-            const ctx = operation.geometricContext;
-
-            // Check if operation.primitives exists before accessing it.
-            // If it's null (because parsing isn't finished), show '...'
-            const primitiveCount = operation.primitives ? operation.primitives.length : '...';
-
-            let statsText = `${operation.file.name}\n\n` +
-                `Type: ${operation.type}\n` +
-                `Primitives: ${primitiveCount}\n` +
-                `Size: ${(operation.file.size / 1024).toFixed(1)} KB\n` +
-                `Bounds: ${bounds.width?.toFixed(1) || 0} × ${bounds.height?.toFixed(1) || 0} mm`;
-
-            if (ctx.hasArcs) statsText += '\n✓ Contains arcs';
-            if (ctx.hasCircles) statsText += '\n✓ Contains circles';
-            if (ctx.analyticCount > 0) statsText += `\n✓ Analytic shapes: ${ctx.analyticCount}`;
-            if (ctx.strokeCount > 0) statsText += `\n✓ Strokes: ${ctx.strokeCount}`;
-
-            // Also check if offsets/preview exist before trying to read them
-            if (operation.offsets && operation.offsets.length > 0) {
-                const totalOffsetPrims = operation.offsets.reduce((sum, o) => sum + (o.primitives?.length || 0), 0);
-                statsText += `\n\nOffsets: ${operation.offsets.length} pass(es)`;
-                statsText += `\nOffset primitives: ${totalOffsetPrims}`;
-            }
-
-            if (operation.preview && operation.preview.primitives) {
-                statsText += `\n\nPreview: ${operation.preview.primitives.length} primitives`;
-            }
-
-            window.TooltipManager.attach(element, { text: statsText });
-
-            // Also check if warnings exist
-            if (operation.warnings && operation.warnings.length > 0) {
-                const label = element.querySelector('.file-label');
-                const warningIcon = document.createElement('span');
-                warningIcon.className = 'warning-icon';
-                warningIcon.textContent = iconConfig.treeWarning;
-                warningIcon.title = `${operation.warnings.length} warning(s)`;
-
-                const warningText = operation.warnings.map(w => w.message).join('\n');
-                window.TooltipManager.attach(warningIcon, { text: warningText });
-
-                // Check if label exists before appending
-                if (label) {
-                    label.appendChild(warningIcon);
-                }
-            }
         }
 
         updateFileGeometries(fileId, operation) {
@@ -462,21 +407,6 @@
                 }
 
                 visBtn.classList.toggle('is-hidden', !isVisible);
-            }
-
-            const nodeContent = nodeElement.querySelector('.geometry-node-content');
-            if (nodeContent && window.TooltipManager) {
-                let tooltipText = `${label}\nPrimitives: ${count}`;
-
-                if (extraData.offset) {
-                    tooltipText += `\nOffset: ${extraData.offset}mm`;
-                }
-
-                if (extraData.combined) {
-                    tooltipText += `\nPasses: ${extraData.passes}`;
-                }
-
-                window.TooltipManager.attach(nodeContent, { text: tooltipText });
             }
 
             fileData.geometries.set(geometryId, {
