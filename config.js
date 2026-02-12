@@ -479,6 +479,177 @@ window.PCBCAMConfig = {
     },
 
     // ============================================================================
+    // ROLAND MACHINE PROFILES
+    // Referenced by: ui-controls.js, roland-processor.js, cam-controller.js
+    // ============================================================================
+    roland: {
+        profiles: {
+            'mdx15': {
+                label: 'MDX-15',
+                series: 'legacy',
+                cmdProtocol: 'legacy',
+                stepsPerMM: 40,
+                maxFeedXY: 15,
+                maxFeedZ: 15,
+                spindleMode: 'fixed',
+                spindleFixed: 6500,
+                spindleRange: null,
+                zMode: '3d',
+                initCommand: ';;^IN',
+                endCommand: '!MC0;\nPU0,0;\n;;^IN',
+                supportsRC: false,
+                supportsDwell: false,
+                workArea: { x: 152, y: 101, z: 60.5 },
+                warnings: ['Serial interface requires hardware flow control (RTS/CTS)',
+                           'Use FTDI-based USB-to-Serial adapters for reliable handshaking']
+            },
+            'mdx20': {
+                label: 'MDX-20',
+                series: 'legacy',
+                cmdProtocol: 'legacy',
+                stepsPerMM: 40,
+                maxFeedXY: 15,
+                maxFeedZ: 15,
+                spindleMode: 'manual',
+                spindleRange: null,
+                zMode: '3d',
+                initCommand: ';;^IN',
+                endCommand: '!MC0;\nPU0,0;\n;;^IN',
+                supportsRC: false,
+                supportsDwell: false,
+                workArea: { x: 203, y: 152, z: 60.5 },
+                warnings: ['Serial interface requires hardware flow control (RTS/CTS)']
+            },
+            'imodela': {
+                label: 'iModela (iM-01)',
+                series: 'legacy',
+                cmdProtocol: 'legacy',
+                stepsPerMM: 100,
+                maxFeedXY: 6,
+                maxFeedZ: 6,
+                spindleMode: 'fixed',
+                spindleFixed: null,
+                spindleRange: null,
+                zMode: '3d',
+                initCommand: ';;^DF',
+                endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                supportsRC: false,
+                supportsDwell: true,
+                workArea: { x: 86, y: 55, z: 26 },
+                warnings: ['Low rigidity — use conservative feed rates for PCB']
+            },
+            'srm20': {
+                label: 'SRM-20 (monoFab)',
+                series: 'monofab',
+                cmdProtocol: 'modern',
+                stepsPerMM: 100,
+                maxFeedXY: 30,
+                maxFeedZ: 30,
+                spindleMode: 'direct',
+                spindleRange: { min: 3000, max: 7000 },
+                zMode: '3d',
+                initCommand: ';;^DF',
+                endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                supportsRC: true,
+                supportsDwell: true,
+                workArea: { x: 203, y: 152, z: 60.5 },
+                warnings: ['Output must be clean RML — VPanel rejects files with syntax errors',
+                           'RML mode has 0.01mm resolution; NC Code mode offers 0.001mm for ultra-fine work']
+            },
+            'mdx40': {
+                label: 'MDX-40A',
+                series: 'pro',
+                cmdProtocol: 'modern',
+                stepsPerMM: 100,
+                maxFeedXY: 50,
+                maxFeedZ: 50,
+                spindleMode: 'direct',
+                spindleRange: { min: 4500, max: 15000 },
+                zMode: '3d',
+                initCommand: ';;^DF',
+                endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                supportsRC: true,
+                supportsDwell: true,
+                workArea: { x: 305, y: 305, z: 105 },
+                warnings: []
+            },
+            'mdx50': {
+                label: 'MDX-50',
+                series: 'pro',
+                cmdProtocol: 'modern',
+                stepsPerMM: 100,
+                maxFeedXY: 60,
+                maxFeedZ: 60,
+                spindleMode: 'direct',
+                spindleRange: { min: 4500, max: 15000 },
+                zMode: '3d',
+                initCommand: ';;^DF',
+                endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                supportsRC: true,
+                supportsDwell: true,
+                workArea: { x: 400, y: 305, z: 135 },
+                warnings: []
+            },
+            'mdx540': {
+                label: 'MDX-540 / MDX-540S',
+                series: 'pro',
+                cmdProtocol: 'modern',
+                stepsPerMM: 100,
+                maxFeedXY: 125,
+                maxFeedZ: 125,
+                spindleMode: 'direct',
+                spindleRange: { min: 3000, max: 12000 },
+                zMode: '3d',
+                initCommand: ';;^DF',
+                endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                supportsRC: true,
+                supportsATC: true,
+                supportsDwell: true,
+                workArea: { x: 400, y: 305, z: 155 },
+                warnings: []
+            },
+            'egx350': {
+                label: 'EGX-350',
+                series: 'engraver',
+                cmdProtocol: 'modern',
+                stepsPerMM: 100,
+                maxFeedXY: 60,
+                maxFeedZ: 60,
+                spindleMode: 'direct',
+                spindleRange: { min: 8000, max: 20000 },
+                zMode: '3d',
+                initCommand: ';;^DF',
+                endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                supportsRC: true,
+                supportsDwell: true,
+                workArea: { x: 305, y: 216, z: 40 },
+                warnings: ['High spindle speed — excellent for PCB isolation with V-bits']
+            },
+            'custom': {
+                label: 'Custom Machine',
+                series: 'custom',
+                cmdProtocol: 'modern',
+                stepsPerMM: 100,
+                maxFeedXY: 60,
+                maxFeedZ: 60,
+                spindleMode: 'direct',
+                spindleRange: { min: 0, max: 30000 },
+                zMode: '3d',
+                initCommand: 'PA;PA;',
+                endCommand: '!MC0;PU0,0;',
+                supportsRC: true,
+                supportsDwell: true,
+                workArea: { x: 999, y: 999, z: 999 },
+                warnings: ['Custom configuration — verify all parameters against your machine manual']
+            }
+        },
+        // Helper to get a profile with fallback
+        getProfile: function(modelId) {
+            return this.profiles[modelId] || this.profiles['custom'];
+        }
+    },
+
+    // ============================================================================
     // G-CODE GENERATION
     // [MOVE TO: constants.js] - G-code templates (static)
     // [MOVE TO: settings.js] - Generation preferences (user configurable)
@@ -501,9 +672,9 @@ window.PCBCAMConfig = {
                 toolChange: 'M5\nG0 Z{safeZ}\nM0 (Tool change: {toolName})\nM3 S{spindleSpeed}\nG4 P{dwell}'
             },
             roland: {
-                start: 'PA;PA;!MC0;',
-                end: 'PU0,0;!MC0;H;',
-                toolChange: '!MC0;(Manual tool change required)!MC1;'
+                start: ';;^DF\nPA;',
+                end: '!MC0;\n;;^DF',
+                toolChange: ''
             },
             marlin: {
                 start: '',

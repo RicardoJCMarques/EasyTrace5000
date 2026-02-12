@@ -330,7 +330,7 @@
         "feedRate": "Speed at which the tool moves while cutting (mm/min or in/min).",
         "plungeRate": "Speed at which the tool descends into material (mm/min or in/min). Usually slower than feed rate.",
         "spindleSpeed": "Rotation speed of the spindle (RPM). Higher speeds for smaller tools.",
-        "spindleDwell": "Time in seconds to wait after starting the spindle (M3) before moving. Essential high inertia spindles that need extra time to spin up.",
+        "spindleDwell": "Time in seconds to wait. Essential for high inertia spindles that need extra time to come up to speed.",
         "direction": "Climb milling: tool rotation matches feed direction (better finish). Conventional: opposite direction (more stable).",
         "entryType": "How the tool enters the material. Plunge: straight down. Ramp: diagonal. Helix: spiral down.",
         "cannedCycle": "Pre-programmed drill cycle. G83 (peck drilling) retracts periodically to clear chips.",
@@ -340,8 +340,8 @@
         "tabs": "Number of small tabs to leave uncut, holding the board in place.",
         "tabWidth": "The length of each holding tab in mm.",
         "tabHeight": "The thickness of the tab. A value of -0.5mm on a -1.8mm cut will leave a 0.5mm thick tab.",
-        "startCode": "Custom G-code to add to the beginning of this operation's toolpath.",
-        "endCode": "Custom G-code to add to the end of this operation's toolpath."
+        "startCode": "Custom Preamble to add to the beginning of this operation's command stream.",
+        "endCode": "Custom Postamble to add to the end of this operation's command stream."
       },
       "originControls": {
         "originOffset": "Set a new X/Y origin. Click 'Apply Origin' to save this position as the new (0,0).",
@@ -354,7 +354,14 @@
         "travelZ": "Height above the board (Z=0) where the tool travels between cutting paths.",
         "rapidFeed": "The feed rate (mm/min) for G0 rapid movements (travel and safe Z moves).",
         "postProcessor": "Selects the G-code dialect for your specific CNC controller (Non-Grbl modules need more testing, use with caution).",
-        "gcodeUnits": "Sets the units for the exported G-code file (G21 for mm, G20 for inches)."
+        "gcodeUnits": "Sets the units for the exported G-code file (G21 for mm, G20 for inches).",
+        "rolandMachineModel": "Select your Roland machine to auto-populate common settings (steps/mm, feed limits, Z mode). All fields remain editable after selection.",
+        "rolandStepsPerMM": "Motor steps per millimeter of travel. Determines coordinate resolution. MDX-50/40A: 100, MDX-15/20: 40. Incorrect values scale all coordinates proportionally.",
+        "rolandZMode": "3D mode uses the Z command for simultaneous XYZ interpolation (MDX-40A and above). 2.5D mode uses PU/PD which only supports XY cutting at a fixed depth set by !PZ.",
+        "rolandMaxFeed": "Maximum XY feed rate in mm/sec. The VS (velocity) command is clamped to this value. Exceeding it may cause the machine to reject or ignore commands.",
+        "rolandSpindleMode": "'Direct RPM' sends explicit speed values via !RC. 'Indexed' sends a preset 1-15 via !RC. 'Manual Only' means the machine has a fixed speed — software only controls on/off via !MC.",
+        "rolandSpindleSpeed": "Target spindle speed sent via the !RC command. Only applies in 'Direct RPM' mode.",
+        "rolandSpindleIndex": "Speed preset index (1 = slowest, 15 = fastest) sent via !RC. Only applies in 'Indexed' mode."
       },
       "vizPanel": {
         "grid": "Toggle the visibility of the canvas grid.",

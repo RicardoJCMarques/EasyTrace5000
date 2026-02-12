@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Unreleased
 - **Laser Pipeline:**  I am looking for hardware partners and sponsors, especially laser manufacturers to help hasten laser pipeline development. <3
 
+## [1.0.6] - 2026-02-12
+
+### Fixed
+- **Full Refactor of Roland PostProcessor. :** Complete rework of the RML-1 post-processor module. Should now have all required nuance to work with common Roland desktop CNCs.
 
 ## [1.0.5] - 2026-02-03
 

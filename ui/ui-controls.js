@@ -222,6 +222,17 @@
             attachTo('post-processor', 'tooltips.machineSettings.postProcessor');
             attachTo('gcode-units', 'tooltips.machineSettings.gcodeUnits');
 
+            // Attach to Start/End Code
+            attachTo('start-code-ta', 'tooltips.parameters.startCode'); 
+            attachTo('end-code-ta', 'tooltips.parameters.endCode');
+
+            // Roland Machine Settings
+            attachTo('roland-machine-model', 'tooltips.machineSettings.rolandMachineModel');
+            attachTo('roland-steps-per-mm', 'tooltips.machineSettings.rolandStepsPerMM');
+            attachTo('roland-z-mode', 'tooltips.machineSettings.rolandZMode');
+            attachTo('roland-max-feed', 'tooltips.machineSettings.rolandMaxFeed');
+            attachTo('roland-spindle-mode', 'tooltips.machineSettings.rolandSpindleMode');
+
             // Visualization Panel Toggles
             attachTo('show-grid', 'tooltips.vizPanel.grid');
             attachTo('show-wireframe', 'tooltips.vizPanel.wireframe');
@@ -554,7 +565,7 @@
             // Clear stats by calling with empty data
             this.updateArcReconstructionStats({ curvesRegistered: 0 });
         }
-        
+
         updateArcReconstructionStats(stats = null) {
             const statsContainer = document.getElementById('arc-reconstruction-stats');
             if (!statsContainer) return;
@@ -807,9 +818,14 @@
         setupMachineSettings() {
             const loadedSettings = this.ui.core.settings;
 
+             // Roland machine profiles
+            const ROLAND_PROFILES = config.roland?.profiles || {};
+
+            // --- Post-Processor Dropdown ---
             const postProcessorSelect = document.getElementById('post-processor');
             const startCodeTA = document.getElementById('start-code-ta');
             const endCodeTA = document.getElementById('end-code-ta');
+
             if (postProcessorSelect) {
                 postProcessorSelect.innerHTML = '';
                 const options = config.ui?.parameterOptions?.postProcessor || [{ value: 'grbl', label: 'GRBL (Default)' }];
@@ -820,40 +836,236 @@
                     postProcessorSelect.appendChild(optionEl);
                 });
                 postProcessorSelect.value = loadedSettings.gcode.postProcessor;
+
                 postProcessorSelect.addEventListener('change', (e) => {
                     const newProcessor = e.target.value;
+                    const isRoland = newProcessor === 'roland';
+                    const wasRoland = this.ui.core.settings.gcode.postProcessor === 'roland';
 
-                    // 1. Get the new default templates
-                    const newStartCode = config.getGcodeTemplate(newProcessor, 'start');
-                    const newEndCode = config.getGcodeTemplate(newProcessor, 'end');
+                    // Populate start/end code textareas from the single source of truth (settings)
+                    if (isRoland) {
+                        const startVal = this.ui.core.settings.machine.rolandStartCode;
+                        const endVal = this.ui.core.settings.machine.rolandEndCode;
+                        if (startCodeTA) startCodeTA.value = startVal;
+                        if (endCodeTA) endCodeTA.value = endVal;
+                    } else {
+                        const newStartCode = config.getGcodeTemplate(newProcessor, 'start');
+                        const newEndCode = config.getGcodeTemplate(newProcessor, 'end');
+                        if (startCodeTA) startCodeTA.value = newStartCode;
+                        if (endCodeTA) endCodeTA.value = newEndCode;
+                        this.ui.core.updateSettings('gcode', { startCode: newStartCode, endCode: newEndCode });
+                    }
 
-                    // 2. Update the text areas in the UI
-                    if (startCodeTA) startCodeTA.value = newStartCode;
-                    if (endCodeTA) endCodeTA.value = newEndCode;
+                    this.ui.core.updateSettings('gcode', { postProcessor: newProcessor });
+                    this.updateProcessorFieldVisibility(newProcessor);
 
-                    // 3. Save all three settings to the core
-                    this.ui.core.updateSettings('gcode', { 
-                        postProcessor: newProcessor,
-                        startCode: newStartCode,
-                        endCode: newEndCode
-                    });
+                    // Update the suggested output filename extension in the export modal
+                    const filenameInput = document.getElementById('gcode-filename');
+                    if (filenameInput) {
+                        const currentName = filenameInput.value || 'pcb-output.nc';
+                        const baseName = currentName.replace(/\.[^.]+$/, '');
+                        const ext = isRoland ? '.rml' : '.nc';
+                        filenameInput.value = baseName + ext;
+                    }
+
+                    // Clear any cached G-code preview when switching processor type
+                    const previewText = document.getElementById('gcode-preview-text');
+                    if (previewText && previewText.value) {
+                        previewText.value = '';
+                        const lineCount = document.getElementById('gcode-line-count');
+                        const opCount = document.getElementById('gcode-op-count');
+                        const estTime = document.getElementById('gcode-est-time');
+                        const distance = document.getElementById('gcode-distance');
+                        if (lineCount) lineCount.textContent = '0';
+                        if (opCount) opCount.textContent = '0';
+                        if (estTime) estTime.textContent = '--:--';
+                        if (distance) distance.textContent = '0mm';
+                    }
+
+                    // Update parameter constraints when switching processor type
+                    if (this.ui.operationPanel?.parameterManager) {
+                        if (isRoland) {
+                            const currentModel = this.ui.core.settings.machine.rolandModel || 'mdx50';
+                            const currentProfile = ROLAND_PROFILES[currentModel];
+                            this.ui.operationPanel.parameterManager.updateMachineConstraints(currentProfile, 'roland');
+                        } else {
+                            this.ui.operationPanel.parameterManager.updateMachineConstraints({}, newProcessor);
+                        }
+                    }
+
+                    if (isRoland !== wasRoland) {
+                        this.ui.statusManager?.showStatus(
+                            `Switched to ${newProcessor}. Recalculate toolpaths to apply changes.`,
+                            'warning'
+                        );
+                    }
                 });
             }
 
+            // --- Start/End Code (universal, content depends on processor) ---
             if (startCodeTA) {
-                startCodeTA.value = loadedSettings.gcode.startCode;
+                const isRoland = loadedSettings.gcode.postProcessor === 'roland';
+                const startVal = isRoland
+                    ? loadedSettings.machine.rolandStartCode
+                    : loadedSettings.gcode.startCode;
+                startCodeTA.value = startVal;
+
+                // Sync displayed value back to settings immediately.
+                // This closes the gap where textarea shows a value but settings are stored as undefined.
+                if (isRoland) {
+                    this.ui.core.updateSettings('machine', { rolandStartCode: startVal });
+                }
+
                 startCodeTA.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('gcode', { startCode: e.target.value });
+                    const isRolandNow = this.ui.core.settings.gcode.postProcessor === 'roland';
+                    if (isRolandNow) {
+                        this.ui.core.updateSettings('machine', { rolandStartCode: e.target.value });
+                    } else {
+                        this.ui.core.updateSettings('gcode', { startCode: e.target.value });
+                    }
                 });
             }
 
             if (endCodeTA) {
-                endCodeTA.value = loadedSettings.gcode.endCode;
+                const isRoland = loadedSettings.gcode.postProcessor === 'roland';
+                const endVal = isRoland
+                    ? loadedSettings.machine.rolandEndCode
+                    : loadedSettings.gcode.endCode;
+                endCodeTA.value = endVal;
+
+                // Same sync for end code
+                if (isRoland) {
+                    this.ui.core.updateSettings('machine', { rolandEndCode: endVal });
+                }
+
                 endCodeTA.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('gcode', { endCode: e.target.value });
+                    const isRolandNow = this.ui.core.settings.gcode.postProcessor === 'roland';
+                    if (isRolandNow) {
+                        this.ui.core.updateSettings('machine', { rolandEndCode: e.target.value });
+                    } else {
+                        this.ui.core.updateSettings('gcode', { endCode: e.target.value });
+                    }
                 });
             }
 
+            // --- G-code specific ---
+            const gcodeUnitsSelect = document.getElementById('gcode-units');
+            if (gcodeUnitsSelect) {
+                gcodeUnitsSelect.value = loadedSettings.gcode.units;
+                gcodeUnitsSelect.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('gcode', { units: e.target.value });
+                });
+            }
+
+            // --- Roland-specific fields ---
+            const rolandModelSelect = document.getElementById('roland-machine-model');
+            const rolandStepsInput = document.getElementById('roland-steps-per-mm');
+            const rolandMaxFeedInput = document.getElementById('roland-max-feed');
+            const rolandZModeSelect = document.getElementById('roland-z-mode');
+            const rolandSpindleModeSelect = document.getElementById('roland-spindle-mode');
+            const rolandSpindleInput = document.getElementById('roland-spindle-speed');
+
+            if (rolandModelSelect) {
+                rolandModelSelect.value = loadedSettings.machine.rolandModel || 'mdx50';
+                rolandModelSelect.addEventListener('change', (e) => {
+                    const modelId = e.target.value;
+                    const profile = ROLAND_PROFILES[modelId];
+                    if (!profile) return;
+
+                    // Compute a sensible default spindle RPM from profile
+                    const defaultRPM = profile.spindleFixed ||
+                        (profile.spindleRange
+                            ? Math.round((profile.spindleRange.min + profile.spindleRange.max) / 2)
+                            : 10000);
+
+                    // Auto-populate all fields from profile
+                    if (rolandStepsInput) rolandStepsInput.value = profile.stepsPerMM;
+                    if (rolandMaxFeedInput) rolandMaxFeedInput.value = profile.maxFeedXY;
+                    if (rolandZModeSelect) rolandZModeSelect.value = profile.zMode;
+                    if (rolandSpindleModeSelect) {
+                        rolandSpindleModeSelect.value = profile.spindleMode;
+                        // Trigger visibility update for spindle sub-fields
+                        rolandSpindleModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    if (rolandSpindleInput) rolandSpindleInput.value = defaultRPM;
+
+                    // Update start/end code textareas with profile-appropriate init/end commands
+                    const initCmd = profile.initCommand || ';;^DF';
+                    const endCmd = profile.endCommand || ';;^DF';
+                    const newStartCode = `${initCmd}\nPA;`; // Gently enforce Absolute coordinates mode. Toolpath planning is absolute, not relative.
+                    const newEndCode = endCmd;
+
+                    if (startCodeTA) startCodeTA.value = newStartCode;
+                    if (endCodeTA) endCodeTA.value = newEndCode;
+
+                    // Save all to machine settings
+                    this.ui.core.updateSettings('machine', {
+                        rolandModel: modelId,
+                        rolandStepsPerMM: profile.stepsPerMM,
+                        rolandMaxFeed: profile.maxFeedXY,
+                        rolandZMode: profile.zMode,
+                        rolandSpindleMode: profile.spindleMode,
+                        rolandSpindleSpeed: defaultRPM,
+                        rolandStartCode: newStartCode,
+                        rolandEndCode: newEndCode
+                    });
+
+                    // Update field visibility/locking based on profile capabilities
+                    this.updateRolandProfileFields(profile);
+
+                    // Update Parameter Constraints
+                    if (this.ui.operationPanel?.parameterManager) {
+                        this.ui.operationPanel.parameterManager.updateMachineConstraints(
+                            profile,
+                            this.ui.core.settings.gcode.postProcessor
+                        );
+                    }
+
+                    // Refresh operation panel to reflect new constraints (hidden inputs/new max values)
+                    if (this.ui.operationPanel && this.ui.operationPanel.currentOperation) {
+                        this.ui.operationPanel.showOperationProperties(
+                            this.ui.operationPanel.currentOperation,
+                            this.ui.operationPanel.currentGeometryStage
+                        );
+                    }
+
+                    this.ui.statusManager?.showStatus(
+                        `Roland profile: ${profile.label} (${profile.stepsPerMM} steps/mm, Z: ${profile.zMode})`, 'info'
+                    );
+                });
+            }
+
+            if (rolandStepsInput) {
+                rolandStepsInput.value = loadedSettings.machine.rolandStepsPerMM || 100;
+                rolandStepsInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { rolandStepsPerMM: parseInt(e.target.value) || 100 });
+                });
+            }
+
+            if (rolandMaxFeedInput) {
+                rolandMaxFeedInput.value = loadedSettings.machine.rolandMaxFeed || 60;
+                rolandMaxFeedInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { rolandMaxFeed: parseFloat(e.target.value) || 60 });
+                });
+            }
+
+            if (rolandZModeSelect) {
+                rolandZModeSelect.value = loadedSettings.machine.rolandZMode || '3d';
+                rolandZModeSelect.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('machine', { rolandZMode: e.target.value });
+                });
+            }
+
+            if (rolandSpindleModeSelect) {
+                rolandSpindleModeSelect.value = loadedSettings.machine.rolandSpindleMode || 'direct';
+                rolandSpindleModeSelect.addEventListener('change', (e) => {
+                    const mode = e.target.value;
+                    this.ui.core.updateSettings('machine', { rolandSpindleMode: mode });
+                    this.updateRolandSpindleVisibility(mode);
+                });
+            }
+
+            // --- Universal fields ---
             const thicknessInput = document.getElementById('pcb-thickness');
             if (thicknessInput) {
                 thicknessInput.value = loadedSettings.pcb.thickness;
@@ -866,8 +1078,7 @@
             if (safeZInput) {
                 safeZInput.value = loadedSettings.machine.safeZ;
                 safeZInput.addEventListener('change', (e) => {
-                    const val = parseFloat(e.target.value);
-                    this.ui.core.updateSettings('machine', { safeZ: val });
+                    this.ui.core.updateSettings('machine', { safeZ: parseFloat(e.target.value) });
                 });
             }
 
@@ -875,8 +1086,7 @@
             if (travelZInput) {
                 travelZInput.value = loadedSettings.machine.travelZ;
                 travelZInput.addEventListener('change', (e) => {
-                    const val = parseFloat(e.target.value);
-                    this.ui.core.updateSettings('machine', { travelZ: val });
+                    this.ui.core.updateSettings('machine', { travelZ: parseFloat(e.target.value) });
                 });
             }
 
@@ -885,14 +1095,6 @@
                 rapidFeedInput.value = loadedSettings.machine.rapidFeed;
                 rapidFeedInput.addEventListener('change', (e) => {
                     this.ui.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
-                });
-            }
-
-            const gcodeUnitsSelect = document.getElementById('gcode-units');
-            if (gcodeUnitsSelect) {
-                gcodeUnitsSelect.value = loadedSettings.gcode.units;
-                gcodeUnitsSelect.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('gcode', { units: e.target.value });
                 });
             }
 
@@ -910,6 +1112,128 @@
                 vacuumToggle.addEventListener('change', (e) => {
                     this.ui.core.updateSettings('machine', { vacuum: e.target.checked });
                 });
+            }
+
+            // --- Apply initial visibility states ---
+            this.updateProcessorFieldVisibility(loadedSettings.gcode.postProcessor);
+            this.updateRolandSpindleVisibility(loadedSettings.machine.rolandSpindleMode || 'direct');
+
+            // Apply initial Roland profile field states and sync textarea content
+            const initialModel = loadedSettings.machine.rolandModel || 'mdx50';
+            const initialProfile = ROLAND_PROFILES[initialModel];
+            if (initialProfile) {
+                this.updateRolandProfileFields(initialProfile);
+
+                // Sync textareas to match the active profile if post-processor is roland.
+                // This fixes the case where cam-core defaults to generic ;;^DF but the active profile (e.g. MDX-15) requires ;;^IN.
+                if (loadedSettings.gcode.postProcessor === 'roland') {
+                    const profileStartCode = `${initialProfile.initCommand || ';;^DF'}\nPA;`;
+                    const profileEndCode = initialProfile.endCommand || '!MC0;\nPU0,0;\n;;^DF';
+
+                    // Only override if the current value matches a known generic default (i.e., user hasn't customized it) // REVIEW LOGIC
+                    const genericDefaults = [
+                        ';;^DF\nPA;', ';;^IN\nPA;', 'PA;PA;', ''
+                    ];
+                    const genericEndDefaults = [
+                        '!MC0;\n;;^DF', '!MC0;\n;;^IN', '!MC0;', '!MC0;\nPU0,0;\n;;^DF', '!MC0;\nPU0,0;\n;;^IN', ''
+                    ];
+
+                    const currentStart = loadedSettings.machine.rolandStartCode || '';
+                    const currentEnd = loadedSettings.machine.rolandEndCode || '';
+
+                    if (genericDefaults.includes(currentStart)) {
+                        if (startCodeTA) startCodeTA.value = profileStartCode;
+                        this.ui.core.updateSettings('machine', { rolandStartCode: profileStartCode });
+                    }
+                    if (genericEndDefaults.includes(currentEnd)) {
+                        if (endCodeTA) endCodeTA.value = profileEndCode;
+                        this.ui.core.updateSettings('machine', { rolandEndCode: profileEndCode });
+                    }
+                }
+            }
+        }
+
+        /**
+         * Shows/hides processor-specific field groups.
+         */
+        updateProcessorFieldVisibility(processorName) {
+            const isRoland = processorName === 'roland';
+            const machineControls = document.getElementById('machine-controls');
+            if (!machineControls) return;
+
+            machineControls.querySelectorAll('[data-processor-group="gcode"]').forEach(el => {
+                el.style.display = isRoland ? 'none' : '';
+            });
+            machineControls.querySelectorAll('[data-processor-group="roland"]').forEach(el => {
+                el.style.display = isRoland ? '' : 'none';
+            });
+
+            this.debug(`Processor field visibility updated: ${processorName}`);
+        }
+
+        /**
+         * Toggles spindle RPM input visibility based on spindle mode.
+         */
+        updateRolandSpindleVisibility(spindleMode) {
+            const rpmField = document.getElementById('roland-spindle-rpm-field');
+            if (!rpmField) return;
+
+            switch (spindleMode) {
+                case 'direct':
+                    rpmField.style.display = '';
+                    break;
+                case 'manual':
+                    rpmField.style.display = 'none';
+                    break;
+            }
+        }
+
+        /**
+         * Updates Roland-specific field visibility and editability based on machine profile.
+         */
+        updateRolandProfileFields(profile) {
+            const rolandStepsInput = document.getElementById('roland-steps-per-mm');
+            const rolandMaxFeedInput = document.getElementById('roland-max-feed');
+            // const rolandZModeSelect = document.getElementById('roland-z-mode'); // UNUSED, should it be?
+            const rolandSpindleModeSelect = document.getElementById('roland-spindle-mode');
+            const rolandSpindleInput = document.getElementById('roland-spindle-speed');
+            const rpmField = document.getElementById('roland-spindle-rpm-field');
+
+            const isCustom = !profile || profile.label === 'Custom Machine';
+
+            // Steps/mm — locked for known machines (hardware-defined resolution)
+            if (rolandStepsInput) {
+                rolandStepsInput.readOnly = !isCustom;
+            }
+
+            // Max feed — locked for low-rigidity machines, editable otherwise
+            if (rolandMaxFeedInput) {
+                const lockFeed = !isCustom && (profile.maxFeedXY <= 15);
+                rolandMaxFeedInput.readOnly = lockFeed;
+            }
+
+            // Spindle control — visibility depends on machine capability
+            if (rolandSpindleModeSelect) {
+                const hasSpindleControl = profile.supportsRC !== false;
+                const spindleSection = rolandSpindleModeSelect.closest('.property-field');
+                if (spindleSection) {
+                    spindleSection.style.display = hasSpindleControl ? '' : 'none';
+                }
+            }
+
+            // Spindle RPM field
+            if (rpmField) {
+                if (!profile.supportsRC) {
+                    rpmField.style.display = 'none';
+                } else {
+                    this.updateRolandSpindleVisibility(profile.spindleMode);
+                }
+            }
+
+            // Clamp spindle speed to profile range if available
+            if (rolandSpindleInput && profile.spindleRange) {
+                rolandSpindleInput.min = profile.spindleRange.min;
+                rolandSpindleInput.max = profile.spindleRange.max;
             }
         }
 
@@ -967,7 +1291,7 @@
                     const section = focused.closest('.section-content');
                     if (!section) return;
 
-                    const fields = Array.from(section.querySelectorAll('input, select, button')).filter(f => !f.disabled);
+                    const fields = Array.from(section.querySelectorAll('input, select, button')).filter(f => !f.disabled && f.offsetParent !== null); // Check offsetParent for visibility
                     const idx = fields.indexOf(focused);
                     const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
 

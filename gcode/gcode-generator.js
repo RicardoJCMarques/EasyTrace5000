@@ -46,6 +46,8 @@
         }
 
         registerDefaultProcessors() {
+            const globalConfig = window.PCBCAMConfig || {};
+
             if (typeof GRBLPostProcessor !== 'undefined') {
                 this.registerProcessor('grbl', new GRBLPostProcessor());
             }
@@ -53,7 +55,9 @@
                 this.registerProcessor('marlin', new MarlinPostProcessor());
             }
             if (typeof RolandPostProcessor !== 'undefined') {
-                this.registerProcessor('roland', new RolandPostProcessor());
+                this.registerProcessor('roland', new RolandPostProcessor({
+                    precision: globalConfig.precision
+                }));
             }
             if (typeof LinuxCNCPostProcessor !== 'undefined') {
                 this.registerProcessor('linuxcnc', new LinuxCNCPostProcessor());
@@ -91,7 +95,8 @@
 
             const output = [];
 
-            if (options.includeComments) {
+            // Temporary safety check for Roland post-processor that doesn't support commands - make UI unavailable?
+            if (options.includeComments && processorName !== 'roland') {
                 // Gather data
                 const opIds = [...new Set(toolpathPlans.map(p => p.operationId))];
                 const operations = opIds.map(id => this.core.operations.find(op => op.id === id)).filter(Boolean);
@@ -112,8 +117,10 @@
                 options.commentBlock = commentBlock;
             }
 
-            // Pass the first plan to the header for feed rate setup (for Roland RML post-processor)
-            options.firstPlan = toolpathPlans[0]
+            // Pass the first operational plan to the header for feed rate setup (used by Roland RML to set initial VS velocity).
+            // Skip synthetic plans (init, connection, entry, retract, final) that don't carry real cutting parameters.
+            const syntheticIds = new Set(['init', 'connection', 'entry', 'retract', 'final']);
+            options.firstPlan = toolpathPlans.find(p => !syntheticIds.has(p.operationId)) || toolpathPlans[0];
 
             let originOffset = { x: 0, y: 0 };
             if (this.core && this.core.coordinateSystem) {

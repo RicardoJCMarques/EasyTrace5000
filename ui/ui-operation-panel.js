@@ -313,6 +313,19 @@
                 currentValue = defaults[param.name];
             }
 
+            // Hide spindle speed for machines without software spindle control
+            if (param.name === 'spindleSpeed') {
+                const postProcessor = this.core.settings?.gcode?.postProcessor;
+                if (postProcessor === 'roland') {
+                    const rolandModel = this.core.settings?.machine?.rolandModel || 'mdx50';
+                    const profile = window.PCBCAMConfig?.roland?.getProfile?.(rolandModel);
+                    if (profile && !profile.supportsRC) {
+                        field.style.display = 'none';
+                        return field; // Return hidden field, skip input creation
+                    }
+                }
+            }
+
             switch (param.type) {
                 case 'number':
                     this.createNumberField(field, param, currentValue);

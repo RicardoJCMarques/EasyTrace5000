@@ -1007,6 +1007,56 @@
 
                     const ctx = this.core.buildToolpathContext(opId, this.parameterManager);
 
+                    // Roland compatibility: enforce machine-safe settings.
+                    // 2.5D (PU/PD) mode: Z is always binary — PU goes to !PZ param1, PD plunges to !PZ param2 then moves XY at that depth.
+                    // No simultaneous XYZ motion is possible, which makes helix entry, ramp entry and mid-path tab lifts all physically impossible.
+                    // The processor handles !PZ updates dynamically so multi-depth passes (plunge→cut→retract per depth level) work correctly.
+                    //
+                    // 3D (Z x,y,z;) mode: full simultaneous XYZ. Arcs are linearized by the generator (supportsArcCommands: false), producing short LINEAR segments with interpolated Z — helix, ramp and tabs all work through this linearization. No overrides needed.
+                    if (options.postProcessor === 'roland') {
+                        const rolandModel = ctx.machine.rolandModel || 'mdx50';
+                        const rolandProfile = config.roland?.getProfile
+                            ? config.roland.getProfile(rolandModel)
+                            : null;
+                        const rolandZMode = ctx.machine.rolandZMode || rolandProfile?.zMode || '3d';
+
+                        if (rolandZMode === '2.5d') {
+                            // Force plunge entry — 2.5D cannot do simultaneous XYZ
+                            ctx.strategy.entryType = 'plunge';
+
+                            // Disable tabs — they require Z lifts mid-path which PU/PD cannot express reliably across Roland firmware versions.
+                            if (operation.type === 'cutout') {
+                                ctx.strategy.cutout.tabs = 0;
+                            }
+
+                            // For drill milling in 2.5D, ensure multi-depth is active
+                            if (operation.type === 'drill' && ctx.strategy.drill.millHoles) {
+                                if (!ctx.strategy.multiDepth) {
+                                    ctx.strategy.multiDepth = true;
+                                }
+                                const maxSafeStep = ctx.tool.diameter * 0.5;
+                                if (Math.abs(ctx.strategy.depthPerPass) > maxSafeStep) {
+                                    ctx.strategy.depthPerPass = maxSafeStep;
+                                }
+                            }
+                        }
+
+                        // Profile-based feed rate guardrails (all Z modes)
+                        if (rolandProfile) {
+                            const maxCutFeedMmMin = rolandProfile.maxFeedXY * 60;
+                            const maxPlungeFeedMmMin = rolandProfile.maxFeedZ * 60;
+
+                            if (ctx.cutting.feedRate > maxCutFeedMmMin) {
+                                this.debug(`Clamping feed rate ${ctx.cutting.feedRate} -> ${maxCutFeedMmMin} (${rolandProfile.label} limit)`);
+                                ctx.cutting.feedRate = maxCutFeedMmMin;
+                            }
+                            if (ctx.cutting.plungeRate > maxPlungeFeedMmMin) {
+                                this.debug(`Clamping plunge rate ${ctx.cutting.plungeRate} -> ${maxPlungeFeedMmMin} (${rolandProfile.label} limit)`);
+                                ctx.cutting.plungeRate = maxPlungeFeedMmMin;
+                            }
+                        }
+                    }
+
                     // Pass as a pair
                     operationContextPairs.push({ operation, context: ctx });
 
@@ -1091,19 +1141,26 @@
             this.debug('Generating G-code...');
             const gcodeConfig = firstContext.gcode;
             const machineConfig = firstContext.machine;
+            const isRoland = options.postProcessor === 'roland';
 
             const genOptions = {
                 postProcessor: options.postProcessor,
                 includeComments: options.includeComments,
                 singleFile: options.singleFile,
                 toolChanges: options.toolChanges,
-                startCode: gcodeConfig.startCode,
-                endCode: gcodeConfig.endCode,
+                startCode: isRoland ? machineConfig.rolandStartCode : gcodeConfig.startCode,
+                endCode: isRoland ? machineConfig.rolandEndCode : gcodeConfig.endCode,
                 units: gcodeConfig.units,
                 safeZ: machineConfig.safeZ,
                 travelZ: machineConfig.travelZ,
                 coolant: machineConfig.coolant,
-                vacuum: machineConfig.vacuum
+                vacuum: machineConfig.vacuum,
+                // Roland-specific (ignored by G-code processors)
+                rolandModel: machineConfig.rolandModel || 'mdx50',
+                rolandStepsPerMM: machineConfig.rolandStepsPerMM,
+                rolandMaxFeed: machineConfig.rolandMaxFeed,
+                rolandZMode: machineConfig.rolandZMode,
+                rolandSpindleMode: machineConfig.rolandSpindleMode,
             };
 
             // Generate G-code from the final, complete list of plans

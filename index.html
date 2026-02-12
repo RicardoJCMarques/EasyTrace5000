@@ -113,7 +113,7 @@
             "Arc reconstruction from polygonized data",
             "Multiple post-processor support (GRBL, Marlin, LinuxCNC)"
         ],
-        "softwareVersion": "1.0.5",
+        "softwareVersion": "1.0.6",
         "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
         "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000",
         "installUrl": "https://cam.eltryus.design/",
@@ -443,22 +443,78 @@
                             </select>
                         </div>
                         <div class="property-field">
-                            <label for="start-code-ta">Start G-code</label>
+                            <label for="start-code-ta">Start Code</label>
                             <textarea id="start-code-ta" rows="5"></textarea>
                         </div>
                         <div class="property-field">
-                            <label for="end-code-ta">End G-code</label>
+                            <label for="end-code-ta">End Code</label>
                             <textarea id="end-code-ta" rows="5"></textarea>
                         </div>
-                        <div class="property-field">
-                            <label for="gcode-units">G-Code Units</label>
+                        <div class="property-field" data-processor-group="gcode">
+                            <label for="gcode-units">Units</label>
                             <select id="gcode-units">
                                 <option value="mm">Millimeters (G21)</option>
                                 <option value="inch">Inches (G20)</option>
                             </select>
                         </div>
                     </div>
-                    
+
+                    <!-- Roland-specific settings (hidden by default, all editable for testing) -->
+                    <div class="property-section" data-processor-group="roland" style="display: none;">
+                        <div class="property-field">
+                            <label for="roland-machine-model">Machine Model</label>
+                            <select id="roland-machine-model">
+                                <optgroup label="Pro Series">
+                                    <option value="mdx540">MDX-540 / MDX-540S</option>
+                                    <option value="mdx50">MDX-50</option>
+                                    <option value="mdx40">MDX-40A</option>
+                                </optgroup>
+                                <optgroup label="monoFab">
+                                    <option value="srm20">SRM-20</option>
+                                </optgroup>
+                                <optgroup label="Engraver">
+                                    <option value="egx350">EGX-350</option>
+                                </optgroup>
+                                <optgroup label="Legacy">
+                                    <option value="mdx20">MDX-20</option>
+                                    <option value="mdx15">MDX-15</option>
+                                    <option value="imodela">iModela (iM-01)</option>
+                                </optgroup>
+                                <optgroup label="Other">
+                                    <option value="custom">Custom</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="property-field">
+                            <label for="roland-steps-per-mm">Steps per mm</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="roland-steps-per-mm" value="100" step="1" min="1" aria-label="Steps per millimeter resolution">
+                                <span class="unit" aria-hidden="true">steps/mm</span>
+                            </div>
+                        </div>
+                        <div class="property-field">
+                            <label for="roland-z-mode">Z Command Mode</label>
+                            <select id="roland-z-mode">
+                                <option value="3d">3D — Z x,y,z (simultaneous XYZ)</option>
+                                <option value="2.5d">2.5D — PU/PD (pen up/down only)</option>
+                            </select>
+                        </div>
+                        <div class="property-field">
+                            <label for="roland-max-feed">Max Feed Rate</label>
+                            <div class="input-with-unit">
+                                <input type="number" id="roland-max-feed" value="60" step="0.1" min="0.1" aria-label="Maximum feed rate in millimeters per second">
+                                <span class="unit" aria-hidden="true">mm/sec</span>
+                            </div>
+                        </div>
+                        <div class="property-field">
+                            <label for="roland-spindle-mode">Spindle Control</label>
+                            <select id="roland-spindle-mode">
+                                <option value="direct">Direct RPM (!RC + !MC)</option>
+                                <option value="manual">Manual Only (!MC on/off)</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="property-section">
                         <div class="property-field">
                             <label for="pcb-thickness">PCB Thickness</label>
@@ -496,7 +552,7 @@
                         </div>
                     </div>
 
-                    <div class="property-section">
+                    <div class="property-section" data-processor-group="gcode">
                         <div class="property-field">
                             <label for="coolant-type">Coolant</label>
                             <select id="coolant-type">
@@ -650,7 +706,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <span title="Version">Version 1.0.5</span> |
+                <span title="Version">Version 1.0.6</span> |
                 <a href="/LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
                 <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a> |

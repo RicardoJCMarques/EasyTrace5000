@@ -746,6 +746,26 @@
             const header = modal.querySelector('.modal-header h2');
             if (header) header.textContent = 'Operations Manager';
 
+            // UI Polish: Disable incompatible options for Roland
+            const commentsCheckbox = document.getElementById('gcode-include-comments');
+            const toolChangeCheckbox = document.getElementById('gcode-tool-changes'); // Optional: Roland handles TCs differently
+
+            if (commentsCheckbox) {
+                if (currentPost === 'roland') {
+                    // Disable and uncheck to prevent RML errors
+                    commentsCheckbox.checked = false;
+                    commentsCheckbox.disabled = true;
+                    commentsCheckbox.parentElement.title = "Comments are disabled for Roland RML to prevent syntax errors.";
+                    commentsCheckbox.parentElement.classList.add('disabled-control'); // Add visual cue if you have CSS for it
+                } else {
+                    // Restore defaults for G-code
+                    commentsCheckbox.disabled = false;
+                    commentsCheckbox.checked = true; // Or restore from settings
+                    commentsCheckbox.parentElement.title = "";
+                    commentsCheckbox.parentElement.classList.remove('disabled-control');
+                }
+            }
+
             this.populateToolpathModal();
 
             this.showPlaceholderPreview();

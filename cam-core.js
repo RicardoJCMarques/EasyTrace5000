@@ -174,7 +174,16 @@
                     rapidFeed: machineConfig.speeds?.rapidFeed,
                     workCoordinateSystem: machineConfig.workspace.system,
                     maxX: machineConfig.workspace?.maxX,
-                    maxY: machineConfig.workspace?.maxY
+                    maxY: machineConfig.workspace?.maxY,
+                    // Roland defaults
+                    rolandModel: 'mdx50',
+                    rolandStepsPerMM: 100,
+                    rolandMaxFeed: 60,
+                    rolandZMode: '3d',
+                    rolandSpindleMode: 'direct',
+                    rolandSpindleSpeed: 10000,
+                    rolandStartCode: ';;^DF\nPA;',
+                    rolandEndCode: '!MC0;\nPU0,0;\n;;^DF',
                 },
                 gcode: {
                     postProcessor: gcodeConfig.postProcessor,
@@ -197,9 +206,36 @@
                 }
             };
 
+            // Snapshot the factory defaults before any merge overwrites them
+            const factoryMachine = { ...defaults.machine };
+
             try {
-                const saved = localStorage.getItem('pcbcam-settings');
-                return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
+                const raw = localStorage.getItem('pcbcam-settings');
+                if (!raw) return defaults;
+
+                const saved = JSON.parse(raw);
+
+                // Deep merge: preserve new defaults when localStorage has partial sub-objects
+                for (const key of Object.keys(defaults)) {
+                    if (saved[key] === undefined) continue;
+
+                    if (typeof defaults[key] === 'object' && !Array.isArray(defaults[key]) &&
+                        typeof saved[key] === 'object' && !Array.isArray(saved[key])) {
+                        defaults[key] = { ...defaults[key], ...saved[key] };
+                    } else {
+                        defaults[key] = saved[key];
+                    }
+                }
+
+                // Restore factory defaults for any string fields that got blanked by stale storage.
+                // This handles the case where a previous version saved rolandStartCode as '' or undefined, which the deep merge would preserve over the new default.
+                for (const [field, factoryValue] of Object.entries(factoryMachine)) {
+                    if (typeof factoryValue === 'string' && !defaults.machine[field]) {
+                        defaults.machine[field] = factoryValue;
+                    }
+                }
+
+                return defaults;
             } catch (error) {
                 console.warn('Error loading settings:', error);
                 return defaults;

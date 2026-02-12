@@ -288,6 +288,109 @@
             }
             return validators;
         }
+
+        /**
+         * Updates validator constraints based on the active machine profile.
+         * Called when the user changes the Roland machine model or switches post-processor.
+         */
+        updateMachineConstraints(machineProfile, postProcessor) {
+            if (!machineProfile) return;
+
+            const isRoland = postProcessor === 'roland';
+
+            // Update spindle speed constraints from profile
+            if (machineProfile.spindleRange) {
+                const def = this.parameterDefinitions.spindleSpeed;
+                def.min = machineProfile.spindleRange.min;
+                def.max = machineProfile.spindleRange.max;
+
+                // Regenerate validator
+                this.validators.spindleSpeed = (val) => {
+                    const num = parseFloat(val);
+                    if (isNaN(num)) return { success: false, error: `${def.label} must be a number` };
+                    if (num < def.min) return { success: false, error: `${def.label} must be at least ${def.min}`, correctedValue: def.min };
+                    if (num > def.max) return { success: false, error: `${def.label} must be no more than ${def.max}`, correctedValue: def.max };
+                    return { success: true, value: num };
+                };
+            } else if (isRoland && !machineProfile.supportsRC) {
+                // Fixed or manual spindle - accept any value but it won't be emitted
+            }
+
+            // Update feed rate constraints from profile max speeds
+            if (isRoland && machineProfile.maxFeedXY) {
+                const maxMmMin = machineProfile.maxFeedXY * 60;
+
+                const feedDef = this.parameterDefinitions.feedRate;
+                feedDef.max = maxMmMin;
+                this.validators.feedRate = (val) => {
+                    const num = parseFloat(val);
+                    if (isNaN(num)) return { success: false, error: `${feedDef.label} must be a number` };
+                    if (num < feedDef.min) return { success: false, error: `${feedDef.label} must be at least ${feedDef.min}`, correctedValue: feedDef.min };
+                    if (num > feedDef.max) return { success: false, error: `${feedDef.label} must be no more than ${feedDef.max}`, correctedValue: feedDef.max };
+                    return { success: true, value: num };
+                };
+
+                const plungeDef = this.parameterDefinitions.plungeRate;
+                const maxPlungeMmMin = (machineProfile.maxFeedZ || machineProfile.maxFeedXY) * 60;
+                plungeDef.max = maxPlungeMmMin;
+                this.validators.plungeRate = (val) => {
+                    const num = parseFloat(val);
+                    if (isNaN(num)) return { success: false, error: `${plungeDef.label} must be a number` };
+                    if (num < plungeDef.min) return { success: false, error: `${plungeDef.label} must be at least ${plungeDef.min}`, correctedValue: plungeDef.min };
+                    if (num > plungeDef.max) return { success: false, error: `${plungeDef.label} must be no more than ${plungeDef.max}`, correctedValue: plungeDef.max };
+                    return { success: true, value: num };
+                };
+            } else if (!isRoland) {
+                // Switching away from Roland — restore default validation limits
+                this._restoreDefaultValidators(['feedRate', 'plungeRate', 'spindleSpeed']);
+            }
+
+            // Re-validate all currently loaded operations against new constraints
+            for (const [opId, state] of this.operationStates) {
+                for (const [stage, params] of Object.entries(state)) {
+                    for (const [name, value] of Object.entries(params)) {
+                        if (this.validators[name]) {
+                            const result = this.validators[name](value);
+                            if (result.correctedValue !== undefined) {
+                                state[stage][name] = result.correctedValue;
+                                this.markDirty(opId, stage);
+                            }
+                        }
+                    }
+                }
+            }
+
+            this.debug(`Machine constraints updated for ${machineProfile.label || 'unknown'}`);
+        }
+
+        // Restores validators to their original config-based limits.
+        _restoreDefaultValidators(paramNames) {
+            const validationRules = config.ui.validation;
+
+            for (const name of paramNames) {
+                const def = this.parameterDefinitions[name];
+                if (!def || def.type !== 'number') continue;
+
+                // Restore min/max from original config spread
+                if (validationRules[name]) {
+                    if (validationRules[name].min !== undefined) def.min = validationRules[name].min;
+                    if (validationRules[name].max !== undefined) def.max = validationRules[name].max;
+                }
+
+                // Regenerate validator from restored definition
+                this.validators[name] = (val) => {
+                    const num = parseFloat(val);
+                    if (isNaN(num)) return { success: false, error: `${def.label} must be a number` };
+                    if (def.min !== undefined && num < def.min) {
+                        return { success: false, error: `${def.label} must be at least ${def.min}`, correctedValue: def.min };
+                    }
+                    if (def.max !== undefined && num > def.max) {
+                        return { success: false, error: `${def.label} must be no more than ${def.max}`, correctedValue: def.max };
+                    }
+                    return { success: true, value: num };
+                };
+            }
+        }
         
         // Get or create state for an operation
         getOperationState(operationId) {

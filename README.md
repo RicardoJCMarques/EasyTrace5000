@@ -449,4 +449,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.0.5 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.0.6 | **Platform**: Client-side Web
