@@ -565,7 +565,7 @@
 .property-empty {
     padding: var(--spacing-xl);
     text-align: center;
-    color: var(--color-text-hint);
+    color: var(--color-accent-primary);
 }
 
 .property-section {
@@ -1021,6 +1021,15 @@
 
 .workspace-viewport-bar.dismissed {
     display: none !important;
+}
+
+/* ============================================================================
+   ONBOARDING HIGHLIGHT
+   ============================================================================ */
+
+.file-node-content.onboarding-highlight {
+    border: 2px solid var(--color-accent-primary);
+    padding: calc(var(--spacing-sm) - 2px);
 }
 
 /* ============================================================================

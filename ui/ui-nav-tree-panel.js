@@ -43,6 +43,12 @@
             this.nextNodeId = 1;
 
             this.initialized = false;
+
+            // File node suggestion states (for new users, session-only)
+            this._suggestionTimer = null;
+            this._suggestionInterval = null;
+            this._suggestionDismissed = false;
+            this._highlightIndex = -1;
         }
 
         init() {
@@ -207,7 +213,7 @@
                 deleteBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     // This calls the "delete entire operation" mediator function
-                    this.ui.removeOperation(operation.id); 
+                    this.ui.removeOperation(operation.id);
                 });
             }
 
@@ -235,6 +241,9 @@
             }
 
             this.updateFileGeometries(fileId, operation);
+
+            // Schedule onboarding suggestion (resets with each new file to handle multi-file loads)
+            this._scheduleSuggestion();
 
             return fileId;
         }
@@ -427,7 +436,10 @@
         }
 
         selectFile(fileId, operation) {
-            // Manage its own state
+            // Dismiss onboarding suggestion - user discovered the workflow
+            this._dismissSuggestion();
+
+            // Clear previous selections
             document.querySelectorAll('.file-node-content.selected, .geometry-node.selected').forEach(el => {
                 el.classList.remove('selected');
             });
@@ -975,6 +987,109 @@
                     }
                 }
             }
+        }
+
+        /**
+         * Schedules (or reschedules) the onboarding highlight cycle each time a file node is added.
+         */
+        _scheduleSuggestion() {
+            if (this._suggestionDismissed) return;
+
+            if (this._suggestionTimer) clearTimeout(this._suggestionTimer);
+
+            this._suggestionTimer = setTimeout(() => {
+                this._suggestionTimer = null;
+                this._startSuggestionCycle();
+            }, 12500);
+        }
+
+        /**
+         * Begins cycling the highlight across loaded file nodes (if no file has been selected yet).
+         */
+        _startSuggestionCycle() {
+            if (this._suggestionDismissed || this._suggestionInterval) return;
+
+            // User already found the workflow on their own
+            if (this.ui.operationPanel?.currentOperation) {
+                this._dismissSuggestion();
+                return;
+            }
+
+            const nodes = this._getHighlightableNodes();
+            if (nodes.length === 0) return;
+
+            this._highlightIndex = -1;
+            this._cycleHighlight(); // Start immediately
+            this._suggestionInterval = setInterval(() => this._cycleHighlight(), 3250);
+
+            this.debug('Onboarding suggestion cycle started');
+        }
+
+        /**
+         * Advances the highlight to the next file node with loaded primitives.
+         */
+        _cycleHighlight() {
+            if (this._suggestionDismissed) return;
+
+            const nodes = this._getHighlightableNodes();
+            if (nodes.length === 0) {
+                this._dismissSuggestion();
+                return;
+            }
+
+            // Remove highlight from all nodes
+            document.querySelectorAll('.file-node-content.onboarding-highlight')
+                .forEach(el => el.classList.remove('onboarding-highlight'));
+
+            // Advance to next
+            this._highlightIndex = (this._highlightIndex + 1) % nodes.length;
+            const target = nodes[this._highlightIndex];
+            target.classList.add('onboarding-highlight');
+
+            // Ensure parent category is expanded so the highlight is visible
+            const category = target.closest('.operation-category');
+            if (category && !category.classList.contains('expanded')) {
+                category.classList.add('expanded');
+                const opType = category.dataset.opType;
+                if (opType) this.expandedCategories.add(opType);
+            }
+        }
+
+        /**
+         * Returns file-node-content elements for operations that have loaded primitives.
+         */
+        _getHighlightableNodes() {
+            const elements = [];
+            this.nodes.forEach((data) => {
+                if (data.type === 'file' && data.operation?.primitives?.length > 0) {
+                    const content = data.element.querySelector('.file-node-content');
+                    if (content) elements.push(content);
+                }
+            });
+            return elements;
+        }
+
+        /**
+         * Permanently disables the onboarding suggestion for this session.
+         */
+        _dismissSuggestion() {
+            if (this._suggestionDismissed) return;
+
+            this._suggestionDismissed = true;
+
+            if (this._suggestionTimer) {
+                clearTimeout(this._suggestionTimer);
+                this._suggestionTimer = null;
+            }
+            if (this._suggestionInterval) {
+                clearInterval(this._suggestionInterval);
+                this._suggestionInterval = null;
+            }
+
+            document.querySelectorAll('.file-node-content.onboarding-highlight')
+                .forEach(el => el.classList.remove('onboarding-highlight'));
+
+            this.debug('Onboarding suggestion dismissed');
         }
 
         debug(message, data = null) {
