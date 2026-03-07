@@ -28,19 +28,19 @@
         along with this program.  If not, see <https://www.gnu.org/licenses/>.
     -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EasyTrace5000 | Browser-Based PCB CAM Tool</title>
+    <title>EasyTrace5000 Main Workspace | Free Browser-Based PCB CAM Tool</title>
 
     <meta name="description" content="Convert EDA CAD fabrication files (Gerber, Excellon or SVG) into machine ready files. 100% web-based, client-side, open-source and free to use.">
-    <meta name="keywords" content="PCB CAM, PCB Isolation Routing, G-code Generator, Gerber Viewer, CNC, Open Source, WebAssembly">
+    <meta name="keywords" content="PCB CAM, PCB Isolation Routing, G-code Generator, Gerber to G-code, Open SourceCAM , FlatCAM alternative, browser CAM, PCB milling software, GRBL PCB, Laser PCB">
     <meta name="author" content="Eltryus">
     <meta name="robots" content="index, follow">
     <meta name="theme-color" content="#1a1a1a">
 
-    <link rel="canonical" href="https://cam.eltryus.design/easytrace5000">
+    <link rel="canonical" href="https://cam.eltryus.design/easytrace5000/">
 
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://cam.eltryus.design/easytrace5000">
-    <meta property="og:title" content="EasyTrace5000 | Browser-Based PCB CAM Tool">
+    <meta property="og:url" content="https://cam.eltryus.design/easytrace5000/">
+    <meta property="og:title" content="EasyTrace5000 Main Workspace | Free Browser-Based PCB CAM Tool">
     <meta property="og:site_name" content="Eltryus">
     <meta property="og:description" content="Convert EDA CAD fabrication files (Gerber, Excellon or SVG) into machine ready files. 100% web-based, client-side, open-source and free to use.">
     <meta property="og:image" content="https://cam.eltryus.design/images/social-preview.jpg">
@@ -64,67 +64,124 @@
 
     <link rel="preload" href="../geometry/clipper2z.wasm" as="fetch" crossorigin>
 
-    <script type="application/ld+json">
-    {
-        "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "EasyTrace5000",
-        "alternateName": "EasyTrace",
-        "url": "https://cam.eltryus.design/easytrace5000",
-        "operatingSystem": "Any (Browser-based)",
-        "applicationCategory": "DeveloperApplication",
-        "applicationSubCategory": "CAM Software",
-        "offers": {
-            "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "EUR",
-            "availability": "https://schema.org/InStock"
-        },
-        "description": "Browser-based CAM tool for generating G-code from PCB manufacturing files. Supports Gerber, Excellon, and SVG input with optimized toolpath generation.",
-        "potentialAction": [
-            {
-                "@type": "ViewAction",
-                "target": "https://cam.eltryus.design/easytrace5000#quickstart",
-                "name": "Quick Start Guide"
+<script type="application/ld+json">
+    [
+        {
+            "@context": "https://schema.org",
+            "@type": "WebApplication",
+            "name": "EasyTrace5000",
+            "alternateName": "EasyTrace",
+            "url": "https://cam.eltryus.design/easytrace5000/",
+            "operatingSystem": "Any (Browser-based)",
+            "applicationCategory": "DeveloperApplication",
+            "applicationSubCategory": "CAM Software",
+            "isPartOf": {
+                "@type": "WebApplication",
+                "name": "Eltryus CAM Suite",
+                "url": "https://cam.eltryus.design/"
             },
-            {
-                "@type": "DonateAction",
-                "target": "https://cam.eltryus.design/easytrace5000#support",
-                "name": "Support Development"
-            }
-        ],
-        "author": {
-            "@type": "Organization",
-            "name": "Eltryus",
-            "url": "https://www.eltryus.design",
-            "logo": "https://www.eltryus.design/images/logo.png"
+            "subjectOf": [
+                {
+                    "@type": "TechArticle",
+                    "url": "https://www.eltryus.design/en/work/easytrace5000/",
+                    "name": "Case Study: Developing EasyTrace5000"
+                },
+                {
+                    "@type": "Article",
+                    "url": "https://www.hackster.io/news/easytrace5000-is-a-new-browser-based-cam-tool-for-pcb-fabrication-1539526435e8",
+                    "name": "EasyTrace5000 Is a New Browser-Based CAM Tool for PCB Fabrication",
+                    "publisher": {
+                        "@type": "Organization",
+                        "name": "Hackster.io"
+                    }
+                }
+            ],
+            "description": "Browser-based CAM tool for generating G-code from PCB manufacturing files. Supports Gerber, Excellon, and SVG input with optimized toolpath generation.",
+            "potentialAction": [
+                {
+                    "@type": "ViewAction",
+                    "target": "https://cam.eltryus.design/easytrace5000/#quickstart",
+                    "name": "Quick Start Guide"
+                },
+                {
+                    "@type": "DonateAction",
+                    "target": "https://cam.eltryus.design/easytrace5000/#support",
+                    "name": "Support Development"
+                }
+            ],
+            "softwareHelp": [
+                {
+                    "@type": "CollectionPage",
+                    "url": "https://cam.eltryus.design/easytrace5000/doc/",
+                    "name": "EasyTrace5000 Documentation"
+                },
+                {
+                    "@type": "TechArticle",
+                    "url": "https://cam.eltryus.design/easytrace5000/doc/cnc",
+                    "name": "CNC Milling Guide for PCB Isolation Routing"
+                },
+                {
+                    "@type": "TechArticle",
+                    "url": "https://cam.eltryus.design/easytrace5000/doc/laser",
+                    "name": "Laser Pipeline Guide for PCB Fabrication"
+                },
+                {
+                    "@type": "TechArticle",
+                    "url": "https://cam.eltryus.design/easytrace5000/doc/accessibility",
+                    "name": "Accessibility Information for EasyTrace5000"
+                }
+            ],
+            "author": {
+                "@type": "Organization",
+                "name": "Eltryus",
+                "url": "https://www.eltryus.design",
+                "logo": "https://www.eltryus.design/images/logo.png"
+            },
+            "screenshot": {
+                "@type": "ImageObject",
+                "url": "https://cam.eltryus.design/images/social-preview.jpg",
+                "caption": "EasyTrace5000 main workspace"
+            },
+            "featureList": [
+                "Browser-based, 100% client-side CAM processing with zero cloud dependencies",
+                "Analytic parsing for Gerber (RS-274X), Excellon, and SVG files",
+                "WebAssembly geometry engine for high-performance boolean operations",
+                "CNC Pipeline: multi-pass isolation routing, pocket clearing, and board cutouts",
+                "Laser Pipeline: Vector (SVG) and raster (PNG) export with hatch fills",
+                "Smart drill strategy with dynamic peck-or-mill selection",
+                "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
+                "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
+            ],
+            "softwareVersion": "1.0.8",
+            "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
+            "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
+            "installUrl": "https://cam.eltryus.design/easytrace5000/",
+            "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+            "isAccessibleForFree": true,
+            "browserRequirements": "Requires JavaScript and WebAssembly support",
+            "sameAs": [
+                "https://github.com/RicardoJCMarques/EasyTrace5000"
+            ]
         },
-        "screenshot": {
-            "@type": "ImageObject",
-            "url": "https://cam.eltryus.design/images/social-preview.jpg",
-            "caption": "EasyTrace5000 main workspace"
-        },
-        "featureList": [
-            "Browser-based, 100% client-side CAM processing with zero cloud dependencies",
-            "Analytic parsing for Gerber (RS-274X), Excellon, and SVG files",
-            "WebAssembly geometry engine for high-performance boolean operations",
-            "CNC Pipeline: multi-pass isolation routing, pocket clearing, and board cutouts",
-            "Laser Pipeline: Vector (SVG) and raster (PNG) export with hatch fills",
-            "Smart drill strategy with dynamic peck-or-mill selection",
-            "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
-            "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
-        ],
-        "softwareVersion": "1.0.7",
-        "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
-        "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
-        "installUrl": "https://cam.eltryus.design/easytrace5000/",
-        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
-        "isAccessibleForFree": true,
-        "browserRequirements": "Requires JavaScript and WebAssembly support",
-        "sameAs": [
-            "https://github.com/RicardoJCMarques/EasyTrace5000"
-        ]
-    }
+        {
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+                {
+                    "@type": "ListItem",
+                    "position": 1,
+                    "name": "Eltryus CAM Suite",
+                    "item": "https://cam.eltryus.design/"
+                },
+                {
+                    "@type": "ListItem",
+                    "position": 2,
+                    "name": "EasyTrace5000 Workspace",
+                    "item": "https://cam.eltryus.design/easytrace5000/"
+                }
+            ]
+        }
+    ]
     </script>
 </head>
 <body>
@@ -731,7 +788,8 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <span title="Version">Version 1.0.7</span> |
+                <span title="Version">Version 1.0.8</span> |
+                <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
                 <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a> |
@@ -1482,7 +1540,7 @@
     <!-- Initialization -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('EasyTrace5000 Advanced Workspace v1.0.7');
+            console.log('EasyTrace5000 Advanced Workspace v1.0.8');
 
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');

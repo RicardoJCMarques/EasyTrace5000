@@ -435,13 +435,14 @@
                             const endIdx = arc.endIndex;
                             const endPt = this._tx(pts[endIdx].x, pts[endIdx].y, mat);
 
-                            // Compute angular span for the large-arc flag
-                            let span = arc.endAngle - arc.startAngle;
-                            if (arc.clockwise) {
-                                if (span > 0) span -= 2 * Math.PI;
-                            } else {
-                                if (span < 0) span += 2 * Math.PI;
+                            // Use sweepAngle if available (avoids wrap-around ballooning)
+                            let span = arc.sweepAngle;
+                            if (span === undefined || span === null) {
+                                span = arc.endAngle - arc.startAngle;
+                                if (arc.clockwise && span > 0) span -= 2 * Math.PI;
+                                if (!arc.clockwise && span < 0) span += 2 * Math.PI;
                             }
+
                             const largeArc = Math.abs(span) > Math.PI ? 1 : 0;
 
                             // SVG sweep=1 is clockwise in screen coords (Y-down).
@@ -449,13 +450,11 @@
                             let sweep = arc.clockwise ? 1 : 0;
                             if (det < 0) sweep = 1 - sweep;
 
-                            // Full circle check: start ≈ end means SVG arc draws nothing.
-                            // Split into two semicircular arcs.
-                            const startPt = this._tx(pts[i - 1].x, pts[i - 1].y, mat);
-                            const dist = Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y);
-
-                            if (dist < r * 0.001) {
+                            // Full circle check based on angular span, NOT distance.
+                            // Distance checks falsely trigger on extremely short arcs.
+                            if (Math.abs(span) >= Math.PI * 1.99) {
                                 const tc = this._tx(arc.center.x, arc.center.y, mat);
+                                const startPt = this._tx(pts[i - 1].x, pts[i - 1].y, mat);
                                 const mx = 2 * tc.x - startPt.x;
                                 const my = 2 * tc.y - startPt.y;
                                 chunks.push(`A${r.toFixed(p)},${r.toFixed(p)} 0 0 ${sweep} ${mx.toFixed(p)},${my.toFixed(p)}`);
@@ -562,7 +561,20 @@
                             let ccw = !arc.clockwise;
                             if (det < 0) ccw = !ccw;
 
-                            ctx.arc(tcx, tcy, rPx, sa, ea, ccw);
+                            // Use sweepAngle if available (avoids wrap-around ballooning)
+                            let span = arc.sweepAngle;
+                            if (span === undefined || span === null) {
+                                span = arc.endAngle - arc.startAngle;
+                                if (arc.clockwise && span > 0) span -= 2 * Math.PI;
+                                if (!arc.clockwise && span < 0) span += 2 * Math.PI;
+                            }
+
+                            // Full circle check based on angular span
+                            if (Math.abs(span) >= Math.PI * 1.99) {
+                                ctx.arc(tcx, tcy, rPx, sa, sa + 2 * Math.PI, ccw);
+                            } else {
+                                ctx.arc(tcx, tcy, rPx, sa, ea, ccw);
+                            }
 
                             i = arc.endIndex + 1;
                         } else {

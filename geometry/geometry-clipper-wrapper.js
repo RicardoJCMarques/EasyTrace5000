@@ -269,7 +269,11 @@
                     if (path.contours && path.contours.length > 0) {
                         path.contours.forEach(contour => {
                             const polarity = contour.isHole ? 'clear' : 'dark';
-                            const clipperPath = this._jsPathToClipper(contour.points, polarity);
+                            // Compute winding in JS natively
+                            const isCW = GeometryUtils.isClockwise(contour.points); 
+                            // Feed directly to wrapper
+                            const clipperPath = this._jsPathToClipper(contour.points, polarity, isCW); 
+                            
                             if (clipperPath) {
                                 input.push_back(clipperPath);
                                 objects.push(clipperPath);
@@ -281,7 +285,8 @@
                         if (pPath && pPath.contours) {
                             pPath.contours.forEach(contour => {
                                 const polarity = contour.isHole ? 'clear' : 'dark';
-                                const clipperPath = this._jsPathToClipper(contour.points, polarity);
+                                const isCW = GeometryUtils.isClockwise(contour.points);
+                                const clipperPath = this._jsPathToClipper(contour.points, polarity, isCW);
                                 if (clipperPath) {
                                     input.push_back(clipperPath);
                                     objects.push(clipperPath);
@@ -331,7 +336,11 @@
                         if (path.contours && path.contours.length > 0) {
                             path.contours.forEach(contour => {
                                 const polarity = contour.isHole ? 'clear' : 'dark';
-                                const clipperPath = this._jsPathToClipper(contour.points, polarity);
+                                // Compute winding in JS natively
+                                const isCW = GeometryUtils.isClockwise(contour.points);
+                                // Feed directly to wrapper
+                                const clipperPath = this._jsPathToClipper(contour.points, polarity, isCW);
+                                
                                 if (clipperPath) {
                                     clipperPathsObj.push_back(clipperPath);
                                     objects.push(clipperPath);
@@ -343,7 +352,8 @@
                             if (pPath && pPath.contours) {
                                 pPath.contours.forEach(contour => {
                                     const polarity = contour.isHole ? 'clear' : 'dark';
-                                    const clipperPath = this._jsPathToClipper(contour.points, polarity);
+                                    const isCW = GeometryUtils.isClockwise(contour.points);
+                                    const clipperPath = this._jsPathToClipper(contour.points, polarity, isCW);
                                     if (clipperPath) {
                                         clipperPathsObj.push_back(clipperPath);
                                         objects.push(clipperPath);
@@ -380,8 +390,8 @@
         }
 
         // Convert JS path to Clipper Path64 with metadata packing
-        _jsPathToClipper(points, polarity = 'dark') {
-            const { Path64, Point64, AreaPath64 } = this.clipper2;
+        _jsPathToClipper(points, polarity = 'dark', isClockwise = null) {
+            const { Path64, Point64 } = this.clipper2;
 
             if (!points || points.length < 3) return null;
 
@@ -391,7 +401,6 @@
                 let metadataPointCount = 0;
                 let debugSample = null;
 
-                // Get clockwise info from the global registry if available
                 const getClockwiseForCurve = (curveId) => {
                     if (window.globalCurveRegistry) {
                         const curve = window.globalCurveRegistry.getCurve(curveId);
@@ -400,53 +409,26 @@
                     return false;
                 };
 
-                // Add points with metadata packing
                 points.forEach((p, index) => {
                     const x = BigInt(Math.round(p.x * this.options.scale));
                     const y = BigInt(Math.round(p.y * this.options.scale));
 
-                    // Pack metadata into Z coordinate
                     let z = BigInt(0);
                     if (this.supportsZ) {
-                        // Check for point-level metadata
                         if (p.curveId !== undefined && p.curveId !== null && p.curveId > 0) {
                             const curveClockwise = getClockwiseForCurve(p.curveId);
-                            z = this.packMetadata(
-                                p.curveId,
-                                p.segmentIndex || 0,
-                                curveClockwise,  // Pack clockwise from registry
-                                0 // reserved
-                            );
+                            z = this.packMetadata(p.curveId, p.segmentIndex || 0, curveClockwise, 0);
                             metadataPointCount++;
-
-                            // Capture first tagged point for debug
-                            if (!debugSample && debugConfig.enabled) {
-                                debugSample = {
-                                    index,
-                                    curveId: p.curveId,
-                                    segmentIndex: p.segmentIndex || 0,
-                                    clockwise: curveClockwise,
-                                    packedZ: z.toString(16)
-                                };
-                            }
                         }
                     }
 
                     const point = new Point64(x, y, z);
                     path.push_back(point);
-                    point.delete();
+                    point.delete(); // Prevent memory leak during build
                 });
 
-                if (metadataPointCount > 0) {
-                    this.debug(`Packed metadata for ${metadataPointCount}/${points.length} points`);
-                    if (debugSample) {
-                        this.debug(`Sample: Point ${debugSample.index} - ...`);
-                    }
-                }
-
-                // Check and fix winding based on polarity
-                const area = AreaPath64(path);
-                const pathIsClockwise = area < 0;
+                // Use the injected JS winding. If omitted, calculate natively in JS.
+                const pathIsClockwise = isClockwise !== null ? isClockwise : GeometryUtils.isClockwise(points);
 
                 const needsReversal = 
                     (polarity === 'dark' && pathIsClockwise) ||
@@ -455,16 +437,19 @@
                 if (needsReversal) {
                     const reversed = new Path64();
                     for (let i = path.size() - 1; i >= 0; i--) {
-                        reversed.push_back(path.get(i));
+                        const pt = path.get(i);
+                        reversed.push_back(pt);
+                        if (pt.delete) pt.delete(); // Prevent memory leak during reversal
                     }
-                    path.delete();
+                    path.delete(); // Free the original forward path
                     return reversed;
                 }
+                
                 return path;
 
             } catch (error) {
                 console.error('Error converting path to Clipper:', error);
-                path.delete();
+                if (path && typeof path.delete === 'function') path.delete();
                 return null;
             }
         }

@@ -4,6 +4,22 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2026-03-07
+
+### Notice
+- **Changes to the offset pipeline made everything slightly more accurate but slower, optimization to come**
+
+### Added
+- **Arc Definitions in Laser SVGs:** Offset Strategy Arcs in exported Laser SVGs will come out right now.
+- **New Tiny/Noisy/Collapsed Arc Safeguards:** More protections against small arcs with a tendency to collapse on themselfes, plus less random unnecessarily small arcs.
+
+### Fixed
+- **Copper Pour Regions:** KiCAD and Fusion Copper Pour regions are now correctly parsed, plotted and processed in Copper Isolation Operations (Copper Clear works but is even slower).
+- **Clipper Wrapper and Arc Reconstruction Optimizations:** Older modules - newerer logic.
+
+### Changed
+- **Removed Analytic Offsets:** Analytic offsets will be developed independently from the live tool. Clipper2 is better at dealing with self-intersection artifacts, for now.
+- **Another Attempt At SEO**
 
 ## [1.0.7] - 2026-03-02
 
@@ -12,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Source file Highlight:** Added small onboarding highlight animation on a timer to guide new users into triggering the workflow UI changes.
 
 ### Fixed
-- **Boolean Add/Diff Arc Data Flaws. :** Arc data should now be more consistently passed through Clipper2 Wrapper functions.
+- **Boolean Add/Diff Arc Data Flaws:** Arc data should now be more consistently passed through Clipper2 Wrapper functions.
 
 ### Changed
 - **Moved EasyTrace5000 out of Root:** Now the application itself is accessible through the [easytrace5000/](https://cam.eltryus.design/easytrace5000/) folder to try and appease crawler bots and get the subdomain listed again.
@@ -21,7 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [1.0.6] - 2026-02-12
 
 ### Fixed
-- **Full Refactor of Roland PostProcessor. :** Complete rework of the RML-1 post-processor module. Should now have all required nuance to work with common Roland desktop CNCs.
+- **Full Refactor of Roland PostProcessor:** Complete rework of the RML-1 post-processor module. Should now have all required nuance to work with common Roland desktop CNCs.
 
 ## [1.0.5] - 2026-02-03
 

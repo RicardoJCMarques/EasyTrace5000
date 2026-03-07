@@ -244,9 +244,10 @@ const getTemplate = (sidebarHtml, mainBodyHtml, heroTitle, tagline) => `<!DOCTYP
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             "itemListElement": [
-                { "@type": "ListItem", "position": 1, "name": "EasyTrace5000", "item": "${CONFIG.siteUrl}/" },
-                { "@type": "ListItem", "position": 2, "name": "Documentation", "item": "${CONFIG.siteUrl}/easytrace5000/doc/" },
-                { "@type": "ListItem", "position": 3, "name": "Accessibility", "item": "${CONFIG.siteUrl}/easytrace5000/doc/accessibility" }
+                { "@type": "ListItem", "position": 1, "name": "Eltryus CAM Suite", "item": "${CONFIG.siteUrl}/" },
+                { "@type": "ListItem", "position": 2, "name": "EasyTrace5000", "item": "${CONFIG.siteUrl}/easytrace5000/" },
+                { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "${CONFIG.siteUrl}/easytrace5000/doc/" },
+                { "@type": "ListItem", "position": 4, "name": "CNC Guide", "item": "${CONFIG.siteUrl}/easytrace5000/doc/cnc" }
             ]
         }
     ]

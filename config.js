@@ -393,14 +393,23 @@ window.PCBCAMConfig = {
             warnOnFailure: true
         },
 
+        selfIntersection: {
+            enabled: true,
+            gridCellFactor: 4,
+            endpointExclusion: 1e-6,                 // This could just be one of the epsilons?
+            spatialDedup: 0.0001,
+            minLoopArea: 1e-6,                       // This could just be one of the epsilons?
+            maxPasses: 3
+        },
+
         simplification: {                            // [USED IN: geometry-processor.js, geometry-offsetter.js] [MOVE TO: settings.js]
             enabled: true,
             tolerance: 0.001 
         },
 
         edgeKeyPrecision: 3,                         // [ADDED] [HARDCODED in parser-core.js]
-        svgPointMatchTolerance: 1e-2,                // [ADDED] [HARDCODED in parser-svg.js]
-        svgZeroLengthTolerance: 1e-6                 // [ADDED] [HARDCODED in parser-svg.js]
+        svgPointMatchTolerance: 1e-2,                // [ADDED] [HARDCODED in parser-svg.js] // This could just be one of the epsilons?
+        svgZeroLengthTolerance: 1e-6                 // [ADDED] [HARDCODED in parser-svg.js] // This could just be one of the epsilons?
     },
 
 
@@ -416,6 +425,7 @@ window.PCBCAMConfig = {
         
         // Coordinate space (mm)
         coordinate: 0.001,          // General coordinate precision
+        rdpSimplification: 0.005,   // RDP polygon simplification (mm) — tames KiCad pour noise without affecting intentional geometry
         pointMatch: 0.01,           // Two points are "same location"
         closedPath: 0.01,           // Path closure detection
         zeroLength: 0.0001,         // For degenerate geometry detection

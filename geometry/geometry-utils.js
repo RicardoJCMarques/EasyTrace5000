@@ -449,6 +449,129 @@
             return this.calculateWinding(points) < 0;
         },
 
+        /**
+         * Converts an open trace (polyline) into overlapping stroke polygons.
+         * Places a circle at every vertex (handling end-caps and joints) and 
+         * a rectangle along every segment.
+         * @param {Array} points - Array of {x,y} points forming the trace.
+         * @param {number} strokeWidth - The full width of the trace.
+         * @returns {Array<PathPrimitive>} Array of overlapping primitives to be unioned.
+         */
+        traceToPolygon(points, strokeWidth, props = {}) {
+            const boundaryStrokes = [];
+            const offsetDist = strokeWidth / 2;
+            const precision = this.PRECISION || 0.001;
+            const vertexSet = new Set();
+
+            if (!points || points.length < 2) return [];
+
+            // Strip stroke properties
+            const cleanProps = { 
+                ...props, fill: true, closed: true, wasStroke: true, 
+                stroke: false, strokeWidth: 0, isTrace: false  
+            };
+
+            // 1. Generate Circle Joints
+            for (let i = 0; i < points.length; i++) {
+                const pt = points[i];
+                const vKey = `${pt.x.toFixed(4)},${pt.y.toFixed(4)}`;
+                
+                if (!vertexSet.has(vKey)) {
+                    vertexSet.add(vKey);
+                    
+                    let curveId = null;
+                    if (window.globalCurveRegistry) {
+                        curveId = window.globalCurveRegistry.register({
+                            type: 'circle', center: { x: pt.x, y: pt.y },
+                            radius: offsetDist, clockwise: false, 
+                            source: (i === 0 || i === points.length - 1) ? 'end_cap' : 'trace_joint'
+                        });
+                    }
+
+                    const circlePrim = {
+                        type: 'circle', center: pt, radius: offsetDist, properties: { ...cleanProps }
+                    };
+                    
+                    const circlePath = this.circleToPath(circlePrim);
+                    if (circlePath) {
+                        // EXPLICITLY DELETE RENDERER OFFENDERS
+                        delete circlePath.properties.stroke;
+                        delete circlePath.properties.strokeWidth;
+                        delete circlePath.properties.isTrace;
+
+                        if (curveId && circlePath.contours[0]) {
+                            circlePath.contours[0].curveIds = [curveId];
+                            circlePath.contours[0].points.forEach(p => p.curveId = curveId);
+                            circlePath.contours[0].arcSegments.forEach(arc => arc.curveId = curveId);
+                        }
+                        boundaryStrokes.push(circlePath);
+                    }
+                }
+            }
+
+            // 2. Generate Rectangle Bodies
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const segLen = Math.hypot(dx, dy);
+
+                // Skip microscopic segments
+                // Skip microscopic segments
+                if (segLen < precision * 2) continue;
+
+                /* --- DEPRECATED EPSILON SHIFT ---
+                 * Pull the endpoints inwards by epsilon to hide floating point spikes inside the joint circles.
+                 * However, because the joint circles are generated on a canonical grid, the raw with the circle vertices, making the shift unnecessary.
+                 * ---
+                 * const epsilon = precision; 
+                 * const ux = dx / segLen;
+                 * const uy = dy / segLen;
+                 * const p1_adj = { x: p1.x + ux * epsilon, y: p1.y + uy * epsilon };
+                 * const p2_adj = { x: p2.x - ux * epsilon, y: p2.y - uy * epsilon };
+                 * const nx = (-uy) * offsetDist;
+                 * const ny = (ux) * offsetDist;
+                 * const rectPoints = [
+                 * { x: p1_adj.x + nx, y: p1_adj.y + ny },
+                 * { x: p2_adj.x + nx, y: p2_adj.y + ny },
+                 * { x: p2_adj.x - nx, y: p2_adj.y - ny },
+                 * { x: p1_adj.x - nx, y: p1_adj.y - ny }
+                 * ];
+                 */
+
+                // Generate pure, unshifted rectangle bounds
+                const ux = dx / segLen;
+                const uy = dy / segLen;
+                
+                const nx = (-uy) * offsetDist;
+                const ny = (ux) * offsetDist;
+
+                const rectPoints = [
+                    { x: p1.x + nx, y: p1.y + ny },
+                    { x: p2.x + nx, y: p2.y + ny },
+                    { x: p2.x - nx, y: p2.y - ny },
+                    { x: p1.x - nx, y: p1.y - ny }
+                ];
+                const rectPath = new PathPrimitive([{
+                    points: rectPoints, isHole: false, nestingLevel: 0,
+                    parentId: null, arcSegments: [], curveIds: []
+                }], { ...cleanProps });
+
+                // Explicit delete for rectangles too
+                delete rectPath.properties.stroke;
+                delete rectPath.properties.strokeWidth;
+                delete rectPath.properties.isTrace;
+
+                boundaryStrokes.push(rectPath);
+            }
+
+            return boundaryStrokes;
+        },
+
+         /**
+         * polylineToPolygon has been deprecated in favor of traceToPolygon that generates joint geometry that is easier to process.
         // Convert polyline to polygon with metadata for end-caps
         polylineToPolygon(points, width, curveIds = []) {
             if (!points || points.length < 2) return [];
@@ -533,6 +656,149 @@
             }
 
             return [...leftSide, ...rightSide.reverse()];
+        },
+         */
+
+        /**
+         * Optimized: Converts a closed contour into overlapping stroke polygons.
+         * Fixes spikes by merging micro-segments, while strictly protecting registered curve points.
+         */
+        closedContourToStrokePolygons(contour, strokeWidth) {
+            const boundaryStrokes = [];
+            const vertexSet = new Set();
+            const offsetDist = strokeWidth / 2;
+            const precision = this.PRECISION || 0.001;
+            
+            // Threshold to absorb micro-segments that cause floating-point normal breakdown.
+            const minSegLen = Math.max(precision, offsetDist * 0.02); 
+
+            let rawPoints = contour.points;
+            if (!rawPoints || rawPoints.length < 2) return [];
+
+            // Clean closing duplicates
+            const first = rawPoints[0];
+            const last = rawPoints[rawPoints.length - 1];
+            if (rawPoints.length > 2 && Math.hypot(first.x - last.x, first.y - last.y) < precision) {
+                rawPoints = rawPoints.slice(0, -1);
+            }
+
+            const lenRaw = rawPoints.length;
+
+            // Safe Point Consolidation Pass (with strict curve protection)
+            const points = [];
+            const arcMapRaw = new Map();
+            const arcMap = new Map();
+            const arcEndIndices = new Set();
+            
+            if (contour.arcSegments) {
+                contour.arcSegments.forEach(arc => {
+                    if (arc.startIndex < lenRaw && arc.endIndex < lenRaw) {
+                        arcMapRaw.set(arc.startIndex, arc);
+                        arcEndIndices.add(arc.endIndex);
+                    }
+                });
+            }
+
+            let lastKeptIndex = 0;
+            points.push(rawPoints[0]);
+
+            for (let i = 1; i < lenRaw; i++) {
+                const p1 = rawPoints[lastKeptIndex];
+                const p2 = rawPoints[i];
+                const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+
+                // Protect registered curve points AND arc start/end indices
+                const isProtected = (p2.curveId && p2.curveId > 0) || 
+                                    arcMapRaw.has(lastKeptIndex) || 
+                                    arcMapRaw.has(i) ||
+                                    arcEndIndices.has(i);
+
+                if (dist >= minSegLen || isProtected) {
+                    points.push(p2);
+                    if (arcMapRaw.has(lastKeptIndex)) {
+                        arcMap.set(points.length - 2, arcMapRaw.get(lastKeptIndex));
+                    }
+                    lastKeptIndex = i;
+                }
+            }
+            
+            // Handle closure segment cleanup
+            if (points.length > 2) {
+                const pFirst = points[0];
+                const pLast = points[points.length - 1];
+                const dist = Math.hypot(pFirst.x - pLast.x, pFirst.y - pLast.y);
+                const isProtected = (pLast.curveId && pLast.curveId > 0) || arcEndIndices.has(lastKeptIndex);
+                
+                if (dist < minSegLen && !arcMapRaw.has(lastKeptIndex) && !isProtected) {
+                    points.pop();
+                } else if (arcMapRaw.has(lastKeptIndex)) {
+                    arcMap.set(points.length - 1, arcMapRaw.get(lastKeptIndex));
+                }
+            }
+
+            const len = points.length;
+            if (len < 2) return [];
+
+            // Generate Stroke Geometry
+            for (let i = 0; i < len; i++) {
+                const p1 = points[i];
+                const p2 = points[(i + 1) % len];
+
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const segLen = Math.hypot(dx, dy);
+
+                if (segLen < precision) continue;
+
+                // Add Vertex Joint (Circle)
+                const vKey = `${p1.x.toFixed(4)},${p1.y.toFixed(4)}`;
+                if (!vertexSet.has(vKey)) {
+                    vertexSet.add(vKey);
+                    const circlePrim = {
+                        type: 'circle',
+                        center: p1,
+                        radius: offsetDist,
+                        properties: { polarity: 'dark', fill: true, closed: true }
+                    };
+                    const circlePath = this.circleToPath(circlePrim);
+                    if (circlePath) {
+                        
+                        // Scrub stroke properties from circles
+                        delete circlePath.properties.stroke;
+                        delete circlePath.properties.strokeWidth;
+                        delete circlePath.properties.isTrace;
+                        boundaryStrokes.push(circlePath);
+                    }
+                }
+
+                // Add Segment Body
+                const arc = arcMap.get(i);
+                if (arc && arc.endIndex !== undefined) {
+                    const mockArc = {
+                        type: 'arc', radius: arc.radius, center: arc.center, clockwise: arc.clockwise,
+                        startAngle: arc.startAngle, endAngle: arc.endAngle,
+                        startPoint: p1, endPoint: p2, properties: { polarity: 'dark' }
+                    };
+                    const arcStroke = this.arcToPolygon(mockArc, strokeWidth);
+                    if (arcStroke) boundaryStrokes.push(arcStroke);
+                } else {
+                    const nx = (-dy / segLen) * offsetDist;
+                    const ny = (dx / segLen) * offsetDist;
+
+                    const rectPoints = [
+                        { x: p1.x + nx, y: p1.y + ny },
+                        { x: p2.x + nx, y: p2.y + ny },
+                        { x: p2.x - nx, y: p2.y - ny },
+                        { x: p1.x - nx, y: p1.y - ny }
+                    ];
+
+                    boundaryStrokes.push(new PathPrimitive([{
+                        points: rectPoints, isHole: false, nestingLevel: 0,
+                        parentId: null, arcSegments: [], curveIds: []
+                    }], { polarity: 'dark', fill: true, closed: true }));
+                }
+            }
+            return boundaryStrokes;
         },
 
         /**
@@ -885,30 +1151,74 @@
             return new PathPrimitive([contour], properties);
         },
 
-        // Generate complete rounded cap with all boundary points tagged (end-caps are always ccw)
+        // Generate complete rounded cap with boundary points tagged.
+        // Intermediate points snap to the canonical circle grid (k × 2π/N) so that where a cap overlaps a full circle of the same center+radius, tessellation points coincide exactly — preventing zig-zag intersection artifacts that strip Z metadata in Clipper2 booleans.
         generateCompleteRoundedCap(center, radialAngle, radius, clockwiseArc, curveId) {
             const points = [];
-            const segments = this.getOptimalSegments(radius, 'end_cap');
-            const halfSegments = Math.floor(segments / 2);
-            const capStartAngle = radialAngle;
 
-            // Sweep in the same direction as the parent arc
-            const angleIncrement = clockwiseArc ? -Math.PI : Math.PI;
+            // Canonical grid: identical to circleToPath's angular spacing
+            const fullSegments = this.getOptimalSegments(radius, 'circle');
+            const gridStep = (2 * Math.PI) / fullSegments;
 
-            for (let i = 0; i <= halfSegments; i++) {
-                const t = i / halfSegments;
-                const angle = capStartAngle + (angleIncrement * t);
-                const point = {
-                    x: center.x + radius * Math.cos(angle),
-                    y: center.y + radius * Math.sin(angle),
-                    curveId: curveId,
-                    segmentIndex: i,
-                    totalSegments: halfSegments + 1,
-                    t: t,
-                    isConnectionPoint: (i === 0 || i === halfSegments)
-                };
-                points.push(point);
+            // Cap sweep: π radians in the parent arc's winding direction
+            const sweepDir = clockwiseArc ? -1 : 1;
+            const capEndAngle = radialAngle + sweepDir * Math.PI;
+
+            // Exact start point (boundary — may not be on grid)
+            points.push({
+                x: center.x + radius * Math.cos(radialAngle),
+                y: center.y + radius * Math.sin(radialAngle),
+                curveId: curveId,
+                segmentIndex: 0,
+                totalSegments: fullSegments,
+                t: 0,
+                isConnectionPoint: true
+            });
+
+            // Collect canonical grid angles strictly inside the cap sweep
+            const gridPoints = [];
+            const epsilon = gridStep * 0.01;
+
+            for (let k = 0; k < fullSegments; k++) {
+                const gridAngle = k * gridStep;
+
+                // Angular distance from cap start in the sweep direction
+                let delta = sweepDir * (gridAngle - radialAngle);
+                // Normalize to [0, 2π)
+                delta = ((delta % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+                // Accept if strictly inside (0, π) — excludes start/end boundaries
+                if (delta > epsilon && delta < Math.PI - epsilon) {
+                    gridPoints.push({ angle: gridAngle, delta: delta });
+                }
             }
+
+            // Sort by traversal order along the sweep
+            gridPoints.sort((a, b) => a.delta - b.delta);
+
+            // Emit grid-aligned intermediate points
+            for (let i = 0; i < gridPoints.length; i++) {
+                const ga = gridPoints[i];
+                points.push({
+                    x: center.x + radius * Math.cos(ga.angle),
+                    y: center.y + radius * Math.sin(ga.angle),
+                    curveId: curveId,
+                    segmentIndex: i + 1,
+                    totalSegments: fullSegments,
+                    t: ga.delta / Math.PI
+                });
+            }
+
+            // Exact end point (boundary — may not be on grid)
+            points.push({
+                x: center.x + radius * Math.cos(capEndAngle),
+                y: center.y + radius * Math.sin(capEndAngle),
+                curveId: curveId,
+                segmentIndex: gridPoints.length + 1,
+                totalSegments: fullSegments,
+                t: 1.0,
+                isConnectionPoint: true
+            });
 
             return points;
         },
@@ -989,6 +1299,12 @@
                 if (primitive.type === 'arc') {
                     return this.arcToPolygon(primitive, props.strokeWidth);
                 } else if (primitive.type === 'path' && primitive.contours?.[0]?.points) {
+                    
+                    // --- NEW EXPERIMENTAL TRACE-TO-POLYGON METHOD ---
+                    // Returns an array of overlapping shapes (circles & rectangles)
+                    return this.traceToPolygon(primitive.contours[0].points, props.strokeWidth, props);
+
+                    /* --- OLD METHOD (Commented out for development tracking) ---
                     const generatedCurveIds = curveIds.slice();
                     const points = this.polylineToPolygon(
                         primitive.contours[0].points,
@@ -1011,6 +1327,7 @@
                         stroke: false,
                         closed: true
                     });
+                    ----------------------------------------------------------- */
                 }
             }
 
@@ -1099,6 +1416,133 @@
                     console.warn(`[GeoUtils] primitiveToPath: Unknown type ${primitive.type}`);
                     return null;
             }
+        },
+
+        /**
+         * Squared perpendicular distance from point p to line segment p1→p2.
+         * Used by Douglas-Peucker simplification.
+         */
+        getSqDistToSegment(p, p1, p2) {
+            let x = p1.x, y = p1.y;
+            let dx = p2.x - x, dy = p2.y - y;
+
+            if (dx !== 0 || dy !== 0) {
+                const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
+                if (t > 1) {
+                    x = p2.x; y = p2.y;
+                } else if (t > 0) {
+                    x += dx * t; y += dy * t;
+                }
+            }
+
+            dx = p.x - x;
+            dy = p.y - y;
+            return dx * dx + dy * dy;
+        },
+
+        /**
+         * Non-recursive Douglas-Peucker simplification.
+         * @param {Array} points - Array of {x,y} points.
+         * @param {number} sqTolerance - Squared distance tolerance.
+         * @param {Set} [protectedIndices] - Indices that must survive (e.g. arc endpoints).
+         * @returns {Object} { points, indexMap } where indexMap[oldIndex] = newIndex or -1.
+         */
+        simplifyDouglasPeucker(points, sqTolerance, protectedIndices = null) {
+            const len = points.length;
+            if (len < 3) return { points: points.slice(), indexMap: points.map((_, i) => i) };
+
+            const markers = new Uint8Array(len);
+            markers[0] = 1;
+            markers[len - 1] = 1;
+
+            // Mark all protected indices
+            if (protectedIndices) {
+                for (const idx of protectedIndices) {
+                    if (idx >= 0 && idx < len) markers[idx] = 1;
+                }
+            }
+
+            const stack = [[0, len - 1]];
+
+            while (stack.length > 0) {
+                const [first, last] = stack.pop();
+
+                let maxSqDist = 0;
+                let index = first;
+
+                for (let i = first + 1; i < last; i++) {
+                    const sqDist = this.getSqDistToSegment(points[i], points[first], points[last]);
+                    if (sqDist > maxSqDist) {
+                        index = i;
+                        maxSqDist = sqDist;
+                    }
+                }
+
+                if (maxSqDist > sqTolerance) {
+                    markers[index] = 1;
+                    if (index - first > 1) stack.push([first, index]);
+                    if (last - index > 1) stack.push([index, last]);
+                }
+            }
+
+            const newPoints = [];
+            const indexMap = new Array(len).fill(-1);
+
+            for (let i = 0; i < len; i++) {
+                if (markers[i]) {
+                    indexMap[i] = newPoints.length;
+                    newPoints.push(points[i]);
+                }
+            }
+
+            return { points: newPoints, indexMap };
+        },
+        
+        /**
+         * Ray-casting point-in-polygon test.
+         * Uses the Jordan curve theorem: a ray from the point crosses the boundary an odd number of times iff the point is inside.
+         */
+        pointInPolygon(point, polygon) {
+            if (!polygon || polygon.length < 3) return false;
+
+            let inside = false;
+            const n = polygon.length;
+
+            for (let i = 0, j = n - 1; i < n; j = i++) {
+                const xi = polygon[i].x, yi = polygon[i].y;
+                const xj = polygon[j].x, yj = polygon[j].y;
+
+                if (((yi > point.y) !== (yj > point.y)) &&
+                    (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+                    inside = !inside;
+                }
+            }
+
+            return inside;
+        },
+
+        /**
+         * Returns a representative interior point for a primitive.
+         * Uses the geometric centroid of the first contour's vertices.
+         * For convex shapes (circles, rectangles, obrounds) the centroid is always interior. For concave shapes the centroid is a practical approximation that works for all standard PCB primitives.
+         */
+        getRepresentativePoint(primitive) {
+            const points = primitive.contours?.[0]?.points;
+            if (points && points.length >= 3) {
+                let sumX = 0, sumY = 0;
+                for (let i = 0; i < points.length; i++) {
+                    sumX += points[i].x;
+                    sumY += points[i].y;
+                }
+                return { x: sumX / points.length, y: sumY / points.length };
+            }
+            // Fallback for analytic primitives that somehow survived without contours
+            if (primitive.center) return { ...primitive.center };
+            const bounds = primitive.getBounds();
+            if (bounds && isFinite(bounds.minX)) {
+                return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+            }
+            return null;
         },
 
         /**

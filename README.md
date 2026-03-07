@@ -10,8 +10,8 @@ EasyTrace5000 is a browser-based CAM workspace that converts standard fabricatio
 
 ## Try it!
 
-* **[→ Open Workspace ←](https://cam.eltryus.design)** - Runs entirely in your browser. No installation, accounts or cloud dependencies.
-* **[Extra Documentation](https://cam.eltryus.design/doc/)** - Guides for CNC milling and accessibility features, plus a laser pipeline preview.
+* **[→ Open Workspace ←](https://cam.eltryus.design/easytrace5000/)** - Runs entirely in your browser. No installation, accounts or cloud dependencies.
+* **[Extra Documentation](https://cam.eltryus.design/easytrace5000/doc/)** - Guides for CNC milling and accessibility features, plus a laser pipeline preview.
 
 ## Safety & Material Guide
 
@@ -460,4 +460,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.0.7 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.0.8 | **Platform**: Client-side Web

@@ -49,6 +49,7 @@
                 polarity: 'dark',
                 inRegion: false,
                 regionPoints: [],
+                currentNetName: null,
                 units: this.options.units,
                 format: { ...this.options.format }
             };
@@ -110,6 +111,7 @@
                 polarity: 'dark',
                 inRegion: false,
                 regionPoints: [],
+                currentNetName: null,
                 units: this.options.units,
                 format: { ...this.options.format }
             };
@@ -281,6 +283,51 @@
 
             if (block.startsWith('LP')) {
                 return { type: 'SET_POLARITY', params: { polarity: block.includes('D') ? 'dark' : 'clear' }, line: lineNumber };
+            }
+
+            // Gerber X2 object attributes — %TO.field,value*%
+            // TO.N = net name, TO.C = component refdes, TO.P = pin
+            // Track TO.N (net name) to annotate subsequent primitives.
+            // This gives free net identification for copper pour detection
+            // (e.g., %TO.N,GND*% before a pour region means it's a ground pour).
+            if (block.startsWith('TO')) {
+                const toMatch = block.match(/^TO\.([A-Za-z]+),?(.*?)$/);
+                if (toMatch) {
+                    const field = toMatch[1];
+                    const value = toMatch[2] ? toMatch[2].replace(/\*$/, '') : '';
+
+                    if (field === 'N') {
+                        // Net name attribute — applies to all subsequent objects until cleared by %TO*% or changed by another %TO.N,...*%
+                        this.state.currentNetName = value || null;
+                        this.debug(`Net attribute set: ${value || '(cleared)'}`);
+                    }
+
+                    return {
+                        type: 'SET_ATTRIBUTE',
+                        params: { attributeType: 'object', field: field, value: value },
+                        line: lineNumber
+                    };
+                }
+
+                // %TO*% with no field clears all object attributes
+                if (block === 'TO' || block === 'TO*') {
+                    this.state.currentNetName = null;
+                    return {
+                        type: 'SET_ATTRIBUTE',
+                        params: { attributeType: 'object', field: null, value: null },
+                        line: lineNumber
+                    };
+                }
+            }
+
+            // Also handle TD (delete attribute) which KiCad emits between objects
+            if (block.startsWith('TD')) {
+                this.state.currentNetName = null;
+                return {
+                    type: 'CLEAR_ATTRIBUTE',
+                    params: {},
+                    line: lineNumber
+                };
             }
 
             return { type: 'UNKNOWN', params: { content: block }, line: lineNumber };
@@ -798,18 +845,19 @@
                 case 'DRAW':
                     const drawPos = this.parsePosition(command.params);
 
-                    // Check for a zero-length draw.
-                    const precision = config.precision.zeroLength;
-                    const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
-                                             Math.abs(this.state.position.y - drawPos.y) < precision;
-
-                    // If start and end positions are the same treat it as a flash.
-                    if (isZeroLengthDraw) {
-                        this.debug(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
-
-                        this.createFlash(drawPos);
-                        this.state.position = drawPos;
-                        break; // Exit the case here
+                    // Zero-length draw detection: converts degenerate draws to flashes.
+                    // Only applies OUTSIDE regions (G36/G37). Inside regions, near-identical consecutive vertices are normal (dense curve approximations in KiCad pour polygons). Intercepting them here creates spurious flash circles and drops vertices from the region, which can corrupt or destroy the pour polygon geometry.
+                    if (!this.state.inRegion) {
+                        const precision = config.precision.zeroLength;
+                        const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
+                                                 Math.abs(this.state.position.y - drawPos.y) < precision;
+                        // If start and end positions are the same treat it as a flash.
+                        if (isZeroLengthDraw) {
+                            this.debug(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
+                            this.createFlash(drawPos);
+                            this.state.position = drawPos;
+                            break;
+                        }
                     }
 
                     // Parse arc offsets if present
@@ -877,18 +925,79 @@
                 return;
             }
 
-            // Close region if needed
-            const first = this.state.regionPoints[0];
-            const last = this.state.regionPoints[this.state.regionPoints.length - 1];
-            const precision = config.precision.coordinate;
+            const epsilon = config.precision.coordinate;
 
-            if (Math.abs(first.x - last.x) > precision || Math.abs(first.y - last.y) > precision) {
-                this.state.regionPoints.push({ ...first });
+            // ── Pass 1: Deduplicate consecutive near-identical vertices ──
+            // Dense KiCad pour polygons have vertices <1μm apart at curve transitions. Without deduplication these create degenerate zero-length edges that confuse downstream boolean operations.
+            const rawPoints = this.state.regionPoints;
+            const deduped = [rawPoints[0]];
+
+            for (let i = 1; i < rawPoints.length; i++) {
+                const prev = deduped[deduped.length - 1];
+                const curr = rawPoints[i];
+                const dx = curr.x - prev.x;
+                const dy = curr.y - prev.y;
+                if (dx * dx + dy * dy > epsilon * epsilon) {
+                    deduped.push(curr);
+                }
+            }
+
+            if (deduped.length < 3) {
+                this.warnings.push(`Region collapsed to ${deduped.length} points after deduplication (from ${rawPoints.length})`);
+                return;
+            }
+
+            if (rawPoints.length !== deduped.length) {
+                this.debug(`Region vertex deduplication: ${rawPoints.length} → ${deduped.length} points`);
+            }
+
+            // ── Pass 2: Remove spike artifacts ──
+            // Detect vertices where the polygon reverses direction within a precision-bound corridor (sawtooth patterns from ECAD export noise).
+            //
+            // RELAXED GATE: The dot-product threshold is now configurable via cosAngleGate. The original code used 0 (catches only >90° reversals).
+            // A positive value like 0.25 catches shallower zigzags (~75°+) that KiCad's polygon approximation routinely produces. The perpendicular deviation test still protects intentional sharp features.
+            const spikeTolerance = epsilon * 4;
+            const { points: cleaned, removed: spikesRemoved } = this._removeSpikeVertices(deduped, spikeTolerance);
+
+            if (spikesRemoved > 0) {
+                this.debug(`Region spike removal: ${deduped.length} → ${cleaned.length} points (${spikesRemoved} spikes removed)`);
+            }
+
+            if (cleaned.length < 3) {
+                this.warnings.push(`Region collapsed to ${cleaned.length} points after spike removal (from ${rawPoints.length})`);
+                return;
+            }
+
+            // ── Pass 3: Ramer-Douglas-Peucker simplification ──
+            // Collapses near-collinear vertex runs and over-tessellated curve approximations that the spike detector doesn't catch (forward-progressing zigzags where dot > 0). This is the industry-standard algorithm for polyline simplification in GIS/CNC/CAD.
+            // Tolerance rationale: the smallest meaningful PCB feature (trace-to-trace clearance) is typically ≥ 0.1mm.
+            // A simplification tolerance of 0.005–0.01mm is invisible on copper but eliminates thousands of noise vertices that otherwise get amplified into sawtooth artifacts by the Clipper offset pipeline.
+            const rdpTolerance = config.precision.rdpSimplification
+
+            const simplified = this._simplifyRDP(cleaned, rdpTolerance);
+
+            if (simplified.length < 3) {
+                this.warnings.push(`Region collapsed to ${simplified.length} points after RDP simplification`);
+                return;
+            }
+
+            if (cleaned.length !== simplified.length) {
+                this.debug(`Region RDP simplification: ${cleaned.length} → ${simplified.length} points (tolerance: ${rdpTolerance.toFixed(4)}mm)`);
+            }
+
+            let finalPoints = simplified;
+
+            // ── Close region if needed ──
+            const first = finalPoints[0];
+            const last = finalPoints[finalPoints.length - 1];
+
+            if (Math.abs(first.x - last.x) > epsilon || Math.abs(first.y - last.y) > epsilon) {
+                finalPoints.push({ ...first });
             }
 
             // Create contours structure
             const contours = [{
-                points: [...this.state.regionPoints],
+                points: finalPoints,
                 nestingLevel: 0,
                 isHole: false,
                 parentId: null
@@ -896,14 +1005,178 @@
 
             const region = {
                 type: 'region',
-                points: [...this.state.regionPoints],
+                points: finalPoints,
                 polarity: this.state.polarity,
+                netName: this.state.currentNetName || null,
                 contours: contours
             };
 
             this.layers.objects.push(region);
             this.stats.objectsCreated++;
-            this.debug(`Created region with ${region.points.length} points`);
+            this.debug(`Created region with ${finalPoints.length} points`);
+        }
+
+        /**
+         * Ramer-Douglas-Peucker polyline simplification.
+         * Iterative (stack-based) implementation to avoid call-stack overflow on KiCad pour polygons that routinely have 10k–50k+ vertices.
+         * The algorithm recursively finds the vertex farthest from the line between the endpoints of each segment. If that distance exceeds `tolerance`, the vertex is kept and the segment is subdivided; otherwise the entire run is collapsed to a straight line.
+         * @param {Array<{x:number, y:number}>} points - Input polyline.
+         * @param {number} tolerance - Max perpendicular deviation in mm.
+         * @returns {Array<{x:number, y:number}>} Simplified polyline.
+         */
+        _simplifyRDP(points, tolerance) {
+            const n = points.length;
+            if (n <= 3) return points;
+
+            const tolSq = tolerance * tolerance;
+
+            // Boolean mask: true = keep this vertex
+            const keep = new Uint8Array(n); // initialized to 0
+            keep[0] = 1;
+            keep[n - 1] = 1;
+
+            // Iterative stack to avoid recursion depth issues.
+            // Each entry is [startIndex, endIndex].
+            const stack = [[0, n - 1]];
+
+            while (stack.length > 0) {
+                const [start, end] = stack.pop();
+
+                if (end - start < 2) continue;
+
+                const ax = points[start].x;
+                const ay = points[start].y;
+                const bx = points[end].x;
+                const by = points[end].y;
+
+                const abx = bx - ax;
+                const aby = by - ay;
+                const abLenSq = abx * abx + aby * aby;
+
+                let maxDistSq = 0;
+                let maxIdx = start;
+
+                for (let i = start + 1; i < end; i++) {
+                    const px = points[i].x - ax;
+                    const py = points[i].y - ay;
+
+                    let distSq;
+                    if (abLenSq < 1e-20) {
+                        // Degenerate segment (start ≈ end): use point-to-point distance
+                        distSq = px * px + py * py;
+                    } else {
+                        // Perpendicular distance² = (cross product)² / |AB|²
+                        const cross = abx * py - aby * px;
+                        distSq = (cross * cross) / abLenSq;
+                    }
+
+                    if (distSq > maxDistSq) {
+                        maxDistSq = distSq;
+                        maxIdx = i;
+                    }
+                }
+
+                if (maxDistSq > tolSq) {
+                    keep[maxIdx] = 1;
+                    // Subdivide — push longer segment first for better cache locality
+                    if (maxIdx - start > end - maxIdx) {
+                        stack.push([start, maxIdx]);
+                        stack.push([maxIdx, end]);
+                    } else {
+                        stack.push([maxIdx, end]);
+                        stack.push([start, maxIdx]);
+                    }
+                }
+                // else: all interior points within tolerance — discard them
+            }
+
+            // Collect kept vertices
+            const result = [];
+            for (let i = 0; i < n; i++) {
+                if (keep[i]) result.push(points[i]);
+            }
+
+            return result;
+        }
+
+        /**
+         * Iteratively removes spike vertices from a polygon.
+         *
+         * A spike at vertex B (in sequence A→B→C) is detected when BOTH:
+         *   1. dot(AB, BC) < 0 — the path reverses direction at B
+         *      (the angle between consecutive edge vectors exceeds 90°)
+         *   2. perpDistance(B, line AC) < tolerance — the reversal's deviation
+         *      is below the precision-derived threshold
+         *
+         * Condition 1 guarantees that smooth curves, gentle corners, and pad clearance boundaries (which all have dot ≥ 0) are never touched.
+         * Condition 2 guarantees that intentional sharp features with significant deviation (like thermal relief slots) are preserved.
+         * Iterative passes handle cascading spikes: removing one spike makes its former neighbors adjacent, which may form a new spike.
+         * Converges when no spikes are found in a pass.
+         * @param {Array} points - Polygon vertices [{x, y}, ...].
+         * @param {number} tolerance - Max perpendicular deviation in mm (from coordinate precision).
+         * @returns {{ points: Array, removed: number }}
+         */
+        _removeSpikeVertices(points, tolerance) {
+            if (points.length <= 4) return { points, removed: 0 };
+
+            const tolSq = tolerance * tolerance;
+            let current = points;
+            let removedTotal = 0;
+
+            // Cap iterations to guarantee termination. In practice converges in 1-3 passes — each pass can only expose spikes that were previously shielded by an adjacent spike.
+            const maxPasses = 8;
+
+            for (let pass = 0; pass < maxPasses; pass++) {
+                const n = current.length;
+                const result = [current[0]];
+                let removedThisPass = 0;
+
+                for (let i = 1; i < n - 1; i++) {
+                    // Use the already-filtered previous point so cascading spikes within a single pass are caught immediately
+                    const A = result[result.length - 1];
+                    const B = current[i];
+                    const C = current[i + 1];
+
+                    const abx = B.x - A.x, aby = B.y - A.y;
+                    const bcx = C.x - B.x, bcy = C.y - B.y;
+
+                    // Test 1: Direction reversal — dot(AB, BC) < 0 means the angle between consecutive edges exceeds 90°.
+                    // Smooth curves and legitimate corners have dot ≥ 0.
+                    const dot = abx * bcx + aby * bcy;
+
+                    if (dot < 0) {
+                        // Test 2: Perpendicular deviation of B from line AC.
+                        // Uses the cross product formula: height = |AC × AB| / |AC|
+                        // Squared comparison avoids sqrt.
+                        const acx = C.x - A.x, acy = C.y - A.y;
+                        const acLenSq = acx * acx + acy * acy;
+
+                        let deviationSq;
+                        if (acLenSq < 1e-20) {
+                            // A and C essentially coincide — full spike
+                            deviationSq = abx * abx + aby * aby;
+                        } else {
+                            const cross = acx * aby - acy * abx;
+                            deviationSq = (cross * cross) / acLenSq;
+                        }
+
+                        if (deviationSq < tolSq) {
+                            removedThisPass++;
+                            continue; // Skip vertex B
+                        }
+                    }
+
+                    result.push(B);
+                }
+
+                result.push(current[n - 1]);
+                removedTotal += removedThisPass;
+
+                if (removedThisPass === 0) break; // Converged
+                current = result;
+            }
+
+            return { points: current, removed: removedTotal };
         }
 
         createTrace(start, end, arcData = null) {
@@ -925,6 +1198,7 @@
                 width: aperture.parameters[0] || formatConfig.defaultAperture || 0.1,
                 aperture: this.state.aperture,
                 polarity: this.state.polarity,
+                netName: this.state.currentNetName || null,
                 interpolation: this.state.interpolation
             };
 
@@ -956,6 +1230,7 @@
                 position: { ...position },
                 aperture: this.state.aperture,
                 polarity: this.state.polarity,
+                netName: this.state.currentNetName || null,
                 shape: aperture.shape // Use the 'shape' property from the aperture definition
             };
 

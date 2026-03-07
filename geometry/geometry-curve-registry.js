@@ -70,14 +70,8 @@
                 str += '_offset';
             }
 
-            let hash = 0;
-            for (let i = 0; i < str.length; i++) {
-                const char = str.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash;
-            }
-
-            return Math.abs(hash);
+            // Return the unique string directly to eliminate any mathematical collisions
+            return str; 
         }
 
         register(metadata) {

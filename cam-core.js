@@ -101,7 +101,6 @@
             }
 
             this.isInitializing = true;
-
             this.debug('Initializing processors with Clipper2...');
 
             // Initialize GeometryProcessor
@@ -380,8 +379,44 @@
                 this.analyzeGeometricContext(operation, primitives);
                 const validPrimitives = this.validateAndOptimizePrimitives(primitives);
 
-                operation.primitives = validPrimitives;
-                operation.bounds = this.recalculateBounds(validPrimitives);
+                // Sequential compositing for mixed-polarity layers (Eagle LPD→LPC→LPD pattern).
+                let finalPrimitives = validPrimitives;
+
+                const isCopperLayer = (operation.type === 'isolation' || operation.type === 'clearing');
+                const hasMixedPolarity = validPrimitives.some(
+                    p => (p.properties?.polarity || 'dark') === 'clear'
+                );
+
+                if (isCopperLayer && hasMixedPolarity && this.processorInitialized) {
+                    this.debug(`[Compositing] Mixed polarity detected in ${operation.file.name}, running sequential compositing...`);
+
+                    try {
+                        const composited = await this.compositeByPolarity(validPrimitives);
+
+                        if (composited && composited.length > 0) {
+                            operation.isComposited = true;
+                            this.debug(`[Compositing] ${validPrimitives.length} input → ${composited.length} output primitives`);
+                            finalPrimitives = composited;
+                        } else {
+                            this.debug(`[Compositing] Compositing returned empty, using original primitives`);
+                            operation.isComposited = false;
+                        }
+                    } catch (error) {
+                        console.error(`[Compositing] Compositing failed for ${operation.file.name}:`, error);
+                        operation.isComposited = false;
+                    }
+                }
+
+                // Ensure all primitives have correct operation metadata after compositing
+                finalPrimitives.forEach(p => {
+                    if (!p.properties) p.properties = {};
+                    p.properties.operationType = operation.type;
+                    p.properties.operationId = operation.id;
+                    p.properties.layerType = operation.type === 'drill' ? 'drill' : operation.type;
+                });
+
+                operation.primitives = finalPrimitives;
+                operation.bounds = this.recalculateBounds(finalPrimitives);
 
                 this.updateStatistics();
                 operation.processed = true;
@@ -480,6 +515,146 @@
             }
 
             return validPrimitives;
+        }
+
+        /**
+         * Sequential boolean compositing that respects Gerber rendering order.
+         * Group contiguous same-polarity primitives to minimize WASM calls, then applies union (dark) or difference (clear) sequentially.
+         */
+        async compositeByPolarity(primitives) {
+            if (!primitives || primitives.length === 0) return [];
+
+            // Quick check: if no clear primitives exist, skip entirely (KiCad, simple files)
+            const hasClear = primitives.some(p => (p.properties?.polarity || 'dark') === 'clear');
+            if (!hasClear) {
+                this.debug('[Compositing] No clear-polarity primitives found, skipping compositing');
+                return primitives;
+            }
+
+            await this.ensureProcessorReady();
+
+            this.debug(`[Compositing] === SEQUENTIAL COMPOSITING START ===`);
+            this.debug(`[Compositing] Input: ${primitives.length} primitives`);
+
+            // Group contiguous same-polarity primitives to batch WASM calls.
+            const polarityGroups = [];
+            let currentGroup = null;
+
+            for (const prim of primitives) {
+                const polarity = prim.properties?.polarity || 'dark';
+                if (!currentGroup || currentGroup.polarity !== polarity) {
+                    currentGroup = { polarity: polarity, items: [] };
+                    polarityGroups.push(currentGroup);
+                }
+                currentGroup.items.push(prim);
+            }
+
+            this.debug(`[Compositing] Polarity groups: ${polarityGroups.length}`);
+            polarityGroups.forEach((g, i) => {
+                this.debug(`[Compositing]   Group ${i}: ${g.polarity} (${g.items.length} primitives)`);
+            });
+
+            // Sequential compositing: process groups in order
+            let accumulator = [];
+
+            for (let i = 0; i < polarityGroups.length; i++) {
+                const group = polarityGroups[i];
+
+                this.debug(`[Compositing] Processing group ${i}: ${group.polarity} (${group.items.length} items)`);
+
+                // Preprocess: convert strokes (traces, arcs) to filled polygons.
+                const standardized = [];
+                let strokesConverted = 0;
+
+                for (const prim of group.items) {
+                    const result = this.geometryProcessor.standardizePrimitive(prim, prim.curveIds || []);
+                    if (result) {
+                        // Handle arrays returned by traceToPolygon
+                        if (Array.isArray(result)) {
+                            result.forEach(r => {
+                                if (!r.properties) r.properties = {};
+                                r.properties.polarity = prim.properties?.polarity || 'dark';
+                                standardized.push(r);
+                            });
+                        } else {
+                            if (!result.properties) result.properties = {};
+                            result.properties.polarity = prim.properties?.polarity || 'dark';
+                            standardized.push(result);
+                        }
+
+                        const wasStroke = (prim.properties?.stroke && !prim.properties?.fill) || 
+                                          prim.properties?.isTrace;
+                        if (wasStroke) strokesConverted++;
+                    } else {
+                        this.debug(`[Compositing]   Standardization failed for primitive ${prim.id} (${prim.type}), skipping`);
+                    }
+                }
+
+                if (strokesConverted > 0) {
+                    this.debug(`[Compositing]   Converted ${strokesConverted} stroke(s) to filled polygons`);
+                }
+
+                // Union everything within this group into a single geometry set (one WASM call per group)
+                let groupGeometry;
+                try {
+                    groupGeometry = await this.geometryProcessor.unionGeometry(standardized);
+                } catch (error) {
+                    console.error(`[Compositing] Union failed for group ${i}:`, error);
+                    continue;
+                }
+
+                if (!groupGeometry || groupGeometry.length === 0) {
+                    this.debug(`[Compositing]   Group ${i} produced no geometry after union, skipping`);
+                    continue;
+                }
+
+                this.debug(`[Compositing]   Group ${i} unioned to ${groupGeometry.length} primitive(s)`);
+
+                if (group.polarity === 'dark') {
+                    if (accumulator.length === 0) {
+                        accumulator = groupGeometry;
+                    } else {
+                        // Union the new dark geometry with the accumulator
+                        try {
+                            accumulator = await this.geometryProcessor.unionGeometry(
+                                [...accumulator, ...groupGeometry]
+                            );
+                        } catch (error) {
+                            console.error(`[Compositing] Accumulator union failed at group ${i}:`, error);
+                            // Fallback: just append
+                            accumulator.push(...groupGeometry);
+                        }
+                    }
+                    this.debug(`[Compositing]   Accumulator after dark union: ${accumulator.length} primitive(s)`);
+                } else {
+                    // Clear: subtract from accumulator
+                    if (accumulator.length > 0 && groupGeometry.length > 0) {
+                        try {
+                            accumulator = await this.geometryProcessor.difference(
+                                accumulator, groupGeometry
+                            );
+                        } catch (error) {
+                            console.error(`[Compositing] Difference failed at group ${i}:`, error);
+                            // Accumulator unchanged on failure
+                        }
+                        this.debug(`[Compositing]   Accumulator after clear difference: ${accumulator.length} primitive(s)`);
+                    } else {
+                        this.debug(`[Compositing]   Skipping clear subtraction (accumulator empty or no clear geometry)`);
+                    }
+                }
+            }
+
+            // Tag all output primitives as dark and composited
+            accumulator.forEach(p => {
+                if (!p.properties) p.properties = {};
+                p.properties.polarity = 'dark';
+                p.properties.isComposited = true;
+            });
+
+            this.debug(`[Compositing] === SEQUENTIAL COMPOSITING COMPLETE ===`);
+            this.debug(`[Compositing] Result: ${primitives.length} input → ${accumulator.length} output primitives`);
+
+            return accumulator;
         }
 
         recalculateBounds(primitives) {
@@ -649,53 +824,52 @@
 
             this.debug(`=== CLEARANCE POLYGON GENERATION: width=${isolationWidth.toFixed(3)}mm ===`);
 
-            // ── Expanded boundary ──
-            // Use the proven offset pipeline but skip its internal arc reconstruction.
-            // The raw polygon output aligns with Clipper's coordinate grid, which is critical for a clean boolean difference in step 3.
             const savedOffsets = operation.offsets;
 
-            await this.generateOffsetGeometry(operation, {
-                toolDiameter: isolationWidth * 2,
-                passes: 1,
-                stepOver: 0,
-                combineOffsets: true,
-                skipArcReconstruction: true
-            });
+            try {
+                await this.generateOffsetGeometry(operation, {
+                    toolDiameter: isolationWidth * 2,
+                    passes: 1,
+                    stepOver: 0,
+                    combineOffsets: true,
+                    skipArcReconstruction: true
+                });
 
-            const expanded = operation.offsets.flatMap(o => o.primitives);
-            operation.offsets = savedOffsets;
+                const expanded = operation.offsets.flatMap(o => o.primitives);
 
-            if (expanded.length === 0) {
-                this.debug('Offset expansion produced no geometry');
-                return [];
+                if (expanded.length === 0) {
+                    this.debug('Offset expansion produced no geometry');
+                    return [];
+                }
+
+                // Copper footprint
+                this.geometryProcessor.clearProcessorCache();
+
+                const footprint = await this.geometryProcessor.fuseGeometry(
+                    operation.primitives,
+                    { enableArcReconstruction: false }
+                );
+
+                if (footprint.length === 0) {
+                    this.debug('Fusion produced no copper footprint');
+                    return [];
+                }
+
+                this.debug(`Expanded boundary: ${expanded.length} primitive(s)`);
+                this.debug(`Copper footprint: ${footprint.length} primitive(s)`);
+
+                // Boolean difference
+                const clearanceZone = await this.geometryProcessor.difference(expanded, footprint);
+
+                this.debug(`Clearance polygon: ${clearanceZone.length} polygon(s)`);
+                this.debug(`=== CLEARANCE POLYGON COMPLETE ===`);
+
+                operation.clearancePolygon = clearanceZone;
+                return clearanceZone;
+
+            } finally {
+                operation.offsets = savedOffsets;
             }
-
-            // ── Copper footprint ──
-            // Fusion without arc reconstruction keeps the output as raw Clipper polygons, matching the expanded side's coordinate precision.
-            this.geometryProcessor.clearProcessorCache();
-
-            const footprint = await this.geometryProcessor.fuseGeometry(
-                operation.primitives,
-                { enableArcReconstruction: false }
-            );
-
-            if (footprint.length === 0) {
-                this.debug('Fusion produced no copper footprint');
-                return [];
-            }
-
-            this.debug(`Expanded boundary: ${expanded.length} primitive(s)`);
-            this.debug(`Copper footprint: ${footprint.length} primitive(s)`);
-
-            // ── Boolean difference ──
-            // Both sides are PathPrimitives with dense polygon contours straight from Clipper. No standardization needed — no analytic primitives exist because reconstruction was skipped on both sides.
-            const clearanceZone = await this.geometryProcessor.difference(expanded, footprint);
-
-            this.debug(`Clearance polygon: ${clearanceZone.length} polygon(s)`);
-            this.debug(`=== CLEARANCE POLYGON COMPLETE ===`);
-
-            operation.clearancePolygon = clearanceZone;
-            return clearanceZone;
         }
 
         /**
@@ -716,7 +890,7 @@
 
             this.debug(`=== BOARD CLEARANCE GENERATION: padding=${padding.toFixed(3)}mm ===`);
 
-            // ── Board boundary rectangle ──
+            // Board boundary rectangle
             // Use coordinateSystem bounds if available, otherwise compute from all operations
             let bounds = this.coordinateSystem?.boardBounds;
             if (!bounds) {
@@ -757,7 +931,7 @@
                 operationId: operation.id
             });
 
-            // ── Copper footprint from ALL copper operations ──
+            // Copper footprint from ALL copper operations
             // Clearing removes copper that ISN'T traces/pads/regions.
             // Gather primitives from isolation + clearing operations.
             const copperPrimitives = [];
@@ -788,7 +962,7 @@
             this.debug(`Board boundary: ${(bounds.maxX - bounds.minX).toFixed(1)} × ${(bounds.maxY - bounds.minY).toFixed(1)}mm + ${padding}mm padding`);
             this.debug(`Copper footprint: ${copperFootprint.length} polygon(s)`);
 
-            // ── Boolean difference: board − copper ──
+            // Boolean difference: board − copper
             const clearanceZone = await this.geometryProcessor.difference([boardRect], copperFootprint);
 
             this.debug(`Board clearance: ${clearanceZone.length} polygon(s)`);
@@ -802,7 +976,7 @@
 
             const strategy = settings.clearStrategy || 'offset';
 
-            // ─── OFFSET STRATEGY ───────────────────────────────────────────
+            // OFFSET STRATEGY
             // Concentric passes around copper — same geometry as CNC isolation.
             // The offset contours ARE the final laser paths.
             // Also used by drill and cutout (single-pass with cut-side control).
@@ -812,7 +986,7 @@
                 return operation.offsets;
             }
 
-            // ─── FILLED / HATCH STRATEGIES ─────────────────────────────────
+            // FILLED / HATCH STRATEGIES
             // These need a clearance polygon to fill or hatch inside.
             // The source of that polygon differs by operation type:
             //   - Isolation: expanded copper − original copper (halo)
@@ -904,23 +1078,20 @@
                 return [];
             }
 
-            // Determine Direction and Mode based on Operation and Cut Side
+            // Determine offset direction and mode
             let isInternal = operation.type === 'clearing';
             let isOnLine = false;
 
             if (operation.type === 'cutout' || operation.type === 'drill') {
-                // Respect the UI dropdown for Cutouts and Drills
                 if (settings.cutSide === 'inside') {
                     isInternal = true;
                 } else if (settings.cutSide === 'on') {
                     isOnLine = true;
                 }
-                // 'outside' leaves isInternal as false
             }
 
+            // Calculate offset distances
             let offsetDistances;
-
-            // Calculate Distances
             if (isOnLine) {
                 offsetDistances = [0];
             } else {
@@ -946,56 +1117,188 @@
                 }
             }
 
-            // Calculate Distances
+            // Recalculate if on-line was set above but distances were already computed
             if (isOnLine) {
-                // "On Line" means exactly 0 offset. 
                 offsetDistances = [0];
-            } else {
-                // Standard calculation for Inside (-) or Outside (+) offsets
-                offsetDistances = this._calculateOffsetDistances(
-                    settings.toolDiameter,
-                    settings.passes,
-                    settings.stepOver,
-                    isInternal
-                );
             }
 
-            const outerContours = [];
+            // ── PRE-FUSION FOR CLEARING & CUT-IN RESOLUTION ──
+            let primitivesToProcess = operation.primitives;
+
+            // Full-board fusion (Restricted to Internal Clearing only)
+            if (isInternal && operation.type === 'clearing' && primitivesToProcess.length > 1) {
+                this.debug(`[Clearing Pre-Fusion] Fusing ${primitivesToProcess.length} clearing primitives...`);
+                this.geometryProcessor.clearProcessorCache();
+
+                try {
+                    const fused = await this.geometryProcessor.fuseGeometry(
+                        primitivesToProcess,
+                        { enableArcReconstruction: false }
+                    );
+
+                    if (fused && fused.length > 0) {
+                        this.debug(`[Clearing Pre-Fusion] ${primitivesToProcess.length} → ${fused.length} primitives`);
+                        fused.forEach(p => {
+                            if (!p.properties) p.properties = {};
+                            p.properties.operationType = operation.type;
+                            p.properties.operationId = operation.id;
+                        });
+                        primitivesToProcess = fused;
+                    }
+                } catch (error) {
+                    console.error(`[Clearing Pre-Fusion] Failed:`, error);
+                }
+            } 
+            // Targeted Cut-In Resolution (For Isolation passes)
+            else if (operation.type === 'isolation') {
+                // Self-union region primitives INDIVIDUALLY. This resolves 0-width cut-in seams  into a clean PolyTree (shell + holes) without merging the entire board and crashing  the Boolean Offsetter with massive monolithic contours.
+                const resolvedPrimitives = [];
+                let resolvedCount = 0;
+
+                for (const prim of primitivesToProcess) {
+                    // Filter: Only target filled polygons that aren't traces or simple analytic shapes
+                    const isRegion = prim.type === 'path' && 
+                                     prim.properties?.fill && 
+                                     !prim.properties?.stroke && 
+                                     !prim.properties?.isTrace &&
+                                     !prim.properties?.isComposited;
+                    
+                    if (isRegion) {
+                        try {
+                            const resolved = await this.geometryProcessor.unionGeometry([prim]);
+                            if (resolved && resolved.length > 0) {
+                                resolved.forEach(r => {
+                                    if (!r.properties) r.properties = {};
+                                    // Preserve metadata
+                                    Object.assign(r.properties, prim.properties);
+                                    r.properties.operationType = operation.type;
+                                    r.properties.operationId = operation.id;
+                                });
+                                resolvedPrimitives.push(...resolved);
+                                resolvedCount++;
+                            } else {
+                                resolvedPrimitives.push(prim);
+                            }
+                        } catch (e) {
+                            resolvedPrimitives.push(prim);
+                        }
+                    } else {
+                        resolvedPrimitives.push(prim);
+                    }
+                }
+                
+                if (resolvedCount > 0) {
+                    this.debug(`[Cut-in Resolution] Resolved ${resolvedCount} region(s) into shells and holes`);
+                }
+                primitivesToProcess = resolvedPrimitives;
+            }
+
+            /**
+             * PHASE 1: Separate contours into shells, islands, and holes
+             * Shells:  outer contours that form the pour/clearing boundary.
+             * Islands: outer contours that sit inside a hole (pads, traces in
+             *          clearance gaps). These must NOT be subtracted by holes.
+             * Holes:   clear/hole contours (clearance gaps, anti-pads).
+             */
+
+            const allOuterContours = [];
             const holeContours = [];
 
-            operation.primitives.forEach(primitive => {
+            // Helper: check if a primitive should be skipped (drill roles in CNC pipeline)
+            const isLaserPipeline = settings.clearStrategy !== undefined;
+            const shouldSkipPrimitive = (primitive) => {
+                if (isLaserPipeline) return false;
+                const role = primitive.properties?.role;
+                return role === 'drill_hole' || role === 'drill_slot';
+            };
+
+            primitivesToProcess.forEach(primitive => {
+                if (shouldSkipPrimitive(primitive)) return;
+
                 const primitivePolarity = primitive.properties?.polarity || 'dark';
 
                 if (primitive.contours && primitive.contours.length > 1) {
+                    const compoundParentId = primitive.id;
                     primitive.contours.forEach(contour => {
                         const simplePrimitive = new PathPrimitive([contour], {
                             ...primitive.properties,
-                            polarity: contour.isHole ? 'clear' : 'dark'
+                            polarity: contour.isHole ? 'clear' : 'dark',
+                            _compoundParentId: compoundParentId,
+                            _nestingLevel: contour.nestingLevel || 0
                         });
 
                         if (contour.isHole) {
                             holeContours.push(simplePrimitive);
                         } else {
-                            outerContours.push(simplePrimitive);
+                            allOuterContours.push(simplePrimitive);
                         }
                     });
                 } else if (primitive.contours && primitive.contours.length === 1) {
                     if (primitivePolarity === 'clear') {
                         holeContours.push(primitive);
                     } else {
-                        outerContours.push(primitive);
+                        allOuterContours.push(primitive);
                     }
                 } else {
-                    // This handles non-Path primitives like Circle, Rectangle
                     if (primitivePolarity === 'clear') {
                         holeContours.push(primitive);
                     } else {
-                        outerContours.push(primitive);
+                        allOuterContours.push(primitive);
                     }
                 }
             });
 
-            this.debug(`Separated into ${outerContours.length} outer contours and ${holeContours.length} hole contours.`);
+            /** Classify outers as shells vs islands
+             * Level-0 outers skip holes from the same compound primitive (prevents ring shapes like "0" from self-classifying as islands).
+             * Level-2+ outers (pads inside clearance gaps) test against ALL holes including same-compound siblings — they ARE islands.
+             */
+            const shellOuters = [];
+            const islandOuters = [];
+
+            if (holeContours.length > 0 && allOuterContours.length > 1) {
+                const holeEntries = holeContours.map(h => {
+                    const points = (h.contours && h.contours[0]?.points) ? h.contours[0].points : null;
+                    const parentId = h.properties?._compoundParentId || null;
+                    return points ? { points, parentId } : null;
+                }).filter(Boolean);
+
+                for (const outer of allOuterContours) {
+                    const testPoint = GeometryUtils.getRepresentativePoint(outer);
+                    const outerParentId = outer.properties?._compoundParentId || null;
+                    const outerNestingLevel = outer.properties?._nestingLevel || 0;
+
+                    let isInsideHole = false;
+                    if (testPoint) {
+                        for (const entry of holeEntries) {
+                            if (outerNestingLevel === 0 &&
+                                outerParentId && entry.parentId &&
+                                outerParentId === entry.parentId) {
+                                continue;
+                            }
+                            if (GeometryUtils.pointInPolygon(testPoint, entry.points)) {
+                                isInsideHole = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isInsideHole) {
+                        islandOuters.push(outer);
+                    } else {
+                        shellOuters.push(outer);
+                    }
+                }
+
+                this.debug(`Island detection: ${allOuterContours.length} outers → ${shellOuters.length} shells + ${islandOuters.length} islands (${holeContours.length} holes)`);
+            } else {
+                shellOuters.push(...allOuterContours);
+            }
+
+            this.debug(`Separated into ${shellOuters.length} shell outers, ${islandOuters.length} island outers, and ${holeContours.length} hole contours.`);
+
+            /**
+             * PHASE 2: Generate offsets for each pass
+             */
 
             operation.offsets = [];
             const passResults = [];
@@ -1006,64 +1309,98 @@
 
                 this.debug(`--- PASS ${passIndex + 1}/${offsetDistances.length}: ${distance.toFixed(3)}mm (${offsetType}) ---`);
 
-                const offsetOuters = [];
-                for (const primitive of outerContours) {
-                    const role = primitive.properties?.role;
-                    const isLaserPipeline = settings.clearStrategy !== undefined; // Or explicitly pass an isLaser flag
-
-                    // Skip CNC drill roles ONLY if inside the CNC pipeline
-                    if (!isLaserPipeline && (role === 'drill_hole' || role === 'drill_slot')) {
-                        continue;
-                    }
-
+                // Offset shells
+                const offsetShells = [];
+                for (const primitive of shellOuters) {
                     const result = await this.geometryOffsetter.offsetPrimitive(primitive, distance);
-                    if (result) {
-                        Array.isArray(result) ? offsetOuters.push(...result) : offsetOuters.push(result);
-                    } else {
-                        console.warn(`[Core] Offset failed for primitive type: ${primitive.type}, id: ${primitive.id}`);
+                    if (Array.isArray(result)) {
+                        offsetShells.push(...result);
+                    } else if (result) {
+                        offsetShells.push(result);
                     }
                 }
 
+                // Offset islands
+                const offsetIslands = [];
+                for (const primitive of islandOuters) {
+                    const result = await this.geometryOffsetter.offsetPrimitive(primitive, distance);
+                    if (Array.isArray(result)) {
+                        offsetIslands.push(...result);
+                    } else if (result) {
+                        offsetIslands.push(result);
+                    }
+                }
+
+                // Offset holes (invert distance)
                 const offsetHoles = [];
                 for (const primitive of holeContours) {
-                    const result = await this.geometryOffsetter.offsetPrimitive(primitive, -distance); 
-                    if (result) {
-                        Array.isArray(result) ? offsetHoles.push(...result) : offsetHoles.push(result);
+                    const result = await this.geometryOffsetter.offsetPrimitive(primitive, -distance);
+                    if (Array.isArray(result)) {
+                        offsetHoles.push(...result);
+                    } else if (result) {
+                        offsetHoles.push(result);
                     }
                 }
 
-                this.debug(`Offset generated: ${offsetOuters.length} outer shapes, ${offsetHoles.length} hole shapes.`);
+                this.debug(`Offset generated: ${offsetShells.length} shells, ${offsetIslands.length} islands, ${offsetHoles.length} holes.`);
+
+                /** 
+                 * PHASE 3: Boolean operations with island protection
+                 * 1. Union shells, subtract holes → pour offset geometry
+                 * 2. Union islands back in → final geometry with pads preserved
+                 */
 
                 let finalPassGeometry;
 
-                // The boolean pipeline is only needed if there are holes to subtract or if multiple outer shapes need to be merged.
-                // If it's just 1 outer shape and 0 holes, skip the pipeline.
-                const needsBoolean = offsetHoles.length > 0 || offsetOuters.length > 1;
-                if (!needsBoolean) {
-                    this.debug(`Single offset result (${offsetOuters.length} shape), skipping boolean operations`);
-                    finalPassGeometry = offsetOuters;
-                } else {
-                    this.debug(`Running boolean operations...`);
-                    const subjectGeometry = await this.geometryProcessor.unionGeometry(offsetOuters);
-                    this.debug(`Union of outers resulted in ${subjectGeometry.length} subject shape(s).`);
+                const totalOuters = offsetShells.length + offsetIslands.length;
+                const needsBoolean = offsetHoles.length > 0 || totalOuters > 1;
 
-                    if (offsetHoles.length > 0) {
-                        const clipGeometry = await this.geometryProcessor.unionGeometry(offsetHoles);
-                        this.debug(`Union of holes resulted in ${clipGeometry.length} clip shape(s).`);
-                        finalPassGeometry = await this.geometryProcessor.difference(subjectGeometry, clipGeometry);
+                if (!needsBoolean) {
+                    this.debug(`Single offset result, skipping boolean operations`);
+                    finalPassGeometry = [...offsetShells, ...offsetIslands];
+                } else {
+                    this.debug(`Running island-aware boolean operations...`);
+
+                    // Shells & Holes
+                    let shellResult = [];
+                    if (offsetShells.length > 0) {
+                        const shellUnion = await this.geometryProcessor.unionGeometry(offsetShells);
+                        this.debug(`Union of shells resulted in ${shellUnion.length} shape(s).`);
+
+                        if (offsetHoles.length > 0) {
+                            const holeUnion = await this.geometryProcessor.unionGeometry(offsetHoles);
+                            this.debug(`Union of holes resulted in ${holeUnion.length} shape(s).`);
+                            shellResult = await this.geometryProcessor.difference(shellUnion, holeUnion);
+                            this.debug(`Shell − Holes resulted in ${shellResult.length} shape(s).`);
+                        } else {
+                            shellResult = shellUnion;
+                        }
+                    }
+
+                    // Union islands back (protected from hole subtraction)
+                    if (offsetIslands.length > 0) {
+                        this.debug(`Unioning ${offsetIslands.length} protected island(s) back into result...`);
+                        finalPassGeometry = await this.geometryProcessor.unionGeometry(
+                            [...shellResult, ...offsetIslands]
+                        );
+                        this.debug(`Final union: ${finalPassGeometry.length} shape(s).`);
                     } else {
-                        finalPassGeometry = subjectGeometry;
+                        finalPassGeometry = shellResult;
                     }
                 }
 
-                // Arc reconstruction: collapse polygon sequences back into analytic arcs.
-                // Skipped when the caller will do its own boolean + reconstruction later (e.g. _generateClearancePolygon) to avoid tessellation mismatches.
-                if (!settings.skipArcReconstruction) {
+                // Arc reconstruction - skip for on-line (zero offset) passes since source geometry already has correct arc metadata that the reconstructor cannot recover (points lack curveId tags)
+                if (!settings.skipArcReconstruction && Math.abs(distance) >= config.precision.coordinate) {
                     this.debug(`Running arc reconstruction...`);
                     finalPassGeometry = this.geometryProcessor.arcReconstructor.processForReconstruction(finalPassGeometry);
+                } else if (Math.abs(distance) < config.precision.coordinate) {
+                    this.debug(`Arc reconstruction skipped for on-line pass (source arcs preserved)`);
                 } else {
                     this.debug(`Arc reconstruction skipped (caller will handle)`);
                 }
+
+                // Post-reconstruction simplification
+                this.geometryOffsetter.simplifyOffsetResult(finalPassGeometry, Math.abs(distance));
 
                 this.debug(`Pass complete: ${finalPassGeometry.length} primitive(s).`);
 
@@ -1073,7 +1410,6 @@
                     p.properties.pass = passIndex + 1;
                     p.properties.offsetDistance = distance;
                     p.properties.offsetType = offsetType;
-                    // Check if the geometry has arcs after all processing
                     p.properties.hasAnalyticArcs = (p.type === 'circle') || (p.arcSegments && p.arcSegments.length > 0);
                     return p;
                 });
@@ -1084,16 +1420,20 @@
                     offsetType: offsetType,
                     primitives: reconstructedGeometry,
                     metadata: {
-                        sourceCount: operation.primitives.length,
-                        offsetCount: offsetOuters.length + offsetHoles.length,
+                        sourceCount: primitivesToProcess.length,
+                        shellCount: offsetShells.length,
+                        islandCount: offsetIslands.length,
+                        holeCount: offsetHoles.length,
                         finalCount: reconstructedGeometry.length,
                         generatedAt: Date.now(),
                         toolDiameter: settings.toolDiameter,
-                        analytic: !needsBoolean
+                        analytic: !needsBoolean,
+                        wasFused: primitivesToProcess !== operation.primitives
                     }
                 });
             }
 
+            // Combine passes if requested
             if (settings.combineOffsets && passResults.length > 1) {
                 const allPassPrimitives = passResults.flatMap(p => p.primitives);
                 operation.offsets = [{
@@ -1103,7 +1443,7 @@
                     primitives: allPassPrimitives,
                     type: 'offset',
                     metadata: {
-                        sourceCount: operation.primitives.length,
+                        sourceCount: primitivesToProcess.length,
                         finalCount: allPassPrimitives.length,
                         generatedAt: Date.now(),
                         toolDiameter: settings.toolDiameter,

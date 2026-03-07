@@ -49,6 +49,9 @@
                 scale: this.options.scale
             });
 
+            // Optional external resolver — set via setSelfIntersectionResolver()
+            this.selfIntersectionResolver = null;
+
             // State caching
             this.cachedStates = {
                 originalPrimitives: null,
@@ -71,6 +74,11 @@
 
             // Initialize promise
             this.initPromise = this.initialize();
+        }
+
+        setSelfIntersectionResolver(resolver) {
+            this.selfIntersectionResolver = resolver;
+            this.debug('SelfIntersectionResolver linked to GeometryProcessor');
         }
 
         async initialize() {
@@ -136,7 +144,7 @@
             }
 
             // Perform boolean fusion
-            const fused = await this._performFusion(preprocessed);
+            let fused = await this._performFusion(preprocessed);
 
             // Verify metadata survival
             if (fusionOptions.enableArcReconstruction && debugConfig.enabled) {
@@ -398,9 +406,22 @@
                 const processed = this.standardizePrimitive(primitive, curveIds);
                 
                 if (processed) {
-                    processed._originalIndex = primitive._originalIndex;
-                    if (curveIds.length > 0) processed.curveIds = curveIds;
-                    preprocessed.push(processed);
+                    // Handle arrays returned by traceToPolygon
+                    if (Array.isArray(processed)) {
+                        processed.forEach(p => {
+                            p._originalIndex = primitive._originalIndex;
+                            if (curveIds.length > 0) {
+                                // Merge inherited curveIds with newly generated ones
+                                p.curveIds = p.curveIds ? Array.from(new Set([...p.curveIds, ...curveIds])) : curveIds;
+                            }
+                            preprocessed.push(p);
+                        });
+                    } else {
+                        // Original handling for single primitives
+                        processed._originalIndex = primitive._originalIndex;
+                        if (curveIds.length > 0) processed.curveIds = curveIds;
+                        preprocessed.push(processed);
+                    }
                 }
             }
 

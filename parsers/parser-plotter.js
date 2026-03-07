@@ -222,6 +222,7 @@
                         isRegion: true,
                         fill: true,
                         polarity: region.polarity || 'dark',
+                        netName: region.netName || null,
                         closed: true
                     });
 
@@ -408,7 +409,8 @@
             const finalPrimitive = new PathPrimitive(contours, { // Pass null for points
                 isRegion: true,
                 fill: true,
-                polarity: 'dark', // The primitive itself is dark
+                polarity: region.polarity || 'dark',
+                netName: region.netName || null,
                 closed: true,
             });
 
@@ -428,6 +430,7 @@
                 stroke: true,
                 strokeWidth: width,
                 polarity: trace.polarity || 'dark',
+                netName: trace.netName || null,
                 aperture: trace.aperture,
                 interpolation: trace.interpolation || 'linear',
                 closed: false
@@ -536,6 +539,7 @@
                 stroke: flash.stroke || false,
                 strokeWidth: flash.strokeWidth,
                 polarity: flash.polarity,
+                netName: flash.netName || null,
                 aperture: flash.aperture,
                 shape: flash.shape
             };
