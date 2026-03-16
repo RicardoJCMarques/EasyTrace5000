@@ -32,6 +32,7 @@
      * Roland RML-1 Post-Processor
      * 
      * Implements the same interface as BasePostProcessor for use by GCodeGenerator.
+     * Does NOT extend BasePostProcessor — RML is a completely different command language.
      * 
      * TWO COMMAND MODELS:
      * 
@@ -64,10 +65,246 @@
                 supportsCannedCycles: false
             };
 
-            // Inject precision from global config
-            this.epsilon = processorConfig.precision.epsilon;
+            // ── Machine Profiles ───────────────────────────────────
+            // Authoritative hardware data for all supported Roland machines.
+            this.profiles = {
+                'mdx15': {
+                    label: 'MDX-15',
+                    series: 'legacy',
+                    cmdProtocol: 'legacy',
+                    stepsPerMM: 40,
+                    maxFeedXY: 15,
+                    maxFeedZ: 15,
+                    spindleMode: 'fixed',
+                    spindleFixed: 6500,
+                    spindleRange: null,
+                    zMode: '3d',
+                    initCommand: ';;^IN',
+                    endCommand: '!MC0;\nPU0,0;\n;;^IN',
+                    supportsRC: false,
+                    supportsDwell: false,
+                    workArea: { x: 152, y: 101, z: 60.5 },
+                    warnings: [
+                        'Serial interface requires hardware flow control (RTS/CTS)',
+                        'Use FTDI-based USB-to-Serial adapters for reliable handshaking'
+                    ]
+                },
+                'mdx20': {
+                    label: 'MDX-20',
+                    series: 'legacy',
+                    cmdProtocol: 'legacy',
+                    stepsPerMM: 40,
+                    maxFeedXY: 15,
+                    maxFeedZ: 15,
+                    spindleMode: 'manual',
+                    spindleRange: null,
+                    zMode: '3d',
+                    initCommand: ';;^IN',
+                    endCommand: '!MC0;\nPU0,0;\n;;^IN',
+                    supportsRC: false,
+                    supportsDwell: false,
+                    workArea: { x: 203, y: 152, z: 60.5 },
+                    warnings: ['Serial interface requires hardware flow control (RTS/CTS)']
+                },
+                'imodela': {
+                    label: 'iModela (iM-01)',
+                    series: 'legacy',
+                    cmdProtocol: 'legacy',
+                    stepsPerMM: 100,
+                    maxFeedXY: 6,
+                    maxFeedZ: 6,
+                    spindleMode: 'fixed',
+                    spindleFixed: null,
+                    spindleRange: null,
+                    zMode: '3d',
+                    initCommand: ';;^DF',
+                    endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                    supportsRC: false,
+                    supportsDwell: true,
+                    workArea: { x: 86, y: 55, z: 26 },
+                    warnings: ['Low rigidity — use conservative feed rates for PCB']
+                },
+                'srm20': {
+                    label: 'SRM-20 (monoFab)',
+                    series: 'monofab',
+                    cmdProtocol: 'modern',
+                    stepsPerMM: 100,
+                    maxFeedXY: 30,
+                    maxFeedZ: 30,
+                    spindleMode: 'direct',
+                    spindleRange: { min: 3000, max: 7000 },
+                    zMode: '3d',
+                    initCommand: ';;^DF',
+                    endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                    supportsRC: true,
+                    supportsDwell: true,
+                    workArea: { x: 203, y: 152, z: 60.5 },
+                    warnings: [
+                        'Output must be clean RML — VPanel rejects files with syntax errors',
+                        'RML mode has 0.01mm resolution; NC Code mode offers 0.001mm for ultra-fine work'
+                    ]
+                },
+                'mdx40': {
+                    label: 'MDX-40A',
+                    series: 'pro',
+                    cmdProtocol: 'modern',
+                    stepsPerMM: 100,
+                    maxFeedXY: 50,
+                    maxFeedZ: 50,
+                    spindleMode: 'direct',
+                    spindleRange: { min: 4500, max: 15000 },
+                    zMode: '3d',
+                    initCommand: ';;^DF',
+                    endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                    supportsRC: true,
+                    supportsDwell: true,
+                    workArea: { x: 305, y: 305, z: 105 },
+                    warnings: []
+                },
+                'mdx50': {
+                    label: 'MDX-50',
+                    series: 'pro',
+                    cmdProtocol: 'modern',
+                    stepsPerMM: 100,
+                    maxFeedXY: 60,
+                    maxFeedZ: 60,
+                    spindleMode: 'direct',
+                    spindleRange: { min: 4500, max: 15000 },
+                    zMode: '3d',
+                    initCommand: ';;^DF',
+                    endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                    supportsRC: true,
+                    supportsDwell: true,
+                    workArea: { x: 400, y: 305, z: 135 },
+                    warnings: []
+                },
+                'mdx540': {
+                    label: 'MDX-540 / MDX-540S',
+                    series: 'pro',
+                    cmdProtocol: 'modern',
+                    stepsPerMM: 100,
+                    maxFeedXY: 125,
+                    maxFeedZ: 125,
+                    spindleMode: 'direct',
+                    spindleRange: { min: 3000, max: 12000 },
+                    zMode: '3d',
+                    initCommand: ';;^DF',
+                    endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                    supportsRC: true,
+                    supportsATC: true,
+                    supportsDwell: true,
+                    workArea: { x: 400, y: 305, z: 155 },
+                    warnings: []
+                },
+                'egx350': {
+                    label: 'EGX-350',
+                    series: 'engraver',
+                    cmdProtocol: 'modern',
+                    stepsPerMM: 100,
+                    maxFeedXY: 60,
+                    maxFeedZ: 60,
+                    spindleMode: 'direct',
+                    spindleRange: { min: 8000, max: 20000 },
+                    zMode: '3d',
+                    initCommand: ';;^DF',
+                    endCommand: '!MC0;\nPU0,0;\n;;^DF',
+                    supportsRC: true,
+                    supportsDwell: true,
+                    workArea: { x: 305, y: 216, z: 40 },
+                    warnings: ['High spindle speed — excellent for PCB isolation with V-bits']
+                },
+                'custom': {
+                    label: 'Custom Machine',
+                    series: 'custom',
+                    cmdProtocol: 'modern',
+                    stepsPerMM: 100,
+                    maxFeedXY: 60,
+                    maxFeedZ: 60,
+                    spindleMode: 'direct',
+                    spindleRange: { min: 0, max: 30000 },
+                    zMode: '3d',
+                    initCommand: 'PA;PA;',
+                    endCommand: '!MC0;PU0,0;',
+                    supportsRC: true,
+                    supportsDwell: true,
+                    workArea: { x: 999, y: 999, z: 999 },
+                    warnings: ['Custom configuration — verify all parameters against your machine manual']
+                }
+            };
+
+            // ── Public descriptor ──────────────────────────────────
+            this.descriptor = {
+                id: 'roland',
+                label: 'Roland (RML) (Experimental)',
+                fileExtension: '.rml',
+                capabilities: {
+                    supportsToolChange: true,
+                    supportsArcCommands: false,
+                    supportsCannedCycles: false,
+                    arcFormat: null,
+                },
+                defaults: {
+                    startCode: ';;^DF\nPA;',
+                    endCode: '!MC0;\n;;^DF',
+                },
+                limits: {
+                    maxSpindleSpeed: 15000,
+                    maxRapidRate: 60,
+                },
+                customParameters: [
+                    {
+                        key: 'rolandModel',
+                        label: 'Machine Model',
+                        type: 'select',
+                        category: 'machine',
+                        options: Object.entries(this.profiles).map(([id, p]) => ({
+                            value: id, label: p.label
+                        })),
+                        default: 'mdx50'
+                    },
+                    {
+                        key: 'rolandZMode',
+                        label: 'Z Command Mode',
+                        type: 'select',
+                        category: 'machine',
+                        options: [
+                            { value: '3d', label: '3D (Z x,y,z;)' },
+                            { value: '2.5d', label: '2.5D (PU/PD)' }
+                        ],
+                        default: '3d'
+                    },
+                    {
+                        key: 'rolandSpindleMode',
+                        label: 'Spindle Control',
+                        type: 'select',
+                        category: 'machine',
+                        options: [
+                            { value: 'direct', label: 'Software (!RC)' },
+                            { value: 'manual', label: 'Manual (no !RC)' },
+                            { value: 'fixed', label: 'Fixed Speed' }
+                        ],
+                        default: 'direct'
+                    },
+                    {
+                        key: 'rolandStepsPerMM',
+                        label: 'Steps/mm',
+                        type: 'number',
+                        category: 'machine',
+                        default: 100,
+                        min: 1,
+                        max: 1000
+                    }
+                ],
+            };
 
             this.resetState();
+        }
+
+        /**
+         * Returns a profile by model ID, with fallback to 'custom'.
+         */
+        getProfile(modelId) {
+            return this.profiles[modelId] || this.profiles['custom'];
         }
 
         resetState() {
@@ -96,16 +333,14 @@
         }
 
         generateHeader(options) {
-            // Load profile from centralized config, fall back to options
+            // Load profile from internal profiles, fall back to options
             this.model = options.rolandModel || 'mdx50';
-            this.profile = (window.PCBCAMConfig?.roland?.getProfile)
-                ? window.PCBCAMConfig.roland.getProfile(this.model)
-                : null;
+            this.profile = this.getProfile(this.model);
 
             // Read machine parameters — profile values are authoritative, options are overrides
             this.stepsPerMM = options.rolandStepsPerMM || this.profile?.stepsPerMM || 100;
             this.maxFeedXY = this.profile?.maxFeedXY || options.rolandMaxFeed || 60;
-            this.maxFeedZ = this.profile?.maxFeedZ || this.maxFeedXY; // Fall back to XY if not specified
+            this.maxFeedZ = this.profile?.maxFeedZ || this.maxFeedXY;
             this.zMode = options.rolandZMode || this.profile?.zMode || '3d';
             this.spindleMode = options.rolandSpindleMode || this.profile?.spindleMode || 'direct';
             this.travelZ = options.travelZ || 3.0;
@@ -180,7 +415,7 @@
             return '';
         }
 
-        setSpindle(speed, dwell = 0) {
+        setSpindle(speed, dwell = 0, options = {}) {
             const wantOn = speed > 0;
             const wasOn = this.currentSpindle > 0;
 
@@ -469,8 +704,8 @@
          * Emits !PZ command only if register values actually changed.
          */
         _emitPZIfChanged(newDownMM, newUpMM) {
-            const downChanged = Math.abs(newDownMM - this._pzDownMM) > this.epsilon;
-            const upChanged = Math.abs(newUpMM - this._pzUpMM) > this.epsilon;
+            const downChanged = Math.abs(newDownMM - this._pzDownMM) > 1e-9;
+            const upChanged = Math.abs(newUpMM - this._pzUpMM) > 1e-9;
 
             if (downChanged || upChanged) {
                 this._pzDownMM = newDownMM;

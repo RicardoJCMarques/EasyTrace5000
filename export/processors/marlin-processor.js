@@ -31,7 +31,9 @@
     class MarlinPostProcessor extends BasePostProcessor {
         constructor() {
             super('Marlin', {
+                label: 'Marlin (Experimental)',
                 fileExtension: '.gcode',
+                commentStyle: 'semicolon',
                 supportsToolChange: false,
                 supportsArcCommands: true,
                 supportsCannedCycles: false,
@@ -41,38 +43,68 @@
                 spindlePrecision: 0,
                 modalCommands: false,
                 maxSpindleSpeed: 255, // PWM range
-                maxRapidRate: 1000
+                maxRapidRate: 1000,
+                defaults: {
+                    startCode: '',
+                    endCode: 'M5\nG0 X0Y0\nM84',
+                }
             });
+        }
+
+        // Read for undocumented options.useM3 flag to decide between using the Spindle (M3/M5) or a PWM Fan port (M106/M107)
+        setSpindle(speed, dwell = 0, options = {}) {
+            if (speed === this.currentSpindle) return null;
+            
+            const c = options.comments || {};
+            this.currentSpindle = speed;
+            const lines = [];
+
+            if (speed > 0) {
+                const pwmValue = Math.min(255, Math.round((speed / 30000) * 255));
+                const cmd = options.useM3 ? `M3 S${pwmValue}` : `M106 S${pwmValue}`;
+                lines.push(this.appendComment(cmd, c.spindleStart, options));
+                
+                if (dwell > 0) {
+                    // Marlin typically uses milliseconds for G4 P
+                    lines.push(this.appendComment(`G4 P${Math.round(dwell * 1000)}`, c.spindleDwell, options));
+                }
+            } else {
+                const cmd = options.useM3 ? 'M5' : 'M107';
+                lines.push(this.appendComment(cmd, c.spindleStop, options));
+            }
+            
+            return lines.join('\n');
         }
 
         generateToolChange(tool, options) {
             const lines = [];
+            const c = options.comments || {};
             const safeZ = options.safeZ || this.config.safetyHeight;
 
             lines.push('');
-            lines.push(`; Tool change: ${tool.name || tool.id}`);
-            lines.push(`; Diameter: ${tool.diameter}mm`);
+            this.pushCommentLine(lines, (c.toolChange || 'Tool change: {name}').replace('{name}', tool.name || tool.id), options);
+            this.pushCommentLine(lines, (c.toolDiameter || 'Diameter: {diameter}mm').replace('{diameter}', tool.diameter), options);
 
             if (options.useM3) {
-                lines.push('M5 ; Stop spindle');
+                lines.push(this.appendComment('M5', c.spindleStop, options));
             } else {
-                lines.push('M107 ; Stop fan');
+                lines.push(this.appendComment('M107', c.spindleStop, options));
             }
 
-            lines.push(`G0 Z${this.formatCoordinate(safeZ)} ; Retract to safe Z`);
+            lines.push(this.appendComment(`G0 Z${this.formatCoordinate(safeZ)}`, c.retractSafeZ, options));
             this.currentPosition.z = safeZ;
-            lines.push('M0 ; Pause for manual tool change');
+            lines.push(this.appendComment('M0', c.toolChangePause, options));
             lines.push('');
 
             const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
             const pwmValue = Math.min(255, Math.round((spindleSpeed / 30000) * 255));
 
             if (options.useM3) {
-                lines.push(`M3 S${pwmValue} ; Restart spindle`);
+                lines.push(this.appendComment(`M3 S${pwmValue}`, c.spindleStart, options));
             } else {
-                lines.push(`M106 S${pwmValue} ; Restart fan`);
+                lines.push(this.appendComment(`M106 S${pwmValue}`, c.spindleStart, options));
             }
-            lines.push('G4 P1000 ; Wait for spindle');
+            lines.push(this.appendComment('G4 P1000', c.spindleDwell, options));
             lines.push('');
 
             return lines.join('\n');

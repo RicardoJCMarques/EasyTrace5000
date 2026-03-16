@@ -511,6 +511,7 @@
         executeMacro(macro, variables, position) {
             const primitives = this.parseMacroContent(macro.content);
             const shapes = [];
+            const scale = this.state.units === 'inch' ? 25.4 : 1;
 
             if (primitives.length === 0) {
                 this.warnings.push(`Macro ${macro.name} has no valid primitives`);
@@ -523,9 +524,9 @@
                 switch (prim.code) {
                     case 1: // Circle: exposure, diameter, centerX, centerY [, rotation]
                         if (params[0] === 1) {
-                            const diameter = params[1];
-                            const cx = params[2] || 0;
-                            const cy = params[3] || 0;
+                            const diameter = params[1] * scale;
+                            const cx = (params[2] || 0) * scale;
+                            const cy = (params[3] || 0) * scale;
                             shapes.push({
                                 type: 'circle',
                                 x: position.x + cx,
@@ -544,8 +545,8 @@
                                 const py = params[3 + i * 2];
                                 if (px !== undefined && py !== undefined) {
                                     points.push({
-                                        x: position.x + px,
-                                        y: position.y + py
+                                        x: position.x + (px * scale),
+                                        y: position.y + (py * scale)
                                     });
                                 }
                             }
@@ -564,9 +565,9 @@
                     case 5: // Polygon: exposure, numVertices, centerX, centerY, diameter, rotation
                         if (params[0] === 1) {
                             const numVertices = Math.floor(params[1]);
-                            const cx = position.x + (params[2] || 0);
-                            const cy = position.y + (params[3] || 0);
-                            const diameter = params[4] || 0;
+                            const cx = position.x + ((params[2] || 0) * scale);
+                            const cy = position.y + ((params[3] || 0) * scale);
+                            const diameter = (params[4] || 0) * scale;
                             const rotation = (params[5] || 0) * Math.PI / 180;
                             const radius = diameter / 2;
                             const points = [];
@@ -585,11 +586,11 @@
 
                     case 20: // Vector Line: exposure, width, startX, startY, endX, endY, rotation
                         if (params[0] === 1) {
-                            const width = params[1];
-                            const x1 = position.x + (params[2] || 0);
-                            const y1 = position.y + (params[3] || 0);
-                            const x2 = position.x + (params[4] || 0);
-                            const y2 = position.y + (params[5] || 0);
+                            const width = params[1] * scale;
+                            const x1 = position.x + ((params[2] || 0) * scale);
+                            const y1 = position.y + ((params[3] || 0) * scale);
+                            const x2 = position.x + ((params[4] || 0) * scale);
+                            const y2 = position.y + ((params[5] || 0) * scale);
                             shapes.push({
                                 type: 'line',
                                 start: { x: x1, y: y1 },
@@ -601,10 +602,10 @@
 
                     case 21: // Center Line (rectangle): exposure, width, height, centerX, centerY, rotation
                         if (params[0] === 1) {
-                            const w = params[1] || 0;
-                            const h = params[2] || 0;
-                            const cx = position.x + (params[3] || 0);
-                            const cy = position.y + (params[4] || 0);
+                            const w = (params[1] || 0) * scale;
+                            const h = (params[2] || 0) * scale;
+                            const cx = position.x + ((params[3] || 0) * scale);
+                            const cy = position.y + ((params[4] || 0) * scale);
                             const rotation = params[5] || 0;
 
                             if (rotation !== 0) {
@@ -639,10 +640,10 @@
 
                     case 22: // Lower-Left Line (rectangle): exposure, width, height, lowerLeftX, lowerLeftY, rotation
                         if (params[0] === 1) {
-                            const w = params[1] || 0;
-                            const h = params[2] || 0;
-                            const llx = position.x + (params[3] || 0);
-                            const lly = position.y + (params[4] || 0);
+                            const w = (params[1] || 0) * scale;
+                            const h = (params[2] || 0) * scale;
+                            const llx = position.x + ((params[3] || 0) * scale);
+                            const lly = position.y + ((params[4] || 0) * scale);
                             shapes.push({
                                 type: 'rectangle',
                                 x: llx,
@@ -1191,11 +1192,17 @@
                 return;
             }
 
+            const scale = this.state.units === 'inch' ? 25.4 : 1;
+            let traceWidth = formatConfig.defaultAperture || 0.1;
+            if (aperture.parameters && aperture.parameters.length > 0) {
+                traceWidth = aperture.parameters[0] * scale;
+            }
+
             const trace = {
                 type: 'trace',
                 start: { ...start },
                 end: { ...end },
-                width: aperture.parameters[0] || formatConfig.defaultAperture || 0.1,
+                width: traceWidth,
                 aperture: this.state.aperture,
                 polarity: this.state.polarity,
                 netName: this.state.currentNetName || null,
@@ -1225,31 +1232,28 @@
                 return;
             }
 
+            const scale = this.state.units === 'inch' ? 25.4 : 1;
+
             const flash = {
                 type: 'flash',
                 position: { ...position },
                 aperture: this.state.aperture,
                 polarity: this.state.polarity,
                 netName: this.state.currentNetName || null,
-                shape: aperture.shape // Use the 'shape' property from the aperture definition
+                shape: aperture.shape
             };
 
             switch (aperture.shape) {
                 case 'circle':
-                    flash.radius = (aperture.parameters[0] || 0) / 2;
-                    flash.parameters = aperture.parameters;
+                    flash.radius = ((aperture.parameters[0] || 0) / 2) * scale;
+                    flash.parameters = aperture.parameters.map(p => p * scale);
                     break;
 
                 case 'rectangle':
-                    flash.width = aperture.parameters[0];
-                    flash.height = aperture.parameters[1] || aperture.parameters[0];
-                    flash.parameters = aperture.parameters;
-                    break;
-
                 case 'obround':
-                    flash.width = aperture.parameters[0];
-                    flash.height = aperture.parameters[1] || aperture.parameters[0];
-                    flash.parameters = aperture.parameters;
+                    flash.width = (aperture.parameters[0] || 0) * scale;
+                    flash.height = (aperture.parameters[1] !== undefined ? aperture.parameters[1] : aperture.parameters[0] || 0) * scale;
+                    flash.parameters = aperture.parameters.map(p => p * scale);
                     break;
 
                 case 'macro':

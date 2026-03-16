@@ -1,6 +1,6 @@
 /*!
  * @file        utils/unit-converter.js
- * @description Handles unit conversions across the application
+ * @description Handles unit conversions across the application - DEPRECATED CONSIDER REMOVING IN THE NEAR FUTURE
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}

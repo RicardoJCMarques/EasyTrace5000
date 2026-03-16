@@ -41,40 +41,45 @@
                 spindlePrecision: 0,
                 modalCommands: true,
                 maxSpindleSpeed: 30000, // in config?
-                maxRapidRate: 1000
+                maxRapidRate: 1000,
+                label: 'Grbl',
+                defaults: {
+                    startCode: 'T1\n',
+                    endCode: 'M5\nG0 X0Y0\nM2',
+                }
             });
         }
 
         generateToolChange(tool, options) {
             const lines = [];
+            const c = options.comments || {};
             const safeZ = options.safeZ || this.config.safetyHeight;
 
             lines.push('');
+            this.pushCommentLine(lines, (c.toolChange || 'Tool change: {name}').replace('{name}', tool.name || tool.id), options);
+            this.pushCommentLine(lines, (c.toolDiameter || 'Diameter: {diameter}mm').replace('{diameter}', tool.diameter), options);
 
             // Call the silent setSpindle(0)
-            const stopGcode = this.setSpindle(0); 
+            const stopGcode = this.setSpindle(0, 0, options);
             if (stopGcode) {
                 lines.push(stopGcode);
             } else if (this.currentSpindle > 0) {
-                lines.push('M5 ; Spindle Stop'); // Failsafe
+                lines.push(this.appendComment('M5', c.spindleStop, options));
                 this.currentSpindle = 0;
             }
 
-            lines.push(`G0 Z${this.formatCoordinate(safeZ)}`);
+            lines.push(this.appendComment(`G0 Z${this.formatCoordinate(safeZ)}`, c.retractSafeZ, options));
             this.currentPosition.z = safeZ;
-            lines.push('M0'); // Pause
+            lines.push(this.appendComment('M0', c.toolChangePause, options));
             lines.push('');
 
             const spindleSpeed = tool.spindleSpeed || 12000;
 
             // Call the silent setSpindle(newSpeed)
-            const startGcode = this.setSpindle(spindleSpeed);
-            if (startGcode) {
-                lines.push(startGcode);
-            }
+            const startGcode = this.setSpindle(spindleSpeed, 0, options);
+            if (startGcode) lines.push(startGcode);
 
             lines.push('');
-
             return lines.join('\n');
         }
         

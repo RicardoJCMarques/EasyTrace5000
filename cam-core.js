@@ -174,26 +174,18 @@
                     workCoordinateSystem: machineConfig.workspace.system,
                     maxX: machineConfig.workspace?.maxX,
                     maxY: machineConfig.workspace?.maxY,
-                    // Roland defaults
-                    rolandModel: 'mdx50',
-                    rolandStepsPerMM: 100,
-                    rolandMaxFeed: 60,
-                    rolandZMode: '3d',
-                    rolandSpindleMode: 'direct',
-                    rolandSpindleSpeed: 10000,
-                    rolandStartCode: ';;^DF\nPA;',
-                    rolandEndCode: '!MC0;\nPU0,0;\n;;^DF',
                 },
                 gcode: {
                     postProcessor: gcodeConfig.postProcessor,
-                    startCode: config.getGcodeTemplate ?
-                        config.getGcodeTemplate(gcodeConfig.postProcessor, 'start') :
-                        (gcodeConfig.templates?.[gcodeConfig.postProcessor]?.start),
-                    endCode: config.getGcodeTemplate ?
-                        config.getGcodeTemplate(gcodeConfig.postProcessor, 'end') :
-                        (gcodeConfig.templates?.[gcodeConfig.postProcessor]?.end),
+                    // User overrides only — undefined means "use processor default".
+                    // Resolved at export time by GCodeGenerator.resolveStartCode/EndCode.
+                    userStartCode: undefined,
+                    userEndCode: undefined,
                     units: gcodeConfig.units
                 },
+                // Processor-specific settings bag.
+                // Keyed by processor ID, stores custom parameter overrides (e.g. processorSettings.roland.rolandModel = 'srm20').
+                processorSettings: {},
                 laser: {
                     spotSize: config.laser.defaults.spotSize,
                     exportFormat: config.laser.defaults.exportFormat,
@@ -210,9 +202,6 @@
                     targetSegmentLength: geomConfig.segments.targetLength
                 }
             };
-
-            // Snapshot the factory defaults before any merge overwrites them
-            const factoryMachine = { ...defaults.machine };
 
             try {
                 const raw = localStorage.getItem('pcbcam-settings');
@@ -232,12 +221,23 @@
                     }
                 }
 
-                // Restore factory defaults for any string fields that got blanked by stale storage.
-                // This handles the case where a previous version saved rolandStartCode as '' or undefined, which the deep merge would preserve over the new default.
-                for (const [field, factoryValue] of Object.entries(factoryMachine)) {
-                    if (typeof factoryValue === 'string' && !defaults.machine[field]) {
-                        defaults.machine[field] = factoryValue;
-                    }
+                // REVIEW IF STILL NECESSARY
+                // Migration: if localStorage still has old-style startCode/endCode or Roland fields from before the refactor, move them to the new structure.
+                if (saved.gcode?.startCode !== undefined && defaults.gcode.userStartCode === undefined) {
+                    defaults.gcode.userStartCode = saved.gcode.startCode;
+                }
+                if (saved.gcode?.endCode !== undefined && defaults.gcode.userEndCode === undefined) {
+                    defaults.gcode.userEndCode = saved.gcode.endCode;
+                }
+                if (saved.machine?.rolandModel !== undefined) {
+                    if (!defaults.processorSettings.roland) defaults.processorSettings.roland = {};
+                    const rm = defaults.processorSettings.roland;
+                    rm.rolandModel = saved.machine.rolandModel ?? rm.rolandModel;
+                    rm.rolandStepsPerMM = saved.machine.rolandStepsPerMM ?? rm.rolandStepsPerMM;
+                    rm.rolandMaxFeed = saved.machine.rolandMaxFeed ?? rm.rolandMaxFeed;
+                    rm.rolandZMode = saved.machine.rolandZMode ?? rm.rolandZMode;
+                    rm.rolandSpindleMode = saved.machine.rolandSpindleMode ?? rm.rolandSpindleMode;
+                    rm.rolandSpindleSpeed = saved.machine.rolandSpindleSpeed ?? rm.rolandSpindleSpeed;
                 }
 
                 return defaults;
@@ -1801,6 +1801,9 @@
                 // Global Settings
                 machine: { ...machine },
                 gcode: { ...gcode },
+
+                // Processor-specific settings (Roland, Makera, etc.)
+                processorSettings: { ...(this.settings.processorSettings || {}) },
 
                 // Operation Parameters
                 tool: {

@@ -31,6 +31,7 @@
     class LinuxCNCPostProcessor extends BasePostProcessor {
         constructor() {
             super('LinuxCNC', {
+                label: 'LinuxCNC (Experimental)',
                 fileExtension: '.ngc',
                 supportsToolChange: true,
                 supportsArcCommands: true,
@@ -42,46 +43,51 @@
                 modalCommands: true,
                 lineNumbering: false,
                 maxSpindleSpeed: 24000,
-                maxRapidRate: 5000
+                maxRapidRate: 5000,
+                defaults: {
+                    startCode: 'G64 P0.01\nG4 P1',
+                    endCode: 'M5\nG0 X0Y0\nM2',
+                }
             });
         }
 
         generateToolChange(tool, options) {
             const lines = [];
+            const c = options.comments || {};
             const safeZ = options.safeZ || this.config.safetyHeight; // Review all fallbacks
 
             lines.push('');
-            lines.push(`(Tool change: ${tool.name || tool.id})`);
-            lines.push(`(Diameter: ${tool.diameter}mm)`);
+            this.pushCommentLine(lines, (c.toolChange || 'Tool change: {name}').replace('{name}', tool.name || tool.id), options);
+            this.pushCommentLine(lines, (c.toolDiameter || 'Diameter: {diameter}mm').replace('{diameter}', tool.diameter), options);
             lines.push('');
 
             // Turn off spindle and coolant
-            lines.push('M5 (Stop spindle)');
+            lines.push(this.appendComment('M5', c.spindleStop, options));
             if (options.coolant) {
-                lines.push('M9 (Coolant off)');
+                lines.push(this.appendComment('M9', c.coolantOff, options));
             }
 
             // Retract to safe Z
-            lines.push(`G0 Z${this.formatCoordinate(safeZ)} (Retract to safe Z)`);
+            lines.push(this.appendComment(`G0 Z${this.formatCoordinate(safeZ)}`, c.retractSafeZ, options));
             this.currentPosition.z = safeZ;
 
             // Tool change
             const toolNumber = tool.number || options.toolNumber || 1;
-            lines.push(`T${toolNumber} M6 (Load tool ${toolNumber})`);
-            lines.push(`G43 H${toolNumber} (Tool length compensation)`);
+            lines.push(`T${toolNumber} M6`);
+            lines.push(this.appendComment(`G43 H${toolNumber}`, c.toolLengthComp, options));
             lines.push('');
 
             // Restart spindle
             const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
-            lines.push(`M3 S${this.formatSpindle(spindleSpeed)} (Restart spindle)`);
-            lines.push('G4 P1 (Wait for spindle)');
+            lines.push(this.appendComment(`M3 S${this.formatSpindle(spindleSpeed)}`, c.spindleStart, options));
+            lines.push(this.appendComment('G4 P1', c.spindleDwell, options));
 
             // Restart coolant if needed
             if (options.coolant) {
                 if (options.coolant === 'mist') {
-                    lines.push('M7 (Mist coolant on)');
+                    lines.push(this.appendComment('M7', c.coolantMist, options));
                 } else if (options.coolant === 'flood') {
-                    lines.push('M8 (Flood coolant on)');
+                    lines.push(this.appendComment('M8', c.coolantFlood, options));
                 }
             }
             lines.push('');
@@ -113,8 +119,9 @@
             return lines.join('\n');
         } // What about g73?
 
-        cancelCannedCycle() {
-            return 'G80 (Cancel canned cycle)';
+        cancelCannedCycle(options) {
+            const c = options?.comments || {};
+            return this.appendComment('G80', c.cancelCannedCycle, options);
         }
     }
 

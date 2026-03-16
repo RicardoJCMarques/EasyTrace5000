@@ -271,7 +271,7 @@
          * Find actual closest distance between two plans
          */
         findClosestDistanceBetweenPlans(planA, planB) {
-            let minDist = Infinity;
+            let minSqDist = Infinity;
 
             // Sample points from both plans (max 20 per plan for performance)
             const pointsA = this.samplePlanPoints(planA, 20);
@@ -279,11 +279,15 @@
 
             for (const pA of pointsA) {
                 for (const pB of pointsB) {
-                    const dist = Math.hypot(pB.x - pA.x, pB.y - pA.y);
-                    minDist = Math.min(minDist, dist);
+                    const dx = pB.x - pA.x;
+                    const dy = pB.y - pA.y;
+                    const sqDist = dx * dx + dy * dy;
+                    if (sqDist < minSqDist) {
+                        minSqDist = sqDist;
+                    }
                 }
             }
-            return minDist;
+            return Math.sqrt(minSqDist);
         }
 
         /**

@@ -82,6 +82,7 @@ const CONFIG = {
         'toolpath/toolpath-geometry-translator.js',
         'export/processors/base-processor.js',
         'export/processors/grbl-processor.js',
+        'export/processors/makera-processor.js',
         'export/processors/grblHAL-processor.js',
         'export/processors/roland-processor.js',
         'export/processors/marlin-processor.js',
@@ -90,7 +91,6 @@ const CONFIG = {
         'export/gcode-generator.js',
         'export/laser-image-exporter.js',
         'utils/coordinate-system.js',
-        'utils/unit-converter.js',
         'utils/canvas-exporter.js',
         'cam-core.js',
         'cam-ui.js',
@@ -130,7 +130,11 @@ const CONFIG = {
         'extras',
         'fiveserver.config.js',
         'licensepasta.txt',
-        'other'
+        'other',
+        // Analytic offsetting files
+        'geometry-offsetter-analytic.js',
+        'geometry-utils-math.js',
+        'unit-converter.js'
     ],
 
     // Embedded assets

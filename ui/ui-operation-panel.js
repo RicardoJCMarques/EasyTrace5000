@@ -1189,7 +1189,7 @@
             section.appendChild(h3);
 
             const summary = document.createElement('div');
-            summary.className = 'export-summary-info';
+            summary.className = 'exporter-summary-info';
 
             const strategy = operation.settings?.laserClearStrategy || 'offset';
             const offsetCount = operation.offsets?.length || 0;

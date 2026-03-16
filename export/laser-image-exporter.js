@@ -50,6 +50,8 @@
             this.HAIRLINE_STROKE = 0.01; // mm — standard laser hairline
             this.MAX_CANVAS_DIM = 16000;
             this.FUSION_TOLERANCE = 0.001;
+            this.HEAT_GRID_SIZE = 4;          // 4×4 spatial zone grid for heat management
+            this._zoneTraversalOrder = null;  // Cached greedy traversal order
         }
 
         async generate(layers, options) {
@@ -72,7 +74,8 @@
                 mat: output.mat,
                 widthMm: output.widthMm,
                 heightMm: output.heightMm,
-                padding: padding
+                padding: padding,
+                heatManagement: options.heatManagement || 'off'
             };
 
             if (options.format === 'png') {
@@ -284,6 +287,12 @@
                     const color = layer.baseColor;
                     const passId = this._buildPassId(layer.layerName, pass, i);
 
+                    // Heat management: reorder offset primitives for thermal distribution
+                    const isHatch = pass.metadata?.isHatch === true;
+                    const sortablePrimitives = (!isFilled && !isHatch)
+                        ? this._applyHeatManagementSort(pass.primitives, renderCtx.heatManagement)
+                        : pass.primitives;
+
                     if (isFilled) {
                         lines.push(`${indent}<g id="${passId}" fill="${color}" stroke="none">`);
                     } else {
@@ -291,13 +300,13 @@
                     }
 
                     // Use the RAW data builders
-                    const pathData = this._buildRawPathData(pass.primitives);
+                    const pathData = this._buildRawPathData(sortablePrimitives);
                     if (pathData) {
                         const fillRule = isFilled ? ' fill-rule="evenodd"' : '';
                         lines.push(`${innerIndent}<path d="${pathData}"${fillRule}/>`);
                     }
 
-                    this._appendRawCircles(lines, pass.primitives, innerIndent);
+                    this._appendRawCircles(lines, sortablePrimitives, innerIndent);
 
                     lines.push(`${indent}</g>`);
                 }
@@ -738,6 +747,130 @@
                 contours: [{ points: [p0, p1], isHole: false }],
                 properties: properties
             };
+        }
+
+        /**
+         * Reorders offset primitives to minimize localized heat buildup.
+         * 
+         * Strategy 'standard':
+         *   1. Pass interleaving — global ring separation
+         *   2. Zone interleaving — spatially distant features consecutive
+         *   3. Area sort — small features first within each zone
+         *
+         * Skipped for hatch and filled passes (caller responsibility).
+         * Returns a new array; never mutates the input.
+         */
+        _applyHeatManagementSort(primitives, strategy) {
+            if (!strategy || strategy === 'off') return primitives;
+            if (!primitives || primitives.length <= 1) return primitives;
+
+            const len = primitives.length;
+            const entries = new Array(len);
+            let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
+
+            for (let i = 0; i < len; i++) {
+                const prim = primitives[i];
+                const bounds = typeof prim.getBounds === 'function' ? prim.getBounds() : null;
+                let area = 0, cx = 0, cy = 0;
+
+                if (bounds && isFinite(bounds.minX)) {
+                    const w = bounds.maxX - bounds.minX;
+                    const h = bounds.maxY - bounds.minY;
+                    area = w * h;
+                    cx = bounds.minX + w * 0.5;
+                    cy = bounds.minY + h * 0.5;
+                    if (cx < gMinX) gMinX = cx;
+                    if (cx > gMaxX) gMaxX = cx;
+                    if (cy < gMinY) gMinY = cy;
+                    if (cy > gMaxY) gMaxY = cy;
+                }
+
+                entries[i] = {
+                    prim: prim,
+                    pass: prim.properties?.pass || 0,
+                    area: area,
+                    cx: cx,
+                    cy: cy,
+                    zonePriority: 0
+                };
+            }
+
+            if (strategy === 'standard') {
+                const gs = this.HEAT_GRID_SIZE;
+                const rangeX = gMaxX - gMinX;
+                const rangeY = gMaxY - gMinY;
+
+                if (rangeX > 0 || rangeY > 0) {
+                    const rX = rangeX || 1;
+                    const rY = rangeY || 1;
+                    const zoneOrder = this._getZoneTraversalOrder();
+
+                    const total = gs * gs;
+                    const zonePriorityLookup = new Uint8Array(total);
+                    for (let p = 0; p < zoneOrder.length; p++) {
+                        zonePriorityLookup[zoneOrder[p]] = p;
+                    }
+
+                    for (let i = 0; i < len; i++) {
+                        const e = entries[i];
+                        const col = Math.min(gs - 1, (e.cx - gMinX) / rX * gs | 0);
+                        const row = Math.min(gs - 1, (e.cy - gMinY) / rY * gs | 0);
+                        e.zonePriority = zonePriorityLookup[row * gs + col];
+                    }
+                }
+
+                entries.sort((a, b) => {
+                    if (a.pass !== b.pass) return a.pass - b.pass;
+                    if (a.zonePriority !== b.zonePriority) return a.zonePriority - b.zonePriority;
+                    return a.area - b.area;
+                });
+            }
+
+            const result = new Array(len);
+            for (let i = 0; i < len; i++) {
+                result[i] = entries[i].prim;
+            }
+            return result;
+        }
+
+        /**
+         * Greedy Manhattan-distance maximizing traversal order for the heat grid.
+         * Computed once, cached for the instance lifetime.
+         */
+        _getZoneTraversalOrder() {
+            if (this._zoneTraversalOrder) return this._zoneTraversalOrder;
+
+            const gs = this.HEAT_GRID_SIZE;
+            const total = gs * gs;
+            const used = new Uint8Array(total);
+            const order = new Array(total);
+
+            order[0] = 0;
+            used[0] = 1;
+
+            for (let step = 1; step < total; step++) {
+                const prev = order[step - 1];
+                const prevRow = (prev / gs) | 0;
+                const prevCol = prev % gs;
+
+                let bestZone = 0;
+                let bestDist = -1;
+
+                for (let z = 0; z < total; z++) {
+                    if (used[z]) continue;
+                    const dist = Math.abs(((z / gs) | 0) - prevRow) + Math.abs((z % gs) - prevCol);
+                    if (dist > bestDist) {
+                        bestDist = dist;
+                        bestZone = z;
+                    }
+                }
+
+                order[step] = bestZone;
+                used[bestZone] = 1;
+            }
+
+            this._zoneTraversalOrder = order;
+            return order;
         }
 
         // ────────────────────────────────────────────────────────────

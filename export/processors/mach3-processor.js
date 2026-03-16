@@ -31,6 +31,7 @@
     class Mach3PostProcessor extends BasePostProcessor {
         constructor() {
             super('Mach3', {
+                label: 'Mach3 (Experimental)',
                 fileExtension: '.tap',
                 supportsToolChange: true,
                 supportsArcCommands: true,
@@ -42,37 +43,42 @@
                 modalCommands: true,
                 lineNumbering: false,
                 maxSpindleSpeed: 24000,
-                maxRapidRate: 5000
+                maxRapidRate: 5000,
+                defaults: {
+                    startCode: '',
+                    endCode: 'M5\nG0 X0Y0\nM30',
+                }
             });
         }
 
         generateToolChange(tool, options) {
             const lines = [];
+            const c = options.comments || {};
             const safeZ = options.safeZ || this.config.safetyHeight;
 
             lines.push('');
-            lines.push(`(Tool change: ${tool.name || tool.id})`);
-            lines.push(`(Diameter: ${tool.diameter}mm)`);
+            this.pushCommentLine(lines, (c.toolChange || 'Tool change: {name}').replace('{name}', tool.name || tool.id), options);
+            this.pushCommentLine(lines, (c.toolDiameter || 'Diameter: {diameter}mm').replace('{diameter}', tool.diameter), options);
             lines.push('');
 
-            // Stop spindle
-            lines.push('M5');
+            // Stop sp
+            lines.push(this.appendComment('M5', c.spindleStop, options));
 
             // Retract to safe Z
-            lines.push(`G0 Z${this.formatCoordinate(safeZ)}`);
+            lines.push(this.appendComment(`G0 Z${this.formatCoordinate(safeZ)}`, c.retractSafeZ, options));
             this.currentPosition.z = safeZ;
 
             // Tool change with pause
             const toolNumber = tool.number || options.toolNumber || 1;
             lines.push(`T${toolNumber} M6`);
-            lines.push(`G43 H${toolNumber}`)
-            lines.push('M0 (Tool change pause - press cycle start to continue)');
+            lines.push(this.appendComment(`G43 H${toolNumber}`, c.toolLengthComp, options));
+            lines.push(this.appendComment('M0', c.toolChangePause, options));
             lines.push('');
 
             // Restart spindle
             const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
-            lines.push(`M3 S${this.formatSpindle(spindleSpeed)}`);
-            lines.push('G4 P1');
+            lines.push(this.appendComment(`M3 S${this.formatSpindle(spindleSpeed)}`, c.spindleStart, options));
+            lines.push(this.appendComment('G4 P1', c.spindleDwell, options));
             lines.push('');
 
             return lines.join('\n');
@@ -102,8 +108,9 @@
             return lines.join('\n');
         } // What about G73?
 
-        cancelCannedCycle() {
-            return 'G80';
+        cancelCannedCycle(options) {
+            const c = options?.comments || {};
+            return this.appendComment('G80', c.cancelCannedCycle, options);
         }
     }
 

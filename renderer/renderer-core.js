@@ -186,7 +186,7 @@
                 let bounds;
                 try {
                     bounds = prim.getBounds();
-                    if (!bounds || !isFinite(bounds.minX)) continue;
+                    if (!bounds || !Number.isFinite(bounds.minX)) continue;
                 } catch (e) { continue; }
 
                 let width = bounds.maxX - bounds.minX;
@@ -394,7 +394,7 @@
                 try {
                     if (typeof primitive.getBounds !== 'function') return;
                     const bounds = primitive.getBounds();
-                    if (!bounds || !isFinite(bounds.minX)) return;
+                    if (!bounds || !Number.isFinite(bounds.minX)) return;
 
                     minX = Math.min(minX, bounds.minX);
                     minY = Math.min(minY, bounds.minY);
@@ -431,7 +431,7 @@
                 }
             });
 
-            if (hasContent && isFinite(minX)) {
+            if (hasContent && Number.isFinite(minX)) {
                 this.overallBounds = {
                     minX, minY, maxX, maxY,
                     width: maxX - minX,

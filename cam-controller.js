@@ -255,9 +255,13 @@
                 // Instantiate pipeline components *after* core exists
                 this.gcodeGenerator = new GCodeGenerator(config.gcode);
                 this.gcodeGenerator.setCore(this.core);
+                this.gcodeGenerator.setLanguageManager(this.languageManager);
                 this.geometryTranslator = new GeometryTranslator(this.core);
                 this.toolpathOptimizer = new ToolpathOptimizer();
-                this.machineProcessor = new MachineProcessor(this.core);                
+                this.machineProcessor = new MachineProcessor(this.core);
+
+                // Expose early so UI modules can access controller during init
+                window.pcbcam = this;
 
                 // Initialize UI with core and language manager
                 this.ui = new PCBCamUI(this.core, this.languageManager);
@@ -298,8 +302,7 @@
                 // Setup toolbar handlers
                 this.setupToolbarHandlers();
 
-                // Expose controller globally for PropertyInspector
-                window.pcbcam = this;
+                // Attach modal manager (created after UI init)
                 window.pcbcam.modalManager = this.modalManager;
 
                 // Process any pending operations
@@ -1129,7 +1132,6 @@
 
             this.debug(`Building contexts for ${options.operationIds.length} operations...`);
 
-            // Create pairs instead of mutating operations
             const operationContextPairs = [];
             for (const opId of options.operationIds) {
                 try {
@@ -1144,57 +1146,12 @@
 
                     const ctx = this.core.buildToolpathContext(opId, this.parameterManager);
 
+                    // Processor-specific context preprocessing.
                     // Roland compatibility: enforce machine-safe settings.
-                    // 2.5D (PU/PD) mode: Z is always binary — PU goes to !PZ param1, PD plunges to !PZ param2 then moves XY at that depth.
-                    // No simultaneous XYZ motion is possible, which makes helix entry, ramp entry and mid-path tab lifts all physically impossible.
-                    // The processor handles !PZ updates dynamically so multi-depth passes (plunge→cut→retract per depth level) work correctly.
-                    //
-                    // 3D (Z x,y,z;) mode: full simultaneous XYZ. Arcs are linearized by the generator (supportsArcCommands: false), producing short LINEAR segments with interpolated Z — helix, ramp and tabs all work through this linearization. No overrides needed.
                     if (options.postProcessor === 'roland') {
-                        const rolandModel = ctx.machine.rolandModel || 'mdx50';
-                        const rolandProfile = config.roland?.getProfile
-                            ? config.roland.getProfile(rolandModel)
-                            : null;
-                        const rolandZMode = ctx.machine.rolandZMode || rolandProfile?.zMode || '3d';
-
-                        if (rolandZMode === '2.5d') {
-                            // Force plunge entry — 2.5D cannot do simultaneous XYZ
-                            ctx.strategy.entryType = 'plunge';
-
-                            // Disable tabs — they require Z lifts mid-path which PU/PD cannot express reliably across Roland firmware versions.
-                            if (operation.type === 'cutout') {
-                                ctx.strategy.cutout.tabs = 0;
-                            }
-
-                            // For drill milling in 2.5D, ensure multi-depth is active
-                            if (operation.type === 'drill' && ctx.strategy.drill.millHoles) {
-                                if (!ctx.strategy.multiDepth) {
-                                    ctx.strategy.multiDepth = true;
-                                }
-                                const maxSafeStep = ctx.tool.diameter * 0.5;
-                                if (Math.abs(ctx.strategy.depthPerPass) > maxSafeStep) {
-                                    ctx.strategy.depthPerPass = maxSafeStep;
-                                }
-                            }
-                        }
-
-                        // Profile-based feed rate guardrails (all Z modes)
-                        if (rolandProfile) {
-                            const maxCutFeedMmMin = rolandProfile.maxFeedXY * 60;
-                            const maxPlungeFeedMmMin = rolandProfile.maxFeedZ * 60;
-
-                            if (ctx.cutting.feedRate > maxCutFeedMmMin) {
-                                this.debug(`Clamping feed rate ${ctx.cutting.feedRate} -> ${maxCutFeedMmMin} (${rolandProfile.label} limit)`);
-                                ctx.cutting.feedRate = maxCutFeedMmMin;
-                            }
-                            if (ctx.cutting.plungeRate > maxPlungeFeedMmMin) {
-                                this.debug(`Clamping plunge rate ${ctx.cutting.plungeRate} -> ${maxPlungeFeedMmMin} (${rolandProfile.label} limit)`);
-                                ctx.cutting.plungeRate = maxPlungeFeedMmMin;
-                            }
-                        }
+                        this._preprocessRolandContext(ctx, operation);
                     }
 
-                    // Pass as a pair
                     operationContextPairs.push({ operation, context: ctx });
 
                 } catch (error) {
@@ -1261,15 +1218,15 @@
 
                 // Pass the current position, and get the new position back
                 const { plans: machineReadyPlans, endPos } = this.machineProcessor.processPlans(
-                    plansToProcess, 
-                    batchContext, 
+                    plansToProcess,
+                    batchContext,
                     currentMachinePos // Pass the starting position
                 );
 
                 allMachineReadyPlans.push(...machineReadyPlans);
 
                 // The returned endPos is the new starting position for the NEXT batch
-                currentMachinePos = endPos; 
+                currentMachinePos = endPos;
 
                 this.debug(`--- Super-Batch ${superBatch.type} complete. New machine pos: (${endPos.x.toFixed(2)}, ${endPos.y.toFixed(2)}, ${endPos.z.toFixed(2)}) ---`);
             }
@@ -1278,26 +1235,30 @@
             this.debug('Generating G-code...');
             const gcodeConfig = firstContext.gcode;
             const machineConfig = firstContext.machine;
-            const isRoland = options.postProcessor === 'roland';
+            const processorSettings = firstContext.processorSettings || {};
+            const rolandSettings = processorSettings.roland || {};
 
             const genOptions = {
                 postProcessor: options.postProcessor,
                 includeComments: options.includeComments,
                 singleFile: options.singleFile,
                 toolChanges: options.toolChanges,
-                startCode: isRoland ? machineConfig.rolandStartCode : gcodeConfig.startCode,
-                endCode: isRoland ? machineConfig.rolandEndCode : gcodeConfig.endCode,
+                // Let the generator resolve from processor defaults.
+                // Only pass user overrides if they exist.
+                userStartCode: gcodeConfig.userStartCode,
+                userEndCode: gcodeConfig.userEndCode,
                 units: gcodeConfig.units,
                 safeZ: machineConfig.safeZ,
                 travelZ: machineConfig.travelZ,
                 coolant: machineConfig.coolant,
                 vacuum: machineConfig.vacuum,
-                // Roland-specific (ignored by G-code processors)
-                rolandModel: machineConfig.rolandModel || 'mdx50',
-                rolandStepsPerMM: machineConfig.rolandStepsPerMM,
-                rolandMaxFeed: machineConfig.rolandMaxFeed,
-                rolandZMode: machineConfig.rolandZMode,
-                rolandSpindleMode: machineConfig.rolandSpindleMode,
+                // Processor-specific settings — consumed only by the matching processor.
+                // Roland reads these in generateHeader(); G-code processors ignore them.
+                rolandModel: rolandSettings.rolandModel || 'mdx50',
+                rolandStepsPerMM: rolandSettings.rolandStepsPerMM,
+                rolandMaxFeed: rolandSettings.rolandMaxFeed,
+                rolandZMode: rolandSettings.rolandZMode,
+                rolandSpindleMode: rolandSettings.rolandSpindleMode,
             };
 
             // Generate G-code from the final, complete list of plans
@@ -1306,7 +1267,7 @@
             // Calculate metrics
             this.debug('Calculating metrics...');
             // Pass context to metrics to get machine settings
-            const { estimatedTime, totalDistance } = this.machineProcessor.calculatePathMetrics(allMachineReadyPlans, firstContext); 
+            const { estimatedTime, totalDistance } = this.machineProcessor.calculatePathMetrics(allMachineReadyPlans, firstContext);
 
             return {
                 gcode: gcode,
@@ -1315,6 +1276,60 @@
                 estimatedTime: estimatedTime,
                 totalDistance: totalDistance
             };
+        }
+
+        /**
+         * Roland-specific context preprocessing.
+         * Enforces machine-safe settings based on the selected Roland profile.
+         * Extracted from orchestrateToolpaths to keep the main loop processor-agnostic.
+         */
+        _preprocessRolandContext(ctx, operation) {
+            const rolandSettings = ctx.processorSettings?.roland || {};
+            const rolandModel = rolandSettings.rolandModel || 'mdx50';
+
+            // Get profile from the Roland processor itself (single source of truth)
+            const rolandProcessor = this.gcodeGenerator.getProcessor('roland');
+            const rolandProfile = rolandProcessor?.getProfile
+                ? rolandProcessor.getProfile(rolandModel)
+                : null;
+
+            const rolandZMode = rolandSettings.rolandZMode || rolandProfile?.zMode || '3d';
+
+            // 2.5D (PU/PD) mode: Z is always binary — no simultaneous XYZ motion.
+            // Helix entry, ramp entry and mid-path tab lifts are all physically impossible.
+            // 3D (Z x,y,z;) mode: full simultaneous XYZ. Arcs are linearized by the generator (supportsArcCommands: false), producing short LINEAR segments with interpolated Z — helix, ramp and tabs all work through linearization.
+            if (rolandZMode === '2.5d') {
+                ctx.strategy.entryType = 'plunge';
+
+                if (operation.type === 'cutout') {
+                    ctx.strategy.cutout.tabs = 0;
+                }
+
+                if (operation.type === 'drill' && ctx.strategy.drill.millHoles) {
+                    if (!ctx.strategy.multiDepth) {
+                        ctx.strategy.multiDepth = true;
+                    }
+                    const maxSafeStep = ctx.tool.diameter * 0.5;
+                    if (Math.abs(ctx.strategy.depthPerPass) > maxSafeStep) {
+                        ctx.strategy.depthPerPass = maxSafeStep;
+                    }
+                }
+            }
+
+            // Profile-based feed rate guardrails (all Z modes)
+            if (rolandProfile) {
+                const maxCutFeedMmMin = rolandProfile.maxFeedXY * 60;
+                const maxPlungeFeedMmMin = rolandProfile.maxFeedZ * 60;
+
+                if (ctx.cutting.feedRate > maxCutFeedMmMin) {
+                    this.debug(`Clamping feed rate ${ctx.cutting.feedRate} -> ${maxCutFeedMmMin} (${rolandProfile.label} limit)`);
+                    ctx.cutting.feedRate = maxCutFeedMmMin;
+                }
+                if (ctx.cutting.plungeRate > maxPlungeFeedMmMin) {
+                    this.debug(`Clamping plunge rate ${ctx.cutting.plungeRate} -> ${maxPlungeFeedMmMin} (${rolandProfile.label} limit)`);
+                    ctx.cutting.plungeRate = maxPlungeFeedMmMin;
+                }
+            }
         }
 
         /**
@@ -1351,7 +1366,8 @@
 
             const commonOptions = {
                 dpi, padding, transforms,
-                bounds: this.core.coordinateSystem?.boardBounds
+                bounds: this.core.coordinateSystem?.boardBounds,
+                heatManagement: exportOptions.heatManagement || 'off'
             };
 
             // Build layer objects from operations

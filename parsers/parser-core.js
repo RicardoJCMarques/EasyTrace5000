@@ -75,7 +75,7 @@
             // Handle decimal notation
             if (valueStr.includes('.')) {
                 let coord = parseFloat(valueStr);
-                if (!isFinite(coord)) {
+                if (!Number.isFinite(coord)) {
                     throw new Error(`Invalid decimal coordinate: ${value}`);
                 }
                 if (units === 'inch') coord *= 25.4;
@@ -87,14 +87,11 @@
             const absValue = valueStr.replace(/^[+-]/, '');
 
             const totalDigits = format.integer + format.decimal;
-            const padded = absValue.padStart(totalDigits, '0');
 
-            const integerPart = padded.slice(0, format.integer);
-            const decimalPart = padded.slice(format.integer);
+            // Divide by 10 to the power of the decimal places
+            let coord = parseInt(absValue, 10) / Math.pow(10, format.decimal);
 
-            let coord = parseFloat(`${integerPart}.${decimalPart}`);
-
-            if (!isFinite(coord)) {
+            if (!Number.isFinite(coord)) {
                 throw new Error(`Invalid formatted coordinate: ${value}`);
             }
 
@@ -106,7 +103,7 @@
 
         validateCoordinates(coordinates, lineNumber = 0) {
             // Check for finite values
-            if (!isFinite(coordinates.x) || !isFinite(coordinates.y)) {
+            if (!Number.isFinite(coordinates.x) || !Number.isFinite(coordinates.y)) {
                 this.errors.push(`Non-finite coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
                 this.coordinateValidation.invalidCoordinates++;
                 return false;
@@ -163,7 +160,7 @@
                 }
             });
 
-            if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+            if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
                 return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
             }
 
@@ -203,7 +200,27 @@
         }
 
         getTraceBounds(trace) {
-            const halfWidth = (trace.width) / 2;
+            const halfWidth = (trace.width || 0) / 2;
+
+            // SVG linear_path traces use points array instead of start/end
+            if (trace.points && trace.points.length > 0) {
+                let minX = Infinity, minY = Infinity;
+                let maxX = -Infinity, maxY = -Infinity;
+                for (const p of trace.points) {
+                    minX = Math.min(minX, p.x);
+                    minY = Math.min(minY, p.y);
+                    maxX = Math.max(maxX, p.x);
+                    maxY = Math.max(maxY, p.y);
+                }
+                return {
+                    minX: minX - halfWidth,
+                    minY: minY - halfWidth,
+                    maxX: maxX + halfWidth,
+                    maxY: maxY + halfWidth
+                };
+            }
+
+            // Gerber-style two-point traces
             return {
                 minX: Math.min(trace.start.x, trace.end.x) - halfWidth,
                 minY: Math.min(trace.start.y, trace.end.y) - halfWidth,

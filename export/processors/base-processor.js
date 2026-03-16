@@ -57,30 +57,86 @@
 
             this.currentPosition = { x: 0, y: 0, z: 0 };
             this.currentFeed = null;
-            this.currentSpindle = null;
+            this.currentSpindle = 0;
+
+            this.descriptor = {
+                id: name.toLowerCase(),
+                label: this.config.label || name,
+                fileExtension: this.config.fileExtension || '.nc',
+                capabilities: {
+                    supportsToolChange: this.config.supportsToolChange || false,
+                    supportsArcCommands: this.config.supportsArcCommands !== false,
+                    supportsCannedCycles: this.config.supportsCannedCycles || false,
+                    arcFormat: this.config.arcFormat || null,
+                },
+                defaults: this.config.defaults || {
+                    startCode: '',
+                    endCode: '',
+                },
+                limits: {
+                    maxSpindleSpeed: this.config.maxSpindleSpeed || 30000,
+                    maxRapidRate: this.config.maxRapidRate || 1000,
+                },
+                customParameters: this.config.customParameters || [],
+
+            };
+            this.outputScale = 1.0;
+        }
+
+        /**
+         * Formats a standalone comment line for this processor's dialect.
+         * Returns empty string if comments are disabled or text is empty.
+         */
+        formatComment(text, options) {
+            if (!options?.includeComments || !text) return '';
+            return this.config.commentStyle === 'semicolon'
+                ? `; ${text}`
+                : `(${text})`;
+        }
+
+        /**
+         * Appends an inline comment to an existing G-code line.
+         * Returns the line unchanged if comments are disabled.
+         */
+        appendComment(line, text, options) {
+            const comment = this.formatComment(text, options);
+            if (!comment) return line;
+            return `${line} ${comment}`;
+        }
+
+        /**
+         * Pushes a standalone comment line to the array.
+         * Does nothing if comments are disabled, preventing empty line bloat.
+         */
+        pushCommentLine(linesArray, text, options) {
+            if (!options?.includeComments || !text) return;
+            linesArray.push(this.formatComment(text, options));
         }
 
         // Abstract methods
         generateHeader(options) {
             const headerLines = [];
+            const c = options.comments || {};
 
             // Add the formatted comment block IF it exists
             if (options.includeComments && options.commentBlock) {
                 options.commentBlock.forEach(line => {
-                    headerLines.push(`; ${line}`);
+                    headerLines.push(this.formatComment(line, options));
                 });
                 headerLines.push('');
             }
 
             // 1. Set unit mode from options (comes from dropdown)
-            this.modalState.units = (options.units === 'in') ? 'G20' : 'G21';
+            const isInch = options.units === 'inch' || options.units === 'in';
+            this.modalState.units = isInch ? 'G20' : 'G21';
+            this.outputScale = isInch ? (1 / 25.4) : 1.0;
 
             // 2. Output all modal commands based on state
-            headerLines.push(this.modalState.coordinateMode); // G90 - Absolute Coordinates
-            headerLines.push(this.modalState.units);          // G20 or G21
-            headerLines.push(this.modalState.plane);          // G17 - XY Plane
-            headerLines.push(this.modalState.feedRateMode);   // G94 - Units/minute
-            headerLines.push(''); // Blank line
+            headerLines.push(this.modalState.coordinateMode);
+            headerLines.push(this.modalState.units);
+            headerLines.push(this.modalState.plane);
+            headerLines.push(this.modalState.feedRateMode);
+            headerLines.push('');
 
             // Get the template from the options, or a default
             let startCode = options.startCode;
@@ -92,22 +148,22 @@
             // Conditionally add coolant/vacuum commands
             if (options.coolant && options.coolant !== 'none' && !startCode.includes('M7') && !startCode.includes('M8')) {
                 if (options.coolant === 'mist') {
-                    startCode += '\nM7'; // Mist
+                    startCode += '\n' + this.appendComment('M7', c.coolantMist, options); // Mist
                 } else if (options.coolant === 'flood') {
-                    startCode += '\nM8'; // Flood
+                    startCode += '\n' + this.appendComment('M8', c.coolantFlood, options); // Flood
                 }
             }
             if (options.vacuum && !startCode.includes('M10')) {
-                startCode += '\nM10'; // Vacuum On
+                startCode += '\n' + this.appendComment('M10', c.vacuumOn, options); // Vacuum On
             }
 
             headerLines.push(startCode); // Add the actual start code after the modals
-
             return headerLines.join('\n');
         }
         
         generateFooter(options) {
-            let endCode = options.endCode || ''; // Get template from config.js
+            const c = options.comments || {};
+            let endCode = options.endCode || '';
 
             const safeZ = options.safeZ;
             const travelZ = options.travelZ;
@@ -117,10 +173,10 @@
 
             // Conditionally add 'off' commands (if not already in template)
             if (options.coolant && options.coolant !== 'none' && !endCode.includes('M9')) {
-                endCode = 'M9\n' + endCode; // Coolant Off
+                endCode = this.appendComment('M9', c.coolantOff, options) + '\n' + endCode; // Coolant Off
             }
             if (options.vacuum && !endCode.includes('M11')) {
-                endCode = 'M11\n' + endCode; // Vacuum Off
+                endCode = this.appendComment('M11', c.vacuumOff, options) + '\n' + endCode; // Vacuum Off
             }
 
             return endCode;
@@ -132,22 +188,23 @@
          * @param {number} speed - The new target RPM
          * @returns {string} G-code string (e.g., "M5\nM3 S10000") or "" if no change.
          */
-        setSpindle(speed, dwell = 0) {
+        setSpindle(speed, dwell = 0, options = {}) {
             if (speed === this.currentSpindle) {
                 return null;
             }
 
+            const c = options.comments || {};
             this.currentSpindle = speed;
 
             const lines = [];
 
             if (speed > 0) {
-                lines.push(`M3 S${speed}`);
+                lines.push(this.appendComment(`M3 S${speed}`, c.spindleStart, options));
                 if (dwell > 0) {
-                    lines.push(`G4 P${dwell}`);
+                    lines.push(this.appendComment(`G4 P${dwell}`, c.spindleDwell, options));
                 }
             } else {
-                lines.push('M5');
+                lines.push(this.appendComment('M5', c.spindleStop, options));
             }
             
             return lines.join('\n');
@@ -157,28 +214,27 @@
             throw new Error('generateToolChange() must be implemented by subclass');
         }
 
-        // Concrete methods - can be overridden if needed
-        formatCoordinate(value) {
-            if (value === null || value === undefined) return '';
-            const precision = this.config.coordinatePrecision;
-            return value.toFixed(precision).replace(/\.?0+$/, '');
+        // Base formatter that safely strips trailing zeros and handles -0
+        _formatNumberSafe(value, precision, scale = 1.0) {
+            if (value == null) return ''; // Catches null and undefined
+            
+            const scaled = value * scale;
+            if (precision === 0) return Math.round(scaled).toString();
+            
+            // toFixed clamps precision, parseFloat strips trailing zeros & fixes '-0'
+            return parseFloat(scaled.toFixed(precision)).toString();
         }
 
-        formatFeed(value) {
-            const precision = this.config.feedPrecision;
-            if (precision === 0) {
-                return Math.round(value).toString();
-            }
-            return value.toFixed(precision).replace(/\.?0+$/, '');
+        formatCoordinate(value) { 
+            return this._formatNumberSafe(value, this.config.coordinatePrecision, this.outputScale); 
         }
 
-        formatSpindle(value) {
-            if (value === null || value === undefined) return '0';
-            const precision = this.config.spindlePrecision;
-            if (precision === 0) {
-                return Math.round(value).toString();
-            }
-            return value.toFixed(precision).replace(/\.?0+$/, '');
+        formatFeed(value) { 
+            return this._formatNumberSafe(value, this.config.feedPrecision, this.outputScale); 
+        }
+
+        formatSpindle(value) { 
+            return this._formatNumberSafe(value, this.config.spindlePrecision); 
         }
 
         generateArc(cmd) {
@@ -189,7 +245,7 @@
             const gCommand = cmd.type === 'ARC_CW' ? 'G2' : 'G3';
             const isFullCircle = this._isFullCircle(cmd);
 
-            // Determine if we need to output the G-code command
+            // Determine if G-code command output is needed 
             const needsGCode = !this.config.modalCommands || 
                             this.modalState.motionMode !== gCommand ||
                             isFullCircle;  // Full circles always need explicit G-code
@@ -430,7 +486,7 @@
         resetState() {
             this.currentPosition = { x: 0, y: 0, z: 0 };
             this.currentFeed = null;
-            this.currentSpindle = null;
+            this.currentSpindle = 0;
             this.modalState = {
                 motionMode: null,
                 coordinateMode: 'G90',

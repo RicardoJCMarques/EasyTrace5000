@@ -4,11 +4,30 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.10] - 2026-XX-XX
+## [1.1.0] - 2026-03-13
+
+### Notice
+- **Offset Strategy Within Laser Pipeline Has Been Confirmed As Working. Bumping To v1.1.0** Needs more testing until it's considered stable.
+
+### Added
+- **Makera Post-Processor:** Equivalent to standard grbl but with M6 T1 preamble. Contains draft tool-changing logic.
+- **Heat Buildup Mitigation:** Initial draft of algorithm for geometry reordering and shuffling to minimize laser focusing too much in small localized areas.
 
 ### Fixed
 - **Copper Pour Regions:** KiCAD and Fusion/Eagle copper pours should now interact correctly with all geometry. (EasyEDA pours TBD.)
-- **Minor Optimizations** 
+- **Export G-code In Inches:** If a user selects G20 in the UI, the output files are scaled correctly to match now.
+- **SVG Parsing:** Module now understands that l and m mean relative coordinates while L and M mean absolute coordinates. Plus extra improvements.
+- **Gerber Parsing:** Module propagates geometry units and scale more thoroughly.
+- **Minor Optimizations**
+
+### Changed
+- **Post-Processor Refactor:** Post-processor modules are not self-contained. They now store relevant defaults, profiles and everything they need so adding and managing modules gets more predictable.
+- **Partial Cleanup Of Config.js**
+
+### Deprecated
+- **utils/unit-converter.js:** Was mostly useless so code was updated to remove it completely.
+
+- **Known Bugs:** Canvas viewport culling doesn't update correctly when board is rotated. No logic to close opened cutout polygons.
 
 ## [1.0.9] - 2026-03-11
 

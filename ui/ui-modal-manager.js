@@ -46,7 +46,7 @@
                 welcome: document.getElementById('welcome-modal'),
                 laserConfig: document.getElementById('laser-config-modal'),
                 quickstart: document.getElementById('quickstart-modal'),
-                exportManager: document.getElementById('export-manager-modal'),
+                exportManager: document.getElementById('exporter-manager-modal'),
                 support: document.getElementById('support-modal'),
                 help: document.getElementById('help-modal')
             };
@@ -136,17 +136,17 @@
         }
 
         showPlaceholderPreview() {
-            const previewText = document.getElementById('gcode-preview-text');
+            const previewText = document.getElementById('exporter-preview-text');
             if (previewText) {
                 previewText.value = textConfig.gcodePlaceholder;
             }
 
             // Reset stats
-            document.getElementById('gcode-line-count').textContent = '0';
-            const opCountEl = document.getElementById('gcode-op-count');
+            document.getElementById('exporter-line-count').textContent = '0';
+            const opCountEl = document.getElementById('exporter-op-count');
             if(opCountEl) opCountEl.textContent = this.selectedOperations.length;
-            document.getElementById('gcode-est-time').textContent = '--:--';
-            document.getElementById('gcode-distance').textContent = '0mm';
+            document.getElementById('exporter-est-time').textContent = '--:--';
+            document.getElementById('exporter-distance').textContent = '0mm';
         }
 
         // Generic modal methods
@@ -783,15 +783,23 @@
             this.jobHasLaser = this.selectedOperations.some(op => this.controller.isLaserExportForOperation(op.type));
             this.jobHasCNC = this.selectedOperations.some(op => !this.controller.isLaserExportForOperation(op.type));
 
-            const laserOptions = document.getElementById('export-laser-options');
-            const cncOptions = document.getElementById('export-cnc-options');
-            const cncPreview = document.getElementById('export-cnc-preview');
+            const laserOptions = document.getElementById('exporter-laser-options');
+            const cncOptions = document.getElementById('exporter-cnc-options');
+            const cncPreview = document.getElementById('exporter-cnc-preview');
             const leftColumnWrapper = document.querySelector('.gcode-options');
 
-            // Set the MACRO layout based on the job contents (no layout shifting later)
-            if (laserOptions) laserOptions.style.display = this.jobHasLaser ? 'block' : 'none';
-            if (cncOptions) cncOptions.style.display = this.jobHasCNC ? 'block' : 'none';
-            if (cncPreview) cncPreview.style.display = this.jobHasCNC ? 'flex' : 'none';
+            // Set the MACRO layout based on the job contents.
+            // Use class toggles instead of inline display so the CSS grid layout stays in control.
+            if (laserOptions) laserOptions.classList.toggle('is-hidden', !this.jobHasLaser);
+            if (cncOptions) cncOptions.classList.toggle('is-hidden', !this.jobHasCNC);
+            if (cncPreview) cncPreview.classList.toggle('is-hidden', !this.jobHasCNC);
+
+            // Update the calculate button text and visibility based on job contents
+            const calcBtn = document.getElementById('exporter-calculate-btn');
+            if (calcBtn) {
+                calcBtn.textContent = this.jobHasCNC ? 'Calculate Toolpaths' : 'Preview Export';
+                calcBtn.classList.toggle('is-hidden', !this.jobHasCNC);
+            }
 
             // Fix the grid sizing if CNC preview is completely gone
             if (leftColumnWrapper) {
@@ -814,19 +822,32 @@
             // Populate padding and DPI from settings
             const laserSettings = this.controller.core?.settings?.laser || {};
             
-            const paddingInput = document.getElementById('laser-export-padding');
+            const paddingInput = document.getElementById('laser-exporter-padding');
             if (paddingInput) {
                 paddingInput.value = laserSettings.exportPadding ?? config.laserDefaults?.exportPadding ?? 5.0;
             }
 
-            const dpiInput = document.getElementById('laser-export-dpi');
+            const dpiInput = document.getElementById('laser-exporter-dpi');
             if (dpiInput) {
                 dpiInput.value = laserSettings.exportDPI ?? config.laserDefaults?.rasterDPI ?? 1000;
             }
+
+            // Check for heatWarning toggle and display heatWarning
+            const heatCheckbox = document.getElementById('laser-heat-management');
+            const heatWarning = document.getElementById('laser-heat-warning');
+            if (heatCheckbox) {
+                heatCheckbox.checked = false; // Default off
+                heatCheckbox.addEventListener('change', (e) => {
+                    if (heatWarning) heatWarning.style.display = e.target.checked ? '' : 'none';
+                });
+            }
+
+            // 
+            this.attachExporterModalTooltips();
         }
 
         populateExportOperationsList() {
-            const list = document.getElementById('export-operation-order');
+            const list = document.getElementById('exporter-operation-order');
             if (!list) return;
             list.innerHTML = '';
 
@@ -836,11 +857,11 @@
                 item.dataset.operationId = op.id;
 
                 const isLaserRoute = this.controller.isLaserExportForOperation(op.type);
-                const routeBadge = isLaserRoute ? '<span class="export-route-badge export-route-badge--laser">LASER</span>' : '<span class="export-route-badge export-route-badge--cnc">CNC</span>';
+                const routeBadge = isLaserRoute ? '<span class="exporter-route-badge exporter-route-badge--laser">LASER</span>' : '<span class="exporter-route-badge exporter-route-badge--cnc">CNC</span>';
 
                 item.innerHTML = `
                     <span class="tree-expand-icon">${iconConfig.modalDragHandle}</span>
-                    <input type="checkbox" class="export-op-checkbox" id="exp-check-${op.id}" checked>
+                    <input type="checkbox" class="exporter-op-checkbox" id="exp-check-${op.id}" checked>
                     <label for="exp-check-${op.id}">
                         ${op.type}: ${op.file.name}
                         ${routeBadge}
@@ -859,11 +880,11 @@
 
         updateExportBlocksVisibility() {
             // Don't change display:none here. Only toggle the .is-disabled class.
-            const cncOptions = document.getElementById('export-cnc-options');
-            const cncPreview = document.getElementById('export-cnc-preview');
-            const calcBtn = document.getElementById('gcode-calculate-btn');
-            const laserOptions = document.getElementById('export-laser-options');
-            const list = document.getElementById('export-operation-order');
+            const cncOptions = document.getElementById('exporter-cnc-options');
+            const cncPreview = document.getElementById('exporter-cnc-preview');
+            const calcBtn = document.getElementById('exporter-calculate-btn');
+            const laserOptions = document.getElementById('exporter-laser-options');
+            const list = document.getElementById('exporter-operation-order');
             
             let hasCheckedLaser = false;
             let hasCheckedCNC = false;
@@ -887,16 +908,15 @@
             if (cncPreview) cncPreview.classList.toggle('is-disabled', !hasCheckedCNC);
             if (calcBtn) {
                 calcBtn.disabled = !hasCheckedCNC;
-                calcBtn.style.opacity = hasCheckedCNC ? '1' : '0.5';
             }
             
             if (laserOptions) laserOptions.classList.toggle('is-disabled', !hasCheckedLaser);
         }
 
         setupExportHandlers() {
-            const cancelBtn = document.getElementById('export-cancel-btn');
-            const executeBtn = document.getElementById('export-execute-btn');
-            const calcBtn = document.getElementById('gcode-calculate-btn');
+            const cancelBtn = document.getElementById('exporter-cancel-btn');
+            const executeBtn = document.getElementById('exporter-execute-btn');
+            const calcBtn = document.getElementById('exporter-calculate-btn');
             const closeBtn = this.modals.exportManager?.querySelector('.modal-close');
 
             if (cancelBtn) cancelBtn.onclick = () => this.closeModal();
@@ -915,7 +935,7 @@
 
         async executeUnifiedExport() {
             // Gather all checked operations
-            const list = document.getElementById('export-operation-order');
+            const list = document.getElementById('exporter-operation-order');
             const activeOpIds = [];
 
             if (list) {
@@ -949,16 +969,16 @@
             });
 
             // Get shared base name, strip any accidental extensions user might type
-            let rawBaseName = document.getElementById('export-filename')?.value || 'pcb-output';
+            let rawBaseName = document.getElementById('exporter-filename')?.value || 'pcb-output';
             const baseName = rawBaseName.replace(/\.[^/.]+$/, ""); 
-            const isSingleFile = document.getElementById('export-single-file')?.checked !== false;
+            const isSingleFile = document.getElementById('exporter-single-file')?.checked !== false;
 
             let cncSuccess = false;
             let laserSuccess = false;
 
             // Export CNC (G-CODE)
             if (cncOps.length > 0) {
-                const previewText = document.getElementById('gcode-preview-text');
+                const previewText = document.getElementById('exporter-preview-text');
                 const isRoland = this.controller.core?.settings?.gcode?.postProcessor === 'roland';
                 const cncExt = isRoland ? '.rml' : '.nc';
                 const finalCncFilename = `${baseName}${cncExt}`;
@@ -968,7 +988,7 @@
                 // Smart Feature: Auto-calculate if not done
                 if (!gcodeContent || gcodeContent.startsWith(';') || gcodeContent === textConfig.gcodePlaceholder) {
                     this.ui.showStatus('Auto-calculating G-Code...', 'info');
-                    const calcBtn = document.getElementById('gcode-calculate-btn');
+                    const calcBtn = document.getElementById('exporter-calculate-btn');
                     await this.runToolpathOrchestration(calcBtn, cncOps); 
                     gcodeContent = previewText ? previewText.value : '';
                 }
@@ -998,16 +1018,16 @@
                     this.ui.showStatus(`Cannot export: Generate laser paths for ${names} first.`, 'error');
                 } else {
                     const colors = {
-                        isolation: document.getElementById('laser-export-color-isolation')?.value || '#ff0000',
-                        drill: document.getElementById('laser-export-color-drill')?.value || '#0000ff',
-                        clearing: document.getElementById('laser-export-color-clearing')?.value || '#00ff00',
-                        cutout: document.getElementById('laser-export-color-cutout')?.value || '#000000'
+                        isolation: document.getElementById('laser-exporter-color-isolation')?.value || '#ff0000',
+                        drill: document.getElementById('laser-exporter-color-drill')?.value || '#0000ff',
+                        clearing: document.getElementById('laser-exporter-color-clearing')?.value || '#00ff00',
+                        cutout: document.getElementById('laser-exporter-color-cutout')?.value || '#000000'
                     };
 
                     // Grab dynamic modal values
                     const laserSettings = this.controller.core?.settings?.laser || {};
-                    const paddingInput = document.getElementById('laser-export-padding');
-                    const dpiInput = document.getElementById('laser-export-dpi');
+                    const paddingInput = document.getElementById('laser-exporter-padding');
+                    const dpiInput = document.getElementById('laser-exporter-dpi');
 
                     const exportPadding = paddingInput ? parseFloat(paddingInput.value) : 5.0;
                     const exportDPI = dpiInput ? parseInt(dpiInput.value, 10) : 1000;
@@ -1019,6 +1039,7 @@
                     });
 
                     try {
+                        const heatCheckbox = document.getElementById('laser-heat-management');
                         // Pass the dynamic values into the orchestrator
                         const result = await this.controller.orchestrateLaserExport(laserOps, {
                             layerColors: colors,
@@ -1026,7 +1047,8 @@
                             dpi: exportDPI,
                             padding: exportPadding,
                             singleFile: isSingleFile,
-                            baseName: baseName 
+                            baseName: baseName,
+                            heatManagement: (heatCheckbox?.checked && laserSettings.exportFormat !== 'png') ? 'standard' : 'off'
                         });
 
                         if (result.success) {
@@ -1053,14 +1075,14 @@
             }
         }
 
-        attachGcodeModalTooltips() {
+        attachExporterModalTooltips() {
             if (!this.lang || !window.TooltipManager) return;
 
             // Manage Modal box
-            if (!this.gcodeModalTooltipsProcessed) {
-                this.gcodeModalTooltipsProcessed = new Set();
+            if (!this.exporterModalTooltipsProcessed) {
+                this.exporterModalTooltipsProcessed = new Set();
             }
-            const processedLabels = this.gcodeModalTooltipsProcessed;
+            const processedLabels = this.exporterModalTooltipsProcessed;
 
             const attachTo = (inputId, tooltipKey) => {
                 const input = document.getElementById(inputId);
@@ -1087,9 +1109,9 @@
             };
 
             // Find the "Processing Order" <h3> and attach a tooltip to its help text
-            const orderHelp = document.querySelector('#gcode-operation-order + .help-text');
+            const orderHelp = document.querySelector('#exporter-operation-order + .help-text');
             if (orderHelp) {
-                 const text = this.lang.get('tooltips.modals.gcode.order');
+                 const text = this.lang.get('tooltips.modals.exporter.order');
                  if (text) {
                     window.TooltipManager.attach(orderHelp, { title: "Processing Order", text: text }, { immediate: true });
                     orderHelp.classList.add('has-help');
@@ -1097,19 +1119,22 @@
             }
 
             // Attach to checkboxes and inputs
-            attachTo('gcode-post-processor', 'tooltips.modals.gcode.postProcessor');
-            attachTo('gcode-include-comments', 'tooltips.modals.gcode.includeComments');
-            attachTo('gcode-tool-changes', 'tooltips.modals.gcode.toolChanges');
-            attachTo('gcode-optimize-paths', 'tooltips.modals.gcode.optimize');
-            attachTo('export-single-file', 'tooltips.modals.gcode.singleFile');
-            attachTo('export-filename', 'tooltips.modals.gcode.filename');
-            attachTo('laser-export-dpi', 'tooltips.machineSettings.laserExportDPI');
-            attachTo('laser-export-padding', 'tooltips.machineSettings.laserExportPadding');
+            attachTo('exporter-include-comments', 'tooltips.modals.exporter.includeComments');
+            attachTo('exporter-tool-changes', 'tooltips.modals.exporter.toolChanges');
+            attachTo('exporter-optimize-paths', 'tooltips.modals.exporter.optimize');
+            attachTo('exporter-single-file', 'tooltips.modals.exporter.singleFile');
+            attachTo('exporter-filename', 'tooltips.modals.exporter.filename');
+            attachTo('laser-heat-management', 'tooltips.modals.exporter.heatManagement');
+            attachTo('laser-exporter-dpi', 'tooltips.machineSettings.laserExportDPI');
+            attachTo('laser-exporter-padding', 'tooltips.machineSettings.laserExportPadding');
+            attachTo('laser-exporter-color-isolation', 'tooltips.modals.exporter.layerColors');
+            attachTo('laser-exporter-padding', 'tooltips.machineSettings.laserExportPadding');
+            attachTo('laser-exporter-dpi', 'tooltips.machineSettings.laserExportDPI');
 
             // Attach to calculate button
-            const calcBtn = document.getElementById('gcode-calculate-btn');
+            const calcBtn = document.getElementById('exporter-calculate-btn');
             if (calcBtn) {
-                 const text = this.lang.get('tooltips.modals.gcode.calculate');
+                 const text = this.lang.get('tooltips.modals.exporter.calculate');
                  if (text) {
                     window.TooltipManager.attach(calcBtn, { title: "Calculate Toolpaths", text: text }, { immediate: true });
                  }
@@ -1296,7 +1321,7 @@
                 if (explicitOps) {
                     selectedItemIds = explicitOps.map(o => o.id);
                 } else {
-                    const list = document.getElementById('export-operation-order');
+                    const list = document.getElementById('exporter-operation-order');
                     list.querySelectorAll('.file-node-content').forEach(item => {
                         const checkbox = item.querySelector('input[type="checkbox"]');
                         const op = this.selectedOperations.find(o => o.id === item.dataset.operationId);
@@ -1329,7 +1354,7 @@
                 }
 
                 // Gather options
-                const optimizeCheckbox = document.getElementById('gcode-optimize-paths');
+                const optimizeCheckbox = document.getElementById('exporter-optimize-paths');
                 const options = {
                     operationIds: selectedItemIds,
                     operations: this.selectedOperations,
@@ -1337,9 +1362,9 @@
                     travelZ: this.controller.core?.getSetting('machine', 'travelZ'),
                     rapidFeedRate: this.controller.core?.getSetting('machine', 'rapidFeed'),
                     postProcessor: this.controller.core?.getSetting('gcode', 'postProcessor'),
-                    includeComments: document.getElementById('gcode-include-comments')?.checked,
-                    singleFile: document.getElementById('gcode-single-file')?.checked,
-                    toolChanges: document.getElementById('gcode-tool-changes')?.checked,
+                    includeComments: document.getElementById('exporter-include-comments')?.checked,
+                    singleFile: document.getElementById('exporter-single-file')?.checked,
+                    toolChanges: document.getElementById('exporter-tool-changes')?.checked,
                     optimize: optimizeCheckbox ? optimizeCheckbox.checked : true
                 };
 
@@ -1353,23 +1378,23 @@
                 }
 
                 // Display results
-                const previewText = document.getElementById('gcode-preview-text');
+                const previewText = document.getElementById('exporter-preview-text');
                 if (previewText) previewText.value = result.gcode;
 
-                const lineCount = document.getElementById('gcode-line-count');
+                const lineCount = document.getElementById('exporter-line-count');
                 if (lineCount) lineCount.textContent = result.lineCount;
 
-                const planCountEl = document.getElementById('gcode-op-count');
+                const planCountEl = document.getElementById('exporter-op-count');
                 if (planCountEl) planCountEl.textContent = result.planCount;
 
-                const estTimeEl = document.getElementById('gcode-est-time');
+                const estTimeEl = document.getElementById('exporter-est-time');
                 if (estTimeEl) {
                     const minutes = Math.floor(result.estimatedTime / 60);
                     const seconds = Math.floor(result.estimatedTime % 60);
                     estTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
                 }
 
-                const distanceEl = document.getElementById('gcode-distance');
+                const distanceEl = document.getElementById('exporter-distance');
                 if (distanceEl) {
                     distanceEl.textContent = `${result.totalDistance.toFixed(1)}mm`;
                 }

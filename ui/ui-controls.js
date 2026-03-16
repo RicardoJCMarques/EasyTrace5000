@@ -858,7 +858,9 @@
             const loadedSettings = this.ui.core.settings;
 
              // Roland machine profiles
-            const ROLAND_PROFILES = config.roland?.profiles || {};
+            const rolandProcessor = window.pcbcam?.gcodeGenerator?.getProcessor('roland');
+            const ROLAND_PROFILES = rolandProcessor?.profiles || {};
+            const rolandSettings = loadedSettings.processorSettings?.roland || {};
 
             // --- Post-Processor Dropdown ---
             const postProcessorSelect = document.getElementById('post-processor');
@@ -867,7 +869,8 @@
 
             if (postProcessorSelect) {
                 postProcessorSelect.innerHTML = '';
-                const options = config.ui?.parameterOptions?.postProcessor || [{ value: 'grbl', label: 'GRBL (Default)' }];
+                const generator = window.pcbcam?.gcodeGenerator;
+                const options = generator ? generator.getAllProcessorDescriptors() : [{ value: 'grbl', label: 'Grbl (Default)' }];
                 options.forEach(opt => {
                     const optionEl = document.createElement('option');
                     optionEl.value = opt.value;
@@ -878,34 +881,32 @@
 
                 postProcessorSelect.addEventListener('change', (e) => {
                     const newProcessor = e.target.value;
-                    const isRoland = newProcessor === 'roland';
-                    const wasRoland = this.ui.core.settings.gcode.postProcessor === 'roland';
+                    const wasProcessor = this.ui.core.settings.gcode.postProcessor;
 
-                    // Populate start/end code textareas from the single source of truth (settings)
-                    if (isRoland) {
-                        const startVal = this.ui.core.settings.machine.rolandStartCode;
-                        const endVal = this.ui.core.settings.machine.rolandEndCode;
-                        if (startCodeTA) startCodeTA.value = startVal;
-                        if (endCodeTA) endCodeTA.value = endVal;
-                    } else {
-                        const newStartCode = config.getGcodeTemplate(newProcessor, 'start');
-                        const newEndCode = config.getGcodeTemplate(newProcessor, 'end');
-                        if (startCodeTA) startCodeTA.value = newStartCode;
-                        if (endCodeTA) endCodeTA.value = newEndCode;
-                        this.ui.core.updateSettings('gcode', { startCode: newStartCode, endCode: newEndCode });
+                    // Clear user overrides on processor switch — forces factory defaults
+                    this.ui.core.updateSettings('gcode', {
+                        postProcessor: newProcessor,
+                        userStartCode: undefined,
+                        userEndCode: undefined
+                    });
+
+                    // Resolve factory defaults from the new processor
+                    const generator = window.pcbcam?.gcodeGenerator;
+                    if (generator && startCodeTA && endCodeTA) {
+                        startCodeTA.value = generator.resolveStartCode(newProcessor, undefined);
+                        endCodeTA.value = generator.resolveEndCode(newProcessor, undefined);
                     }
 
-                    this.ui.core.updateSettings('gcode', { postProcessor: newProcessor });
                     this.updateProcessorFieldVisibility(newProcessor);
 
-                    // Clear any cached G-code preview when switching processor type
-                    const previewText = document.getElementById('gcode-preview-text');
+                    // Clear cached G-code preview
+                    const previewText = document.getElementById('exporter-preview-text');
                     if (previewText && previewText.value) {
                         previewText.value = '';
-                        const lineCount = document.getElementById('gcode-line-count');
-                        const opCount = document.getElementById('gcode-op-count');
-                        const estTime = document.getElementById('gcode-est-time');
-                        const distance = document.getElementById('gcode-distance');
+                        const lineCount = document.getElementById('exporter-line-count');
+                        const opCount = document.getElementById('exporter-op-count');
+                        const estTime = document.getElementById('exporter-est-time');
+                        const distance = document.getElementById('exporter-distance');
                         if (lineCount) lineCount.textContent = '0';
                         if (opCount) opCount.textContent = '0';
                         if (estTime) estTime.textContent = '--:--';
@@ -914,8 +915,9 @@
 
                     // Update parameter constraints when switching processor type
                     if (this.ui.operationPanel?.parameterManager) {
+                        const isRoland = newProcessor === 'roland';
                         if (isRoland) {
-                            const currentModel = this.ui.core.settings.machine.rolandModel || 'mdx50';
+                            const currentModel = rolandSettings.rolandModel || 'mdx50';
                             const currentProfile = ROLAND_PROFILES[currentModel];
                             this.ui.operationPanel.parameterManager.updateMachineConstraints(currentProfile, 'roland');
                         } else {
@@ -923,7 +925,7 @@
                         }
                     }
 
-                    if (isRoland !== wasRoland) {
+                    if (newProcessor !== wasProcessor) {
                         this.ui.showStatus(
                             `Switched to ${newProcessor}. Recalculate toolpaths to apply changes.`,
                             'warning'
@@ -934,47 +936,28 @@
 
             // --- Start/End Code (universal, content depends on processor) ---
             if (startCodeTA) {
-                const isRoland = loadedSettings.gcode.postProcessor === 'roland';
-                const startVal = isRoland
-                    ? loadedSettings.machine.rolandStartCode
-                    : loadedSettings.gcode.startCode;
+                const processor = loadedSettings.gcode.postProcessor;
+                const generator = window.pcbcam?.gcodeGenerator;
+                const startVal = generator
+                    ? generator.resolveStartCode(processor, loadedSettings.gcode.userStartCode)
+                    : '';
                 startCodeTA.value = startVal;
 
-                // Sync displayed value back to settings immediately.
-                // This closes the gap where textarea shows a value but settings are stored as undefined.
-                if (isRoland) {
-                    this.ui.core.updateSettings('machine', { rolandStartCode: startVal });
-                }
-
                 startCodeTA.addEventListener('change', (e) => {
-                    const isRolandNow = this.ui.core.settings.gcode.postProcessor === 'roland';
-                    if (isRolandNow) {
-                        this.ui.core.updateSettings('machine', { rolandStartCode: e.target.value });
-                    } else {
-                        this.ui.core.updateSettings('gcode', { startCode: e.target.value });
-                    }
+                    this.ui.core.updateSettings('gcode', { userStartCode: e.target.value });
                 });
             }
 
             if (endCodeTA) {
-                const isRoland = loadedSettings.gcode.postProcessor === 'roland';
-                const endVal = isRoland
-                    ? loadedSettings.machine.rolandEndCode
-                    : loadedSettings.gcode.endCode;
+                const processor = loadedSettings.gcode.postProcessor;
+                const generator = window.pcbcam?.gcodeGenerator;
+                const endVal = generator
+                    ? generator.resolveEndCode(processor, loadedSettings.gcode.userEndCode)
+                    : '';
                 endCodeTA.value = endVal;
 
-                // Same sync for end code
-                if (isRoland) {
-                    this.ui.core.updateSettings('machine', { rolandEndCode: endVal });
-                }
-
                 endCodeTA.addEventListener('change', (e) => {
-                    const isRolandNow = this.ui.core.settings.gcode.postProcessor === 'roland';
-                    if (isRolandNow) {
-                        this.ui.core.updateSettings('machine', { rolandEndCode: e.target.value });
-                    } else {
-                        this.ui.core.updateSettings('gcode', { endCode: e.target.value });
-                    }
+                    this.ui.core.updateSettings('gcode', { userEndCode: e.target.value });
                 });
             }
 
@@ -996,7 +979,7 @@
             const rolandSpindleInput = document.getElementById('roland-spindle-speed');
 
             if (rolandModelSelect) {
-                rolandModelSelect.value = loadedSettings.machine.rolandModel || 'mdx50';
+                rolandModelSelect.value = rolandSettings.rolandModel;
                 rolandModelSelect.addEventListener('change', (e) => {
                     const modelId = e.target.value;
                     const profile = ROLAND_PROFILES[modelId];
@@ -1029,15 +1012,17 @@
                     if (endCodeTA) endCodeTA.value = newEndCode;
 
                     // Save all to machine settings
-                    this.ui.core.updateSettings('machine', {
+                    updateRolandSettings({
                         rolandModel: modelId,
                         rolandStepsPerMM: profile.stepsPerMM,
                         rolandMaxFeed: profile.maxFeedXY,
                         rolandZMode: profile.zMode,
                         rolandSpindleMode: profile.spindleMode,
                         rolandSpindleSpeed: defaultRPM,
-                        rolandStartCode: newStartCode,
-                        rolandEndCode: newEndCode
+                    });
+                    this.ui.core.updateSettings('gcode', {
+                        userStartCode: newStartCode,
+                        userEndCode: newEndCode
                     });
 
                     // Update field visibility/locking based on profile capabilities
@@ -1066,31 +1051,31 @@
             }
 
             if (rolandStepsInput) {
-                rolandStepsInput.value = loadedSettings.machine.rolandStepsPerMM || 100;
+                rolandStepsInput.value = rolandSettings.rolandStepsPerMM;
                 rolandStepsInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { rolandStepsPerMM: parseInt(e.target.value) || 100 });
+                    updateRolandSettings({ rolandStepsPerMM: parseInt(e.target.value) || 100 });
                 });
             }
 
             if (rolandMaxFeedInput) {
-                rolandMaxFeedInput.value = loadedSettings.machine.rolandMaxFeed || 60;
+                rolandMaxFeedInput.value = rolandSettings.rolandMaxFeed;
                 rolandMaxFeedInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { rolandMaxFeed: parseFloat(e.target.value) || 60 });
+                    updateRolandSettings({ rolandMaxFeed: parseFloat(e.target.value) || 60 });
                 });
             }
 
             if (rolandZModeSelect) {
-                rolandZModeSelect.value = loadedSettings.machine.rolandZMode || '3d';
+                rolandZModeSelect.value = rolandSettings.rolandZMode;
                 rolandZModeSelect.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { rolandZMode: e.target.value });
+                    updateRolandSettings({ rolandZMode: e.target.value });
                 });
             }
 
             if (rolandSpindleModeSelect) {
-                rolandSpindleModeSelect.value = loadedSettings.machine.rolandSpindleMode || 'direct';
+                rolandSpindleModeSelect.value = rolandSettings.rolandSpindleMode;
                 rolandSpindleModeSelect.addEventListener('change', (e) => {
                     const mode = e.target.value;
-                    this.ui.core.updateSettings('machine', { rolandSpindleMode: mode });
+                    updateRolandSettings({ rolandSpindleMode: mode });
                     this.updateRolandSpindleVisibility(mode);
                 });
             }
@@ -1098,8 +1083,6 @@
             // --- Laser-specific fields ---
             const laserSpotSizeInput = document.getElementById('laser-spot-size');
             const laserExportFormatSelect = document.getElementById('laser-export-format');
-            const laserExportDpiInput = document.getElementById('laser-export-dpi');
-            const laserExportPaddingInput = document.getElementById('laser-export-padding');
 
             // Initialize laser settings from loaded state
             const laserSettings = loadedSettings.laser || {};
@@ -1203,40 +1186,6 @@
             this.updatePipelineFieldVisibility();
             this.updateRolandSpindleVisibility(loadedSettings.machine.rolandSpindleMode || 'direct');
 
-            // Apply initial Roland profile field states and sync textarea content
-            const initialModel = loadedSettings.machine.rolandModel || 'mdx50';
-            const initialProfile = ROLAND_PROFILES[initialModel];
-            if (initialProfile) {
-                this.updateRolandProfileFields(initialProfile);
-
-                // Sync textareas to match the active profile if post-processor is roland.
-                // This fixes the case where cam-core defaults to generic ;;^DF but the active profile (e.g. MDX-15) requires ;;^IN.
-                if (loadedSettings.gcode.postProcessor === 'roland') {
-                    const profileStartCode = `${initialProfile.initCommand || ';;^DF'}\nPA;`;
-                    const profileEndCode = initialProfile.endCommand || '!MC0;\nPU0,0;\n;;^DF';
-
-                    // Only override if the current value matches a known generic default (i.e., user hasn't customized it) // REVIEW LOGIC
-                    const genericDefaults = [
-                        ';;^DF\nPA;', ';;^IN\nPA;', 'PA;PA;', ''
-                    ];
-                    const genericEndDefaults = [
-                        '!MC0;\n;;^DF', '!MC0;\n;;^IN', '!MC0;', '!MC0;\nPU0,0;\n;;^DF', '!MC0;\nPU0,0;\n;;^IN', ''
-                    ];
-
-                    const currentStart = loadedSettings.machine.rolandStartCode || '';
-                    const currentEnd = loadedSettings.machine.rolandEndCode || '';
-
-                    if (genericDefaults.includes(currentStart)) {
-                        if (startCodeTA) startCodeTA.value = profileStartCode;
-                        this.ui.core.updateSettings('machine', { rolandStartCode: profileStartCode });
-                    }
-                    if (genericEndDefaults.includes(currentEnd)) {
-                        if (endCodeTA) endCodeTA.value = profileEndCode;
-                        this.ui.core.updateSettings('machine', { rolandEndCode: profileEndCode });
-                    }
-                }
-            }
-
             // Reconfigure laser button
             const reconfigBtn = document.getElementById('reconfigure-laser-btn');
             if (reconfigBtn) {
@@ -1269,6 +1218,9 @@
         /**
          * Shows/hides machine setting sections based on pipeline type.
          * CNC: show cnc, hide laser. Laser: show laser, hide cnc. Hybrid: show both.
+         *
+         * NOTE: This method intentionally does NOT touch the export manager modal.
+         * The modal has its own handler (showExportManagerHandler) that controls visibility based on actual job contents, not just pipeline type.
          */
         updatePipelineFieldVisibility() {
             const controller = window.pcbcam;
@@ -1286,31 +1238,14 @@
             if (!machineControls) return;
 
             const isCNC = pipelineType === 'cnc' || pipelineType === 'hybrid';
-            // Inside the exportManager modal show handler:
             const isLaser = window.pcbcam?.isLaserPipeline?.() || false;
-            const exportModal = document.getElementById('export-manager-modal');
-            if (exportModal) {
-                exportModal.querySelectorAll('[data-pipeline-group="cnc"]').forEach(el => {
-                    el.style.display = isLaser ? 'none' : '';
-                });
-                exportModal.querySelectorAll('[data-pipeline-group="laser"]').forEach(el => {
-                    el.style.display = isLaser ? '' : 'none';
-                });
 
-                // Update button labels
-                const calcBtn = document.getElementById('gcode-calculate-btn');
-                if (calcBtn) {
-                    calcBtn.textContent = isLaser ? 'Preview Export' : 'Calculate Toolpaths';
-                    calcBtn.style.display = isLaser ? 'none' : ''; // Hide for laser until exporter exists
-                }
-            }
-
-            // CNC-specific sections
+            // CNC-specific sections (sidebar only)
             machineControls.querySelectorAll('[data-pipeline-group="cnc"]').forEach(el => {
                 el.style.display = isCNC ? '' : 'none';
             });
 
-            // Laser-specific sections
+            // Laser-specific sections (sidebar only)
             machineControls.querySelectorAll('[data-pipeline-group="laser"]').forEach(el => {
                 el.style.display = isLaser ? '' : 'none';
             });

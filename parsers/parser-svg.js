@@ -52,6 +52,9 @@
                 // Parse document dimensions and set up unit converter
                 this._parseDocumentDimensions(svgNode);
 
+                // Parse embedded CSS class rules
+                this._parseStyleBlock(svgNode);
+
                 // Check for unsupported features
                 this._checkUnsupportedFeatures(svgNode);
 
@@ -87,6 +90,7 @@
             this.documentHeight = 0;
             this.viewBox = null;
             this.unitScale = 1; // Scale factor to convert to mm
+            this.cssRules = {};
         }
 
         /**
@@ -99,7 +103,7 @@
 
             // Parse viewBox
             if (viewBoxAttr) {
-                const parts = viewBoxAttr.split(/[\s,]+/).map(parseFloat);
+                const parts = (viewBoxAttr.match(/-?(?:\d*\.\d+|\d+)(?:[eE][+-]?\d+)?/g) || []).map(parseFloat);
                 if (parts.length === 4) {
                     this.viewBox = {
                         x: parts[0],
@@ -112,8 +116,8 @@
 
             // Parse width/height with units
             const parseWithUnit = (attrValue) => {
-                if (!attrValue) return null;
-                const match = attrValue.match(/^(-?[\d.]+(?:e[+-]?\d+)?)\s*([a-z%]*)$/i);
+                if (attrValue.includes('%')) return null;
+                const match = attrValue.match(/^(-?[\d.]+(?:[eE][+-]?\d+)?)\s*([a-z]*)$/i);
                 if (!match) return { value: parseFloat(attrValue), unit: 'px' };
                 return { value: parseFloat(match[1]), unit: match[2] || 'px' };
             };
@@ -124,10 +128,6 @@
             // Convert to mm using unit converter if available
             const toMM = (parsed) => {
                 if (!parsed) return 0;
-                if (window.unitConverter) {
-                    return window.unitConverter.toMM(parsed.value, parsed.unit);
-                }
-                // Fallback conversions
                 const factors = { mm: 1, cm: 10, in: 25.4, pt: 25.4/72, px: 25.4/96 };
                 return parsed.value * (factors[parsed.unit] || 1);
             };
@@ -151,17 +151,7 @@
                 this.unitScale = 1;
             }
 
-            // Set up unit converter viewBox mapping if available
-            if (window.unitConverter && this.viewBox && widthParsed) {
-                window.unitConverter.setViewBoxMapping(this.viewBox, {
-                    width: widthParsed.value,
-                    height: heightParsed?.value || widthParsed.value,
-                    widthUnit: widthParsed.unit,
-                    heightUnit: heightParsed?.unit || widthParsed.unit
-                });
-            }
-
-            // Fallback: if s a viewBox exists but has no explicit dimensions, assume 1:1 mm
+            // If a viewBox exists but has no explicit dimensions, assume 1:1 mm
             if (this.viewBox && !this.documentHeight) {
                 this.documentHeight = this.viewBox.height;
                 this.documentWidth = this.viewBox.width;
@@ -171,7 +161,8 @@
 
             // Final fallback if still no scale
             if (!this.unitScale || this.unitScale <= 0) {
-                this.unitScale = 1;
+                this.unitScale = 25.4 / 96; // Default to 96 DPI assumption
+                this.warnings.push('SVG has no dimensions or viewBox. Assuming standard 96 DPI scale.');
             }
 
             this.debug(`Document: ${this.documentWidth.toFixed(2)} x ${this.documentHeight.toFixed(2)} mm, scale: ${this.unitScale.toFixed(4)}`);
@@ -215,10 +206,34 @@
             }
         }
 
-        _traverseNode(node, parentTransform) {
+        _parseStyleBlock(svgNode) {
+            this.cssRules = {};
+            const styleNode = svgNode.querySelector('style');
+            if (!styleNode) return;
+
+            const cssText = styleNode.textContent;
+            const ruleRegex = /\.([\w-]+)\s*\{([^}]+)\}/g;
+            let match;
+
+            while ((match = ruleRegex.exec(cssText)) !== null) {
+                const className = match[1];
+                const rules = {};
+                match[2].split(';').forEach(rule => {
+                    const parts = rule.split(':');
+                    if (parts.length === 2) {
+                        const key = parts[0].trim();
+                        const value = parts[1].trim();
+                        if (key && value) rules[key] = value;
+                    }
+                });
+                this.cssRules[className] = rules;
+            }
+        }
+
+        _traverseNode(node, parentTransform, inheritedStyles = null) {
             if (node.nodeType !== 1) return;
 
-            const styles = this._getStyles(node);
+            const styles = this._getStyles(node, inheritedStyles);
             if (styles.display === 'none' || styles.visibility === 'hidden') return;
 
             const nodeTransform = this._parseTransform(node.getAttribute('transform') || '');
@@ -229,7 +244,7 @@
                 case 'g': case 'svg': case 'defs': case 'symbol':
                     // Skip processing children of defs/symbol (they're referenced, not rendered directly)
                     if (tagName !== 'defs' && tagName !== 'symbol') {
-                        Array.from(node.children).forEach(child => this._traverseNode(child, currentTransform));
+                        Array.from(node.children).forEach(child => this._traverseNode(child, currentTransform, styles));
                     }
                     break;
                 case 'text': case 'tspan': case 'textPath':
@@ -244,7 +259,10 @@
                     }
 
                     if (styles.stroke && styles.stroke !== 'none' && styles.strokeWidth > 0 && styles.strokeOpacity > 0) {
-                        this._processStrokedShape(geometry, currentTransform, styles.strokeWidth);
+                        // Scale stroke width by transform scale factor (viewBox units → mm)
+                        const det = currentTransform[0] * currentTransform[3] - currentTransform[1] * currentTransform[2];
+                        const scale = Math.sqrt(Math.abs(det));
+                        this._processStrokedShape(geometry, currentTransform, styles.strokeWidth * scale);
                     }
                     break;
             }
@@ -253,24 +271,34 @@
         _processFilledShape(geometry, transform) {
             const transformed = this._applyTransformToGeometry(geometry, transform);
 
+            if (config.debug.enabled && transformed.type === 'path') {
+                const sp = transformed.subpaths || [];
+                const pts = transformed.points || [];
+                console.log(`[ParserSVG fillShape] subpaths: ${sp.length}, points: ${pts.length}, first subpath length: ${sp[0]?.length || 0}`);
+                if (sp[0]?.[0]) console.log(`[ParserSVG fillShape] first element type: ${sp[0][0].type || 'point'}, sample:`, sp[0][0]);
+            }
+
             if (transformed.type === 'circle' || transformed.type === 'rectangle' || 
                 transformed.type === 'obround' || transformed.type === 'ellipse') {
                 this._createFlash(transformed);
             } else if (transformed.type === 'path') {
-                const subpaths = Array.isArray(transformed.subpaths) ? transformed.subpaths : [transformed.points];
+                const subpaths = (transformed.subpaths && transformed.subpaths.length > 0)
+                    ? transformed.subpaths
+                    : (transformed.points && transformed.points.length > 0)
+                        ? [transformed.points]
+                        : [];
                 this._createPolarityRegions(subpaths);
             }
         }
 
         /**
-         * Process stroked shapes - passes analytic shapes with stroke properties
-         * Downstream systems (plotter, offsetter) handle stroke expansion when needed
+         * Process stroked shapes — converts SVG stroked paths into trace objects
+         * that the plotter can handle with correct width expansion.
          */
         _processStrokedShape(geometry, transform, strokeWidth) {
             const transformed = this._applyTransformToGeometry(geometry, transform);
 
             // Analytic shapes: create flash with stroke properties
-            // Plotter creates the primitive, geometry systems handle expansion
             if (transformed.type === 'rectangle' || transformed.type === 'circle' || 
                 transformed.type === 'ellipse' || transformed.type === 'obround') {
                 const flash = this._createFlashObject(transformed);
@@ -282,11 +310,11 @@
                 return;
             }
 
-            // Path-based geometry - pass through with stroke properties
+            // Path-based geometry
             const subpaths = transformed.subpaths || [];
             const points = transformed.points;
 
-            // Simple point arrays (polygon/polyline) - open paths become traces
+            // Simple point arrays (polygon/polyline — no subpath wrapper)
             if (subpaths.length === 0 && points?.length > 0) {
                 this.layers.objects.push({
                     type: 'trace',
@@ -299,17 +327,64 @@
                 return;
             }
 
-            // Complex paths - region with stroke properties
-            if (subpaths.length > 0) {
-                this.layers.objects.push({
-                    type: 'region',
-                    analyticSubpaths: subpaths,
-                    polarity: 'dark',
-                    stroke: true,
-                    strokeWidth: strokeWidth,
-                    fill: false
-                });
-                this.stats.objectsCreated++;
+            // Subpath-based paths (from PathDataParser)
+            // Extract points from segments and create trace objects for linear paths,
+            // or region objects for paths containing curves.
+            for (const subpath of subpaths) {
+                if (!subpath || subpath.length === 0) continue;
+
+                // Already a simple point array (e.g. from polygon/polyline transform)
+                if (subpath.length > 0 && subpath[0].x !== undefined) {
+                    this.layers.objects.push({
+                        type: 'trace',
+                        interpolation: 'linear_path',
+                        points: subpath,
+                        width: strokeWidth,
+                        polarity: 'dark'
+                    });
+                    this.stats.objectsCreated++;
+                    continue;
+                }
+
+                // Segment-based subpath: try to extract a linear point sequence
+                const extractedPoints = [];
+                let hasNonLinear = false;
+
+                for (const seg of subpath) {
+                    if (seg.type === 'move') {
+                        extractedPoints.push(seg.p);
+                    } else if (seg.type === 'line') {
+                        extractedPoints.push(seg.p1);
+                    } else {
+                        // Arc, cubic, quad — can't reduce to simple trace
+                        hasNonLinear = true;
+                        break;
+                    }
+                }
+
+                if (!hasNonLinear && extractedPoints.length >= 2) {
+                    // Pure linear open path → trace object
+                    this.layers.objects.push({
+                        type: 'trace',
+                        interpolation: 'linear_path',
+                        points: extractedPoints,
+                        width: strokeWidth,
+                        polarity: 'dark'
+                    });
+                    this.stats.objectsCreated++;
+                } else {
+                    // Complex path with curves → region with stroke properties
+                    // (plotter will need to handle stroke expansion for these)
+                    this.layers.objects.push({
+                        type: 'region',
+                        analyticSubpaths: [subpath],
+                        polarity: 'dark',
+                        stroke: true,
+                        strokeWidth: strokeWidth,
+                        fill: false
+                    });
+                    this.stats.objectsCreated++;
+                }
             }
         }
 
@@ -380,8 +455,8 @@
                 case 'rect': return this._parseRect(node);
                 case 'circle': return this._parseCircle(node);
                 case 'ellipse': return this._parseEllipse(node);
-                case 'polygon': return { type: 'path', points: this._parsePoly(node), subpaths: [] };
-                case 'polyline': return { type: 'path', points: this._parsePoly(node), subpaths: [] };
+                case 'polygon': return { type: 'path', subpaths: [this._parsePoly(node)] };
+                case 'polyline': return { type: 'path', subpaths: [this._parsePoly(node)] };
                 case 'path':
                     const subpathsOfSegments = new PathDataParser(node.getAttribute('d')).getSubPaths();
                     return { type: 'path', subpaths: subpathsOfSegments };
@@ -572,13 +647,10 @@
         _parsePoly(node) {
             const pointsStr = (node.getAttribute('points') || '').trim();
             if (!pointsStr) return [];
-            const pairs = pointsStr.split(/\s*,\s*|\s+/);
+            const numbers = (pointsStr.match(/-?(?:\d*\.\d+|\d+)(?:[eE][+-]?\d+)?/g) || []).map(parseFloat);
             const points = [];
-            for (let i = 0; i < pairs.length; i += 2) {
-                points.push({
-                    x: parseFloat(pairs[i]),
-                    y: parseFloat(pairs[i + 1])
-                });
+            for (let i = 0; i + 1 < numbers.length; i += 2) {
+                points.push({ x: numbers[i], y: numbers[i + 1] });
             }
             return points;
         }
@@ -857,14 +929,38 @@
             return segments;
         }
 
-        _getStyles(node) {
+        _getStyles(node, inheritedStyles = null) {
             const styles = {
-                fill: 'black', fillOpacity: 1.0,
-                stroke: 'none', strokeWidth: 1.0, strokeOpacity: 1.0,
-                display: 'inline', visibility: 'visible'
+                // Inheritable SVG properties — start from parent or SVG spec defaults
+                fill: inheritedStyles?.fill ?? 'black',
+                fillOpacity: inheritedStyles?.fillOpacity ?? 1.0,
+                stroke: inheritedStyles?.stroke ?? 'none',
+                strokeWidth: inheritedStyles?.strokeWidth ?? 1.0,
+                strokeOpacity: inheritedStyles?.strokeOpacity ?? 1.0,
+                visibility: inheritedStyles?.visibility ?? 'visible',
+                // Non-inheritable — always reset to defaults
+                display: 'inline'
             };
 
-            // Direct attributes
+            // CSS class rules (lower priority than attributes and inline styles)
+            const className = node.getAttribute('class');
+            if (className && this.cssRules) {
+                // Handle multiple classes
+                const classes = className.trim().split(/\s+/);
+                for (const cls of classes) {
+                    const rules = this.cssRules[cls];
+                    if (!rules) continue;
+                    if (rules.fill) styles.fill = rules.fill;
+                    if (rules['fill-opacity']) styles.fillOpacity = parseFloat(rules['fill-opacity']);
+                    if (rules.stroke) styles.stroke = rules.stroke;
+                    if (rules['stroke-width']) styles.strokeWidth = parseFloat(rules['stroke-width']);
+                    if (rules['stroke-opacity']) styles.strokeOpacity = parseFloat(rules['stroke-opacity']);
+                    if (rules.display) styles.display = rules.display;
+                    if (rules.visibility) styles.visibility = rules.visibility;
+                }
+            }
+
+            // Direct attributes override inherited
             if (node.getAttribute('fill')) styles.fill = node.getAttribute('fill');
             if (node.getAttribute('fill-opacity')) styles.fillOpacity = parseFloat(node.getAttribute('fill-opacity'));
             if (node.getAttribute('stroke')) styles.stroke = node.getAttribute('stroke');
@@ -873,7 +969,7 @@
             if (node.getAttribute('display')) styles.display = node.getAttribute('display');
             if (node.getAttribute('visibility')) styles.visibility = node.getAttribute('visibility');
 
-            // Style attribute (overrides)
+            // Inline style attribute (highest priority)
             const styleAttr = node.getAttribute('style');
             if (styleAttr) {
                 styleAttr.split(';').forEach(s => {
@@ -923,7 +1019,10 @@
             let match;
             while ((match = regex.exec(transformString)) !== null) {
                 const type = match[1].toLowerCase();
-                const values = match[2].trim().split(/[\s,]+/).map(parseFloat);
+
+                // Extract numbers robustly
+                const values = (match[2].match(/-?(?:\d*\.\d+|\d+)(?:[eE][+-]?\d+)?/g) || []).map(parseFloat);
+
                 let transform = this._identityMatrix();
 
                 if (type === 'matrix' && values.length === 6) {
@@ -967,48 +1066,96 @@
 
         getSubPaths() {
             this._parse();
-            return this.subPaths.map(sp => sp.segments);
+            // Only return subpaths that actually have geometry to draw
+            return this.subPaths
+                .filter(sp => sp.segments.length > 1)
+                .map(sp => sp.segments);
         }
 
         _parse() {
-            let lastCmd, currentPoint = { x: 0, y: 0 }, controlPoint = { x: 0, y: 0 }, startPoint = { x: 0, y: 0 };
-            const commands = (this.d.match(/[a-df-z][^a-df-z]*/ig) || []);
+            const d = this.d;
+            const len = d.length;
+            let idx = 0;
+            let cmdChar = null;
+            let lastCmd = null;
+            let currentPoint = { x: 0, y: 0 };
+            let controlPoint = { x: 0, y: 0 };
+            let startPoint = { x: 0, y: 0 };
+            const argCounts = { m:2, l:2, h:1, v:1, c:6, s:4, q:4, t:2, a:7, z:0 };
 
-            commands.forEach(cmdStr => {
-                let cmdChar = cmdStr[0];
-                let args = (cmdStr.slice(1).match(/-?[\d.]+(?:e-?\d+)?/g) || []).map(parseFloat);
+            const skip = () => {
+                while (idx < len && ' \t\n\r,'.includes(d[idx])) idx++;
+            };
 
-                if ("m" !== cmdChar.toLowerCase() && !this.currentSubPath) {
-                    this.currentSubPath = { segments: [], closed: false };
-                    this.subPaths.push(this.currentSubPath);
-                    startPoint = {...currentPoint};
+            const parseNumber = () => {
+                skip();
+                if (idx >= len) return null;
+                const start = idx;
+                let hasDot = false, hasE = false;
+                if (d[idx] === '+' || d[idx] === '-') idx++;
+                while (idx < len) {
+                    const c = d[idx];
+                    if (c >= '0' && c <= '9') idx++;
+                    else if (c === '.' && !hasDot && !hasE) { hasDot = true; idx++; }
+                    else if ((c === 'e' || c === 'E') && !hasE) {
+                        hasE = true; idx++;
+                        if (idx < len && (d[idx] === '+' || d[idx] === '-')) idx++;
+                    } else break;
                 }
+                return idx > start ? parseFloat(d.slice(start, idx)) : null;
+            };
 
-                const argsPerCmd = { m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0 };
-                const cmdType = cmdChar.toLowerCase();
-                let splitArgs = [];
-                let innerLastCmd = cmdChar;
+            const parseFlag = () => {
+                skip();
+                if (idx < len && (d[idx] === '0' || d[idx] === '1')) return parseInt(d[idx++], 10);
+                return null;
+            };
 
-                if (cmdType in argsPerCmd && argsPerCmd[cmdType] > 0 && args.length > argsPerCmd[cmdType]) {
-                    splitArgs.push(args.splice(0, argsPerCmd[cmdType]));
-                    innerLastCmd = "m" === cmdType ? "l" : "M" === cmdType ? "L" : cmdChar;
-                    while (args.length >= argsPerCmd[innerLastCmd.toLowerCase()]) {
-                        splitArgs.push(args.splice(0, argsPerCmd[innerLastCmd.toLowerCase()]));
-                    }
+            const readArgs = (type, count) => {
+                const args = [];
+                for (let i = 0; i < count; i++) {
+                    const val = (type === 'a' && (i === 3 || i === 4)) ? parseFlag() : parseNumber();
+                    if (val === null) return null;
+                    args.push(val);
+                }
+                return args;
+            };
+
+            const exec = (cmd, args) => {
+                [currentPoint, controlPoint, startPoint] = this._executeCommand(
+                    cmd, args, currentPoint, controlPoint, startPoint, lastCmd
+                );
+                lastCmd = cmd;
+            };
+
+            while (idx < len) {
+                skip();
+                if (idx >= len) break;
+
+                // Read command letter or use implicit repeat
+                if (/[a-df-z]/i.test(d[idx])) {
+                    cmdChar = d[idx++];
+                } else if (cmdChar) {
+                    // Implicit repeat: M→L, m→l, others stay same
+                    cmdChar = cmdChar === 'M' ? 'L' : cmdChar === 'm' ? 'l' : cmdChar;
                 } else {
-                    splitArgs.push(args);
+                    idx++;
+                    continue;
                 }
 
-                let isFirst = true;
-                splitArgs.forEach(argSet => {
-                    const effectiveCmd = isFirst ? cmdChar : innerLastCmd;
-                    [currentPoint, controlPoint, startPoint] = this._executeCommand(
-                        effectiveCmd, argSet, currentPoint, controlPoint, startPoint, lastCmd
-                    );
-                    lastCmd = effectiveCmd;
-                    isFirst = false;
-                });
-            });
+                const type = cmdChar.toLowerCase();
+                const count = argCounts[type];
+                if (count === undefined) continue;
+
+                if (count === 0) {
+                    exec(cmdChar, []);
+                    continue;
+                }
+
+                const args = readArgs(type, count);
+                if (!args) continue;
+                exec(cmdChar, args);
+            }
         }
 
         _executeCommand(cmd, args, currentPoint, controlPoint, startPoint, lastCmd) {
@@ -1110,6 +1257,13 @@
         }
 
         _calculateArcParams(p1, rx, ry, phi, fA, fS, p2) {
+            // SVG spec: if endpoints are effectively identical, arc is omitted
+            const dx2 = (p1.x - p2.x) / 2;
+            const dy2 = (p1.y - p2.y) / 2;
+            if (Math.abs(dx2) < 1e-9 && Math.abs(dy2) < 1e-9) {
+                return null;
+            }
+
             const phiRad = phi * Math.PI / 180;
             const sinPhi = Math.sin(phiRad), cosPhi = Math.cos(phiRad);
             const dx = (p1.x - p2.x) / 2, dy = (p1.y - p2.y) / 2;

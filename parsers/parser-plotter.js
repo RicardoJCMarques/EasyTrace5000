@@ -358,6 +358,21 @@
                     }
                 });
 
+                if (config.debug.enabled && points.length > 0) {
+                    let maxCoord = 0;
+                    let maxIdx = 0;
+                    points.forEach((p, i) => {
+                        const m = Math.max(Math.abs(p.x), Math.abs(p.y));
+                        if (m > maxCoord) { maxCoord = m; maxIdx = i; }
+                    });
+                    if (maxCoord > 300) {
+                        console.error(`[PARSER-PLOTTER] POSSIBLE CORRUPTION: ${points.length} pts, worst point[${maxIdx}]:`, 
+                            points[maxIdx], 'neighbors:', points[maxIdx-1], points[maxIdx+1]);
+                    } else {
+                        console.log(`[PARSER-PLOTTER] OK: ${points.length} pts, max coord: ${maxCoord.toFixed(2)}`);
+                    }
+                }
+
                 if (points.length > 0) {
 
                     let isCW = GeometryUtils.isClockwise(points);
@@ -403,12 +418,14 @@
             contours.sort((a, b) => a.isHole - b.isHole);
 
             // Create a single PathPrimitive with the full contours list
-            const finalPrimitive = new PathPrimitive(contours, { // Pass null for points
-                isRegion: true,
-                fill: true,
+            const finalPrimitive = new PathPrimitive(contours, {
+                isRegion: region.fill !== false,
+                fill: region.fill !== false,
+                stroke: region.stroke || false,
+                strokeWidth: region.strokeWidth || 0,
                 polarity: region.polarity || 'dark',
                 netName: region.netName || null,
-                closed: true,
+                closed: region.closed !== false,
             });
 
             this.creationStats.regionsCreated++;

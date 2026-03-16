@@ -853,11 +853,11 @@
    G-CODE / OPERATIONS MODAL
    ============================================================================ */
 
-.modal--gcode .modal-content {
+.modal--exporter .modal-content {
     max-width: min(900px, 95vw);
 }
 
-.modal--gcode .modal-body {
+.modal--exporter .modal-body {
     display: flex;
     gap: var(--modal-gap);
     padding: var(--modal-padding-block) var(--modal-padding-inline);
@@ -894,7 +894,18 @@
     padding-right: 0;
 }
 
-.gcode-preview {
+.gcode-options.is-full-width {
+    flex: 1;
+    border-right: none;
+    padding-right: 0;
+}
+
+.gcode-options.is-full-width .laser-settings-grid,
+.gcode-options.is-full-width .laser-color-grid {
+    max-width: 100%;
+}
+
+.exporter-preview {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -902,7 +913,7 @@
     min-height: 0;
 }
 
-.gcode-preview h3 {
+.exporter-preview h3 {
     font-size: var(--font-size-sm);
     font-weight: 600;
     color: var(--color-text-secondary);
@@ -925,8 +936,10 @@
     flex-shrink: 0;
 }
 
-#gcode-preview-text {
+#exporter-preview-text {
     flex: 1;
+    min-height: 15rem;
+    width: 100%;
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
     background: var(--color-bg-primary);
@@ -955,13 +968,18 @@
 }
 
 /* Contextual Disabled State for Export Blocks */
-.export-block.is-disabled {
+/* Applied by updateExportBlocksVisibility() when pipeline-specific ops are unchecked */
+.modal--exporter .is-disabled {
     opacity: 0.4;
     pointer-events: none;
-    filter: grayscale(80%);
 }
 
-.export-route-badge {
+/* Hidden state — applied by showExportManagerHandler() based on job contents */
+.modal--exporter .is-hidden {
+    display: none !important;
+}
+
+.exporter-route-badge {
     font-size: 10px;
     padding: 1px 4px;
     border-radius: 3px;
@@ -969,15 +987,15 @@
     border: 1px solid currentColor;
 }
 
-.export-route-badge--laser {
+.exporter-route-badge--laser {
     color: #ff6b6b;
 }
 
-.export-route-badge--cnc {
+.exporter-route-badge--cnc {
     color: #4ecdc4;
 }
 
-.export-op-item {
+.exporter-op-item {
     display: flex;
     align-items: center;
     padding: var(--spacing-sm);
@@ -987,36 +1005,48 @@
     cursor: grab;
 }
 
-.export-op-item:hover {
+.exporter-op-item:hover {
     background: var(--color-bg-hover);
 }
 
-.export-op-item .tree-expand-icon {
+.exporter-op-item .tree-expand-icon {
     margin-right: var(--spacing-sm);
 }
 
-.export-op-item input[type="checkbox"] {
+.exporter-op-item input[type="checkbox"] {
     margin-right: var(--spacing-sm);
 }
 
-.export-op-item .file-label {
+.exporter-op-item .file-label {
     flex: 1;
     display: flex;
     align-items: center;
     cursor: pointer;
 }
 
-/* Laser Export Options (moved from layout.css) */
+/* Laser Export Options */
+.laser-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--spacing-md);
+    align-items: start;
+}
+
 .laser-color-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--spacing-sm);
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    padding: var(--spacing-md);
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border-secondary);
 }
 
 .laser-color-field {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
+    margin-bottom: 0; /* Override property-field margin if needed */
 }
 
 .laser-color-field input[type="color"] {
@@ -1025,6 +1055,7 @@
     border: 1px solid var(--color-border-secondary);
     border-radius: var(--radius);
     cursor: pointer;
+    flex-shrink: 0;
 }
 
 .laser-diode-note {
@@ -1032,8 +1063,22 @@
     color: var(--color-text-secondary);
 }
 
-.export-footer #export-cancel-btn {
+.exporter-footer {
+    justify-content: space-between;
+    width: 100%;
+}
+
+.exporter-footer #exporter-cancel-btn {
     margin-right: auto; 
+}
+
+.exporter-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.laser-heat-warning {
+    margin-top: var(--spacing-sm);
 }
 
 /* ============================================================================
@@ -1098,8 +1143,8 @@
         height: 16px;
     }
 
-    /* G-code modal: stack vertically */
-    .modal--gcode .modal-body {
+    /* Exporter modal: stack vertically */
+    .modal--exporter .modal-body {
         flex-direction: column;
     }
 
@@ -1113,9 +1158,13 @@
         overflow-y: auto;
     }
 
-    .gcode-preview {
+    .exporter-preview {
         flex: 1;
         min-height: 0;
+    }
+
+    #exporter-preview-text {
+        min-height: 8rem;
     }
 
     /* Truncate more aggressively */
@@ -1197,6 +1246,10 @@
         max-height: 35%;
     }
 
+    #exporter-preview-text {
+        min-height: 6rem;
+    }
+
     .gcode-options h3 {
         font-size: var(--font-size-xs);
         margin-top: var(--spacing-xs);
@@ -1216,8 +1269,13 @@
     }
 
     /* G-code stays horizontal on landscape */
-    .modal--gcode .modal-body {
+    .modal--exporter .modal-body {
         flex-direction: row;
+    }
+
+    .exporter-preview {
+        flex: 1;
+        min-height: 0;
     }
 
     .gcode-options {
@@ -1267,6 +1325,10 @@
         order: 3;
         width: 100%;
         justify-content: flex-start;
+    }
+
+    .laser-settings-grid {
+        grid-template-columns: 1fr;
     }
 }
 

@@ -152,7 +152,7 @@
                 "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
                 "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
             ],
-            "softwareVersion": "1.0.9",
+            "softwareVersion": "1.1.0",
             "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
             "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
             "installUrl": "https://cam.eltryus.design/easytrace5000/",
@@ -788,7 +788,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <span title="Version">Version 1.0.9</span> |
+                <span title="Version">Version 1.1.0</span> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -1366,11 +1366,11 @@
         </div>
     </div>
 
-    <div id="export-manager-modal" class="modal">
-        <div class="modal-content modal--gcode">
+    <div id="exporter-manager-modal" class="modal">
+        <div class="modal-content modal--exporter">
             <div class="modal-header">
                 <h2>Operations & Export Manager</h2>
-                <button class="modal-close" id="export-close" aria-label="Close">
+                <button class="modal-close" id="exporter-close" aria-label="Close">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -1382,44 +1382,44 @@
                 <div class="gcode-options">
                     <h3>Select Operations to Process</h3>
                     <p class="help-text">Check to include. Drag to reorder processing sequence.</p>
-                    <div class="operation-order" id="export-operation-order"></div>
+                    <div class="operation-order" id="exporter-operation-order"></div>
 
-                    <div id="export-shared-options">
+                    <div id="exporter-shared-options">
                         <div class="property-field field-group">
                             <label class="checkbox-label">
-                                <input type="checkbox" id="export-single-file" checked>
+                                <input type="checkbox" id="exporter-single-file" checked>
                                 <span>Export as single file (Combines ops by pipeline)</span>
                             </label>
                         </div>
                         <div class="property-field field-group">
-                            <label for="export-filename">Base Project Name</label>
-                            <input type="text" id="export-filename" value="pcb-output" placeholder="pcb-output">
+                            <label for="exporter-filename">Base Project Name</label>
+                            <input type="text" id="exporter-filename" value="pcb-output" placeholder="pcb-output">
                         </div>
                     </div>
 
-                    <div id="export-cnc-options" data-pipeline-group="cnc">
+                    <div id="exporter-cnc-options" data-pipeline-group="cnc">
                         <h3>CNC Output Options</h3>
                         <div class="property-field field-group">
                             <label class="checkbox-label">
-                                <input type="checkbox" id="gcode-include-comments" checked>
+                                <input type="checkbox" id="exporter-include-comments" checked>
                                 <span>Include operation comments</span>
                             </label>
                         </div>
                         <div class="property-field field-group">
                             <label class="checkbox-label">
-                                <input type="checkbox" id="gcode-tool-changes" disabled>
+                                <input type="checkbox" id="exporter-tool-changes" disabled>
                                 <span>Insert tool change commands</span>
                             </label>
                         </div>
                         <div class="property-field field-group">
                             <label class="checkbox-label">
-                                <input type="checkbox" id="gcode-optimize-paths" checked>
+                                <input type="checkbox" id="exporter-optimize-paths" checked>
                                 <span>Optimize toolpaths (Experimental)</span>
                             </label>
                         </div>
                     </div>
 
-                    <div id="export-laser-options" data-pipeline-group="laser" style="display: none;">
+                    <div id="exporter-laser-options" data-pipeline-group="laser" class="is-hidden">
                         <h3>Laser Export Options</h3>
 
                         <div class="property-field field-group laser-png-warning" id="laser-png-warning" style="display: none;">
@@ -1428,55 +1428,71 @@
                             </p>
                         </div>
 
-                        <div class="property-field field-group" id="laser-dpi-field">
-                            <label for="laser-export-dpi">Raster Resolution (DPI)</label>
-                            <input type="number" id="laser-export-dpi" value="1000" step="100" min="100" max="4000" aria-label="Export resolution in dots per inch">
-                        </div>
+                        <div class="laser-settings-grid">
+                            <div class="property-field field-group" id="laser-dpi-field">
+                                <label for="laser-exporter-dpi">Raster Resolution (DPI)</label>
+                                <input type="number" id="laser-exporter-dpi" value="1000" step="100" min="100" max="4000" aria-label="Export resolution in dots per inch">
+                            </div>
 
-                        <div class="property-field field-group">
-                            <label for="laser-export-padding">Export Margin Padding (mm)</label>
-                            <input type="number" id="laser-export-padding" value="5" step="0.1" min="0" max="20" aria-label="Physical padding around the exported board bounds">
+                            <div class="property-field field-group">
+                                <label for="laser-exporter-padding">Export Margin Padding (mm)</label>
+                                <input type="number" id="laser-exporter-padding" value="5" step="0.1" min="0" max="20" aria-label="Physical padding around the exported board bounds">
+                            </div>
+
+                            <div class="property-field field-group col-span-full">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="laser-heat-management" disabled>
+                                    <span>Heat Management (Reorder Geometry)</span>
+                                </label>
+                                <div class="laser-heat-warning" id="laser-heat-warning" style="display: none;">
+                                    <p class="help-text" style="color: var(--color-warning); margin: 0;">
+                                        <strong>Important:</strong> Your laser software must process paths in file order for this to work. In LightBurn (or the program you use), look for and disable "Optimize Cut Path" or set optimization to "Order by Layer."
+                                    </p>
+                                </div>
+                            </div>
                         </div>
 
                         <h3>Layer Colors</h3>
                         <p class="help-text">Colors map to power/speed layers in your laser software.</p>
                         <div class="laser-color-grid">
                             <div class="property-field laser-color-field">
-                                <label for="laser-export-color-isolation">Isolation Routing</label>
-                                <input type="color" id="laser-export-color-isolation" value="#ff0000" aria-label="Isolation layer color">
+                                <label for="laser-exporter-color-isolation">Isolation Routing</label>
+                                <input type="color" id="laser-exporter-color-isolation" value="#ff0000" aria-label="Isolation layer color">
                             </div>
                             <div class="property-field laser-color-field">
-                                <label for="laser-export-color-drill">Drilling</label>
-                                <input type="color" id="laser-export-color-drill" value="#0000ff" aria-label="Drill layer color">
+                                <label for="laser-exporter-color-drill">Drilling</label>
+                                <input type="color" id="laser-exporter-color-drill" value="#0000ff" aria-label="Drill layer color">
                             </div>
                             <div class="property-field laser-color-field">
-                                <label for="laser-export-color-clearing">Copper Clearing</label>
-                                <input type="color" id="laser-export-color-clearing" value="#00ff00" aria-label="Clearing layer color">
+                                <label for="laser-exporter-color-clearing">Copper Clearing</label>
+                                <input type="color" id="laser-exporter-color-clearing" value="#00ff00" aria-label="Clearing layer color">
                             </div>
                             <div class="property-field laser-color-field">
-                                <label for="laser-export-color-cutout">Board Cutout</label>
-                                <input type="color" id="laser-export-color-cutout" value="#000000" aria-label="Cutout layer color">
+                                <label for="laser-exporter-color-cutout">Board Cutout</label>
+                                <input type="color" id="laser-exporter-color-cutout" value="#000000" aria-label="Cutout layer color">
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="gcode-preview" id="export-cnc-preview" data-pipeline-group="cnc">
+                <div class="exporter-preview" id="exporter-cnc-preview" data-pipeline-group="cnc">
                     <h3>G-code Preview</h3>
-                    <div class="preview-stats" id="gcode-preview-stats">
-                        <span>Lines: <strong id="gcode-line-count">0</strong></span>
-                        <span>Operations: <strong id="gcode-op-count">0</strong></span>
-                        <span>Est. Time: <strong id="gcode-est-time">--:--</strong></span>
-                        <span>Distance: <strong id="gcode-distance">0mm</strong></span>
+                    <div class="preview-stats" id="exporter-preview-stats">
+                        <span>Lines: <strong id="exporter-line-count">0</strong></span>
+                        <span>Operations: <strong id="exporter-op-count">0</strong></span>
+                        <span>Est. Time: <strong id="exporter-est-time">--:--</strong></span>
+                        <span>Distance: <strong id="exporter-distance">0mm</strong></span>
                     </div>
-                    <textarea id="gcode-preview-text" readonly rows="15" placeholder="G-code preview will appear here..." aria-label="G-code output preview"></textarea>
+                    <textarea id="exporter-preview-text" readonly rows="15" placeholder="G-code preview will appear here..." aria-label="G-code output preview"></textarea>
                 </div>
             </div>
 
-            <div class="modal-footer export-footer">
-                <button class="btn btn--secondary" id="export-cancel-btn" aria-label="Cancel and close modal">Cancel</button>
-                <button class="btn btn--secondary" id="gcode-calculate-btn" aria-label="Generate G-code preview">Calculate Toolpaths</button>
-                <button class="btn btn--primary" id="export-execute-btn" aria-label="Export selected files">Export Files</button>
+            <div class="modal-footer exporter-footer">
+                <button class="btn btn--secondary" id="exporter-cancel-btn" aria-label="Cancel and close modal">Cancel</button>
+                <div class="exporter-actions">
+                    <button class="btn btn--secondary" id="exporter-calculate-btn" aria-label="Generate G-code preview">Calculate Toolpaths</button>
+                    <button class="btn btn--primary" id="exporter-execute-btn" aria-label="Export selected files">Export Files</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1525,6 +1541,7 @@
     <script defer src="../toolpath/toolpath-geometry-translator.js"></script>
     <script defer src="../export/processors/base-processor.js"></script>
     <script defer src="../export/processors/grbl-processor.js"></script>
+    <script defer src="../export/processors/makera-processor.js"></script>
     <script defer src="../export/processors/grblHAL-processor.js"></script>
     <script defer src="../export/processors/roland-processor.js"></script>
     <script defer src="../export/processors/marlin-processor.js"></script>
@@ -1533,7 +1550,7 @@
     <script defer src="../export/gcode-generator.js"></script>
     <script defer src="../export/laser-image-exporter.js"></script>
     <script defer src="../utils/coordinate-system.js"></script>
-    <script defer src="../utils/unit-converter.js"></script>
+    <!-- DEPRECATED <script defer src="../utils/unit-converter.js"></script> -->
     <script defer src="../utils/canvas-exporter.js"></script>
     <script defer src="../cam-core.js"></script>
     <script defer src="../cam-ui.js"></script>
@@ -1542,7 +1559,7 @@
     <!-- Initialization -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('EasyTrace5000 Advanced Workspace v1.0.9');
+            console.log('EasyTrace5000 Advanced Workspace v1.1.0');
 
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');

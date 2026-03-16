@@ -209,7 +209,7 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 
 ```
 /
-├── index.html                            # Main application entry
+├── index.html                            # Eltryus Cam Suite entry
 │
 ├── config.js                             # Configuration and defaults
 │
@@ -224,14 +224,24 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   ├── layout.css                        # Layout structure (grid, toolbar, etc)
 │   └── theme.css                         # Theme system fallback
 │
+├── easytrace5000/
+│   ├── doc/
+│   │   ├── css/
+│   │   ├── ACCESSIBILITY.md              # Accessibility repository documentation
+│   │   ├── accessibility.html            # Accessibility documentation page (converted from .md)
+│   │   ├── index.html                    # Documentation entry
+│   │   ├── cnc.html                      # CNC pipeline documentation
+│   │   └── laser.html                    # Lase pipeline documentation
+│   └── index.html                        # Main EasyTrace5000 entry
+│
 ├── themes/
 │   ├── theme-loader.js                   # Theme loading and switching utility
 │   ├── light.json                        # Light Theme
 │   └── dark.json                         # Dark Theme
 │
 ├── utils/
-│   ├── unit-converter.js                 # Rudimentary unit conversion system (SVG parsing only)
-│   ├── svg-exporter.js                   # SVG export
+│   ├── unit-converter.js                 # DEPRECATED Rudimentary unit conversion system (SVG parsing only)
+│   ├── canvas-exporter.js                # SVG export of canvas contents
 │   └── coordinate-system.js              # Coordinate transformations
 │
 ├── ui/
@@ -242,7 +252,7 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   ├── ui-status-manager.js              # Status bar and log history manager
 │   ├── ui-tooltip.js                     # Tooltip system
 │   ├── ui-modal-manager.js               # Modal boxes
-│   └── ui-tool-library.js                # Tool definitions
+│   └── tool-library.js                   # Tool definitions
 │
 ├── language/
 │   ├── language-manager.js               # Rudimentary multi-language system
@@ -256,6 +266,9 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   ├── geometry-arc-reconstructor.js     # Post Clipper2 arc recovery
 │   ├── geometry-curve-registry.js        # Curve metadata tracking
 │   ├── geometry-offsetter.js             # Path offsetting
+│   ├── geometry-offsetter-analytic.js    # Analytic path offsetting (under developemnt)
+│   ├── geometry-utils-math.js            # Analytic path offsetting math utils
+│   ├── geometry-utils-hatching.js        # Laser Pipeline hatch pattern utils
 │   └── geometry-utils.js                 # Geometry accessory functions
 │
 ├── parsers/
@@ -285,6 +298,7 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   └── processors/                       # Post-processor modules
 │       ├── base-processor.js
 │       ├── grbl-processor.js
+│       ├── makera-processor.js
 │       ├── grblHAL-processor.js
 │       ├── linuxcnc-processor.js
 │       ├── mach3-processor.js
@@ -346,20 +360,17 @@ window.getReconstructionRegistry()      // Inspect arc metadata from curve regis
 ## Known Issues & Limitations
 
 **Current Limitations:**
-* **No Self-Intersection Detection:** Internal offsets can collapse on themselves and create unexpected toolpaths.
 * **Post-Processors:** Consider all non-grbl post-processors as experimental and to be used with caution until further notice.
 * **Laser Pipeline (Beta):** The laser toolpath generation and export features are in active testing. Please verify all exported SVG/PNG files in your laser control software before firing.
 * **Hybrid Pipeline Locked:** The ability to automatically mix CNC operations (like drilling) and Laser operations in a single workspace is currently locked while standalone laser operations are tested.
-* **Metric Units:** Millimeters only. System is technically unit agnostic but base 10. A unit conversion module is planned.
 * **Bézier Offsetting:** While Bézier curves from SVGs are parsed analytically, they are interpolated (converted to line segments) by the plotter. True analytic offsetting and booleans of Béziers is not yet supported.
 * **Tool Changes:** The application does not currently generate tool change commands (M6). Operations using different tools must be exported as separate G-code files.
 
 **Known Bugs:**
-* **Offsetting of corners:** Depending on distance between an internal corner (concave) and external corner (convex) the analytic offsetting engine may cause artifacts between the external rounded joint's arc and the internal side path.
+* **Disappearing objects in rotated boards:** The Canvas optimizations around viewport culling don't support rotated boards, yet.
 
 ## Roadmap
 
-- Unit conversion system
 - Tool library import/export
 - Theme import/export
 - Multi-lingual UI
@@ -460,4 +471,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.0.8 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.1.0 | **Platform**: Client-side Web

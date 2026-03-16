@@ -267,6 +267,11 @@ a:not([class]):hover {
 .p-md { padding: var(--spacing-md); }
 .p-lg { padding: var(--spacing-lg); }
 
+/* Utility to force an item to span the entire grid row */
+.col-span-full {
+    grid-column: 1 / -1;
+}
+
 /* ============================================================================
    SCROLLBARS
    ============================================================================ */

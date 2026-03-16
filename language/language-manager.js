@@ -84,6 +84,33 @@
                 return false; // Key path was invalid
             }
         }
+
+        /**
+         * Returns an entire section as a flat object, or null if not found.
+         * Useful for bulk-loading comment strings for export pipelines.
+         * Example: getSection('gcode.comments') returns { header: "...", date: "...", ... }
+         */
+        getSection(key) {
+            try {
+                const section = key.split('.').reduce((obj, k) => obj[k], this.strings);
+                return (section && typeof section === 'object') ? section : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        /**
+         * Gets a string by key and replaces {placeholder} tokens with values.
+         * Example: format('gcode.comments.date', { date: '2025-01-01' })
+         *          → "Date: 2025-01-01"
+         */
+        format(key, replacements = {}) {
+            let str = this.get(key, '');
+            for (const [token, value] of Object.entries(replacements)) {
+                str = str.replace(new RegExp(`\\{${token}\\}`, 'g'), value);
+            }
+            return str;
+        }
     }
 
     window.LanguageManager = LanguageManager;
