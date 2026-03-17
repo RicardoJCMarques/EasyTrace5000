@@ -176,12 +176,15 @@
                 return;
             }
 
-            // Auto-save current operation before switching
-            if (this.currentOperation && this.currentOperation.id !== operation.id) {
-                this.saveCurrentState();
-            }
+            const isSameOperation = this.currentOperation && this.currentOperation.id === operation.id;
 
-            this.currentOperation = operation;
+            if (!isSameOperation) {
+                // Switching operations: save outgoing, load incoming
+                if (this.currentOperation) {
+                    this.saveCurrentState();
+                }
+                this.currentOperation = operation;
+            }
 
             // Resolve pipeline type once
             const pipelineType = window.pcbcam?.pipelineState?.type || 'cnc';
@@ -201,8 +204,11 @@
                 return;
             }
 
-            // Load existing parameters for this operation
-            this.parameterManager.loadFromOperation(operation);
+            // Only load from operation.settings when switching to a new operation.
+            // Re-rendering the same operation (e.g. after a checkbox toggle that changes field visibility) must use the live ParameterManager state, which already has the user's uncommitted edits.
+            if (!isSameOperation) {
+                this.parameterManager.loadFromOperation(operation);
+            }
 
             const container = document.getElementById('property-form');
             const title = document.getElementById('inspector-title');
@@ -633,6 +639,12 @@
                 millCheck.addEventListener('change', async (e) => {
                     const isMilling = e.target.checked;
                     this.onParameterChange('millHoles', isMilling);
+
+                    // Force synchronous commit before DOM rebuild.
+                    // The generic change handler (attached earlier) set a debounced save that won't fire before showOperationProperties tears down the form.
+                    // Without this, the value is only in live state and may not survive the loadFromOperation round-trip in all edge cases.
+                    clearTimeout(this.changeTimeout);
+                    this.saveCurrentState();
 
                     if (this.currentOperation) {
                         if (this.currentOperation.offsets?.length > 0) {

@@ -1279,6 +1279,35 @@
         }
 
         /**
+         * Separates a drill operation's preview into milled paths and peck groups by diameter.
+         * Works regardless of millHoles setting — a milled operation still generates pecks for holes too small to mill.
+         */
+        _groupDrillPrimitives(operation) {
+            if (!operation.preview?.primitives) return { milledPrimitives: [], peckGroups: [] };
+
+            const milledPrimitives = [];
+            const pecksByDiameter = new Map();
+
+            for (const prim of operation.preview.primitives) {
+                if (prim.properties?.role === 'peck_mark') {
+                    const dia = parseFloat(
+                        (prim.properties?.originalDiameter || prim.properties?.diameter || 0).toFixed(3)
+                    );
+                    if (!pecksByDiameter.has(dia)) pecksByDiameter.set(dia, []);
+                    pecksByDiameter.get(dia).push(prim);
+                } else {
+                    milledPrimitives.push(prim);
+                }
+            }
+
+            const peckGroups = Array.from(pecksByDiameter.entries())
+                .sort((a, b) => a[0] - b[0])
+                .map(([diameter, primitives]) => ({ diameter, primitives }));
+
+            return { milledPrimitives, peckGroups };
+        }
+
+        /**
          * Roland-specific context preprocessing.
          * Enforces machine-safe settings based on the selected Roland profile.
          * Extracted from orchestrateToolpaths to keep the main loop processor-agnostic.

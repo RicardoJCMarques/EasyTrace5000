@@ -59,6 +59,12 @@
             if (typeof RolandPostProcessor !== 'undefined') {
                 this.registerProcessor('roland', new RolandPostProcessor());
             }
+            if (typeof GrblHALPostProcessor !== 'undefined') {
+                this.registerProcessor('grblhal', new GrblHALPostProcessor());
+            }
+            if (typeof UCCNCPostProcessor !== 'undefined') {
+                this.registerProcessor('uccnc', new UCCNCPostProcessor());
+            }
             if (typeof MarlinPostProcessor !== 'undefined') {
                 this.registerProcessor('marlin', new MarlinPostProcessor());
             }
@@ -67,9 +73,6 @@
             }
             if (typeof Mach3PostProcessor !== 'undefined') {
                 this.registerProcessor('mach3', new Mach3PostProcessor());
-            }
-            if (typeof GrblHALPostProcessor !== 'undefined') {
-                this.registerProcessor('grblhal', new GrblHALPostProcessor());
             }
         }
 

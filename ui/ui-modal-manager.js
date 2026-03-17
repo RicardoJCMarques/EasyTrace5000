@@ -69,7 +69,7 @@
             // Toolpath-specific state
             this.selectedOperations = [];
             this.highlightedOpId = null;
-            this.toolpathPlans = new Map();
+            this.gcodeResults = new Map();
 
             this.init();
         }
@@ -132,6 +132,68 @@
 
                 // This removes #modifier from the URL bar without reloading
                 history.replaceState(null, null, window.location.pathname);
+            }
+        }
+
+        showGcodeForOperation(opId) {
+            const result = this.gcodeResults.get(opId);
+            const previewText = document.getElementById('exporter-preview-text');
+            if (!result || !previewText) return;
+
+            previewText.value = result.gcode;
+
+            const lineCount = document.getElementById('exporter-line-count');
+            if (lineCount) lineCount.textContent = result.lineCount;
+
+            const planCount = document.getElementById('exporter-op-count');
+            if (planCount) planCount.textContent = result.planCount;
+
+            const estTime = document.getElementById('exporter-est-time');
+            if (estTime) {
+                const minutes = Math.floor(result.estimatedTime / 60);
+                const seconds = Math.floor(result.estimatedTime % 60);
+                estTime.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+
+            const distance = document.getElementById('exporter-distance');
+            if (distance) distance.textContent = `${result.totalDistance.toFixed(1)}mm`;
+        }
+
+        updateSplitDrillVisibility() {
+            const checkbox = document.getElementById('exporter-split-drills');
+            const hint = document.getElementById('exporter-split-drills-hint');
+            if (!checkbox) return;
+
+            const isSingleFile = document.getElementById('exporter-single-file')?.checked !== false;
+
+            if (isSingleFile) {
+                checkbox.disabled = true;
+                if (hint) hint.textContent = 'Disable "Export as single file" first.';
+                return;
+            }
+
+            // Check if any checked drill ops have peck marks
+            const list = document.getElementById('exporter-operation-order');
+            let hasPecks = false;
+
+            if (list) {
+                list.querySelectorAll('.file-node-content').forEach(item => {
+                    const cb = item.querySelector('input[type="checkbox"]');
+                    if (!cb?.checked) return;
+                    const op = this.selectedOperations.find(o => o.id === item.dataset.operationId);
+                    if (op?.type !== 'drill') return;
+                    if (!op.preview?.primitives) return;
+                    if (op.preview.primitives.some(p => p.properties?.role === 'peck_mark')) {
+                        hasPecks = true;
+                    }
+                });
+            }
+
+            checkbox.disabled = !hasPecks;
+            if (hint) {
+                hint.textContent = hasPecks
+                    ? 'Separates peck operations into individual files per tool size.'
+                    : 'No drill operations with peck marks found.';
             }
         }
 
@@ -765,6 +827,17 @@
 
             this.debug(`Opening Export Manager with ${operations.length} operation(s)`);
 
+            // Reset per-session state
+            this.gcodeResults.clear();
+
+            // Sync all toggle visibility with current DOM state
+            const selectorDiv = document.getElementById('exporter-operation-selector');
+            const singleFileCheck = document.getElementById('exporter-single-file');
+            if (selectorDiv) {
+                selectorDiv.style.display = (singleFileCheck && singleFileCheck.checked) ? 'none' : '';
+            }
+            this.updateSplitDrillVisibility();
+
             const getSortOrder = (opType) => {
                 switch (opType) {
                     case 'isolation': return 1;
@@ -807,7 +880,8 @@
             }
 
             this.populateExportOperationsList();
-            this.updateExportBlocksVisibility(); // Apply the micro-state (gray out)
+            this.updateExportBlocksVisibility();
+            this.updateSplitDrillVisibility();
             this.setupExportHandlers();
 
             // Wire PNG warning and DPI visibility to the machine laser export format setting
@@ -870,7 +944,10 @@
 
                 // Re-evaluate visibility when checkboxes change
                 const checkbox = item.querySelector('input');
-                checkbox.addEventListener('change', () => this.updateExportBlocksVisibility());
+                checkbox.addEventListener('change', () => {
+                    this.updateExportBlocksVisibility();
+                    this.updateSplitDrillVisibility();
+                });
 
                 list.appendChild(item);
             }
@@ -926,6 +1003,26 @@
                 calcBtn.onclick = () => this.runToolpathOrchestration(calcBtn);
             }
 
+            // Single-file toggle: switch between combined and per-operation mode
+            const singleFileToggle = document.getElementById('exporter-single-file');
+            if (singleFileToggle) {
+                singleFileToggle.addEventListener('change', (e) => {
+                    const selectorDiv = document.getElementById('exporter-operation-selector');
+                    if (selectorDiv) {
+                        selectorDiv.style.display = e.target.checked ? 'none' : '';
+                    }
+                    this.updateSplitDrillVisibility();
+                    this.gcodeResults.clear();
+                    this.showPlaceholderPreview();
+                });
+            }
+
+            // Preview selector: switch displayed G-code when user picks a different operation
+            const previewSelect = document.getElementById('exporter-preview-select');
+            if (previewSelect) {
+                previewSelect.onchange = (e) => this.showGcodeForOperation(e.target.value);
+            }
+
             if (executeBtn) {
                 executeBtn.onclick = async () => {
                     await this.executeUnifiedExport();
@@ -978,35 +1075,76 @@
 
             // Export CNC (G-CODE)
             if (cncOps.length > 0) {
-                const previewText = document.getElementById('exporter-preview-text');
                 const isRoland = this.controller.core?.settings?.gcode?.postProcessor === 'roland';
                 const cncExt = isRoland ? '.rml' : '.nc';
-                const finalCncFilename = `${baseName}${cncExt}`;
-                
-                let gcodeContent = previewText ? previewText.value : '';
-                
-                // Smart Feature: Auto-calculate if not done
-                if (!gcodeContent || gcodeContent.startsWith(';') || gcodeContent === textConfig.gcodePlaceholder) {
-                    this.ui.showStatus('Auto-calculating G-Code...', 'info');
-                    const calcBtn = document.getElementById('exporter-calculate-btn');
-                    await this.runToolpathOrchestration(calcBtn, cncOps); 
-                    gcodeContent = previewText ? previewText.value : '';
-                }
 
-                // Verify calculation succeeded, then download
-                if (gcodeContent && !gcodeContent.startsWith('; Generation Failed')) {
-                    const blob = new Blob([gcodeContent], { type: 'text/plain' });
+                const downloadBlob = (content, filename) => {
+                    const blob = new Blob([content], { type: 'text/plain' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = finalCncFilename;
+                    a.download = filename;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
-                    cncSuccess = true;
+                };
+
+                if (isSingleFile) {
+                    // ── SINGLE FILE: download combined result ──
+                    // Auto-calculate if not done
+                    let combinedResult = this.gcodeResults.get('__combined__');
+                    if (!combinedResult || !combinedResult.gcode) {
+                        this.ui.showStatus('Auto-calculating G-Code...', 'info');
+                        const calcBtn = document.getElementById('exporter-calculate-btn');
+                        await this.runToolpathOrchestration(calcBtn, cncOps);
+                        combinedResult = this.gcodeResults.get('__combined__');
+                    }
+
+                    if (combinedResult?.gcode && !combinedResult.gcode.startsWith('; Generation Failed')) {
+                        downloadBlob(combinedResult.gcode, `${baseName}${cncExt}`);
+                        cncSuccess = true;
+                    } else {
+                        this.ui.showStatus('G-code generation failed.', 'error');
+                    }
+
                 } else {
-                    this.ui.showStatus('G-code generation failed.', 'error');
+                    // ── MULTI-FILE: auto-calculate if needed, then download each ──
+                    if (this.gcodeResults.size === 0 || this.gcodeResults.has('__combined__')) {
+                        this.ui.showStatus('Calculating individual G-Code files...', 'info');
+                        const calcBtn = document.getElementById('exporter-calculate-btn');
+                        await this.runToolpathOrchestration(calcBtn, cncOps);
+                    }
+
+                    cncSuccess = true;
+                    for (const op of cncOps) {
+                        // Check for split drill results (milled and/or peck groups)
+                        const splitKeys = Array.from(this.gcodeResults.keys())
+                            .filter(k => k.startsWith(`${op.id}_`));
+
+                        if (splitKeys.length > 0) {
+                            for (const key of splitKeys) {
+                                const result = this.gcodeResults.get(key);
+                                if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
+                                    const opCleanName = op.file.name.replace(/\.[^/.]+$/, '');
+                                    // Extract suffix: "op_1_milled" → "milled", "op_1_drill_0.8mm" → "drill-0.8mm"
+                                    const suffix = key.substring(op.id.length + 1).replace(/_/g, '-');
+                                    downloadBlob(result.gcode, `${baseName}-${suffix}-${opCleanName}${cncExt}`);
+                                } else {
+                                    cncSuccess = false;
+                                }
+                            }
+                        } else {
+                            const result = this.gcodeResults.get(op.id);
+                            if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
+                                const opCleanName = op.file.name.replace(/\.[^/.]+$/, '');
+                                downloadBlob(result.gcode, `${baseName}-${op.type}-${opCleanName}${cncExt}`);
+                            } else {
+                                cncSuccess = false;
+                                this.ui.showStatus(`Failed to generate G-code for ${op.type}: ${op.file.name}`, 'error');
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1123,6 +1261,7 @@
             attachTo('exporter-tool-changes', 'tooltips.modals.exporter.toolChanges');
             attachTo('exporter-optimize-paths', 'tooltips.modals.exporter.optimize');
             attachTo('exporter-single-file', 'tooltips.modals.exporter.singleFile');
+            attachTo('exporter-split-drills', 'tooltips.modals.exporter.splitDrills');
             attachTo('exporter-filename', 'tooltips.modals.exporter.filename');
             attachTo('laser-heat-management', 'tooltips.modals.exporter.heatManagement');
             attachTo('laser-exporter-dpi', 'tooltips.machineSettings.laserExportDPI');
@@ -1316,7 +1455,7 @@
             btn.disabled = true;
 
             try {
-                // If explicitOps is passed (from auto-export), use them. Otherwise read from DOM.
+                // Determine which CNC ops to calculate
                 let selectedItemIds = [];
                 if (explicitOps) {
                     selectedItemIds = explicitOps.map(o => o.id);
@@ -1337,7 +1476,7 @@
                     return;
                 }
 
-                // Validate operations
+                // Validate all have previews
                 const selectedOps = selectedItemIds
                     .map(id => this.selectedOperations.find(o => o.id === id))
                     .filter(Boolean);
@@ -1353,50 +1492,140 @@
                     return;
                 }
 
-                // Gather options
+                // Shared options
                 const optimizeCheckbox = document.getElementById('exporter-optimize-paths');
-                const options = {
-                    operationIds: selectedItemIds,
-                    operations: this.selectedOperations,
+                const baseOptions = {
                     safeZ: this.controller.core?.getSetting('machine', 'safeZ'),
                     travelZ: this.controller.core?.getSetting('machine', 'travelZ'),
                     rapidFeedRate: this.controller.core?.getSetting('machine', 'rapidFeed'),
                     postProcessor: this.controller.core?.getSetting('gcode', 'postProcessor'),
                     includeComments: document.getElementById('exporter-include-comments')?.checked,
-                    singleFile: document.getElementById('exporter-single-file')?.checked,
                     toolChanges: document.getElementById('exporter-tool-changes')?.checked,
                     optimize: optimizeCheckbox ? optimizeCheckbox.checked : true
                 };
 
-                // Run orchestration
-                const result = await this.controller.orchestrateToolpaths(options);
+                const isSingleFile = document.getElementById('exporter-single-file')?.checked !== false;
 
-                if (!result || !result.gcode) {
-                    this.showPlaceholderPreview();
-                    this.ui.showStatus('Calculation returned no G-code', 'warning');
-                    return;
-                }
+                if (isSingleFile) {
+                    // ── COMBINED: one orchestration call, one result ──
+                    const options = {
+                        ...baseOptions,
+                        operationIds: selectedItemIds,
+                        operations: this.selectedOperations,
+                        singleFile: true
+                    };
 
-                // Display results
-                const previewText = document.getElementById('exporter-preview-text');
-                if (previewText) previewText.value = result.gcode;
+                    const result = await this.controller.orchestrateToolpaths(options);
 
-                const lineCount = document.getElementById('exporter-line-count');
-                if (lineCount) lineCount.textContent = result.lineCount;
+                    if (!result || !result.gcode) {
+                        this.showPlaceholderPreview();
+                        this.ui.showStatus('Calculation returned no G-code', 'warning');
+                        return;
+                    }
 
-                const planCountEl = document.getElementById('exporter-op-count');
-                if (planCountEl) planCountEl.textContent = result.planCount;
+                    // Store as a single combined result
+                    this.gcodeResults.clear();
+                    this.gcodeResults.set('__combined__', result);
 
-                const estTimeEl = document.getElementById('exporter-est-time');
-                if (estTimeEl) {
-                    const minutes = Math.floor(result.estimatedTime / 60);
-                    const seconds = Math.floor(result.estimatedTime % 60);
-                    estTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                }
+                    this.showGcodeForOperation('__combined__');
 
-                const distanceEl = document.getElementById('exporter-distance');
-                if (distanceEl) {
-                    distanceEl.textContent = `${result.totalDistance.toFixed(1)}mm`;
+                    const planCountEl = document.getElementById('exporter-op-count');
+                    if (planCountEl) planCountEl.textContent = result.planCount;
+
+                } else {
+                    // ── PER-OPERATION: one call per op, populate selector ──
+                    this.gcodeResults.clear();
+                    const previewSelect = document.getElementById('exporter-preview-select');
+                    if (previewSelect) previewSelect.innerHTML = '';
+
+                    for (const opId of selectedItemIds) {
+                        const op = this.selectedOperations.find(o => o.id === opId);
+                        if (!op) continue;
+
+                        // Check if this drill op should be split
+                        const isDrill = op.type === 'drill';
+                        const splitDrillsChecked = document.getElementById('exporter-split-drills')?.checked === true;
+                        const shouldSplitDrill = isDrill && splitDrillsChecked && !document.getElementById('exporter-split-drills')?.disabled;
+
+                        if (shouldSplitDrill) {
+                            const { milledPrimitives, peckGroups } = this.controller._groupDrillPrimitives(op);
+
+                            // Helper: swap preview, orchestrate, restore
+                            const orchestrateWithPrimitives = async (primitives, resultKey, label) => {
+                                const savedPreview = op.preview;
+                                const savedOffsets = op.offsets;
+                                op.preview = { ...savedPreview, primitives, ready: true };
+                                op.offsets = [{ ...savedOffsets[0], primitives }];
+                                try {
+                                    const result = await this.controller.orchestrateToolpaths({
+                                        ...baseOptions,
+                                        operationIds: [op.id],
+                                        operations: [op],
+                                        singleFile: false
+                                    });
+                                    if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
+                                        this.gcodeResults.set(resultKey, result);
+                                        if (previewSelect) {
+                                            const opt = document.createElement('option');
+                                            opt.value = resultKey;
+                                            opt.textContent = label;
+                                            previewSelect.appendChild(opt);
+                                        }
+                                    }
+                                } finally {
+                                    op.preview = savedPreview;
+                                    op.offsets = savedOffsets;
+                                }
+                            };
+
+                            // Milled paths as one group (if any)
+                            if (milledPrimitives.length > 0) {
+                                await orchestrateWithPrimitives(
+                                    milledPrimitives,
+                                    `${opId}_milled`,
+                                    `drill milled: ${op.file.name} (${milledPrimitives.length} paths)`
+                                );
+                            }
+
+                            // Peck groups split by diameter
+                            for (const group of peckGroups) {
+                                await orchestrateWithPrimitives(
+                                    group.primitives,
+                                    `${opId}_drill_${group.diameter}mm`,
+                                    `drill ${group.diameter}mm: ${op.file.name} (${group.primitives.length} holes)`
+                                );
+                            }
+
+                        } else {
+                            // Standard single-result processing
+                            const perOpOptions = {
+                                ...baseOptions,
+                                operationIds: [opId],
+                                operations: [op],
+                                singleFile: false
+                            };
+                            const result = await this.controller.orchestrateToolpaths(perOpOptions);
+                            if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
+                                this.gcodeResults.set(opId, result);
+                                if (previewSelect) {
+                                    const opt = document.createElement('option');
+                                    opt.value = opId;
+                                    opt.textContent = `${op.type}: ${op.file.name}`;
+                                    previewSelect.appendChild(opt);
+                                }
+                            } else {
+                                this.ui.showStatus(`Failed to calculate ${op.type}: ${op.file.name}`, 'error');
+                            }
+                        }
+                    }
+
+                    // Show first operation's result
+                    if (previewSelect && previewSelect.options.length > 0) {
+                        previewSelect.value = previewSelect.options[0].value;
+                        this.showGcodeForOperation(previewSelect.value);
+                    } else {
+                        this.showPlaceholderPreview();
+                    }
                 }
 
             } catch (error) {

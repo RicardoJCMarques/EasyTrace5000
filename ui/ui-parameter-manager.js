@@ -158,7 +158,6 @@
                     stage: 'strategy',
                     category: 'drill',
                     operationType: 'drill',
-                    conditional: '!millHoles'
                 },
                 peckDepth: {
                     type: 'number',

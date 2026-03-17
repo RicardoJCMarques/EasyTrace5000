@@ -152,7 +152,7 @@
                 "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
                 "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
             ],
-            "softwareVersion": "1.1.0",
+            "softwareVersion": "1.1.1",
             "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
             "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
             "installUrl": "https://cam.eltryus.design/easytrace5000/",
@@ -788,7 +788,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <span title="Version">Version 1.1.0</span> |
+                <span title="Version">Version 1.1.1</span> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -1388,8 +1388,14 @@
                         <div class="property-field field-group">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="exporter-single-file" checked>
-                                <span>Export as single file (Combines ops by pipeline)</span>
+                                <span>Export as single file (combines operations)</span>
                             </label>
+                            <div class="property-field field-group" id="exporter-split-drills-field">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="exporter-split-drills" checked disabled>
+                                    <span>Split drill files by hole diameter</span>
+                                </label>
+                            </div>
                         </div>
                         <div class="property-field field-group">
                             <label for="exporter-filename">Base Project Name</label>
@@ -1477,6 +1483,10 @@
 
                 <div class="exporter-preview" id="exporter-cnc-preview" data-pipeline-group="cnc">
                     <h3>G-code Preview</h3>
+                    <div class="property-field" id="exporter-operation-selector" style="display: none;">
+                        <label for="exporter-preview-select">Previewing:</label>
+                        <select id="exporter-preview-select"></select>
+                    </div>
                     <div class="preview-stats" id="exporter-preview-stats">
                         <span>Lines: <strong id="exporter-line-count">0</strong></span>
                         <span>Operations: <strong id="exporter-op-count">0</strong></span>
@@ -1544,6 +1554,7 @@
     <script defer src="../export/processors/makera-processor.js"></script>
     <script defer src="../export/processors/grblHAL-processor.js"></script>
     <script defer src="../export/processors/roland-processor.js"></script>
+    <script defer src="../export/processors/uccnc-processor.js"></script>
     <script defer src="../export/processors/marlin-processor.js"></script>
     <script defer src="../export/processors/mach3-processor.js"></script>
     <script defer src="../export/processors/linuxcnc-processor.js"></script>
@@ -1559,7 +1570,7 @@
     <!-- Initialization -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('EasyTrace5000 Advanced Workspace v1.1.0');
+            console.log('EasyTrace5000 Advanced Workspace v1.1.1');
 
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');

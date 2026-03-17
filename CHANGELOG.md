@@ -4,7 +4,16 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-03-13
+## [1.1.1] - 2026-03-17
+
+### Added
+- **UCCNC Post-Processor:** Extends standard grbl with canned drill cycles, draft tool changing logic, including tool length compensation.
+- **More Split File Options:** Upgraded (and fixed) UI and logic to better support spliting operations into individual files and also spit drill files by hole/tool diameter.
+
+### Fixed
+- **Only Drill Pecks:** Drill Milling toggle Off state wasn't propagating correctly. Will now allow regular pecks.
+
+## [1.1.0] - 2026-03-16
 
 ### Notice
 - **Offset Strategy Within Laser Pipeline Has Been Confirmed As Working. Bumping To v1.1.0** Needs more testing until it's considered stable.

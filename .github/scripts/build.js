@@ -86,6 +86,7 @@ const CONFIG = {
         'export/processors/grblHAL-processor.js',
         'export/processors/roland-processor.js',
         'export/processors/marlin-processor.js',
+        'export/processors/uccnc-processor.js',
         'export/processors/mach3-processor.js',
         'export/processors/linuxcnc-processor.js',
         'export/gcode-generator.js',

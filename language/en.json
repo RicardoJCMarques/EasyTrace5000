@@ -437,6 +437,7 @@
           "order": "Drag and drop operations to set the final cutting order.",
           "postProcessor": "Overrides the global machine post-processor for this export only.",
           "singleFile": "Combine all selected operations into one G-code file. If unchecked, you will get one file per operation.",
+          "splitDrills": "When enabled, peck drill operations are separated into individual files grouped by original hole diameter. Milled holes are exported together in their own file. Requires multi-file export mode.",
           "includeComments": "Add human-readable comments (e.g., '; Starting Operation: isolation.gbr') to the G-code.",
           "toolChanges": "Insert a pause (M0 or M6) when the tool changes between operations. (Not yet implemented)",
           "optimize": "Applies multiple algorithms to reduce operation time. Disable to try and remove unexpected toolpaths.",
