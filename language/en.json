@@ -442,7 +442,8 @@
           "toolChanges": "Insert a pause (M0 or M6) when the tool changes between operations. (Not yet implemented)",
           "optimize": "Applies multiple algorithms to reduce operation time. Disable to try and remove unexpected toolpaths.",
           "layerColors": "Assign distinct colors to each operation type. Your laser software uses these colors to apply different power/speed settings per layer.",
-          "heatManagement": "Reorders SVG geometry to minimize localized heat buildup. Separates concentric rings globally (pass interleaving), scatters spatially close features apart (zone interleaving), and cuts small features first (area sort). Your laser software must process paths in file order — disable path optimization in LightBurn/RDWorks.",
+          "heatManagement": "Adds spatial scattering to the default smallest-first ordering. Features of similar size are distributed across the board using a grid-hopping pattern that maximizes distance between consecutive cuts. Area sorting (smallest features first within each pass) is always active regardless of this toggle. Your laser software must process paths in file order — disable 'Optimize Cut Path' in LightBurn or equivalent in RDWorks.",
+          "reverseCutOrder": "Reverses the cutting order so the largest features are processed first. Use this if your laser software reads SVG paths bottom-to-top (last element first) instead of the standard top-to-bottom DOM order.",
           "filename": "The name of the G-code file that will be downloaded.",
           "calculate": "Process the selected operations and generate the G-code preview based on the current order and settings."
         }

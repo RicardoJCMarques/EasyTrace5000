@@ -75,7 +75,8 @@
                 widthMm: output.widthMm,
                 heightMm: output.heightMm,
                 padding: padding,
-                heatManagement: options.heatManagement || 'off'
+                heatManagement: options.heatManagement || 'off',
+                reverseCutOrder: options.reverseCutOrder || false
             };
 
             if (options.format === 'png') {
@@ -289,26 +290,51 @@
 
                     // Heat management: reorder offset primitives for thermal distribution
                     const isHatch = pass.metadata?.isHatch === true;
-                    const sortablePrimitives = (!isFilled && !isHatch)
+
+                    // Heat management sort — only for offset/stroked passes (not filled regions or hatch)
+                    let sortablePrimitives = (!isFilled && !isHatch)
                         ? this._applyHeatManagementSort(pass.primitives, renderCtx.heatManagement)
                         : pass.primitives;
 
+                    // Reverse cut order: largest features first in DOM (some laser software reads bottom-up)
+                    if (renderCtx.reverseCutOrder && !isFilled) {
+                        sortablePrimitives = sortablePrimitives.slice().reverse();
+                    }
+
                     if (isFilled) {
+                        // ── FILLED PASS ──
+                        // Compound path required for fill-rule="evenodd" to correctly handle holes.
                         lines.push(`${indent}<g id="${passId}" fill="${color}" stroke="none">`);
+
+                        const pathData = this._buildRawPathData(sortablePrimitives);
+                        if (pathData) {
+                            lines.push(`${innerIndent}<path d="${pathData}" fill-rule="evenodd"/>`);
+                        }
+                        this._appendRawCircles(lines, sortablePrimitives, innerIndent);
+
+                        lines.push(`${indent}</g>`);
                     } else {
+                        // ── STROKED PASS (offset, hatch, drill marks) ──
+                        // Individual SVG nodes per primitive so DOM order = cutting order.
+                        // Laser software/hardware respect this if there's no internal nearest neighbour path optimizer or it's disabled.
                         lines.push(`${indent}<g id="${passId}" fill="none" stroke="${color}" stroke-width="${this.HAIRLINE_STROKE}">`);
+
+                        const fmt = (n) => this._formatNumber(n, this.PRECISION);
+                        for (const prim of sortablePrimitives) {
+                            if (prim.type === 'circle' && prim.center && prim.radius) {
+                                // Circle: native SVG element (more precise than path approximation)
+                                lines.push(`${innerIndent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
+                            } else {
+                                // Path: build d-string for this single primitive via existing method
+                                const singlePathData = this._buildRawPathData([prim]);
+                                if (singlePathData) {
+                                    lines.push(`${innerIndent}<path d="${singlePathData}"/>`);
+                                }
+                            }
+                        }
+
+                        lines.push(`${indent}</g>`);
                     }
-
-                    // Use the RAW data builders
-                    const pathData = this._buildRawPathData(sortablePrimitives);
-                    if (pathData) {
-                        const fillRule = isFilled ? ' fill-rule="evenodd"' : '';
-                        lines.push(`${innerIndent}<path d="${pathData}"${fillRule}/>`);
-                    }
-
-                    this._appendRawCircles(lines, sortablePrimitives, innerIndent);
-
-                    lines.push(`${indent}</g>`);
                 }
 
                 if (useFlatHierarchy) {
@@ -751,11 +777,17 @@
 
         /**
          * Reorders offset primitives to minimize localized heat buildup.
-         * 
+         *
          * Strategy 'standard':
-         *   1. Pass interleaving — global ring separation
-         *   2. Zone interleaving — spatially distant features consecutive
-         *   3. Area sort — small features first within each zone
+         *   1. Area bucketing — small, heat-sensitive features globally first
+         *   2. Zone interleaving — spatially distant features consecutive within each bucket
+         *   3. Exact area tiebreak — deterministic ordering within zone+bucket
+         *
+         * Bucket thresholds (mm² of bounding-box area):
+         *   Tiny  < 2     — 0402/0603 pads, thin trace segments, vias
+         *   Small < 10    — QFP/SOIC pads, short traces, small labels
+         *   Medium < 50   — SOT/QFN footprint regions, wider traces
+         *   Large >= 50   — ground pours, board-wide copper fills
          *
          * Skipped for hatch and filled passes (caller responsibility).
          * Returns a new array; never mutates the input.
@@ -768,10 +800,15 @@
             const entries = new Array(len);
             let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
 
+            // Area bucketing thresholds (mm² bounding-box area)
+            const BUCKET_TINY = 2.0;
+            const BUCKET_SMALL = 10.0;
+            const BUCKET_MEDIUM = 50.0;
+
             for (let i = 0; i < len; i++) {
                 const prim = primitives[i];
                 const bounds = typeof prim.getBounds === 'function' ? prim.getBounds() : null;
-                let area = 0, cx = 0, cy = 0;
+                let area = 0, cx = 0, cy = 0, bucket = 0;
 
                 if (bounds && isFinite(bounds.minX)) {
                     const w = bounds.maxX - bounds.minX;
@@ -783,26 +820,45 @@
                     if (cx > gMaxX) gMaxX = cx;
                     if (cy < gMinY) gMinY = cy;
                     if (cy > gMaxY) gMaxY = cy;
+
+                    if (area < BUCKET_TINY) bucket = 0;
+                    else if (area < BUCKET_SMALL) bucket = 1;
+                    else if (area < BUCKET_MEDIUM) bucket = 2;
+                    else bucket = 3;
                 }
 
                 entries[i] = {
                     prim: prim,
-                    pass: prim.properties?.pass || 0,
                     area: area,
                     cx: cx,
                     cy: cy,
-                    zonePriority: 0
+                    zonePriority: 0,
+                    areaBucket: bucket
                 };
             }
 
             if (strategy === 'standard') {
+                // Area bucketing — configurable thresholds (mm² bounding-box area)
+                const BUCKET_TINY = 2.0;
+                const BUCKET_SMALL = 10.0;
+                const BUCKET_MEDIUM = 50.0;
+
+                for (let i = 0; i < len; i++) {
+                    const a = entries[i].area;
+                    if (a < BUCKET_TINY) entries[i].areaBucket = 0;
+                    else if (a < BUCKET_SMALL) entries[i].areaBucket = 1;
+                    else if (a < BUCKET_MEDIUM) entries[i].areaBucket = 2;
+                    else entries[i].areaBucket = 3;
+                }
+
+                // Spatial zone assignment (unchanged grid logic)
                 const gs = this.HEAT_GRID_SIZE;
                 const rangeX = gMaxX - gMinX;
                 const rangeY = gMaxY - gMinY;
 
                 if (rangeX > 0 || rangeY > 0) {
-                    const rX = rangeX || 1;
-                    const rY = rangeY || 1;
+                    const scaleX = gs / (rangeX || 1);
+                    const scaleY = gs / (rangeY || 1);
                     const zoneOrder = this._getZoneTraversalOrder();
 
                     const total = gs * gs;
@@ -813,14 +869,15 @@
 
                     for (let i = 0; i < len; i++) {
                         const e = entries[i];
-                        const col = Math.min(gs - 1, (e.cx - gMinX) / rX * gs | 0);
-                        const row = Math.min(gs - 1, (e.cy - gMinY) / rY * gs | 0);
+                        const col = Math.min(gs - 1, (e.cx - gMinX) * scaleX | 0);
+                        const row = Math.min(gs - 1, (e.cy - gMinY) * scaleY | 0);
                         e.zonePriority = zonePriorityLookup[row * gs + col];
                     }
                 }
 
+                // Final sort: bucket (smallest globally first) → zone (scatter) → exact area (deterministic)
                 entries.sort((a, b) => {
-                    if (a.pass !== b.pass) return a.pass - b.pass;
+                    if (a.areaBucket !== b.areaBucket) return a.areaBucket - b.areaBucket;
                     if (a.zonePriority !== b.zonePriority) return a.zonePriority - b.zonePriority;
                     return a.area - b.area;
                 });

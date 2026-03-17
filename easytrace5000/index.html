@@ -1447,7 +1447,7 @@
 
                             <div class="property-field field-group col-span-full">
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="laser-heat-management" disabled>
+                                    <input type="checkbox" id="laser-heat-management">
                                     <span>Heat Management (Reorder Geometry)</span>
                                 </label>
                                 <div class="laser-heat-warning" id="laser-heat-warning" style="display: none;">
@@ -1455,6 +1455,13 @@
                                         <strong>Important:</strong> Your laser software must process paths in file order for this to work. In LightBurn (or the program you use), look for and disable "Optimize Cut Path" or set optimization to "Order by Layer."
                                     </p>
                                 </div>
+                            </div>
+
+                            <div class="property-field field-group col-span-full">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="laser-reverse-order">
+                                    <span>Reverse Cut Order (Largest First)</span>
+                                </label>
                             </div>
                         </div>
 

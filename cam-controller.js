@@ -1396,7 +1396,8 @@
             const commonOptions = {
                 dpi, padding, transforms,
                 bounds: this.core.coordinateSystem?.boardBounds,
-                heatManagement: exportOptions.heatManagement || 'off'
+                heatManagement: exportOptions.heatManagement || 'off',
+                reverseCutOrder: exportOptions.reverseCutOrder || false
             };
 
             // Build layer objects from operations

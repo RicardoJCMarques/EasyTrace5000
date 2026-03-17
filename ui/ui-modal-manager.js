@@ -910,10 +910,17 @@
             const heatCheckbox = document.getElementById('laser-heat-management');
             const heatWarning = document.getElementById('laser-heat-warning');
             if (heatCheckbox) {
-                heatCheckbox.checked = false; // Default off
+                heatCheckbox.checked = true;
+                if (heatWarning) heatWarning.style.display = '';
                 heatCheckbox.addEventListener('change', (e) => {
                     if (heatWarning) heatWarning.style.display = e.target.checked ? '' : 'none';
                 });
+            }
+
+            // Reverse cut order toggle (default: off = smallest first)
+            const reverseCheckbox = document.getElementById('laser-reverse-order');
+            if (reverseCheckbox) {
+                reverseCheckbox.checked = false;
             }
 
             // 
@@ -1179,6 +1186,7 @@
                     try {
                         const heatCheckbox = document.getElementById('laser-heat-management');
                         // Pass the dynamic values into the orchestrator
+                        const reverseOrderCheckbox = document.getElementById('laser-reverse-order');
                         const result = await this.controller.orchestrateLaserExport(laserOps, {
                             layerColors: colors,
                             format: laserSettings.exportFormat || 'svg',
@@ -1186,7 +1194,8 @@
                             padding: exportPadding,
                             singleFile: isSingleFile,
                             baseName: baseName,
-                            heatManagement: (heatCheckbox?.checked && laserSettings.exportFormat !== 'png') ? 'standard' : 'off'
+                            heatManagement: (heatCheckbox?.checked && laserSettings.exportFormat !== 'png') ? 'standard' : 'off',
+                            reverseCutOrder: reverseOrderCheckbox?.checked || false
                         });
 
                         if (result.success) {
@@ -1264,6 +1273,7 @@
             attachTo('exporter-split-drills', 'tooltips.modals.exporter.splitDrills');
             attachTo('exporter-filename', 'tooltips.modals.exporter.filename');
             attachTo('laser-heat-management', 'tooltips.modals.exporter.heatManagement');
+            attachTo('laser-reverse-order', 'tooltips.modals.exporter.reverseCutOrder');
             attachTo('laser-exporter-dpi', 'tooltips.machineSettings.laserExportDPI');
             attachTo('laser-exporter-padding', 'tooltips.machineSettings.laserExportPadding');
             attachTo('laser-exporter-color-isolation', 'tooltips.modals.exporter.layerColors');
