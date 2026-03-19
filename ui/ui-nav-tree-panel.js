@@ -266,10 +266,15 @@
                     || operation.settings?.laserClearStrategy
                     || 'offset';
 
-                if (operation.offsets[0]?.combined || isLaser) {
-                    const passes = operation.offsets.length;
+                // Look inside the metadata object where cam-core actually stores the flag
+                if (operation.offsets[0]?.metadata?.offset?.combined || isLaser) {
+                    // Fetch the actual mathematical pass count, fallback to array length
+                    const passes = operation.offsets[0]?.metadata?.offset?.passes || operation.offsets.length;
                     const totalPrimitives = operation.offsets.reduce((sum, off) => sum + (off.primitives?.length || 0), 0);
-                    const label = isLaser ? 'Laser Paths' : 'Offsets';
+                    
+                    // Dynamically update the label so users know it's a combined multi-pass
+                    const label = isLaser ? 'Laser Paths' : `Offsets (${passes} Passes)`;
+                    
                     this.addGeometryNode(fileId, 'offsets_combined', label, totalPrimitives, {
                         offset: operation.offsets[0].distance.toFixed(2),
                         combined: true,

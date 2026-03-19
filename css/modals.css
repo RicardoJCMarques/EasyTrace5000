@@ -894,12 +894,6 @@
     padding-right: 0;
 }
 
-.gcode-options.is-full-width {
-    flex: 1;
-    border-right: none;
-    padding-right: 0;
-}
-
 .gcode-options.is-full-width .laser-settings-grid,
 .gcode-options.is-full-width .laser-color-grid {
     max-width: 100%;

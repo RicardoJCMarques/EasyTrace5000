@@ -1133,6 +1133,23 @@
                 offsetDistances = [0];
             }
 
+            // ── AUTO-CAP INTERNAL OFFSETS ──
+            // For inward-offsetting operations (clearing, internal cutouts), cap passes at the point where geometry would collapse. Prevents wasted WASM calls on empty results and avoids self-intersecting offsets.
+            if (isInternal && offsetDistances.length > 1 && operation.bounds) {
+                const smallestDim = Math.min(
+                    operation.bounds.maxX - operation.bounds.minX,
+                    operation.bounds.maxY - operation.bounds.minY
+                );
+                // Max inward offset = half the smallest dimension (center of smallest feature)
+                const maxInwardOffset = smallestDim / 2;
+                const cappedDistances = offsetDistances.filter(d => Math.abs(d) <= maxInwardOffset);
+                // Always keep at least the first pass
+                if (cappedDistances.length > 0 && cappedDistances.length < offsetDistances.length) {
+                    this.debug(`Auto-capped internal offsets: ${offsetDistances.length} → ${cappedDistances.length} (smallest dim: ${smallestDim.toFixed(3)}mm)`);
+                    offsetDistances = cappedDistances;
+                }
+            }
+
             // ── PRE-FUSION FOR CLEARING & CUT-IN RESOLUTION ──
             let primitivesToProcess = operation.primitives;
 
@@ -1439,18 +1456,17 @@
 
                 // Hole logic
                 if (!isSlot) {
-                    const pathRadius = (featureSize - toolDiameter) / 2;
-                    const minHelixDia = config.toolpath.generation.drilling.minHelixDiameter;
-
+                    // Use epsilon to prevent floating-point math from failing exact matches (e.g., 1.0 - 0.8)
+                    const epsilon = config.precision.epsilon;
+                    
+                    // Only check if the hole is larger than the tool by the minimum margin.
                     if (settings.millHoles && 
                         toolRelation === 'undersized' && 
-                        diff >= minMillingMargin && 
-                        pathRadius >= (minHelixDia / 2)) {  // Compare radius to half the diameter threshold
+                        diff >= (minMillingMargin - epsilon)) {
                         
                         plan.push({ 
                             type: 'mill',
                             primitiveToOffset: primitive, 
-                            passes: settings.passes, 
                             toolRelation 
                         });
                     } else {
@@ -1487,7 +1503,6 @@
                             plan.push({
                                 type: 'mill',
                                 primitiveToOffset: primitive,
-                                passes: settings.passes,
                                 toolRelation: 'undersized'
                             });
                         }
@@ -1513,14 +1528,16 @@
                 return []; 
             }
 
-            for (const action of plan) {
+            for (let actionIdx = 0; actionIdx < plan.length; actionIdx++) {
+                const action = plan[actionIdx];
                 if (action.type === 'peck') {
                     // Create peck mark circle
                     strategyPrimitives.push(new CirclePrimitive(
                         action.position,
-                        toolDiameter / 2, // Use the resolved diameter
+                        toolDiameter / 2,
                         {
                             role: 'peck_mark',
+                            holeIndex: actionIdx,
                             originalDiameter: action.originalDiameter,
                             toolDiameter: toolDiameter,
                             toolRelation: action.toolRelation,
@@ -1542,19 +1559,43 @@
                         const pathRadius = holeRadius - toolRadius;
 
                         if (pathRadius > minFeatureSize) {
-                            strategyPrimitives.push(new CirclePrimitive(
-                                source.center,
-                                pathRadius,
-                                {
-                                    role: 'drill_milling_path',
-                                    operationId: operation.id,
-                                    toolDiameter: toolDiameter,
-                                    originalDiameter: holeRadius * 2,
-                                    toolRelation: action.toolRelation || 'undersized',
-                                    isOffset: true,
-                                    offsetType: 'internal'
+                            const stepOverPct = settings.stepOver !== undefined ? settings.stepOver : config.toolpath.generation.drilling.defaultStepOver;
+                            const stepDist = toolDiameter * (stepOverPct / 100);
+
+                            const concentricPasses = [];
+                            let currentRadius = pathRadius;
+                            let p = 1;
+
+                            while (currentRadius >= minFeatureSize) {
+                                concentricPasses.push(new CirclePrimitive(
+                                    source.center,
+                                    currentRadius,
+                                    {
+                                        role: 'drill_milling_path',
+                                        holeIndex: actionIdx,
+                                        operationId: operation.id,
+                                        toolDiameter: toolDiameter,
+                                        originalDiameter: holeRadius * 2,
+                                        toolRelation: action.toolRelation || 'undersized',
+                                        isOffset: true,
+                                        offsetType: 'internal',
+                                        pass: p++
+                                    }
+                                ));
+
+                                // Core destroyed when tool at this radius clears past center
+                                if (currentRadius <= toolRadius) break;
+
+                                currentRadius -= stepDist;
+
+                                // Clamp to minimum rather than skipping a needed center pass
+                                if (currentRadius < minFeatureSize && currentRadius > 0) {
+                                    currentRadius = minFeatureSize;
                                 }
-                            ));
+                            }
+
+                            // Reverse: innermost first (macro expects inside-out)
+                            strategyPrimitives.push(...concentricPasses.reverse());
                         } else {
                             // Hole too small to mill - fall back to peck
                             strategyPrimitives.push(new CirclePrimitive(
@@ -1562,6 +1603,7 @@
                                 toolDiameter / 2,
                                 {
                                     role: 'peck_mark',
+                                    holeIndex: actionIdx,
                                     originalDiameter: source.radius * 2,
                                     toolDiameter: toolDiameter,
                                     toolRelation: 'undersized_too_small',
@@ -1569,7 +1611,7 @@
                                 }
                             ));
                         }
-                    } 
+                    }
                     // B. Milling a Slot (Obround)
                     else if (source.properties?.originalSlot) {
                         const originalSlot = source.properties.originalSlot;
@@ -1585,42 +1627,65 @@
                             const pathLength = slotLength + pathThickness;
                             const centerX = (originalSlot.start.x + originalSlot.end.x) / 2;
                             const centerY = (originalSlot.start.y + originalSlot.end.y) / 2;
-
                             // Determine slot orientation - ObroundPrimitive only supports axis-aligned
                             const isHorizontal = Math.abs(dx) > Math.abs(dy);
+                            const stepOverPct = settings.stepOver !== undefined ? settings.stepOver : config.toolpath.generation.drilling.defaultStepOver;
+                            const stepDist = toolDiameter * (stepOverPct / 100);
 
-                            let obroundWidth, obroundHeight, cornerX, cornerY;
+                            const concentricPasses = [];
+                            let currentShort = pathThickness;
+                            let currentLong = pathLength;
+                            let p = 1;
 
-                            if (isHorizontal) {
-                                // Horizontal slot: long axis along X
-                                obroundWidth = pathLength;
-                                obroundHeight = pathThickness;
-                                cornerX = centerX - pathLength / 2;
-                                cornerY = centerY - pathThickness / 2;
-                            } else {
-                                // Vertical slot: long axis along Y
-                                obroundWidth = pathThickness;
-                                obroundHeight = pathLength;
-                                cornerX = centerX - pathThickness / 2;
-                                cornerY = centerY - pathLength / 2;
+                            while (currentShort >= minFeatureSize && currentLong >= currentShort) {
+                                let obroundWidth, obroundHeight, cornerX, cornerY;
+
+                                if (isHorizontal) {
+                                    // Horizontal slot: long axis along X
+                                    obroundWidth = currentLong;
+                                    obroundHeight = currentShort;
+                                    cornerX = centerX - currentLong / 2;
+                                    cornerY = centerY - currentShort / 2;
+                                } else {
+                                    // Vertical slot: long axis along Y
+                                    obroundWidth = currentShort;
+                                    obroundHeight = currentLong;
+                                    cornerX = centerX - currentShort / 2;
+                                    cornerY = centerY - currentLong / 2;
+                                }
+
+                                concentricPasses.push(new ObroundPrimitive(
+                                    { x: cornerX, y: cornerY },
+                                    obroundWidth,
+                                    obroundHeight,
+                                    {
+                                        role: 'drill_milling_path',
+                                        holeIndex: actionIdx,
+                                        originalDiameter: slotWidth,
+                                        toolDiameter: toolDiameter,
+                                        originalSlot: originalSlot,
+                                        toolRelation: 'undersized',
+                                        operationId: operation.id,
+                                        isOffset: true,
+                                        offsetType: 'internal',
+                                        pass: p++
+                                    }
+                                ));
+
+                                // Core destroyed when minor axis <= tool diameter
+                                if (currentShort <= toolDiameter) break;
+
+                                currentShort -= (2 * stepDist);
+                                currentLong -= (2 * stepDist);
+
+                                // Clamp to minimum rather than skipping
+                                if (currentShort < minFeatureSize && currentShort > 0) {
+                                    currentShort = minFeatureSize;
+                                    currentLong = Math.max(currentLong, currentShort);
+                                }
                             }
 
-                            const millingPath = new ObroundPrimitive(
-                                { x: cornerX, y: cornerY },
-                                obroundWidth,
-                                obroundHeight,
-                                {
-                                    role: 'drill_milling_path',
-                                    originalDiameter: slotWidth,
-                                    toolDiameter: toolDiameter,
-                                    originalSlot: originalSlot,
-                                    toolRelation: 'undersized',
-                                    operationId: operation.id,
-                                    isOffset: true,
-                                    offsetType: 'internal'
-                                }
-                            );
-                            strategyPrimitives.push(millingPath);
+                            strategyPrimitives.push(...concentricPasses.reverse());
                         } else {
                             // Slot path too thin for regular milling - fall back to centerline or peck
                             console.warn(`[Core] Slot path too thin (${pathThickness.toFixed(3)}mm), skipping milling`);
@@ -1641,6 +1706,7 @@
                             curveIds: []
                         }], {
                             role: 'drill_milling_path',
+                            holeIndex: actionIdx,
                             isCenterlinePath: true,
                             isDrillMilling: true,
                             toolRelation: action.toolRelation,

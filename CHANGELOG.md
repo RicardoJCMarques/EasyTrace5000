@@ -8,10 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 - **Offset Laser SVG Reordering:** The old "optimized" grouping was causing localized heat build-up and scorching. Each pass should finish before the next and starting from the smallest geometry.
+- **Allow Drill Milling Of Undersized Tool With Plunge Entry:** The hole diameter minus tool size vs tolerance logic was only meant for helixes to avoid too deep and tight awkward helix commands.
 
 ### Added
 - **Offset Laser SVG Order Flip Toggle** This toggle can flip the order in which geometry is put into the svg in case a software starts processing from the wrong side.
 - **Offset Laser SVG Unique Colors Per Layer Toggle** This toggle can enforce individual colors per layer for softwares that process groups from it.
+
+### Changed
+- **Hid Number Of Passes/Offset In Drill Operations:** It's now automatically calculated to clear all the geometry and avoid risky central cores that can break end-mills once they get loose.
+- **Hardcoded Drill Mill Stepover:** Since it's hidden from users now, it loads a more conservative 40% from config.js.
 
 ## [1.1.1] - 2026-03-17
 

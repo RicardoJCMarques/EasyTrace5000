@@ -621,7 +621,8 @@ window.PCBCAMConfig = {
                 helixSegmentsPerRev: 16,
                 slotHelixSegments: 12,
                 slotHelixMaxPitchFactor: 0.5,
-                minHelixDiameter: 0.2
+                minHelixDiameter: 0.2,
+                defaultStepOver: 40
             },
             rapidCost: {                             // [ADDED] [HARDCODED in toolpath-machine-processor.js, toolpath-optimizer.js]
                 zTravelThreshold: 5.0,
@@ -786,7 +787,7 @@ window.PCBCAMConfig = {
             ],
             entryType: [
                 { value: 'plunge', label: 'Plunge' },
-                { value: 'ramp', label: 'Ramp' },
+                // { value: 'ramp', label: 'Ramp' }, // Needs more development
                 { value: 'helix', label: 'Helix' }
             ],
             cannedCycle: [

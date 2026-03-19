@@ -46,7 +46,7 @@
                 const data = await response.json();
                 this.strings = data.strings || {}; // Store just the "strings" object
                 this.isLoaded = true;
-                console.log(`[Lang] Language pack 'en' loaded.`);
+                console.log(`[Lang] Language pack '${lang}' loaded.`);
             } catch (err) {
                 console.error('[Lang] Failed to load language file:', err);
                 this.strings = {}; // Fallback to empty

@@ -80,7 +80,8 @@
                     label: 'Number of Passes',
                     ...validationRules.passes,
                     stage: 'geometry',
-                    category: 'offset'
+                    category: 'offset',
+                    operationTypes: ['isolation', 'clearing', 'cutout']
                 },
                 stepOver: {
                     type: 'number',
@@ -88,7 +89,8 @@
                     unit: '%',
                     ...validationRules.stepOver,
                     stage: 'geometry',
-                    category: 'offset'
+                    category: 'offset',
+                    operationTypes: ['isolation', 'clearing', 'cutout']
                 },
                 combineOffsets: {
                     type: 'checkbox',
@@ -636,6 +638,10 @@
                 if (!def.stage) continue; // Skip non-parameter definitions
 
                 let value;
+
+                // Ignore parameters that don't belong to this operation type
+                if (def.operationType && def.operationType !== operation.type) continue;
+                if (def.operationTypes && !def.operationTypes.includes(operation.type)) continue;
 
                 // Check for a value in the manager's current "live" state first.
                 // Preserve unsaved changes if switching tabs and coming back.
