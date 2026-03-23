@@ -127,7 +127,7 @@
     <div class="doc-wrapper has-sidebar">
         <!-- Sidebar TOC -->
         <nav class="doc-sidebar">
-            <h2>Laser Pipeline <span class="doc-badge doc-badge--dev">Dev</span></h2>
+            <h2>Laser Pipeline <span class="doc-badge doc-badge--dev">Active Testing</span></h2>
             <ol>
                 <li><a href="#overview" draggable="false">Overview</a></li>
                 <li>
@@ -244,16 +244,23 @@
                 <h2>Export Mechanics & Optimizations</h2>
                 <p>The <code>LaserImageExporter</code> handles the final translation of analytic primitives into downloadable files.</p>
 
+                <div class="callout callout--warning">
+                    <h4>Important: Laser Controller Limitations</h4>
+                    <p>EasyTrace5000 exports SVG files with paths intentionally ordered to optimize heat management so jobs can run faster. However, many laser control programs (like <strong>LightBurn</strong>, <strong>RDWorks</strong>, <strong>EZCAD</strong> or <strong>xTool Studio</strong>) aggressively apply their own "Optimization" or "Nearest Neighbor" path-sorting algorithms upon import.</p>
+                    <p>To utilize EasyTrace5000's native optimized concentric offset paths, you may need to <strong>disable optimization settings</strong> in your laser software, forcing it to respect the original file order.</p>
+                    <p>(Currently xTool Studio doesn't allow disabling it, only splits by up to 10x layers/colors/passes, I'm trying to convince them to allow EasyTrace5000 files through raw, ask them for changes too.)</p>
+                </div>
+
                 <h3 id="export-svg">SVG (Vector Export)</h3>
                 <p>When exporting vectors, standard browsers display 0.01mm strokes as invisible. To fix this while maintaining dimensional accuracy for CAM software, the exporter injects explicit CSS attributes (<code>stroke-width="1px"</code> and <code>-inkscape-stroke:hairline</code>), while preserving the physical XML attribute <code>stroke-width="0.01"</code>. This ensures browsers render a visible line, but laser software imports the path as a zero-width, highly precise cutting vector. Additionally, the exporter natively reconstructs poly-lines into true SVG Arc (<code>A</code>) commands, drastically reducing file size and allowing for perfectly smooth curves.</p>
 
-                <h3 id="export-png">The PNG Split Rule (Raster Export)</h3>
-                <p>Rasterizing a PCB design into a PNG is excellent for direct image engraving modes or photoresist exposure. However, <strong>Drill</strong> and <strong>Cutout</strong> operations are single-line paths that lose their dimensional meaning when converted to pixels. To solve this, the Export Manager enforces the <strong>PNG Split Rule</strong>: If PNG export is selected, Isolation and Clearing layers are compiled into a high-DPI <code>.png</code> file, while Drill and Cutout operations are automatically filtered out and exported as a perfectly aligned secondary <code>-vectors.svg</code> file.</p>
-
                 <div class="callout callout--info">
                     <h4>Colinear Hatch Fusion Optimization</h4>
-                    <p>A small bottleneck in laser processing is the time the laser head spends turning on/off and rapidly traveling between short line segments. When using the <strong>Hatch Fill</strong> strategy, the <code>LaserImageExporter</code> runs a post-processing algorithm (<code>_fuseColinearSegments</code>) across all layers. It mathematically maps all hatch lines to their perpendicular scan line distances. If multiple line segments lay on the exact same trajectory and overlap or touch (within a 0.001mm tolerance), they are fused into a single continuous continuous path. This minimizes laser head rapid-travel events and slightly compresses the final exported file size.</p>
+                    <p>When dealing with Hatch strategy operations, the exporter will check for overlapping colinear strokes even if they were created from different operations or geometry. This will cut down file size and possibly processing complexity of already very large files with maybe even hundreds of thousands of line objects.</p>
                 </div>
+
+                <h3 id="export-png">The PNG Split Rule (Raster Export)</h3>
+                <p>Rasterizing a PCB design into a PNG is excellent for direct image engraving modes or photoresist exposure. However, <strong>Drill</strong> and <strong>Cutout</strong> operations are single-line paths that lose their dimensional meaning when converted to pixels. To solve this, the Export Manager enforces the <strong>PNG Split Rule</strong>: If PNG export is selected, Isolation and Clearing layers are compiled into a high-DPI <code>.png</code> file, while Drill and Cutout operations are automatically filtered out and exported as a perfectly aligned secondary <code>-vectors.svg</code> file.</p>
             </section>
         </main>
         <!-- Footer -->

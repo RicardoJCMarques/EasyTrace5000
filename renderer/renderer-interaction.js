@@ -64,11 +64,11 @@
 
         init() {
             this.canvas.addEventListener('mousedown', this.handleMouseDown);
-            this.canvas.addEventListener('mousemove', this.handleMouseMove);
-            this.canvas.addEventListener('mouseup', this.handleMouseUp);
-            this.canvas.addEventListener('mouseleave', this.handleMouseUp);
             this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
             this.canvas.addEventListener('contextmenu', this.handleContextMenu);
+
+            // mousemove stays on canvas for coordinate display when not dragging
+            this.canvas.addEventListener('mousemove', this._handleHoverMove.bind(this));
 
             this.canvas.addEventListener('touchstart', this.handleTouchStart, { passive: false });
             this.canvas.addEventListener('touchmove', this.handleTouchMove, { passive: false });
@@ -78,11 +78,12 @@
 
         destroy() {
             this.canvas.removeEventListener('mousedown', this.handleMouseDown);
-            this.canvas.removeEventListener('mousemove', this.handleMouseMove);
-            this.canvas.removeEventListener('mouseup', this.handleMouseUp);
-            this.canvas.removeEventListener('mouseleave', this.handleMouseUp);
             this.canvas.removeEventListener('wheel', this.handleWheel);
             this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
+
+            // Clean up window listeners in case destroy is called mid-drag
+            window.removeEventListener('mousemove', this.handleMouseMove);
+            window.removeEventListener('mouseup', this.handleMouseUp);
 
             this.canvas.removeEventListener('touchstart', this.handleTouchStart);
             this.canvas.removeEventListener('touchmove', this.handleTouchMove);
@@ -92,15 +93,33 @@
 
         // Mouse Events
 
+        _handleHoverMove(e) {
+            if (this.isDragging || this.isRightDragging) return; // Handled by window listener
+
+            const rect = this.canvas.getBoundingClientRect();
+            const dpr = this.core.devicePixelRatio;
+            this.lastScreenPos = {
+                x: (e.clientX - rect.left) * dpr,
+                y: (e.clientY - rect.top) * dpr
+            };
+            this.updateCoordinateDisplay();
+        }
+
         _handleMouseDown(e) {
             if (e.button === 0) {
                 this.isDragging = true;
-                this.lastMousePos = { x: e.clientX, y: e.clientY }; // Store CSS pixels for delta
+                this.lastMousePos = { x: e.clientX, y: e.clientY };
                 this.canvas.style.cursor = interactionConfig.cursorGrabbing;
+                document.documentElement.classList.add('is-panning');
             } else if (e.button === 2) {
                 this.isRightDragging = true;
-                this.lastMousePos = { x: e.clientX, y: e.clientY }; // Store CSS pixels for delta
+                this.lastMousePos = { x: e.clientX, y: e.clientY };
+                document.documentElement.classList.add('is-panning');
             }
+
+            // Capture move/up on window so drag continues outside canvas
+            window.addEventListener('mousemove', this.handleMouseMove);
+            window.addEventListener('mouseup', this.handleMouseUp);
 
             e.preventDefault();
         }
@@ -137,6 +156,11 @@
             this.isRightDragging = false;
             this.lastMousePos = null;
             this.canvas.style.cursor = interactionConfig.cursorGrab;
+            document.documentElement.classList.remove('is-panning');
+
+            // Release window-level listeners
+            window.removeEventListener('mousemove', this.handleMouseMove);
+            window.removeEventListener('mouseup', this.handleMouseUp);
         }
 
         _handleWheel(e) {

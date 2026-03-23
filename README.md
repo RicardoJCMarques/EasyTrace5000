@@ -13,27 +13,6 @@ EasyTrace5000 is a browser-based CAM workspace that converts standard fabricatio
 * **[→ Open Workspace ←](https://cam.eltryus.design/easytrace5000/)** - Runs entirely in your browser. No installation, accounts or cloud dependencies.
 * **[Extra Documentation](https://cam.eltryus.design/easytrace5000/doc/)** - Guides for CNC milling and accessibility features, plus a laser pipeline preview.
 
-## Safety & Material Guide
-
-**Please read this before machining your first board.**
-
-### PCB Substrate Selection (FR4 vs FR1)
-* **Avoid FR4 for home milling:** Standard FR4 PCB stock is made of **fiberglass-reinforced epoxy**. Milling into FR4 creates fine glass dust. This dust is:
-    * **Hazardous to health:** Glass particulates can cause serious respiratory issues (silicosis) when inhaled and skin irritation.
-    * **Bad for machinery:** Glass dust is highly abrasive and will wear out linear bearings, lead screws, and spindle runout very quickly.
-    * **Hard on tools:** It will dull standard carbide endmills much faster.
-
-* **Use FR1 (Phenolic Paper):** For prototyping isolation routing, **FR1** (also sold as Bakelite or Phenolic Paper) is strongly recommended. 
-    * It contains **no fiberglass**.
-    * Making the dust less abrasive (though you still need to be somewhat careful).
-    * It's easier to work with, meaning less machine and tool wear.
-
-### Dust & Fume Extraction
-* **CNC:** Always use a vacuum system or enclosure with FR4. Even FR1 dust should not be inhaled. Good feeds and speeds also help make dust less fine and easier to contain.
-* **Laser:** Fiber laser processing burns the epoxy/phenolic resins, releasing **toxic fumes** (including carbon monoxide and various carcinogens). **Active ventilation to the outdoors or filtering is mandatory.**
-
-Note: Jury's still out on UV lasers but until proven otherwise, use them with the same caution as fiber lasers.
-
 ## Key Features
 
 * **Multi-Operation Workflow**
@@ -42,6 +21,7 @@ Note: Jury's still out on UV lasers but until proven otherwise, use them with th
    * **Drilling:** Smart peck-or-mill strategy selection with slot support.
    * **Copper Clearing:** Internal pocketing for large copper areas.
    * **Board Cutouts:** Path generation with optional tab placement.
+   * **Solderpaste Stencil (New):** Ready to laser/vinyl cut files.
 
 * **Advanced Geometry Engine**
    The first stage converts source files into offset *geometry*.
@@ -83,7 +63,7 @@ Note: Jury's still out on UV lasers but until proven otherwise, use them with th
 * **Rendering:** Custom 2D Canvas-based layer renderer with an overlay system for grids, rulers, and origin points.
 * **File Parsing:** Native parsers for Gerber (RS-274X), Excellon and SVG formats.
 * **Toolpath Generation:** A three-stage pipeline (Translate, Optimize, Process) to convert geometry into machine-ready plans.
-* **Post-Processors:** GRBL, GrblHAL (Experimental), Marlin (Experimental), LinuxCNC (Experimental), Mach3 (Experimental), Roland RML (VERY Experimental).
+* **Post-Processors:** GRBL, Makera (Experimental), GrblHAL (Experimental), Marlin (Experimental), LinuxCNC (Experimental), UCCNC (Experimental), Mach3 (Experimental), Roland RML (VERY Experimental).
 
 Note: All Experimental post-processors need testing. I only have access to GRBL and Roland machines, be extra cautious. Please report successes or issues so I know and can plan accordingly.
 
@@ -147,67 +127,16 @@ The application guides the user through a clear, non-destructive process. Each s
 
 ---
 
-## Keyboard Shortcuts
-
-EasyTrace5000 supports keyboard navigation for efficient workflow. All shortcuts are active when focus is on the canvas or workspace (not inside input fields).
-
-### View Controls
-
-| Shortcut | Action |
-|----------|--------|
-| `Home` | Fit all geometry to view |
-| `F` | Fit to view |
-| `=` | Fit to view |
-| `+` | Zoom in |
-| `-` | Zoom out |
-
-### Origin Controls
-
-| Shortcut | Action |
-|----------|--------|
-| `B` | Set origin to bottom-left |
-| `C` | Set origin to center |
-| `O` | Save current origin |
-
-### Canvas Navigation
-
-| Shortcut | Action |
-|----------|--------|
-| `Arrow Keys` | Pan canvas |
-| `Shift + Arrow Keys` | Pan canvas (faster) |
-
-### Display Toggles
-
-| Shortcut | Action |
-|----------|--------|
-| `W` | Toggle wireframe mode |
-| `G` | Toggle grid visibility |
-
-### Operations
-
-| Shortcut | Action |
-|----------|--------|
-| `Delete` | Remove selected operation |
-| `Escape` | Deselect / Close modal |
-
-### General
-
-| Shortcut | Action |
-|----------|--------|
-| `F6` / `F6` | Cycle focus between Toolbar, Sidebars, and Canvas |
-| `?` or `F1` | Show keyboard shortcuts help (not fully implemented, yet) |
-
----
-
-Note: Shortcuts are disabled when typing in input fields, textareas, or select dropdowns
-
 ## Accessibility
 
 EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Accessibility Documentation](doc/ACCESSIBILITY.md) for complete keyboard controls and WCAG 2.1 compliance details.
 
 ## Project Structure
 
-```
+<details>
+<summary><b>View Project Structure</b></summary>
+
+```text
 /
 ├── index.html                            # Eltryus Cam Suite entry
 │
@@ -293,7 +222,8 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   ├── toolpath-optimizer.js             # Optimization algorithms
 │   └── toolpath-tab-planner.js           # Cutout tab placement
 │
-├── gcode/
+├── export/
+│   ├── laser-image-exporter.js           # Image generation
 │   ├── gcode-generator.js                # G-code generation
 │   └── processors/                       # Post-processor modules
 │       ├── base-processor.js
@@ -301,6 +231,7 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │       ├── makera-processor.js
 │       ├── grblHAL-processor.js
 │       ├── linuxcnc-processor.js
+│       ├── UCCNC-processor.js
 │       ├── mach3-processor.js
 │       ├── marlin-processor.js
 │       └── roland-processor.js           # Independent RML module
@@ -311,16 +242,11 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   ├── LineTest.svg                      # Precision test pattern
 │   └── 100mmSquare.svg                   # 100*100mm square to check steps/mm
 │
-├── doc/
-│   ├── index.html                        # Documentation entry point
-│   ├── cnc.html                          # Documentation for the CNC Pipeline (AI placeholder)
-│   ├── laser.html                        # Documentation for the Laser Pipeline (General idea)
-│   └── accessibility.html                # Documentation for built-in accessibility features
-├── 
-├── 
+├── images/                               # Thumbnails and sharing stuff
 │
 └── clipper2/                             # Clipper2 test page
 ```
+</details>
 
 ## Running Locally
 
@@ -367,7 +293,7 @@ window.getReconstructionRegistry()      // Inspect arc metadata from curve regis
 * **Tool Changes:** The application does not currently generate tool change commands (M6). Operations using different tools must be exported as separate G-code files.
 
 **Known Bugs:**
-* **Disappearing objects in rotated boards:** The Canvas optimizations around viewport culling don't support rotated boards, yet.
+* **Only the ones active in the Issue Tracker**
 
 ## Roadmap
 
@@ -378,7 +304,7 @@ window.getReconstructionRegistry()      // Inspect arc metadata from curve regis
 - Improved toolpath optimization
 - 3D G-code preview/simulation
 - Multi-sided PCB support
-- Service Worker for offline caching
+- Service Worker for offline caching/work
 
 ## Development Tools
 
@@ -391,10 +317,10 @@ The repository includes a standalone test page used during initial development t
 
 ## Support & Sponsorship
 
-EasyTrace5000 is free, open-source software. Development is funded by users and industry partners.
+EasyTrace5000 is free, open-source software.
 
 ### Individual Support
-If this tool saves you time or material costs, contributions via Ko-fi help fund development time and hardware for testing.
+If this tool saves you time or patience, contributions via Ko-fi help fund development time and hardware for testing.
 
 [**>> Support Development on Ko-fi <<**](https://ko-fi.com/eltryus)
 

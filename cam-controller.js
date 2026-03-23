@@ -759,7 +759,7 @@
 
                 // ═══════════════════════════════════════════════════════════════
                 // Add a function to 1-0 numeric characters?
-                // Select source files?
+                // Select source files? Select operation and cycle source files?
                 // ═══════════════════════════════════════════════════════════════
 
                 /* Origin Controls */
@@ -1002,6 +1002,235 @@
 
                         if (operation.parsed?.hasArcs && debugConfig.enabled) {
                             console.log(`Preserved ${operation.originalArcs?.length || 0} arcs for potential reconstruction`);
+                        }
+
+                        // Open Cutout Path Handling
+                        if (operation.needsClosurePrompt && operation._closureInfo) {
+                            const info = operation._closureInfo;
+
+                            setTimeout(() => {
+                                if (!this.modalManager) return;
+
+                                const defaultTolerance = 0.1;
+                                let lastProbeResult = null;
+
+                                // Run initial probe
+                                const runProbe = (tol) => {
+                                    return this.core._probeRelaxedCutoutMerge(info.rawPrimitives, tol);
+                                };
+
+                                lastProbeResult = runProbe(defaultTolerance);
+
+                                const formatResult = (result) => {
+                                    if (!result) {
+                                        return '<span style="color:var(--color-error, #ff4444);">Probe failed — no segments could be analyzed.</span>';
+                                    }
+                                    const ok = result.success;
+                                    const color = ok ? 'var(--color-success, #44bb44)' : 'var(--color-error, #ff4444)';
+                                    const icon = ok ? '✓' : '✗';
+
+                                    let html = `<span style="color:${color};font-weight:bold;">${icon} ${result.chainedCount}/${result.totalSegments} segments chained</span>`;
+                                    if (result.unchainedCount > 0) {
+                                        html += `<br><span style="color:var(--color-error, #ff4444);">${result.unchainedCount} segment(s) could not be chained — tolerance too low or geometry is fragmented.</span>`;
+                                    }
+                                    if (result.gapCount > 0) {
+                                        html += `<br>Gaps bridged: ${result.gapCount} (max: ${result.maxGap.toFixed(3)} mm)`;
+                                    }
+                                    if (ok) {
+                                        html += `<br><span style="color:var(--color-success, #44bb44);">Path can be closed.</span>`;
+                                    }
+                                    return html;
+                                };
+
+                                const bodyHTML = `
+                                    <p>The cutout geometry in <strong>${operation.file.name}</strong> does not form a closed loop at the default precision (${(config.precision.coordinate || 0.001).toFixed(3)} mm).</p>
+                                    <p>Set the maximum gap tolerance to bridge between segment endpoints:</p>
+                                    <div class="closure-controls">
+                                        <label for="closure-tolerance">Tolerance:</label>
+                                        <div class="input-unit">
+                                            <input type="number" id="closure-tolerance" value="${defaultTolerance}" min="0.001" max="5.0" step="0.01">
+                                            <span class="unit">mm</span>
+                                        </div>
+                                        <button id="closure-test-btn" class="btn btn--secondary btn--compact">Test</button>
+                                    </div>
+                                    <div class="closure-results" id="closure-probe-results">
+                                        ${formatResult(lastProbeResult)}
+                                    </div>
+                                `;
+
+                                this.modalManager.showWarning(
+                                    'Open Cutout Path Detected',
+                                    null,
+                                    {
+                                        bodyHTML: bodyHTML,
+                                        confirmText: 'Close path',
+                                        cancelText: 'Keep as-is',
+                                        onConfirm: async () => {
+                                            const resolved = lastProbeResult?.primitive;
+                                            if (resolved) {
+                                                operation.primitives = [resolved];
+                                                operation.bounds = this.core.recalculateBounds(operation.primitives);
+                                                this.core.analyzeGeometricContext(operation, operation.primitives);
+
+                                                delete operation.needsClosurePrompt;
+                                                delete operation._closureInfo;
+
+                                                if (this.ui?.navTreePanel) {
+                                                    const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
+                                                    if (fileNode) {
+                                                        this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
+                                                    }
+                                                }
+
+                                                await this.ui.updateRendererAsync();
+                                                this.ui?.updateStatus('Cutout path automatically closed.', 'success');
+                                            } else {
+                                                this.ui?.updateStatus('Cannot close — test with a higher tolerance first.', 'error');
+                                            }
+                                        },
+                                        onCancel: () => {
+                                            delete operation.needsClosurePrompt;
+                                            delete operation._closureInfo;
+                                            this.ui?.updateStatus('Cutout left as open path.', 'info');
+                                        }
+                                    }
+                                );
+
+                                // Wire up test button after modal renders
+                                requestAnimationFrame(() => {
+                                    const testBtn = document.getElementById('closure-test-btn');
+                                    const tolInput = document.getElementById('closure-tolerance');
+                                    const resultsDiv = document.getElementById('closure-probe-results');
+                                    const confirmBtn = document.querySelector('#warning-modal .warning-confirm');
+
+                                    if (testBtn && tolInput && resultsDiv) {
+                                        const doTest = () => {
+                                            const rawTol = parseFloat(tolInput.value);
+                                            if (!rawTol || rawTol <= 0) {
+                                                resultsDiv.innerHTML = '<span style="color:var(--color-error, #ff4444);">Enter a positive tolerance value.</span>';
+                                                return;
+                                            }
+                                            const tol = Math.min(5.0, Math.max(0.001, rawTol));
+                                            lastProbeResult = runProbe(tol);
+                                            resultsDiv.innerHTML = formatResult(lastProbeResult);
+
+                                            // Enable/disable confirm button based on result
+                                            if (confirmBtn) {
+                                                confirmBtn.disabled = !lastProbeResult?.success;
+                                            }
+                                        };
+
+                                        testBtn.addEventListener('click', doTest);
+                                        tolInput.addEventListener('keypress', (e) => {
+                                            if (e.key === 'Enter') doTest();
+                                        });
+
+                                        // Set initial confirm button state
+                                        if (confirmBtn) {
+                                            confirmBtn.disabled = !lastProbeResult?.success;
+                                        }
+                                    }
+                                });
+                            }, 200);
+                        }
+
+                        // SVG Drill Recovery Prompt
+                        if (operation.type === 'drill' && operation.drillRecoverable) {
+                            const rec = operation.drillRecoverable;
+
+                            setTimeout(() => {
+                                if (!this.modalManager) return;
+
+                                // Build size group summaries
+                                const buildSizeList = (items, type) => {
+                                    if (!items || items.length === 0) return '';
+
+                                    const groups = new Map();
+                                    for (const item of items) {
+                                        const d = item.detected.diameter;
+                                        if (type === 'circle') {
+                                            const key = d.toFixed(3);
+                                            groups.set(key, (groups.get(key) || 0) + 1);
+                                        } else {
+                                            const slot = item.detected.originalSlot;
+                                            const len = Math.hypot(slot.end.x - slot.start.x, slot.end.y - slot.start.y);
+                                            const key = `${d.toFixed(3)} × ${(len + d).toFixed(3)}`;
+                                            groups.set(key, (groups.get(key) || 0) + 1);
+                                        }
+                                    }
+
+                                    return Array.from(groups.entries())
+                                        .map(([size, count]) => {
+                                            const prefix = type === 'circle' ? `⌀${size}mm` : `${size}mm`;
+                                            return `<div class="recovery-size-entry">${prefix} × ${count}</div>`;
+                                        }).join('');
+                                };
+
+                                const circleCount = rec.circles?.length || 0;
+                                const obroundCount = rec.obrounds?.length || 0;
+
+                                const circleColumn = circleCount > 0 ? `
+                                    <div class="drill-recovery-column">
+                                        <h4>Circle Candidates (${circleCount})</h4>
+                                        <p>Compound paths that form complete circles.</p>
+                                        ${buildSizeList(rec.circles, 'circle')}
+                                    </div>
+                                ` : '';
+
+                                const obroundColumn = obroundCount > 0 ? `
+                                    <div class="drill-recovery-column">
+                                        <h4>Obround Candidates (${obroundCount})</h4>
+                                        <p>Compound paths that form stadium/capsule shapes.</p>
+                                        ${buildSizeList(rec.obrounds, 'obround')}
+                                    </div>
+                                ` : '';
+
+                                // Single column class when only one type present
+                                const gridClass = (circleCount > 0 && obroundCount > 0)
+                                    ? 'drill-recovery-grid'
+                                    : 'drill-recovery-grid drill-recovery-single';
+
+                                const bodyHTML = `
+                                    <p>The SVG file <strong>${operation.file.name}</strong> contains ${circleCount + obroundCount} compound path(s) that match known drill shapes but aren't encoded as native primitives.</p>
+                                    <div class="${gridClass}">
+                                        ${circleColumn}
+                                        ${obroundColumn}
+                                    </div>
+                                    <p class="drill-recovery-question">Convert these into valid hole and slot geometry for the drill operation?</p>
+                                `;
+
+                                this.modalManager.showWarning(
+                                    'Recoverable Drill Geometry',
+                                    null,
+                                    {
+                                        bodyHTML: bodyHTML,
+                                        confirmText: 'Convert',
+                                        cancelText: 'Skip',
+                                        onConfirm: async () => {
+                                            this.core._promoteDrillRecoverable(
+                                                operation,
+                                                circleCount > 0,
+                                                obroundCount > 0
+                                            );
+
+                                            // Update tree
+                                            if (this.ui?.navTreePanel) {
+                                                const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
+                                                if (fileNode) {
+                                                    this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
+                                                }
+                                            }
+
+                                            await this.ui.updateRendererAsync();
+                                            this.ui?.updateStatus(`Recovered ${circleCount + obroundCount} drill shape(s)`, 'success');
+                                        },
+                                        onCancel: () => {
+                                            delete operation.drillRecoverable;
+                                            this.ui?.updateStatus('Compound shapes skipped', 'info');
+                                        }
+                                    }
+                                );
+                            }, 250);
                         }
 
                         this.ui?.showOperationMessage?.(type, `Successfully loaded ${count} primitives`, 'success');

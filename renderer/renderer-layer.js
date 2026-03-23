@@ -283,10 +283,9 @@
 
         _renderOffsetLayerImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const isRotated = this.core.currentRotation !== 0;
+            const displayBounds = layer.bounds;
 
-            // Layer-level bounds check
-            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            // Layer-Level Bounds Check
             if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
                 this.core.renderStats.primitives += layer.primitives.length;
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
@@ -371,9 +370,9 @@
 
         _renderStencilSourceImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const isRotated = this.core.currentRotation !== 0;
+            const displayBounds = layer.bounds;
 
-            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            // Layer-Level Bounds Check
             if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
                 this.core.renderStats.primitives += layer.primitives.length;
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
@@ -421,9 +420,9 @@
 
         _renderStencilGeneratedImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const isRotated = this.core.currentRotation !== 0;
+            const displayBounds = layer.bounds;
 
-            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            // Layer-Level Bounds Check
             if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
                 this.core.renderStats.primitives += layer.primitives.length;
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
@@ -480,10 +479,9 @@
 
         _renderFilledLayerImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const isRotated = this.core.currentRotation !== 0;
+            const displayBounds = layer.bounds;
 
-            // Layer-level bounds check
-            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            // Layer-Level Bounds Check
             if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
                 this.core.renderStats.primitives += layer.primitives.length;
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
@@ -551,10 +549,9 @@
          */
         _renderHatchLayerBatched(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const isRotated = this.core.currentRotation !== 0;
+            const displayBounds = layer.bounds;
 
-            // Layer-level bounds check
-            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            // Layer-Level Bounds Check
             if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
                 this.core.renderStats.primitives += layer.primitives.length;
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
@@ -641,9 +638,9 @@
 
         _renderPreviewLayerImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const isRotated = this.core.currentRotation !== 0;
+            const displayBounds = layer.bounds;
 
-            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            // Layer-Level Bounds Check
             if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
                 this.core.renderStats.primitives += layer.primitives.length;
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
@@ -740,23 +737,22 @@
 
         _renderSourceLayerImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const isRotated = this.core.currentRotation !== 0;
+            const displayBounds = layer.bounds;
 
-            // 1. Layer-Level Bounds Check
-            const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+            // Layer-Level Bounds Check
             if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
                 this.core.renderStats.primitives += layer.primitives.length;
                 this.core.renderStats.skippedPrimitives += layer.primitives.length;
                 return;
             }
 
-            // 2. Determine Base Color
+            // Determine Base Color
             let layerColor = this.core.getLayerColorSettings(layer);
             if (this.options.blackAndWhite) {
                 layerColor = layer.type === 'cutout' ? this.core.colors.bw.black : this.core.colors.bw.white;
             }
 
-            // 3. Set Base Context State
+            // Set Base Context State
             this.ctx.fillStyle = layerColor;
             this.ctx.strokeStyle = layerColor;
             this.ctx.lineCap = 'round';
@@ -772,7 +768,7 @@
             for (const entry of entries) {
                 this.core.renderStats.primitives++;
 
-                // 4. Culling
+                // Culling
                 if (!this.core.boundsIntersect(entry.bounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
                     this.core.renderStats.culledViewport++;
@@ -793,12 +789,12 @@
 
                 this.core.renderStats.renderedPrimitives++;
 
-                // 5. Debug Collection
+                // Debug Collection
                 if (this._shouldCollectDebug(prim)) {
                     this.debugPrimitives.push(prim);
                 }
 
-                // 6. Draw Logic
+                // Draw Logic
                 // Determine if it needs stroke or fill
                 const isStroke = (prim.properties?.stroke && !prim.properties?.fill) || prim.properties?.isTrace;
                 const width = prim.properties?.strokeWidth || 0;
@@ -850,7 +846,6 @@
 
         _renderWireframeMode() {
             const viewBounds = this.core.frameCache.viewBounds;
-            const isRotated = this.core.currentRotation !== 0;
 
             // Set Wireframe State Once
             this.ctx.strokeStyle = this.core.colors.debug.wireframe;
@@ -861,7 +856,9 @@
             this.layers.forEach(layer => {
                 if (!layer.visible) return;
 
-                const displayBounds = isRotated ? this._getRotatedLayerBounds(layer) : layer.bounds;
+                const displayBounds = layer.bounds;
+
+                // Layer-Level Bounds Check
                 if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
                     this.core.renderStats.primitives += layer.primitives.length;
                     this.core.renderStats.skippedPrimitives += layer.primitives.length;
@@ -1098,50 +1095,6 @@
 
                 this.ctx.fill();
             }
-        }
-
-        // ========================================================================
-        // Rotation Bounds Helper
-        // ========================================================================
-
-        _getRotatedLayerBounds(layer) {
-            const bounds = layer.bounds;
-            if (!bounds || this.core.currentRotation === 0) {
-                return bounds;
-            }
-
-            const corners = [
-                { x: bounds.minX, y: bounds.minY },
-                { x: bounds.maxX, y: bounds.minY },
-                { x: bounds.maxX, y: bounds.maxY },
-                { x: bounds.minX, y: bounds.maxY }
-            ];
-
-            const rotationCenter = this.core.rotationCenter || { x: 0, y: 0 };
-            const angle = (this.core.currentRotation * Math.PI) / 180;
-            const cos = Math.cos(angle);
-            const sin = Math.sin(angle);
-
-            const rotatedCorners = corners.map(corner => {
-                const dx = corner.x - rotationCenter.x;
-                const dy = corner.y - rotationCenter.y;
-                return {
-                    x: rotationCenter.x + (dx * cos - dy * sin),
-                    y: rotationCenter.y + (dx * sin + dy * cos)
-                };
-            });
-
-            let minX = Infinity, minY = Infinity;
-            let maxX = -Infinity, maxY = -Infinity;
-
-            rotatedCorners.forEach(corner => {
-                minX = Math.min(minX, corner.x);
-                minY = Math.min(minY, corner.y);
-                maxX = Math.max(maxX, corner.x);
-                maxY = Math.max(maxY, corner.y);
-            });
-
-            return { minX, minY, maxX, maxY };
         }
 
         // ========================================================================

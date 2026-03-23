@@ -1527,14 +1527,14 @@
          * Converts a collection of unorganized, open segments into a single, ordered closed PathPrimitive.
          * Enforces CCW winding (Y-Up standard for outer boundaries) and guarantees curve metadata is mapped correctly.
          */
-        mergeSegmentsIntoClosedPath(segments) {
-            if (!segments || segments.length < 2) return null;
+        mergeSegmentsIntoClosedPath(segments, forceClose = false, customTolerance = null) {
+            if (!segments || segments.length < 2) return { success: false };
             const precision = geomConfig.coordinatePrecision || 0.001;
 
             this.debug('Merge input:', segments.map((s, i) => `[${i}] ${s.type}`).join(', '));
 
             // ==========================================
-            // PHASE 1: NORMALIZE ENDPOINTS
+            // NORMALIZE ENDPOINTS
             // ==========================================
             const edges = segments.map((seg, i) => {
                 let start, end;
@@ -1549,10 +1549,10 @@
                 return { index: i, segment: seg, start, end, used: false };
             }).filter(e => e.start && e.end);
 
-            if (edges.length === 0) return null;
+            if (edges.length === 0) return { success: false };
 
             // ==========================================
-            // PHASE 2: GREEDY CHAINING (Robust Distance Matching)
+            // GREEDY CHAINING (Robust Distance Matching)
             // ==========================================
             const chain = [];
             edges[0].used = true;
@@ -1561,44 +1561,82 @@
             let head = edges[0].start; // Front of the chain
             let tail = edges[0].end;   // End of the chain
 
+            // Apply the custom tolerance if provided
+            const chainTolerance = customTolerance !== null ? customTolerance : (forceClose ? 0.5 : precision);
+
             let added = true;
             while (added && chain.length < edges.length) {
                 added = false;
-                
-                // 1. Try appending to the tail
+
+                // Try appending to the tail — find closest match within tolerance
+                let bestMatch = null;
+                let bestDist = chainTolerance;
+                let bestDir = 'forward';
+
                 for (const e of edges) {
                     if (e.used) continue;
-                    if (Math.hypot(e.start.x - tail.x, e.start.y - tail.y) < precision) {
-                        e.used = true; chain.push({ edge: e, dir: 'forward' }); tail = e.end; added = true; break;
-                    } else if (Math.hypot(e.end.x - tail.x, e.end.y - tail.y) < precision) {
-                        e.used = true; chain.push({ edge: e, dir: 'reverse' }); tail = e.start; added = true; break;
-                    }
+                    const dStart = Math.hypot(e.start.x - tail.x, e.start.y - tail.y);
+                    const dEnd = Math.hypot(e.end.x - tail.x, e.end.y - tail.y);
+                    if (dStart < bestDist) { bestDist = dStart; bestMatch = e; bestDir = 'forward'; }
+                    if (dEnd < bestDist) { bestDist = dEnd; bestMatch = e; bestDir = 'reverse'; }
                 }
-                if (added) continue;
 
-                // 2. Try prepending to the head (if tail gets stuck)
+                if (bestMatch) {
+                    bestMatch.used = true;
+                    chain.push({ edge: bestMatch, dir: bestDir });
+                    tail = bestDir === 'forward' ? bestMatch.end : bestMatch.start;
+                    added = true;
+                    continue;
+                }
+
+                // Try prepending to the head
+                bestMatch = null;
+                bestDist = chainTolerance;
+                bestDir = 'forward';
+
                 for (const e of edges) {
                     if (e.used) continue;
-                    if (Math.hypot(e.end.x - head.x, e.end.y - head.y) < precision) {
-                        e.used = true; chain.unshift({ edge: e, dir: 'forward' }); head = e.start; added = true; break;
-                    } else if (Math.hypot(e.start.x - head.x, e.start.y - head.y) < precision) {
-                        e.used = true; chain.unshift({ edge: e, dir: 'reverse' }); head = e.end; added = true; break;
-                    }
+                    const dEnd = Math.hypot(e.end.x - head.x, e.end.y - head.y);
+                    const dStart = Math.hypot(e.start.x - head.x, e.start.y - head.y);
+                    if (dEnd < bestDist) { bestDist = dEnd; bestMatch = e; bestDir = 'forward'; }
+                    if (dStart < bestDist) { bestDist = dStart; bestMatch = e; bestDir = 'reverse'; }
                 }
-            }
 
-            if (chain.length !== edges.length) {
-                console.warn(`[GeoUtils] Stitching failed: chained ${chain.length}/${edges.length} segments.`);
-                return null;
-            }
-
-            if (Math.hypot(head.x - tail.x, head.y - tail.y) > precision) {
-                console.warn('[GeoUtils] Stitched segments did not form a closed loop.');
-                return null;
+                if (bestMatch) {
+                    bestMatch.used = true;
+                    chain.unshift({ edge: bestMatch, dir: bestDir });
+                    head = bestDir === 'forward' ? bestMatch.start : bestMatch.end;
+                    added = true;
+                }
             }
 
             // ==========================================
-            // PHASE 3: POINT ASSEMBLY & METADATA HARVESTING
+            // GAP / CHAIN ANALYSIS
+            // ==========================================
+            const unchainedCount = edges.length - chain.length;
+            const gapDistance = Math.hypot(head.x - tail.x, head.y - tail.y);
+            const isClosed = gapDistance <= precision;
+            const isFullyChained = unchainedCount === 0;
+
+            if (!isFullyChained) {
+                console.warn(`[GeoUtils] Stitching failed: chained ${chain.length}/${edges.length} segments.`);
+                if (!forceClose) {
+                    return { success: false, isOpen: true, gapDistance: gapDistance, unchainedCount: unchainedCount };
+                }
+                // forceClose with unchained segments: proceed with partial chain
+                this.debug(`Force-closing with ${unchainedCount} unchained segment(s)`);
+            }
+
+            if (!isClosed && isFullyChained) {
+                console.warn(`[GeoUtils] Stitched segments did not form a closed loop. Gap: ${gapDistance.toFixed(4)}mm`);
+                if (!forceClose) {
+                    return { success: false, isOpen: true, gapDistance: gapDistance, unchainedCount: 0 };
+                }
+                this.debug(`Force-closing gap of ${gapDistance.toFixed(4)}mm`);
+            }
+
+            // ==========================================
+            // POINT ASSEMBLY & METADATA HARVESTING
             // ==========================================
             const rawPoints = [];
             const rawArcs = [];
@@ -1662,7 +1700,7 @@
             }
 
             // ==========================================
-            // PHASE 4: WINDING ENFORCEMENT
+            // WINDING ENFORCEMENT
             // ==========================================
             const winding = this.calculateWinding(rawPoints);
             if (winding < 0) { // CW area -> Reverse array and mirror arcs to make it CCW
@@ -1689,7 +1727,7 @@
             }
 
             // ==========================================
-            // PHASE 5: SWEEP CALCULATION, REGISTRATION & TAGGING
+            // SWEEP CALCULATION, REGISTRATION & TAGGING
             // ==========================================
             const finalArcSegments = [];
             for (const arc of rawArcs) {
@@ -1727,7 +1765,7 @@
 
             this.debug(`Merge complete: ${rawPoints.length} points, ${finalArcSegments.length} arcs.`);
 
-            return new PathPrimitive([{
+            const primitive = new PathPrimitive([{
                 points: rawPoints,
                 isHole: false,
                 nestingLevel: 0,
@@ -1740,8 +1778,17 @@
                 stroke: false,
                 closed: true,
                 mergedFromSegments: segments.length,
-                polarity: 'dark' // Tells Clipper2 this is a Subject
+                polarity: 'dark'
             });
+
+            return {
+                success: true,
+                primitive: primitive,
+                isOpen: !isClosed,
+                gapDistance: gapDistance,
+                unchainedCount: unchainedCount,
+                wasForceClosed: forceClose && !isClosed
+            };
         },
 
         /**
@@ -1785,8 +1832,7 @@
                         });
                     }
 
-                    // Advance to arc endIndex — its point gets pushed on the next iteration
-                    // (or is already point[0] for a wrapping arc)
+                    // Advance to arc endIndex — its point gets pushed on the next iteration (or is already point[0] for a wrapping arc)
                     i = arc.endIndex;
                     if (i === 0) break; // Wrapping arc — point[0] already in newPoints
                 } else {

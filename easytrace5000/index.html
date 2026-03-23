@@ -809,7 +809,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <span title="Version">Version 1.1.2</span> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.1.2</a> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -1108,7 +1108,7 @@
                                 <span class="zone-types" aria-hidden="true">.gbr, .gtl, .gbl, .svg</span>
                                 <span class="zone-hint" aria-hidden="true">Click or drop</span>
                                 <span class="zone-file"></span>
-                                <input type="file" accept=".gbr,.ger,.gtl,.gbl,.gbs,.svg" hidden>
+                                <input type="file" accept=".gbr,.gtl,.gbl,.svg" hidden>
                             </div>
 
                             <div class="quickstart-drop-zone" data-op-type="drill" id="qs-drill-zone" role="button" tabindex="0" aria-label="Upload Drilling File. Click or drag file here.">
@@ -1118,15 +1118,15 @@
                                     <line x1="4" y1="10" x2="16" y2="10"/>
                                 </svg>
                                 <span class="zone-label" aria-hidden="true">Drilling</span>
-                                <span class="zone-types" aria-hidden="true">.drl, .xln, .txt</span>
+                                <span class="zone-types" aria-hidden="true">.drl, .xln, .txt, .drill, .exc, .svg</span>
                                 <span class="zone-hint" aria-hidden="true">Click or drop</span>
                                 <span class="zone-file"></span>
-                                <input type="file" accept=".drl,.xln,.txt,.drill,.exc" hidden>
+                                <input type="file" accept=".drl,.xln,.txt,.drill,.exc,.svg" hidden>
                             </div>
 
                             <div class="quickstart-drop-zone" data-op-type="clearing" id="qs-clearing-zone" role="button" tabindex="0" aria-label="Upload Copper Clearing File. Click or drag file here.">
                                 <span class="zone-label" aria-hidden="true">Copper Clearing</span>
-                                <span class="zone-types" aria-hidden="true">.gbr, .gpl, .svg</span>
+                                <span class="zone-types" aria-hidden="true">.gbr, .ger, .gpl, .gp1, .gnd, .svg"</span>
                                 <span class="zone-hint" aria-hidden="true">Click or drop</span>
                                 <span class="zone-file"></span>
                                 <input type="file" accept=".gbr,.ger,.gpl,.gp1,.gnd,.svg" hidden>
@@ -1134,7 +1134,7 @@
 
                             <div class="quickstart-drop-zone" data-op-type="cutout" id="qs-cutout-zone" role="button" tabindex="0" aria-label="Upload Board Cutout File. Click or drag file here.">
                                 <span class="zone-label" aria-hidden="true">Board Cutout</span>
-                                <span class="zone-types" aria-hidden="true">.gbr, .gko, .gm1, .svg</span>
+                                <span class="zone-types" aria-hidden="true">.gbr, .gko, .gm1, .outline, .mill, .svg</span>
                                 <span class="zone-hint" aria-hidden="true">Click or drop</span>
                                 <span class="zone-file"></span>
                                 <input type="file" accept=".gbr,.gko,.gm1,.outline,.mill,.svg" hidden>
@@ -1326,8 +1326,9 @@
                                 </div>
                             </div>
                         </div>
+                    </section>
 
-                        <section class="help-section">
+                    <section class="help-section">
                         <h3>Accessibility Navigation</h3>
                         <div class="shortcut-group">
                             <h4>Focus Zones</h4>
@@ -1343,10 +1344,9 @@
                                 <small>Note: Use the <strong>Skip Link</strong> (Tab on load) to jump to Canvas.</small>
                             </p>
                         </div>
-                    </section>
 
                         <div class="shortcut-group">
-                            <h4>Base Navigation</h4>
+                            <h4>Global Shortcuts</h4>
                             <div class="shortcut-list">
                                 <div class="shortcut-item">
                                     <span class="shortcut-keys"><kbd>F6</kbd></span>
@@ -1359,6 +1359,10 @@
                                 <div class="shortcut-item">
                                     <span class="shortcut-keys"><kbd>Esc</kbd></span>
                                     <span class="shortcut-desc">Deselect / Close modal</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>V</kbd></span>
+                                    <span class="shortcut-desc">Toggle layer visibility</span>
                                 </div>
                                 <div class="shortcut-item">
                                     <span class="shortcut-keys"><kbd>F1</kbd></span>
@@ -1561,6 +1565,28 @@
                     <button class="btn btn--secondary" id="exporter-calculate-btn" aria-label="Generate G-code preview">Calculate Toolpaths</button>
                     <button class="btn btn--primary" id="exporter-execute-btn" aria-label="Export selected files">Export Files</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Warning/Confirmation Modal -->
+    <div id="warning-modal" class="modal">
+        <div class="modal-content modal-warning">
+            <div class="modal-header">
+                <h2 class="warning-title">Warning</h2>
+                <button class="modal-close" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-body"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn--secondary warning-cancel">Cancel</button>
+                <button class="btn btn--primary warning-confirm">OK</button>
             </div>
         </div>
     </div>

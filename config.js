@@ -35,8 +35,7 @@ window.PCBCAMConfig = {
     operations: {
         isolation: {
             name: 'Isolation Routing',
-            icon: '🎯',
-            extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.gbs', '.svg'],
+            extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.svg'],
             defaultTool: 'em_0.2mm_flat',  // Tool ID - diameter comes from tools.json
             cutting: {
                 cutDepth: -0.04,
@@ -54,8 +53,7 @@ window.PCBCAMConfig = {
         },
         drill: {
             name: 'Drilling',
-            icon: '🔧',
-            extensions: ['.drl', '.xln', '.txt', '.drill', '.exc'],
+            extensions: ['.drl', '.xln', '.txt', '.drill', '.exc', '.svg' ],
             defaultTool: 'drill_1.0mm',  // Tool ID
             cutting: {
                 cutDepth: -1.8,
@@ -80,7 +78,6 @@ window.PCBCAMConfig = {
         },
         clearing: {
             name: 'Copper Clearing',
-            icon: '🔄',
             extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd', '.svg'],
             defaultTool: 'em_0.8mm_flat',  // Tool ID
             cutting: {
@@ -99,7 +96,6 @@ window.PCBCAMConfig = {
         },
         cutout: {
             name: 'Board Cutout',
-            icon: '✂️',
             extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill', '.svg'],
             defaultTool: 'em_1.0mm_flat',  // Tool ID
             cutting: {
@@ -761,7 +757,7 @@ window.PCBCAMConfig = {
                 duration: 300
             }
         },
-        icons: {                                     // Useless? Deprecate in the future? Replace with theme compatible svgs?
+        icons: {                                     //  Deprecate in the future? Replace with theme compatible svgs? Only a couple are used for source geometry objects in the nav tree
             treeWarning: '⚠️',
             offsetCombined: '⇔️',
             offsetPass: '↔️',

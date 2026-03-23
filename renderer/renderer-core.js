@@ -473,6 +473,16 @@
                 bounds = this._getVisualBounds(bounds);
             }
 
+            // Transform bounds to visual space if rotated
+            if (this.currentRotation !== 0 && this.rotationCenter) {
+                bounds = this._getRotatedFitBounds(bounds);
+            }
+
+            // Shift the effective canvas area inward by the ruler size so geometry isn't hidden behind them
+            const rulerSize = this.options.showRulers
+                ? (config.rendering.canvas.rulerSize || 20) * (this.devicePixelRatio || 1)
+                : 0;
+
             if (includeOrigin) {
                 const origin = this.originPosition || { x: 0, y: 0 };
                 bounds = {
@@ -497,20 +507,23 @@
                 bounds.centerY = (bounds.minY + bounds.maxY) / 2;
             }
 
-            const canvasAspect = this.canvas.width / this.canvas.height;
+            // Account for rulers
+            const availableWidth = this.canvas.width - rulerSize;
+            const availableHeight = this.canvas.height - rulerSize;
+            const canvasAspect = availableWidth / availableHeight;
             const boundsAspect = bounds.width / bounds.height;
 
             let scale;
             if (boundsAspect > canvasAspect) {
-                scale = this.canvas.width / (bounds.width * fitPadding);
+                scale = availableWidth / (bounds.width * fitPadding);
             } else {
-                scale = this.canvas.height / (bounds.height * fitPadding);
+                scale = availableHeight / (bounds.height * fitPadding);
             }
 
             this.viewScale = Math.max(0.1, scale);
             this.viewOffset = {
-                x: this.canvas.width / 2 - bounds.centerX * this.viewScale,
-                y: this.canvas.height / 2 + bounds.centerY * this.viewScale
+                x: rulerSize + availableWidth / 2 - bounds.centerX * this.viewScale,
+                y: rulerSize + availableHeight / 2 + bounds.centerY * this.viewScale
             };
         }
 
@@ -535,6 +548,47 @@
                 const newMaxY = 2 * cy - minY;
                 minY = newMinY;
                 maxY = newMaxY;
+            }
+
+            return {
+                minX, minY, maxX, maxY,
+                width: maxX - minX,
+                height: maxY - minY,
+                centerX: (minX + maxX) / 2,
+                centerY: (minY + maxY) / 2
+            };
+        }
+
+        /**
+         * Forward-rotates bounds into visual space for zoom-to-fit calculation.
+         */
+        _getRotatedFitBounds(bounds) {
+            const corners = [
+                { x: bounds.minX, y: bounds.minY },
+                { x: bounds.maxX, y: bounds.minY },
+                { x: bounds.maxX, y: bounds.maxY },
+                { x: bounds.minX, y: bounds.maxY }
+            ];
+
+            const c = this.rotationCenter;
+            const isMirrored = (this.mirrorX ? 1 : 0) ^ (this.mirrorY ? 1 : 0);
+            const effectiveAngle = isMirrored ? -this.currentRotation : this.currentRotation;
+            const rad = (effectiveAngle * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+
+            let minX = Infinity, minY = Infinity;
+            let maxX = -Infinity, maxY = -Infinity;
+
+            for (const pt of corners) {
+                const dx = pt.x - c.x;
+                const dy = pt.y - c.y;
+                const rx = c.x + (dx * cos - dy * sin);
+                const ry = c.y + (dx * sin + dy * cos);
+                minX = Math.min(minX, rx);
+                minY = Math.min(minY, ry);
+                maxX = Math.max(maxX, rx);
+                maxY = Math.max(maxY, ry);
             }
 
             return {
@@ -835,10 +889,53 @@
                 viewBounds = this._transformBoundsForMirror(viewBounds);
             }
 
+            if (this.currentRotation !== 0 && this.rotationCenter) {
+                viewBounds = this._transformBoundsForRotation(viewBounds);
+            }
+
             this.frameCache.viewBounds = viewBounds;
 
             this.clearCanvas();
             return performance.now();
+        }
+
+        /**
+         * Transforms view bounds into source-geometry space by applying inverse rotation.
+         */
+        _transformBoundsForRotation(bounds) {
+            const corners = [
+                { x: bounds.minX, y: bounds.minY },
+                { x: bounds.maxX, y: bounds.minY },
+                { x: bounds.maxX, y: bounds.maxY },
+                { x: bounds.minX, y: bounds.maxY }
+            ];
+
+            const c = this.rotationCenter;
+            // Align with effectiveAngle logic used in _actualRender
+            const isMirrored = (this.mirrorX ? 1 : 0) ^ (this.mirrorY ? 1 : 0);
+            const effectiveAngle = isMirrored ? -this.currentRotation : this.currentRotation;
+            
+            // Inverse rotation to map the view bounds backwards
+            const rad = (-effectiveAngle * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+
+            let minX = Infinity, minY = Infinity;
+            let maxX = -Infinity, maxY = -Infinity;
+
+            for (const pt of corners) {
+                const dx = pt.x - c.x;
+                const dy = pt.y - c.y;
+                const rx = c.x + (dx * cos - dy * sin);
+                const ry = c.y + (dx * sin + dy * cos);
+
+                minX = Math.min(minX, rx);
+                minY = Math.min(minY, ry);
+                maxX = Math.max(maxX, rx);
+                maxY = Math.max(maxY, ry);
+            }
+
+            return { minX, minY, maxX, maxY };
         }
 
         /**

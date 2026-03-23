@@ -48,7 +48,8 @@
                 quickstart: document.getElementById('quickstart-modal'),
                 exportManager: document.getElementById('exporter-manager-modal'),
                 support: document.getElementById('support-modal'),
-                help: document.getElementById('help-modal')
+                help: document.getElementById('help-modal'),
+                warning: document.getElementById('warning-modal')
             };
 
             // Track selected pipeline
@@ -1815,25 +1816,34 @@
             });
         }
 
-        // Warning modal (for future use)
+        // Warning modal
         showWarning(title, message, options = {}) {
-            const { onConfirm, onCancel, confirmText = 'OK', cancelText = 'Cancel' } = options;
+            const { onConfirm, onCancel, confirmText = 'OK', cancelText = 'Cancel', bodyHTML = null } = options;
 
-            // Create modal dynamically if not exists
-            let modal = document.getElementById('warning-modal');
+            const modal = this.modals.warning;
             if (!modal) {
-                modal = this.createWarningModal();
-                document.body.appendChild(modal);
-                this.modals.warning = modal;
+                console.error('[ModalManager] Warning modal not found in DOM');
+                return;
             }
 
             // Set content
             modal.querySelector('.warning-title').textContent = title;
-            modal.querySelector('.warning-message').textContent = message;
+
+            const bodyContainer = modal.querySelector('.warning-body');
+            if (bodyHTML) {
+                bodyContainer.innerHTML = bodyHTML;
+            } else {
+                bodyContainer.innerHTML = '';
+                const p = document.createElement('p');
+                p.className = 'warning-message';
+                p.textContent = message;
+                bodyContainer.appendChild(p);
+            }
 
             // Setup buttons
             const confirmBtn = modal.querySelector('.warning-confirm');
             confirmBtn.textContent = confirmText;
+            confirmBtn.disabled = false;
             confirmBtn.onclick = () => {
                 if (onConfirm) onConfirm();
                 this.closeModal();
@@ -1851,33 +1861,15 @@
                 cancelBtn.style.display = 'none';
             }
 
+            const closeBtn = modal.querySelector('.modal-close');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    if (onCancel) onCancel();
+                    this.closeModal();
+                };
+            }
+
             this.showModal('warning');
-        }
-
-        createWarningModal() {
-            const modal = document.createElement('div');
-            modal.id = 'warning-modal';
-            modal.className = 'modal';
-
-            modal.innerHTML = `
-                <div class="modal-content modal-warning">
-                    <div class="modal-header">
-                        <h2 class="warning-title">Warning</h2>
-                        <button class="modal-close">×</button>
-                    </div>
-                    <div class="modal-body">
-                        <p class="warning-message"></p>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary warning-cancel">Cancel</button>
-                        <button class="btn btn-primary warning-confirm">OK</button>
-                    </div>
-                </div>
-            `;
-
-            modal.querySelector('.modal-close').onclick = () => this.closeModal();
-
-            return modal;
         }
 
         debug(message, data = null) {

@@ -225,9 +225,20 @@
                 container.appendChild(invalidPanel);
             }
 
+            // Geometry summary panel (visible for source geometry stage)
+            if (geometryStage === 'geometry') {
+                const summaryPanel = this.createGeometrySummary(operation);
+                if (summaryPanel) {
+                    container.appendChild(summaryPanel);
+                }
+            }
+
             // Show warnings if any
             if (operation.warnings && operation.warnings.length > 0) {
-                container.appendChild(this.createWarningPanel(operation.warnings));
+                const warningMessages = operation.warnings.map(w => 
+                    typeof w === 'string' ? { message: w } : w
+                );
+                container.appendChild(this.createWarningPanel(warningMessages));
             }
 
             // Get appropriate parameters for this stage and operation type
@@ -614,12 +625,101 @@
 
             warnings.forEach(warning => {
                 const item = document.createElement('li');
-                item.textContent = warning.message;
+                item.textContent = typeof warning === 'string' ? warning : warning.message;
                 list.appendChild(item);
             });
 
             panel.appendChild(list);
             return panel;
+        }
+
+        /**
+         * Creates a read-only geometry summary panel showing source geometry info.
+         * Visible for all operation types when source geometry stage is selected.
+         */
+        createGeometrySummary(operation) {
+            const summary = this.core.getGeometrySummary(operation);
+            if (!summary || summary.totalCount === 0) return null;
+
+            const section = document.createElement('div');
+            section.className = 'property-section geometry-summary';
+
+            const h3 = document.createElement('h3');
+            h3.textContent = 'Source Geometry';
+            section.appendChild(h3);
+
+            const info = document.createElement('div');
+            info.className = 'geometry-summary-info';
+
+            // Total count
+            const totalLine = document.createElement('div');
+            totalLine.className = 'summary-line';
+            totalLine.innerHTML = `<strong>Primitives:</strong> ${summary.totalCount}`;
+            if (summary.source === 'svg') {
+                totalLine.innerHTML += ' <span class="badge badge--info">SVG</span>';
+            }
+            info.appendChild(totalLine);
+
+            // Type breakdown (compact)
+            if (Object.keys(summary.byType).length > 1 || !summary.isDrill) {
+                const typeEntries = Object.entries(summary.byType)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([type, count]) => `${count} ${type}${count > 1 ? 's' : ''}`)
+                    .join(', ');
+                const typeLine = document.createElement('div');
+                typeLine.className = 'summary-line summary-secondary';
+                typeLine.textContent = typeEntries;
+                info.appendChild(typeLine);
+            }
+
+            // Drill-specific: hole/slot breakdown by size
+            if (summary.isDrill && summary.drillSummary) {
+                const ds = summary.drillSummary;
+
+                if (ds.holes.length > 0) {
+                    const holesLine = document.createElement('div');
+                    holesLine.className = 'summary-line';
+                    const holeDetails = ds.holes
+                        .map(h => `⌀${h.diameter.toFixed(3)}mm × ${h.count}`)
+                        .join(', ');
+                    holesLine.innerHTML = `<strong>Holes:</strong> ${holeDetails}`;
+                    info.appendChild(holesLine);
+                }
+
+                if (ds.slots.length > 0) {
+                    const slotsLine = document.createElement('div');
+                    slotsLine.className = 'summary-line';
+                    const slotDetails = ds.slots
+                        .map(s => `${s.width.toFixed(3)}×${s.length.toFixed(3)}mm × ${s.count}`)
+                        .join(', ');
+                    slotsLine.innerHTML = `<strong>Slots:</strong> ${slotDetails}`;
+                    info.appendChild(slotsLine);
+                }
+
+                if (ds.totalRejected > 0) {
+                    const rejLine = document.createElement('div');
+                    rejLine.className = 'summary-line summary-warning';
+                    rejLine.innerHTML = `<strong>Rejected:</strong> ${ds.totalRejected} unsupported shape${ds.totalRejected > 1 ? 's' : ''} — only circles and obrounds are valid for drilling`;
+                    info.appendChild(rejLine);
+                }
+            }
+
+            // Drill-specific: role breakdown for Excellon files
+            if (summary.isDrill && !summary.drillSummary && summary.byRole) {
+                const roleEntries = Object.entries(summary.byRole)
+                    .map(([role, count]) => {
+                        const label = role.replace('drill_', '').replace('_', ' ');
+                        return `${count} ${label}${count > 1 ? 's' : ''}`;
+                    })
+                    .join(', ');
+                const roleLine = document.createElement('div');
+                roleLine.className = 'summary-line';
+                roleLine.innerHTML = `<strong>Features:</strong> ${roleEntries}`;
+                info.appendChild(roleLine);
+            }
+
+            section.appendChild(info);
+            return section;
         }
 
         createActionButton(text) {

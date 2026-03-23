@@ -448,51 +448,8 @@
 
         async processFile(file, type) {
             if (!file || !type) return;
-
-            if (window.pcbcam && window.pcbcam.processFile) {
-                return window.pcbcam.processFile(file, type);
-            }
-
-            const operation = this.core.createOperation(type, file);
-
-            if (this.navTreePanel) {
-                this.navTreePanel.addFileNode(operation);
-            }
-
-            const reader = new FileReader();
-            return new Promise((resolve) => {
-                reader.onload = async (e) => {
-                    operation.file.content = e.target.result;
-                    const success = await this.core.parseOperation(operation);
-
-                    if (success) {
-                        this.updateStatus('Loaded ' + file.name + ': ' + operation.primitives.length + ' primitives', 'success');
-
-                        if (this.navTreePanel) {
-                            const fileNode = this.navTreePanel.getNodeByOperationId(operation.id);
-                            if (fileNode) {
-                                this.navTreePanel.updateFileGeometries(fileNode.id, operation);
-                            }
-                        }
-
-                        // Refresh panel to update any disabled state
-                        if (this.operationPanel && this.operationPanel.currentOperation) {
-                            this.operationPanel.showOperationProperties(
-                                this.operationPanel.currentOperation,
-                                this.operationPanel.currentGeometryStage
-                            );
-                        }
-
-                        await this.updateRendererAsync();
-                    } else {
-                        this.updateStatus('Error processing ' + file.name + ': ' + operation.error, 'error');
-                    }
-
-                    resolve();
-                };
-
-                reader.readAsText(file);
-            });
+            // Pass through to the main controller
+            return window.pcbcam.processFile(file, type);
         }
 
         showFileModal() {

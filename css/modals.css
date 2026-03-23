@@ -1079,6 +1079,61 @@
 }
 
 /* ============================================================================
+   WARNING / CONFIRMATION MODAL
+   ============================================================================ */
+
+.modal-warning {
+    max-width: min(540px, 90vw);
+}
+
+.modal-warning .modal-footer {
+    justify-content: flex-end;
+}
+
+.warning-body p {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    line-height: var(--line-height-relaxed);
+    margin-bottom: var(--spacing-md);
+}
+
+.warning-body strong {
+    color: var(--color-text-primary);
+}
+
+.closure-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin: var(--spacing-md) 0;
+}
+
+.closure-controls label {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+.closure-controls input[type="number"] {
+    width: 5rem;
+}
+
+.closure-controls .unit {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-hint);
+}
+
+.closure-results {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border-primary);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-relaxed);
+    margin: var(--spacing-sm) 0;
+}
+
+/* ============================================================================
    MODAL RESPONSIVE - HEIGHT CONSTRAINTS
    Using progressive reduction of chrome to maximize content space
    ============================================================================ */

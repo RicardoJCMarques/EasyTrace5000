@@ -356,10 +356,16 @@
 
                 if (operation.type === 'cutout') {
                     if (primitives.length > 1) {
-                        const merged = GeometryUtils.mergeSegmentsIntoClosedPath(primitives);
-                        if (merged) {
+                        const mergeResult = GeometryUtils.mergeSegmentsIntoClosedPath(primitives);
+                        if (mergeResult && mergeResult.success) {
                             this.debug(`Merged ${primitives.length} cutout segments into 1 closed path`);
-                            primitives = [merged];
+                            primitives = [mergeResult.primitive];
+                        } else {
+                            operation.needsClosurePrompt = true;
+                            operation._closureInfo = {
+                                rawPrimitives: primitives
+                            };
+                            this.debug(`Cutout path failed strict merge. Flagged for UI prompt.`);
                         }
                     }
                 }
@@ -419,6 +425,11 @@
                 operation.primitives = finalPrimitives;
                 operation.bounds = this.recalculateBounds(finalPrimitives);
 
+                // SVG drill classification: tag round shapes with drill roles
+                if (operation.type === 'drill' && fileName.endsWith('.svg')) {
+                    this._classifySVGDrillPrimitives(operation);
+                }
+
                 this.updateStatistics();
                 operation.processed = true;
                 this.isToolpathCacheValid = false;
@@ -471,6 +482,434 @@
             this.stats.analyticPrimitives += analyticCount;
             this.stats.polygonizedPrimitives += primitives.length - analyticCount;
             this.stats.strokesConverted += strokeCount;
+        }
+
+        /**
+         * Classifies SVG primitives into drill roles (hole/slot).
+         * Only called when operation.type === 'drill' and the source file is SVG.
+         * Rejects non-circular/non-obround shapes with warnings.
+         */
+        _classifySVGDrillPrimitives(operation) {
+            const precision = config.precision.coordinate || 0.001;
+            const quantize = (value) => Math.round(value / precision) * precision;
+
+            const accepted = [];
+            const warnings = [];
+            const rejected = [];
+            const holeSizes = new Map();  // quantizedDiameter -> count
+            const slotSizes = new Map();  // "widthxlength" -> count
+
+            for (const prim of operation.primitives) {
+                if (!prim.properties) prim.properties = {};
+
+                if (prim.type === 'circle') {
+                    // Direct circle → drill hole
+                    const rawDiameter = prim.radius * 2;
+                    const diameter = quantize(rawDiameter);
+
+                    prim.properties.role = 'drill_hole';
+                    prim.properties.diameter = diameter;
+                    prim.center = prim.center || prim.getCenter();
+
+                    if (Math.abs(rawDiameter - diameter) > precision * 0.1) {
+                        this.debug(`[SVG Drill] Quantized circle diameter: ${rawDiameter.toFixed(6)} → ${diameter.toFixed(3)}mm`);
+                    }
+
+                    const key = diameter.toFixed(3);
+                    holeSizes.set(key, (holeSizes.get(key) || 0) + 1);
+                    accepted.push(prim);
+
+                } else if (prim.type === 'obround') {
+                    const w = prim.width;
+                    const h = prim.height;
+                    const isCircular = Math.abs(w - h) < precision;
+
+                    if (isCircular) {
+                        // Square obround → drill hole (same as plotter logic)
+                        const diameter = quantize(Math.min(w, h));
+                        const cx = prim.position.x + w / 2;
+                        const cy = prim.position.y + h / 2;
+
+                        prim.properties.role = 'drill_hole';
+                        prim.properties.diameter = diameter;
+                        prim.center = { x: cx, y: cy };
+                        prim.radius = diameter / 2;
+
+                        const key = diameter.toFixed(3);
+                        holeSizes.set(key, (holeSizes.get(key) || 0) + 1);
+                        accepted.push(prim);
+                    } else {
+                        // True obround → drill slot
+                        const isHorizontal = w > h;
+                        const r = Math.min(w, h) / 2;
+                        const diameter = quantize(Math.min(w, h));
+
+                        let start, end;
+                        if (isHorizontal) {
+                            const cy = prim.position.y + h / 2;
+                            start = { x: prim.position.x + r, y: cy };
+                            end = { x: prim.position.x + w - r, y: cy };
+                        } else {
+                            const cx = prim.position.x + w / 2;
+                            start = { x: cx, y: prim.position.y + r };
+                            end = { x: cx, y: prim.position.y + h - r };
+                        }
+
+                        prim.properties.role = 'drill_slot';
+                        prim.properties.diameter = diameter;
+                        prim.properties.originalSlot = { start, end };
+
+                        const slotLength = Math.hypot(end.x - start.x, end.y - start.y);
+                        const slotKey = `${diameter.toFixed(3)}x${quantize(slotLength + diameter).toFixed(3)}`;
+                        slotSizes.set(slotKey, (slotSizes.get(slotKey) || 0) + 1);
+                        accepted.push(prim);
+                    }
+
+                } else if (prim.type === 'rectangle') {
+                    const w = prim.width;
+                    const h = prim.height;
+                    const isSquare = Math.abs(w - h) < precision;
+
+                    if (isSquare) {
+                        // Square rectangle → approximate as circular drill hole
+                        const diameter = quantize(w);
+                        const cx = prim.position.x + w / 2;
+                        const cy = prim.position.y + h / 2;
+
+                        prim.properties.role = 'drill_hole';
+                        prim.properties.diameter = diameter;
+                        prim.center = { x: cx, y: cy };
+                        prim.radius = diameter / 2;
+
+                        warnings.push({
+                            message: `Square rectangle (${w.toFixed(3)}mm) treated as circular hole`,
+                            severity: 'info'
+                        });
+
+                        const key = diameter.toFixed(3);
+                        holeSizes.set(key, (holeSizes.get(key) || 0) + 1);
+                        accepted.push(prim);
+                    } else {
+                        // Non-square rectangle → not a valid drill shape
+                        rejected.push({ type: 'rectangle', id: prim.id, width: w, height: h });
+                        warnings.push({
+                            message: `Non-square rectangle (${w.toFixed(3)}×${h.toFixed(3)}mm) rejected — use circles or obrounds for drill holes`,
+                            severity: 'warning'
+                        });
+                    }
+
+                } else {
+                    // PathPrimitive, ArcPrimitive, BezierPrimitive, etc.
+                    rejected.push({ type: prim.type, id: prim.id });
+                    warnings.push({
+                        message: `${prim.type} shape rejected — drill operation only supports circles and obrounds`,
+                        severity: 'warning'
+                    });
+                }
+            }
+
+            // Recovery detection: scan rejected PathPrimitives for circle/obround patterns
+            const recoverableCircles = [];
+            const recoverableObrounds = [];
+
+            for (const entry of rejected) {
+                // Only attempt recovery on PathPrimitives
+                const prim = operation.primitives.find(p => p.id === entry.id);
+                if (!prim || prim.type !== 'path') continue;
+
+                const circleMatch = this._detectCircleFromPath(prim);
+                if (circleMatch) {
+                    const qDiam = quantize(circleMatch.diameter);
+                    recoverableCircles.push({
+                        primitiveId: prim.id,
+                        detected: { ...circleMatch, diameter: qDiam }
+                    });
+                    continue;
+                }
+
+                const obroundMatch = this._detectObroundFromPath(prim);
+                if (obroundMatch) {
+                    const qDiam = quantize(obroundMatch.diameter);
+                    recoverableObrounds.push({
+                        primitiveId: prim.id,
+                        detected: { ...obroundMatch, diameter: qDiam }
+                    });
+                }
+            }
+
+            const hasRecoverable = recoverableCircles.length > 0 || recoverableObrounds.length > 0;
+            if (hasRecoverable) {
+                operation.drillRecoverable = {
+                    circles: recoverableCircles.length > 0 ? recoverableCircles : null,
+                    obrounds: recoverableObrounds.length > 0 ? recoverableObrounds : null
+                };
+                this.debug(`[SVG Drill] Found ${recoverableCircles.length} circle + ${recoverableObrounds.length} obround candidates for recovery`);
+            }
+
+            // Replace primitives with accepted-only set
+            operation.primitives = accepted;
+            operation.bounds = this.recalculateBounds(accepted);
+
+            // Store summary for UI
+            operation.drillSummary = {
+                holes: Array.from(holeSizes.entries())
+                    .sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]))
+                    .map(([diameter, count]) => ({ diameter: parseFloat(diameter), count })),
+                slots: Array.from(slotSizes.entries())
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([key, count]) => {
+                        const [w, l] = key.split('x').map(parseFloat);
+                        return { width: w, length: l, count };
+                    }),
+                totalAccepted: accepted.length,
+                totalRejected: rejected.length,
+                rejected: rejected,
+                source: 'svg'
+            };
+
+            // Merge warnings into operation
+            if (!operation.warnings) operation.warnings = [];
+            operation.warnings.push(...warnings);
+
+            this.debug(`[SVG Drill] Classified ${accepted.length} accepted, ${rejected.length} rejected from ${accepted.length + rejected.length} primitives`);
+            if (rejected.length > 0) {
+                this.debug(`[SVG Drill] Rejected types: ${rejected.map(r => r.type).join(', ')}`);
+            }
+        }
+
+        /**
+         * Builds a structured geometry summary for any operation type.
+         * Used by the UI to display source geometry information.
+         */
+        getGeometrySummary(operation) {
+            if (!operation || !operation.primitives) return null;
+
+            const primitives = operation.primitives;
+            const summary = {
+                totalCount: primitives.length,
+                byType: {},
+                isDrill: operation.type === 'drill',
+                drillSummary: operation.drillSummary || null,
+                source: operation.file?.name?.endsWith('.svg') ? 'svg' : 'native'
+            };
+
+            // Count by primitive type
+            for (const prim of primitives) {
+                const type = prim.type || 'unknown';
+                if (!summary.byType[type]) summary.byType[type] = 0;
+                summary.byType[type]++;
+            }
+
+            // For drill operations, also count by role
+            if (operation.type === 'drill') {
+                summary.byRole = {};
+                for (const prim of primitives) {
+                    const role = prim.properties?.role || 'unclassified';
+                    if (!summary.byRole[role]) summary.byRole[role] = 0;
+                    summary.byRole[role]++;
+                }
+            }
+
+            return summary;
+        }
+
+        /**
+         * Detects if a PathPrimitive is a compound circle (two semicircular arcs).
+         */
+        _detectCircleFromPath(primitive) {
+            if (primitive.type !== 'path' || !primitive.contours || primitive.contours.length !== 1) return null;
+
+            const contour = primitive.contours[0];
+            if (!contour.arcSegments || contour.arcSegments.length !== 2) return null;
+
+            const precision = config.precision.coordinate || 0.001;
+            const arc1 = contour.arcSegments[0];
+            const arc2 = contour.arcSegments[1];
+
+            if (!arc1.center || !arc2.center || !arc1.radius || !arc2.radius) return null;
+
+            // Same center
+            const centerDist = Math.hypot(arc1.center.x - arc2.center.x, arc1.center.y - arc2.center.y);
+            if (centerDist > precision) return null;
+
+            // Same radius
+            if (Math.abs(arc1.radius - arc2.radius) > precision) return null;
+
+            // Combined sweep ≈ 2π
+            const sweep1 = arc1.sweepAngle !== undefined ? Math.abs(arc1.sweepAngle) : Math.abs(arc1.endAngle - arc1.startAngle);
+            const sweep2 = arc2.sweepAngle !== undefined ? Math.abs(arc2.sweepAngle) : Math.abs(arc2.endAngle - arc2.startAngle);
+            const totalSweep = sweep1 + sweep2;
+
+            if (Math.abs(totalSweep - 2 * Math.PI) > 0.1) return null;
+
+            const radius = (arc1.radius + arc2.radius) / 2;
+            const center = {
+                x: (arc1.center.x + arc2.center.x) / 2,
+                y: (arc1.center.y + arc2.center.y) / 2
+            };
+
+            return {
+                center: center,
+                radius: radius,
+                diameter: radius * 2
+            };
+        }
+
+        /**
+         * Detects if a PathPrimitive is a compound obround (two semicircular arcs + linear segments).
+         */
+        _detectObroundFromPath(primitive) {
+            if (primitive.type !== 'path' || !primitive.contours || primitive.contours.length !== 1) return null;
+
+            const contour = primitive.contours[0];
+            if (!contour.arcSegments || contour.arcSegments.length !== 2) return null;
+            if (!contour.points || contour.points.length < 4) return null;
+
+            const precision = config.precision.coordinate || 0.001;
+            const arc1 = contour.arcSegments[0];
+            const arc2 = contour.arcSegments[1];
+
+            if (!arc1.center || !arc2.center || !arc1.radius || !arc2.radius) return null;
+
+            // Same radius (both caps are semicircles of equal size)
+            if (Math.abs(arc1.radius - arc2.radius) > precision) return null;
+
+            // Each arc sweeps ≈ π (semicircle)
+            const sweep1 = arc1.sweepAngle !== undefined ? Math.abs(arc1.sweepAngle) : Math.abs(arc1.endAngle - arc1.startAngle);
+            const sweep2 = arc2.sweepAngle !== undefined ? Math.abs(arc2.sweepAngle) : Math.abs(arc2.endAngle - arc2.startAngle);
+
+            if (Math.abs(sweep1 - Math.PI) > 0.15 || Math.abs(sweep2 - Math.PI) > 0.15) return null;
+
+            // Centers must not coincide (that would be a circle, not an obround)
+            const centerDist = Math.hypot(arc1.center.x - arc2.center.x, arc1.center.y - arc2.center.y);
+            if (centerDist < precision) return null;
+
+            // Verify non-arc segments are linear (no additional curves)
+            const arcPointIndices = new Set();
+            for (const arc of contour.arcSegments) {
+                for (let i = arc.startIndex; i <= arc.endIndex; i++) {
+                    arcPointIndices.add(i % contour.points.length);
+                }
+            }
+
+            // Check that remaining segments are roughly straight
+            const r = (arc1.radius + arc2.radius) / 2;
+            const start = arc1.center;
+            const end = arc2.center;
+
+            // Compute axis-aligned bounding box
+            const minX = Math.min(start.x, end.x) - r;
+            const minY = Math.min(start.y, end.y) - r;
+            const maxX = Math.max(start.x, end.x) + r;
+            const maxY = Math.max(start.y, end.y) + r;
+            const width = maxX - minX;
+            const height = maxY - minY;
+
+            return {
+                position: { x: minX, y: minY },
+                width: width,
+                height: height,
+                diameter: r * 2,
+                originalSlot: { start: { ...start }, end: { ...end } }
+            };
+        }
+
+        /**
+         * Promotes user-accepted recoverable shapes into proper drill primitives.
+         */
+        _promoteDrillRecoverable(operation, acceptCircles, acceptObrounds) {
+            if (!operation.drillRecoverable) return;
+
+            const precision = config.precision.coordinate || 0.001;
+            const quantize = (value) => Math.round(value / precision) * precision;
+            let promoted = 0;
+
+            if (acceptCircles && operation.drillRecoverable.circles) {
+                for (const candidate of operation.drillRecoverable.circles) {
+                    const diameter = quantize(candidate.detected.diameter);
+                    const prim = new CirclePrimitive(
+                        candidate.detected.center,
+                        diameter / 2,
+                        {
+                            role: 'drill_hole',
+                            diameter: diameter,
+                            polarity: 'dark',
+                            operationType: operation.type,
+                            operationId: operation.id,
+                            recoveredFromPath: true
+                        }
+                    );
+                    operation.primitives.push(prim);
+                    promoted++;
+                }
+            }
+
+            if (acceptObrounds && operation.drillRecoverable.obrounds) {
+                for (const candidate of operation.drillRecoverable.obrounds) {
+                    const det = candidate.detected;
+                    const diameter = quantize(det.diameter);
+                    const prim = new ObroundPrimitive(
+                        det.position,
+                        det.width,
+                        det.height,
+                        {
+                            role: 'drill_slot',
+                            diameter: diameter,
+                            originalSlot: det.originalSlot,
+                            polarity: 'dark',
+                            operationType: operation.type,
+                            operationId: operation.id,
+                            recoveredFromPath: true
+                        }
+                    );
+                    operation.primitives.push(prim);
+                    promoted++;
+                }
+            }
+
+            // Rebuild bounds and summary
+            operation.bounds = this.recalculateBounds(operation.primitives);
+            delete operation.drillRecoverable;
+
+            // Re-run summary generation (reuse the summary logic from classify)
+            const holeSizes = new Map();
+            const slotSizes = new Map();
+
+            for (const prim of operation.primitives) {
+                const d = prim.properties?.diameter;
+                if (!d) continue;
+
+                if (prim.properties.role === 'drill_hole') {
+                    const key = d.toFixed(3);
+                    holeSizes.set(key, (holeSizes.get(key) || 0) + 1);
+                } else if (prim.properties.role === 'drill_slot') {
+                    const slot = prim.properties.originalSlot;
+                    if (slot) {
+                        const len = Math.hypot(slot.end.x - slot.start.x, slot.end.y - slot.start.y);
+                        const slotKey = `${d.toFixed(3)}x${quantize(len + d).toFixed(3)}`;
+                        slotSizes.set(slotKey, (slotSizes.get(slotKey) || 0) + 1);
+                    }
+                }
+            }
+
+            operation.drillSummary = {
+                holes: Array.from(holeSizes.entries())
+                    .sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]))
+                    .map(([diameter, count]) => ({ diameter: parseFloat(diameter), count })),
+                slots: Array.from(slotSizes.entries())
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([key, count]) => {
+                        const [w, l] = key.split('x').map(parseFloat);
+                        return { width: w, length: l, count };
+                    }),
+                totalAccepted: operation.primitives.length,
+                totalRejected: 0,
+                rejected: [],
+                source: 'svg',
+                promoted: promoted
+            };
+
+            this.debug(`[SVG Drill] Promoted ${promoted} recoverable shape(s)`);
         }
 
         validateAndOptimizePrimitives(primitives) {
@@ -681,6 +1120,110 @@
             });
 
             return { minX, minY, maxX, maxY };
+        }
+
+        /**
+         * Probes cutout segments with a caller-specified chaining tolerance to determine if an open path can be recovered. Does NOT modify the operation.
+         */
+        _probeRelaxedCutoutMerge(primitives, tolerance) {
+            if (!primitives || primitives.length < 2 || !tolerance || tolerance <= 0) return null;
+
+            const edges = primitives.map((seg, i) => {
+                let start, end;
+                if (seg.type === 'arc') {
+                    start = seg.startPoint;
+                    end = seg.endPoint;
+                } else if (seg.type === 'path' && seg.contours?.[0]?.points) {
+                    const pts = seg.contours[0].points;
+                    start = pts[0];
+                    end = pts[pts.length - 1];
+                }
+                return { index: i, segment: seg, start, end, used: false };
+            }).filter(e => e.start && e.end);
+
+            if (edges.length === 0) return null;
+
+            const chain = [];
+            edges[0].used = true;
+            chain.push(edges[0]);
+
+            let head = edges[0].start;
+            let tail = edges[0].end;
+            let maxGap = 0;
+            let gapCount = 0;
+            const precision = config.precision.coordinate || 0.001;
+
+            let added = true;
+            while (added && chain.length < edges.length) {
+                added = false;
+                let bestMatch = null;
+                let bestDist = tolerance;
+                let bestEnd = 'start';
+
+                for (const e of edges) {
+                    if (e.used) continue;
+                    const dStart = Math.hypot(e.start.x - tail.x, e.start.y - tail.y);
+                    const dEnd = Math.hypot(e.end.x - tail.x, e.end.y - tail.y);
+                    if (dStart < bestDist) { bestDist = dStart; bestMatch = e; bestEnd = 'start'; }
+                    if (dEnd < bestDist) { bestDist = dEnd; bestMatch = e; bestEnd = 'end'; }
+                }
+
+                if (bestMatch) {
+                    bestMatch.used = true;
+                    chain.push(bestMatch);
+                    tail = bestEnd === 'start' ? bestMatch.end : bestMatch.start;
+                    if (bestDist > precision) gapCount++;
+                    maxGap = Math.max(maxGap, bestDist);
+                    added = true;
+                    continue;
+                }
+
+                // Try prepending to head
+                bestMatch = null;
+                bestDist = tolerance;
+                bestEnd = 'end';
+
+                for (const e of edges) {
+                    if (e.used) continue;
+                    const dEnd = Math.hypot(e.end.x - head.x, e.end.y - head.y);
+                    const dStart = Math.hypot(e.start.x - head.x, e.start.y - head.y);
+                    if (dEnd < bestDist) { bestDist = dEnd; bestMatch = e; bestEnd = 'end'; }
+                    if (dStart < bestDist) { bestDist = dStart; bestMatch = e; bestEnd = 'start'; }
+                }
+
+                if (bestMatch) {
+                    bestMatch.used = true;
+                    chain.unshift(bestMatch);
+                    head = bestEnd === 'end' ? bestMatch.start : bestMatch.end;
+                    if (bestDist > precision) gapCount++;
+                    maxGap = Math.max(maxGap, bestDist);
+                    added = true;
+                }
+            }
+
+            const unchainedCount = edges.length - chain.length;
+            const closureGap = Math.hypot(head.x - tail.x, head.y - tail.y);
+            if (closureGap > precision) gapCount++;
+            maxGap = Math.max(maxGap, closureGap);
+
+            // Build the primitive via forceClose if fully chained
+            let primitive = null;
+            if (unchainedCount === 0) {
+                const forceResult = GeometryUtils.mergeSegmentsIntoClosedPath(primitives, true, tolerance);
+                if (forceResult && forceResult.success) {
+                    primitive = forceResult.primitive;
+                }
+            }
+
+            return {
+                success: unchainedCount === 0 && primitive !== null,
+                primitive: primitive,
+                totalSegments: edges.length,
+                chainedCount: chain.length,
+                unchainedCount: unchainedCount,
+                gapCount: gapCount,
+                maxGap: maxGap
+            };
         }
 
         removeOperation(operationId) {

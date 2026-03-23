@@ -762,7 +762,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    z-index: var(--z-modal);
+    z-index: calc(var(--z-modal) + 1); /* Raises it just above standard modals */
 }
 
 .loading-overlay.hidden {

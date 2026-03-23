@@ -4,6 +4,18 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-XX-XX
+
+### Added
+- **SVG Drill Operation Logic:** Hole and slot shaped geometries can now be used to trigger Drill op macros. Round and obround shapes can be converted, others are ignored with a warning.
+- **Open Cutout Polygon:** If a cutout path isn't closed and can't be closed just by stitching it together, a new screen let's the user try to close it with higher tolerances.
+- **Warning Modal:** Can query the user about geometry choices (currently) that need to be made instead of automatically assuming anything.
+- **Source Geometry Stats:** Can help understand changes requested by automatic checks in certain operations (like converting circles and obrounds in svg's).
+
+### Fixed
+- **Rotation + Viewport Culling:** Geometry will stop disappearing near the edges of the canvas viewport when rotation is applied. It was only taking mirroring into account.
+- **ZoomToFit Improvements:** Now also accounts for rotation and also ignores the rulers dimensions when placing the board. 
+
 ## [1.1.2] - 2026-03-20
 
 ### Fixed
@@ -13,16 +25,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Operational Parameter Checkbox Tooltips:** They weren't getting properly attached and the are now.
 
 ### Added
-- **Soldermask Stencil Operation** New operation that can read regular gerbers and soldermask layers, options to ignore regions, flashes with holes and include extra registration holes.
-- **Soldermask Stencil Example** SMD example now includes the .gbr file representing the soldermask stencil layer to be used to test the new Stencil Operation workflow.
-- **Offset Laser SVG Order Flip Toggle** This toggle can flip the order in which geometry is put into the svg in case a software starts processing from the wrong side.
-- **Offset Laser SVG Unique Colors Per Layer Toggle** This toggle can enforce individual colors per layer for softwares that process groups from it.
+- **Soldermask Stencil Operation:** New operation that can read regular gerbers and soldermask layers, options to ignore regions, flashes with holes and include extra registration holes.
+- **Soldermask Stencil Example:** SMD example now includes the .gbr file representing the soldermask stencil layer to be used to test the new Stencil Operation workflow.
+- **Offset Laser SVG Order Flip Toggle:** This toggle can flip the order in which geometry is put into the svg in case a software starts processing from the wrong side.
+- **Offset Laser SVG Unique Colors Per Layer Toggle:** This toggle can enforce individual colors per layer for softwares that process groups from it.
 
 ### Changed
 - **Hid Number Of Passes/Offset In Drill Operations:** It's now automatically calculated to clear all the geometry and avoid risky central cores that can break end-mills once they get loose.
 - **Hardcoded Drill Mill Stepover:** Since it's hidden from users now, it loads a more conservative 40% from config.js.
 - **Single File Export Default:** Export Manager Modal now has single file export turned off by default, for safety.
-- **New User Hint Animation** Instead of holding static with 1 source geometry node highlight will now pulse every few seconds.
+- **New User Hint Animation:** Instead of holding static with 1 source geometry node highlight will now pulse every few seconds.
 
 ## [1.1.1] - 2026-03-17
 
@@ -77,7 +89,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 - **Copper Pour Regions:** KiCAD and Fusion Copper Pour regions are now correctly parsed, plotted and processed in Copper Isolation Operations (Copper Clear works but is even slower).
-- **New Tiny/Noisy/Collapsed Arc Safeguards:** More protections against small arcs with a tendency to collapse on themselfes, plus less random unnecessarily small arcs.
+- **New Tiny/Noisy/Collapsed Arc Safeguards:** More protections against small arcs with a tendency to collapse on themselves, plus less random unnecessarily small arcs.
 
 ### Fixed
 - **Arc Definitions in Laser SVGs:** Offset Strategy Arcs in exported Laser SVGs will come out right now.

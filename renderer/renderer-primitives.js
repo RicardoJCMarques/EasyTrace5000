@@ -48,7 +48,7 @@
                     reconstructed: pc.reconstructedStrokeWidth,
                     debugArc: pc.debugArcStrokeWidth,
                     debugContour: pc.debugContourStrokeWidth,
-                    debugLabel: pc.debugLabelLineWidth2
+                    debugLabel: pc.debugLabelLineWidth
                 },
                 mark: {
                     drillSize: pc.sourceDrillMarkSize,

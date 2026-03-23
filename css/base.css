@@ -272,6 +272,12 @@ a:not([class]):hover {
     grid-column: 1 / -1;
 }
 
+/* Document wide, grab cursor during panning enforcement */
+html.is-panning,
+html.is-panning * {
+    cursor: grabbing !important;
+}
+
 /* ============================================================================
    SCROLLBARS
    ============================================================================ */
