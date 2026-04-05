@@ -52,10 +52,13 @@
                 supportsToolChange: true,
                 supportsArcCommands: true,
                 supportsCannedCycles: true,
+                useM6: true,
+                supportsToolLengthComp: true,
+                pauseAfterToolChange: true,
                 arcFormat: 'IJ',
-                coordinatePrecision: 3,
-                feedPrecision: 1,
-                spindlePrecision: 0,
+                coordinateDecimals: 3,
+                feedDecimals: 1,
+                spindleDecimals: 0,
                 modalCommands: true,
                 lineNumbering: false,
                 maxSpindleSpeed: 24000,
@@ -99,98 +102,6 @@
             }
 
             return lines.join('\n');
-        }
-
-        generateToolChange(tool, options) {
-            const lines = [];
-            const c = options.comments || {};
-            const safeZ = options.safeZ || this.config.safetyHeight;
-
-            lines.push('');
-            this.pushCommentLine(lines, (c.toolChange || 'Tool change: {name}').replace('{name}', tool.name || tool.id), options);
-            this.pushCommentLine(lines, (c.toolDiameter || 'Diameter: {diameter}mm').replace('{diameter}', tool.diameter), options);
-
-            // Spindle stop
-            const stopGcode = this.setSpindle(0, 0, options);
-            if (stopGcode) {
-                lines.push(stopGcode);
-            } else if (this.currentSpindle > 0) {
-                lines.push(this.appendComment('M5', c.spindleStop, options));
-                this.currentSpindle = 0;
-            }
-
-            // Coolant off before tool change
-            if (options.coolant && options.coolant !== 'none') {
-                lines.push(this.appendComment('M9', c.coolantOff, options));
-            }
-
-            // Retract to safe Z
-            lines.push(this.appendComment(`G0 Z${this.formatCoordinate(safeZ)}`, c.retractSafeZ, options));
-            this.currentPosition.z = safeZ;
-
-            // Tool change
-            const toolNumber = tool.number || options.toolNumber || 1;
-            lines.push(`T${toolNumber} M6`);
-
-            // Tool length compensation
-            lines.push(this.appendComment(`G43 H${toolNumber}`, c.toolLengthComp, options));
-
-            // Pause for operator verification
-            lines.push(this.appendComment('M0', c.toolChangePause, options));
-            lines.push('');
-
-            // Restart spindle
-            const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
-            const startGcode = this.setSpindle(spindleSpeed, 0, options);
-            if (startGcode) {
-                lines.push(startGcode);
-            }
-
-            // Restart coolant if needed
-            if (options.coolant && options.coolant !== 'none') {
-                if (options.coolant === 'mist') {
-                    lines.push(this.appendComment('M7', c.coolantMist, options));
-                } else if (options.coolant === 'flood') {
-                    lines.push(this.appendComment('M8', c.coolantFlood, options));
-                }
-            }
-
-            lines.push('');
-            return lines.join('\n');
-        }
-
-        /**
-         * G83 — Peck drilling cycle (full retract between pecks).
-         */
-        generatePeckDrill(position, depth, retract, peckDepth, feedRate) {
-            return `G83 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} Q${this.formatCoordinate(peckDepth)} F${this.formatFeed(feedRate)}`;
-        }
-
-        /**
-         * G73 — Chip-breaking cycle (partial retract between pecks).
-         * Faster than G83 for materials that produce stringy chips.
-         */
-        generateChipBreakDrill(position, depth, retract, peckDepth, feedRate) {
-            return `G73 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} Q${this.formatCoordinate(peckDepth)} F${this.formatFeed(feedRate)}`;
-        }
-
-        /**
-         * G81 — Simple drilling cycle (no dwell).
-         * G82 — Drilling cycle with dwell at bottom.
-         * Dwell parameter P is in milliseconds for UCCNC.
-         */
-        generateSimpleDrill(position, depth, retract, feedRate, dwell) {
-            if (dwell > 0) {
-                const dwellMs = Math.round(dwell * 1000);
-                return `G82 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} P${dwellMs} F${this.formatFeed(feedRate)}`;
-            } else {
-                return `G81 X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)} Z${this.formatCoordinate(depth)} R${this.formatCoordinate(retract)} F${this.formatFeed(feedRate)}`;
-            }
-        }
-
-        cancelCannedCycle(options) {
-            const c = options?.comments || {};
-            return this.appendComment('G80', c.cancelCannedCycle, options);
         }
     }
 

@@ -28,8 +28,10 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
+    const debugState = D.debug;
 
     /**
      * Translates offset geometry into pure toolpath plans
@@ -63,7 +65,7 @@
                 allPlans.push(...opPlans);
             }
 
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 console.log(`[GeometryTranslator] Translated ${allPlans.length} pure geometry plans`);
             }
 
@@ -75,7 +77,6 @@
          */
         _processCutoutContour(contour, operation, ctx, depthLevels, isHole) {
             const plans = [];
-            const TOLERANCE = 0.001;
 
             // Generate unsegmented commands
             const tempPlan = new ToolpathPlan(operation.id);
@@ -96,7 +97,7 @@
 
             if (tabsRequested > 0 && this.tabPlanner) {
                 segmentedCommands = this.tabPlanner.calculateTabPositions(contour, ctx);
-                if (debugConfig.enabled) {
+                if (debugState.enabled) {
                     const tabCount = segmentedCommands.filter(c => c.metadata?.isTab).length;
                     console.log(`[Translator] Tab Planner: ${segmentedCommands.length} segments, ${tabCount} tabs`);
                 }
@@ -111,7 +112,7 @@
                 const plan = this.createPurePlan(contour, ctx, depth, true, isHole, false);
                 if (!plan) continue;
 
-                const useTabbedPath = segmentedCommands.length > 0 && depth < Z_top - TOLERANCE;
+                const useTabbedPath = segmentedCommands.length > 0 && depth < Z_top - PRECISION;
                 const commandsToSend = useTabbedPath ? segmentedCommands : unsegmentedCommands;
 
                 plan.commands = commandsToSend.map(cmd => ({
@@ -366,7 +367,7 @@
                 if (plan.metadata.primitiveType === 'path' && primitive.arcSegments && primitive.arcSegments.length > 0) {
                     const arc = primitive.arcSegments[0];
                     const dist = Math.hypot(primitive.points[0].x - primitive.points[primitive.points.length-1].x, primitive.points[0].y - primitive.points[primitive.points.length-1].y);
-                    if(primitive.arcSegments.length === 1 && dist < 0.001) {
+                    if(primitive.arcSegments.length === 1 && dist < PRECISION) {
                         plan.metadata.center = arc.center;
                         plan.metadata.radius = arc.radius;
                     }
@@ -612,7 +613,7 @@
                 plan.addLinear(end.x, end.y, depth, feedRate);
                 return;
             }
-            
+
             // Add Arc Command
             plan.addArc(end.x, end.y, depth, i, j, isClockwise, feedRate);
         }
@@ -638,9 +639,9 @@
                 const first = arcSegments[0];
                 const isFullCircle = first.center && first.radius > 0 && arcSegments.every(arc =>
                     arc.center &&
-                    Math.abs(arc.center.x - first.center.x) < 0.001 &&
-                    Math.abs(arc.center.y - first.center.y) < 0.001 &&
-                    Math.abs(arc.radius - first.radius) < 0.001
+                    Math.abs(arc.center.x - first.center.x) < PRECISION &&
+                    Math.abs(arc.center.y - first.center.y) < PRECISION &&
+                    Math.abs(arc.radius - first.radius) < PRECISION
                 );
 
                 if (isFullCircle) {
@@ -764,7 +765,7 @@
             const { operationId, tool, cutting, strategy, transforms } = ctx;
             const finalDepth = depthLevels[depthLevels.length - 1];
 
-            // ── PHASE 1: Separate primitives by handling strategy ──
+            // Separate primitives by handling strategy
             const circleMillByHole = new Map();
             const obroundMillByHole = new Map();
             const standardPrimitives = [];
@@ -791,7 +792,7 @@
                 }
             }
 
-            // ── PHASE 2a: Emit macro plans for grouped circle holes ──
+            // Emit macro plans for grouped circle holes
             for (const [holeIdx, holePrimitives] of circleMillByHole) {
                 const rings = holePrimitives.map((prim, idx) => {
                     const transformedCenter = this.applyTransforms(prim.center, transforms);
@@ -840,7 +841,7 @@
                 plans.push(plan);
             }
 
-            // ── PHASE 2b: Emit macro plans for grouped obround slots ──
+            // Emit macro plans for grouped obround slots
             for (const [holeIdx, holePrimitives] of obroundMillByHole) {
                 const rings = holePrimitives.map((prim, idx) => {
                     const oData = this.getObroundData(prim);
@@ -889,7 +890,7 @@
                 plans.push(plan);
             }
 
-            // ── PHASE 3: Standard path for pecks, centerlines, and fallback ──
+            // Standard path for pecks, centerlines, and fallback
             for (const primitive of standardPrimitives) {
                 const role = primitive.properties?.role;
 
@@ -1276,7 +1277,9 @@
             if (points.length < 2) return false;
             const first = points[0];
             const last = points[points.length - 1];
-            return Math.hypot(first.x - last.x, first.y - last.y) < 0.001;
+            const dx = first.x - last.x;
+            const dy = first.y - last.y;
+            return (dx * dx + dy * dy) < (PRECISION * PRECISION);
         }
     }
 

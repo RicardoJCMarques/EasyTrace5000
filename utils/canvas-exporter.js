@@ -28,9 +28,9 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
 
     class CanvasExporter {
         constructor(renderer) {
@@ -38,13 +38,14 @@
             this.core = renderer.core;
             this.svgNS = 'http://www.w3.org/2000/svg';
 
+            // REVIEW - Check these fallbacks, useless?
             this.options = {
-                precision: 3,
-                padding: 5,
-                preserveArcs: geomConfig.preserveArcs !== false,
-                includeMetadata: true,
-                useViewBox: true,
-                embedStyles: true
+                decimals: 3,
+                padding: D.export.svg.padding ?? 5,
+                preserveArcs: D.geometry.fusion.preserveArcs !== false,
+                includeMetadata: D.export.svg.includeMetadata ?? true,
+                useViewBox: D.export.svg.useViewBox ?? true,
+                embedStyles: D.export.svg.embedStyles ?? true
             };
         }
 
@@ -186,7 +187,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             const p = config.padding;
             const w = bounds.width + p * 2;
             const h = bounds.height + p * 2;
-            const fmt = (n) => this._formatNumber(n, config.precision);
+            const fmt = (n) => this._formatNumber(n, config.decimals);
 
             svg.setAttribute('xmlns', this.svgNS);
             svg.setAttribute('width', `${fmt(w)}mm`);
@@ -240,7 +241,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             mainGroup.setAttribute('id', 'pcb-layers');
 
             const viewState = this.core.getViewState();
-            const fmt = (n) => this._formatNumber(n, config.precision);
+            const fmt = (n) => this._formatNumber(n, config.decimals);
             let transform = 'scale(1,-1)';
 
             if (viewState.rotation !== 0) {
@@ -347,7 +348,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
         // Peck Mark Handler
         _exportPeckMark(primitive, layer, config) {
-            const prec = config.precision;
+            const prec = config.decimals;
             const fmt = (n) => this._formatNumber(n, prec);
             const props = primitive.properties || {};
 
@@ -392,7 +393,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
         // Source Drill Hole Handler
         _exportSourceDrillHole(primitive, layer, config) {
-            const prec = config.precision;
+            const prec = config.decimals;
             const fmt = (n) => this._formatNumber(n, prec);
             const colors = this._getColors();
 
@@ -417,7 +418,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
         // Source Drill Slot Handler
         _exportSourceDrillSlot(primitive, layer, config) {
-            const prec = config.precision;
+            const prec = config.decimals;
             const fmt = (n) => this._formatNumber(n, prec);
             const props = primitive.properties || {};
             const colors = this._getColors();
@@ -463,7 +464,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
         // Milling Path Handler
         _exportMillingPath(primitive, layer, config) {
-            const prec = config.precision;
+            const prec = config.decimals;
             const fmt = (n) => this._formatNumber(n, prec);
             const props = primitive.properties || {};
 
@@ -580,7 +581,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
         // Standard Geometry Handler
         _exportStandardGeometry(primitive, layer, config) {
-            const prec = config.precision;
+            const prec = config.decimals;
             const fmt = (n) => this._formatNumber(n, prec);
             const props = primitive.properties || {};
 
@@ -663,7 +664,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
         // Helper to separate creation from styling
         _styleStandardElement(el, primitive, layer, config) {
-            const fmt = (n) => this._formatNumber(n, config.precision);
+            const fmt = (n) => this._formatNumber(n, config.decimals);
             const props = primitive.properties || {};
             const colors = this._getColors();
 
@@ -687,7 +688,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
                 el.setAttribute('stroke', offsetColor);
                 el.setAttribute('stroke-width', fmt(0.025)); // Hairline
                 el.setAttribute('stroke-linejoin', 'round');
-                
+
             } else {
                 // Source Mode
                 // Traces/Strokes
@@ -699,7 +700,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
                         el.setAttribute('stroke-width', fmt(props.strokeWidth));
                     }
                     // If it's a generic stroke without width, default to 0
-                } 
+                }
                 // Regions/Fills - handled by CSS classes on the parent Group usually, but if specific properties override, handle here:
                 else if (props.fill === false) {
                     el.setAttribute('fill', 'none');
@@ -808,7 +809,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
                 d += `A${rx} ${rx} 0 ${large} ${sweep} ${ex} ${ey}`;
 
-                cx = end.x; 
+                cx = end.x;
                 cy = end.y;
                 currentIdx = arc.endIndex;
             }
@@ -892,7 +893,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         debug(message) {
-            if (debugConfig.enabled) console.log(`[CanvasExporter] ${message}`);
+            if (debugState.enabled) console.log(`[CanvasExporter] ${message}`);
         }
     }
 

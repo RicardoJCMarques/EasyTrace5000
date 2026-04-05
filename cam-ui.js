@@ -28,10 +28,11 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
-    const opsConfig = config.operations;
-    const storageKeys = config.storageKeys;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const opsConfig = D.operations;
+    const storageKeys = C.storageKeys;
+    const debugState = D.debug;
 
     class PCBCamUI {
         constructor(core, languageManager) {
@@ -114,7 +115,7 @@
 
                 if (typeof CoordinateSystemManager !== 'undefined') {
                     this.coordinateSystem = new CoordinateSystemManager({ 
-                        debug: debugConfig.enabled 
+                        debug: debugState.enabled 
                     });
                     this.core.coordinateSystem = this.coordinateSystem;
 
@@ -129,7 +130,7 @@
                             this.renderer.render();
                         }
 
-                        if (debugConfig.enabled && (status.action === 'setMirrorX' || status.action === 'setMirrorY')) {
+                        if (debugState.enabled && (status.action === 'setMirrorX' || status.action === 'setMirrorY')) {
                             console.log(`[cam-ui] Mirror state updated: X=${status.mirrorX}, Y=${status.mirrorY}`);
                         }
                     });
@@ -139,15 +140,16 @@
                     this.canvasExporter = new CanvasExporter(this.renderer);
                 }
 
+                const renderingOptions = D.rendering.defaultOptions;
                 this.renderer.setOptions({
-                    showWireframe: config.rendering.defaultOptions.showWireframe,
-                    showGrid: config.rendering.defaultOptions.showGrid,
-                    showOrigin: config.rendering.defaultOptions.showOrigin,
-                    showRulers: config.rendering.defaultOptions.showRulers,
-                    fuseGeometry: config.rendering.defaultOptions.fuseGeometry,
-                    blackAndWhite: config.rendering.defaultOptions.blackAndWhite,
-                    debugPoints: config.rendering.defaultOptions.debugPoints,
-                    debugArcs: config.rendering.defaultOptions.debugArcs,
+                    showWireframe: renderingOptions.showWireframe,
+                    showGrid: renderingOptions.showGrid,
+                    showOrigin: renderingOptions.showOrigin,
+                    showRulers: renderingOptions.showRulers,
+                    fuseGeometry: renderingOptions.fuseGeometry,
+                    blackAndWhite: renderingOptions.blackAndWhite,
+                    debugPoints: renderingOptions.debugPoints,
+                    debugArcs: renderingOptions.debugArcs,
                     theme: document.documentElement.getAttribute('data-theme')
                 });
 
@@ -422,7 +424,7 @@
             if (sizeElement && status.boardSize) {
                 sizeElement.textContent = status.boardSize.width.toFixed(1) + ' × ' + status.boardSize.height.toFixed(1) + ' mm';
             }
-            
+
             if (this.controls && this.controls.updateOffsetInputsWithTracking) {
                 this.controls.updateOffsetInputsWithTracking();
             }
@@ -446,7 +448,6 @@
             if (primStat) {
                 primStat.textContent = stats.totalPrimitives;
             }
-
         }
 
         toggleGrid() {
@@ -552,7 +553,7 @@
                     if (operation.offsets && operation.offsets.length > 0) {
                         const isLaser = window.pcbcam?.isLaserPipeline?.() || false;
                         const isCombined = operation.offsets[0]?.metadata?.offset?.combined || isLaser;
-                        
+
                         // Unhide the specific offset layer(s) in the Renderer
                         if (isCombined) {
                             const offsetLayerName = `offset_${operation.id}_combined`;
@@ -689,7 +690,7 @@
          */
         debug(message, data = null) {
             // This is now the only place that checks this flag // Review - this sounds unnecessarily complicated and will cause multiple cross-module requests for no reason? Does that matter?
-            if (!debugConfig.enabled) {
+            if (!debugState.enabled) {
                 return;
             }
 

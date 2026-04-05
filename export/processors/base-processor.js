@@ -36,10 +36,13 @@
                 supportsToolChange: false,
                 supportsArcCommands: true,
                 supportsCannedCycles: false,
+                useM6: false,
+                supportsToolLengthComp: false,
+                pauseAfterToolChange: false,
                 arcFormat: 'IJ',
-                coordinatePrecision: 3,
-                feedPrecision: 0,
-                spindlePrecision: 0,
+                coordinateDecimals: 3,
+                feedDecimals: 0,
+                spindleDecimals: 0,
                 lineNumbering: false,
                 modalCommands: true,
                 safetyHeight: 5.0,
@@ -126,12 +129,12 @@
                 headerLines.push('');
             }
 
-            // 1. Set unit mode from options (comes from dropdown)
+            // Set unit mode from options (comes from dropdown)
             const isInch = options.units === 'inch' || options.units === 'in';
             this.modalState.units = isInch ? 'G20' : 'G21';
             this.outputScale = isInch ? (1 / 25.4) : 1.0;
 
-            // 2. Output all modal commands based on state
+            // Output all modal commands based on state
             headerLines.push(this.modalState.coordinateMode);
             headerLines.push(this.modalState.units);
             headerLines.push(this.modalState.plane);
@@ -160,7 +163,7 @@
             headerLines.push(startCode); // Add the actual start code after the modals
             return headerLines.join('\n');
         }
-        
+
         generateFooter(options) {
             const c = options.comments || {};
             let endCode = options.endCode || '';
@@ -193,6 +196,13 @@
                 return null;
             }
 
+            // Spindle Validation
+            let targetSpeed = speed;
+            if (targetSpeed > this.config.maxSpindleSpeed) {
+                console.warn(`[PostProcessor] Spindle speed ${targetSpeed} exceeds machine maximum of ${this.config.maxSpindleSpeed}. Capping value.`);
+                targetSpeed = this.config.maxSpindleSpeed;
+            }
+
             const c = options.comments || {};
             this.currentSpindle = speed;
 
@@ -201,7 +211,7 @@
             if (speed > 0) {
                 lines.push(this.appendComment(`M3 S${speed}`, c.spindleStart, options));
                 if (dwell > 0) {
-                    lines.push(this.appendComment(`G4 P${dwell}`, c.spindleDwell, options));
+                    lines.push(this.appendComment(`G4 P${this.formatDwell(dwell)}`, c.spindleDwell, options));
                 }
             } else {
                 lines.push(this.appendComment('M5', c.spindleStop, options));
@@ -210,31 +220,104 @@
             return lines.join('\n');
         }
 
+        // TEST DRAFT - DO NOT CONNECT
+        /*
         generateToolChange(tool, options) {
-            throw new Error('generateToolChange() must be implemented by subclass');
+            if (!this.config.supportsToolChange) return '';
+
+            const lines = [];
+            const c = options.comments || {};
+            const safeZ = options.safeZ || this.config.safetyHeight;
+            const toolNumber = tool.number || options.toolNumber || 1;
+
+            lines.push('');
+            this.pushCommentLine(lines, (c.toolChange || 'Tool change: {name}').replace('{name}', tool.name || tool.id), options);
+            this.pushCommentLine(lines, (c.toolDiameter || 'Diameter: {diameter}mm').replace('{diameter}', tool.diameter), options);
+
+            // Stop Spindle and Coolant
+            const stopGcode = this.setSpindle(0, 0, options);
+            if (stopGcode) {
+                lines.push(stopGcode);
+            } else if (this.currentSpindle > 0) {
+                lines.push(this.appendComment('M5', c.spindleStop, options));
+                this.currentSpindle = 0;
+            }
+
+            if (options.coolant && options.coolant !== 'none') {
+                lines.push(this.appendComment('M9', c.coolantOff, options));
+            }
+
+            // Retract to Safe Z
+            lines.push(this.appendComment(`G0 Z${this.formatCoordinate(safeZ)}`, c.retractSafeZ, options));
+            this.currentPosition.z = safeZ;
+
+            // Tool Change Command
+            if (this.config.useM6) {
+                lines.push(`T${toolNumber} M6`);
+            }
+
+            // Tool Length Compensation
+            if (this.config.supportsToolLengthComp) {
+                lines.push(this.appendComment(`G43 H${toolNumber}`, c.toolLengthComp, options));
+            }
+
+            // Pause for Manual Change
+            if (this.config.pauseAfterToolChange) {
+                lines.push(this.appendComment('M0', c.toolChangePause, options));
+            }
+            lines.push('');
+
+            // Restart Spindle
+            const spindleSpeed = tool.spindleSpeed || options.spindleSpeed || 12000;
+            const startGcode = this.setSpindle(spindleSpeed, tool.spindleDwell || 0, options);
+            if (startGcode) {
+                lines.push(startGcode);
+            }
+
+            // Restart Coolant
+            if (options.coolant && options.coolant !== 'none') {
+                if (options.coolant === 'mist') {
+                    lines.push(this.appendComment('M7', c.coolantMist, options));
+                } else if (options.coolant === 'flood') {
+                    lines.push(this.appendComment('M8', c.coolantFlood, options));
+                }
+            }
+
+            lines.push('');
+            return lines.join('\n');
         }
+        */
 
         // Base formatter that safely strips trailing zeros and handles -0
         _formatNumberSafe(value, precision, scale = 1.0) {
             if (value == null) return ''; // Catches null and undefined
-            
+
             const scaled = value * scale;
             if (precision === 0) return Math.round(scaled).toString();
-            
+
             // toFixed clamps precision, parseFloat strips trailing zeros & fixes '-0'
             return parseFloat(scaled.toFixed(precision)).toString();
         }
 
         formatCoordinate(value) { 
-            return this._formatNumberSafe(value, this.config.coordinatePrecision, this.outputScale); 
+            return this._formatNumberSafe(value, this.config.coordinateDecimals, this.outputScale); 
         }
 
         formatFeed(value) { 
-            return this._formatNumberSafe(value, this.config.feedPrecision, this.outputScale); 
+            return this._formatNumberSafe(value, this.config.feedDecimals, this.outputScale); 
         }
 
         formatSpindle(value) { 
-            return this._formatNumberSafe(value, this.config.spindlePrecision); 
+            return this._formatNumberSafe(value, this.config.spindleDecimals); 
+        }
+
+        /**
+         * Formats dwell time for the P parameter.
+         * Base implementation: milliseconds (GRBL convention).
+         * Override in processors that expect seconds (LinuxCNC, some Mach3).
+         */
+        formatDwell(seconds) {
+            return Math.round(seconds * 1000);
         }
 
         generateArc(cmd) {
@@ -466,7 +549,7 @@
 
         generateDwell(cmd) {
             const duration = cmd.dwell || cmd.duration || 0;
-            return `G4 P${duration}`;
+            return `G4 P${this.formatDwell(duration)}`;
         }
 
         processCommand(cmd) {
@@ -478,9 +561,162 @@
                 case 'PLUNGE': return this.generatePlunge(cmd);
                 case 'RETRACT': return this.generateRetract(cmd);
                 case 'DWELL': return this.generateDwell(cmd);
+                case 'CANNED_SIMPLE': 
+                    if (this.generateSimpleDrill) return this.generateSimpleDrill({x: cmd.x, y: cmd.y}, cmd.z, cmd.retract, cmd.f, cmd.dwell);
+                    return '';
+                case 'CANNED_PECK':
+                    // Route to G73 if requested AND supported by the specific post-processor
+                    if (cmd.cycleType === 'G73' && this.generateChipBreakDrill) {
+                        return this.generateChipBreakDrill({x: cmd.x, y: cmd.y}, cmd.z, cmd.retract, cmd.peckDepth, cmd.f);
+                    } 
+                    // Fallback to G83 if G73 isn't available, or if G83 was explicitly requested
+                    else if (this.generatePeckDrill) {
+                        return this.generatePeckDrill({x: cmd.x, y: cmd.y}, cmd.z, cmd.retract, cmd.peckDepth, cmd.f);
+                    }
+                    return '';
                 default:
                     return '';
             }
+        }
+
+        /**
+         * G81 — Simple drilling cycle (no dwell).
+         * G82 — Drilling cycle with dwell at bottom.
+         * Dwell parameter P is in milliseconds for UCCNC.
+         */
+        generateSimpleDrill(position, depth, retract, feedRate, dwellTime) {
+            let line = '';
+
+            // Emit cycle code only on first hole or if changed
+            const cycleCode = dwellTime > 0 ? 'G82' : 'G81';
+            if (cycleCode !== this.cannedState.cycleType) {
+                line += cycleCode + ' ';
+                this.cannedState.cycleType = cycleCode;
+            }
+
+            // Always emit XY (position changes every hole)
+            line += `X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)}`;
+
+            // Emit Z, R, F, P only if changed from last canned command
+            if (depth !== this.cannedState.z) {
+                line += ` Z${this.formatCoordinate(depth)}`;
+                this.cannedState.z = depth;
+            }
+            if (retract !== this.cannedState.r) {
+                line += ` R${this.formatCoordinate(retract)}`;
+                this.cannedState.r = retract;
+            }
+            if (feedRate !== this.cannedState.f) {
+                line += ` F${this.formatFeed(feedRate)}`;
+                this.cannedState.f = feedRate;
+            }
+            if (dwellTime > 0 && dwellTime !== this.cannedState.dwell) {
+                line += ` P${this.formatDwell(dwellTime)}`;
+                this.cannedState.dwell = dwellTime;
+            }
+
+            return line;
+        }
+
+        /**
+         * G83 — Peck drilling cycle (full retract between pecks).
+         */
+        generatePeckDrill(position, depth, retract, peckDepth, feedRate, cycleType = 'G83') {
+            let line = '';
+
+            if (cycleType !== this.cannedState.cycleType) {
+                line += cycleType + ' ';
+                this.cannedState.cycleType = cycleType;
+            }
+
+            line += `X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)}`;
+
+            if (depth !== this.cannedState.z) {
+                line += ` Z${this.formatCoordinate(depth)}`;
+                this.cannedState.z = depth;
+            }
+            if (retract !== this.cannedState.r) {
+                line += ` R${this.formatCoordinate(retract)}`;
+                this.cannedState.r = retract;
+            }
+            if (peckDepth !== this.cannedState.q) {
+                line += ` Q${this.formatCoordinate(peckDepth)}`;
+                this.cannedState.q = peckDepth;
+            }
+            if (feedRate !== this.cannedState.f) {
+                line += ` F${this.formatFeed(feedRate)}`;
+                this.cannedState.f = feedRate;
+            }
+
+            return line;
+        }
+
+        /**
+         * G73 — Chip-breaking cycle (partial retract between pecks).
+         * Faster than G83 for materials that produce stringy chips.
+         */
+        generateChipBreakDrill(position, depth, retract, peckDepth, feedRate) {
+            let line = '';
+
+            if ('G73' !== this.cannedState.cycleType) {
+                line += 'G73 ';
+                this.cannedState.cycleType = 'G73';
+            }
+
+            line += `X${this.formatCoordinate(position.x)} Y${this.formatCoordinate(position.y)}`;
+
+            if (depth !== this.cannedState.z) {
+                line += ` Z${this.formatCoordinate(depth)}`;
+                this.cannedState.z = depth;
+            }
+            if (retract !== this.cannedState.r) {
+                line += ` R${this.formatCoordinate(retract)}`;
+                this.cannedState.r = retract;
+            }
+            if (peckDepth !== this.cannedState.q) {
+                line += ` Q${this.formatCoordinate(peckDepth)}`;
+                this.cannedState.q = peckDepth;
+            }
+            if (feedRate !== this.cannedState.f) {
+                line += ` F${this.formatFeed(feedRate)}`;
+                this.cannedState.f = feedRate;
+            }
+
+            return line;
+        }
+
+        cancelCannedCycle(options) {
+            // Reset modal tracking so next canned cycle emits full parameters
+            this.cannedState = {
+                cycleType: null, z: null, r: null,
+                q: null, f: null, dwell: null
+            };
+            return 'G80';
+        }
+
+        validateCommand(cmd, options = {}) {
+            const warnings = [];
+            const errors = [];
+
+            // Grab limits from the options context passed by the generator
+            const maxFeed = options.maxFeed || this.config.maxFeedRate || 5000;
+            const maxSafeDepth = options.lowestZ || -25.0; // Negative Z limit // Arbitrary deep limit // REVIEW - Add to config constants
+
+            // Universal Feed Rate Check
+            if (cmd.f !== undefined && cmd.f !== null) {
+                if (cmd.f > maxFeed) {
+                    warnings.push(`Feed rate F${cmd.f} exceeds machine maximum of ${maxFeed}.`);
+                }
+            }
+
+            // Critical Z-Plunge Check (Catch runaway math errors)
+            if ((cmd.type === 'LINEAR' || cmd.type === 'PLUNGE') && cmd.z !== null && cmd.z !== undefined) {
+                if (cmd.z < maxSafeDepth) {
+                    errors.push(`CRITICAL: Commanded Z depth (${cmd.z.toFixed(3)}mm) exceeds maximum safe cutting depth (${maxSafeDepth}mm).`);
+                }
+            }
+
+            return { warnings, errors };
         }
 
         resetState() {
@@ -493,6 +729,15 @@
                 units: 'G21',
                 plane: 'G17',
                 feedRateMode: 'G94'
+            };
+            // Canned cycle modal state — tracks last-emitted parameters
+            this.cannedState = {
+                cycleType: null,
+                z: null,
+                r: null,
+                q: null,
+                f: null,
+                dwell: null
             };
         }
     }

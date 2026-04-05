@@ -28,8 +28,9 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
 
     class ToolLibrary {
         constructor() {
@@ -45,30 +46,21 @@
         async init() {
             if (this.isLoaded) return true;
 
-            try {
-                // Load from external file (single source of truth)
-                const loaded = await this.loadFromFile('../tools.json');
-                if (loaded) {
-                    return true;
-                }
-
-                // Try config if file fails
-                if (config.tools && Array.isArray(config.tools)) {
-                    console.warn('[ToolLibrary] tools.json failed, falling back to config');
-                    this.loadFromConfig();
-                    return true;
-                }
-
-                // Minimal defaults
-                this.loadDefaults();
-                return false;
-
-            } catch (error) {
-                console.error('[ToolLibrary] Failed to initialize tool library:', error);
-                this.loadError = error.message;
-                this.loadDefaults();
-                return false;
+            // PROD: Use the array injected by build.js
+            if (typeof EMBEDDED_TOOLS !== 'undefined') {
+                this.importTools(EMBEDDED_TOOLS);
+                this.isLoaded = true;
+                this.debug(`Loaded ${this.tools.length} embedded tools`);
+                return true;
             }
+
+            // DEV: Fetch the JSON file directly.
+            const loaded = await this.loadFromFile('../tools.json');
+            if (!loaded) {
+                throw new Error("[ToolLibrary] ToolLibrary failed to load tools.json in development mode.");
+            }
+
+            return true;
         }
 
         /**
@@ -100,95 +92,26 @@
         }
 
         async loadFromFile(url) {
-            try {
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-
-                if (!data.tools || !Array.isArray(data.tools)) {
-                    throw new Error('Invalid tools.json format');
-                }
-
-                this.tools = [];
-                this.toolsById.clear();
-                this.toolsByType.clear();
-                this.toolsByOperation.clear();
-
-                data.tools.forEach(tool => {
-                    if (this.validateTool(tool)) {
-                        this.addTool(tool);
-                    }
-                });
-
-                this.isLoaded = true;
-
-                this.debug(`Loaded ${this.tools.length} tools from ${url}`);
-
-                return true;
-
-            } catch (error) {
-                console.error('[ToolLibrary] Failed to load tools from file:', error);
-                this.loadError = error.message;
-                return false;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`[ToolLibrary] HTTP error loading tools: ${response.status}`);
             }
-        }
 
-        loadDefaults() {
-            const defaults = [
-                {
-                    id: 'default_endmill',
-                    name: 'Default End Mill',
-                    type: 'end_mill',
-                    category: 'standard',
-                    geometry: {
-                        diameter: 0.2,
-                        tipType: 'flat',
-                        flutes: 2,
-                        cuttingLength: 3,
-                        shankDiameter: 3.175,
-                        totalLength: 38
-                    },
-                    cutting: {
-                        feedRate: 150,
-                        plungeRate: 50,
-                        spindleSpeed: 12000,
-                        maxDepthPerPass: 0.05,
-                        stepOver: 0.5
-                    },
-                    operations: ['isolation', 'clearing', 'cutout'],
-                    material: 'carbide'
-                },
-                {
-                    id: 'default_drill',
-                    name: 'Default Drill',
-                    type: 'drill',
-                    category: 'standard',
-                    geometry: {
-                        diameter: 0.8,
-                        pointAngle: 118,
-                        fluteLength: 15,
-                        shankDiameter: 3.175,
-                        totalLength: 38
-                    },
-                    cutting: {
-                        feedRate: 60,
-                        plungeRate: 30,
-                        spindleSpeed: 10000,
-                        peckDepth: 0.8,
-                        dwellTime: 0.1
-                    },
-                    operations: ['drill'],
-                    material: 'carbide'
-                }
-            ];
+            const data = await response.json();
+            if (!data.tools || !Array.isArray(data.tools)) {
+                throw new Error('[ToolLibrary] Invalid tools.json format: Missing "tools" array');
+            }
 
-            defaults.forEach(tool => this.addTool(tool));
+            this.tools = [];
+            this.toolsById.clear();
+            this.toolsByType.clear();
+            this.toolsByOperation.clear();
+
+            data.tools.forEach(tool => this.addTool(tool)); // Assume validateTool throws if invalid
 
             this.isLoaded = true;
-            console.warn('[ToolLibrary] Using default tools due to loading failure');
+            this.debug(`Loaded ${this.tools.length} tools from ${url}`);
+            return true;
         }
 
         addTool(tool) {
@@ -213,33 +136,34 @@
         }
 
         validateTool(tool) {
-            // Required top-level fields
+            // Grab an identifier for the error message so you know exactly which tool broke
+            const toolIdentifier = tool.id || tool.name || 'Unknown Tool';
+
             const required = ['id', 'name', 'type', 'geometry', 'cutting', 'operations'];
+
+            // Check top-level required fields
             for (const field of required) {
                 if (!tool[field]) {
-                    if (debugConfig.enabled) {
-                        console.warn(`[ToolLibrary] Tool validation failed: missing '${field}'`, tool);
-                    }
-                    return false;
+                    throw new Error(`[Fatal] Tool validation failed: Tool '${toolIdentifier}' is missing required field '${field}'.`);
                 }
             }
 
-            // Required geometry fields
-            if (!tool.geometry.diameter) {
-                if (debugConfig.enabled) {
-                    console.warn('[ToolLibrary] Tool validation failed: missing geometry.diameter', tool);
+            // Check required geometry properties based on tool type
+            if (tool.type === 'v_bit') {
+                if (tool.geometry.tipDiameter === undefined || tool.geometry.tipDiameter === null) {
+                    throw new Error(`[Fatal] Tool validation failed: V-Bit '${toolIdentifier}' is missing 'geometry.tipDiameter'.`);
                 }
-                return false;
+            } else {
+                if (tool.geometry.diameter === undefined || tool.geometry.diameter === null) {
+                    throw new Error(`[Fatal] Tool validation failed: Tool '${toolIdentifier}' is missing 'geometry.diameter'.`);
+                }
             }
 
-            // Required cutting parameters
+            // Check required cutting properties
             const cuttingRequired = ['feedRate', 'plungeRate', 'spindleSpeed'];
             for (const field of cuttingRequired) {
-                if (tool.cutting[field] === undefined) {
-                    if (debugConfig.enabled) {
-                        console.warn(`[ToolLibrary] Tool validation failed: missing cutting.${field}`, tool);
-                    }
-                    return false;
+                if (tool.cutting[field] === undefined || tool.cutting[field] === null) {
+                    throw new Error(`[Fatal] Tool validation failed: Tool '${toolIdentifier}' is missing 'cutting.${field}'.`);
                 }
             }
             
@@ -260,7 +184,7 @@
 
         getDefaultToolForOperation(operationType) {
             // Try to get default from config
-            const opConfig = config.operations?.[operationType];
+            const opConfig = D.operations?.[operationType];
             if (opConfig?.defaultTool) {
                 const tool = this.getTool(opConfig.defaultTool);
                 if (tool) return tool;
@@ -299,10 +223,10 @@
             if (!data || !data.tools || !Array.isArray(data.tools)) {
                 throw new Error('Invalid tool import data');
             }
-            
+
             const imported = [];
             const failed = [];
-            
+
             data.tools.forEach(tool => {
                 if (this.validateTool(tool)) {
                     // Check for duplicate IDs
@@ -316,7 +240,7 @@
                     failed.push({ id: tool.id || 'unknown', reason: 'Validation failed' });
                 }
             });
-            
+
             return {
                 imported,
                 failed,
@@ -332,12 +256,12 @@
         }
 
         logToolStats() {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 console.log('[ToolLibrary] Statistics:');
                 console.log(`   Total tools: ${this.tools.length}`);
                 console.log(`   Tool types: ${Array.from(this.toolsByType.keys()).join(', ')}`);
                 console.log(`   Operations covered: ${Array.from(this.toolsByOperation.keys()).join(', ')}`);
-                
+
                 this.toolsByType.forEach((tools, type) => {
                     console.log(`   ${type}: ${tools.length} tools`);
                 });

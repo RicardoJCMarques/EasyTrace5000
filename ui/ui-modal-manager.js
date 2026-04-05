@@ -28,10 +28,11 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig ;
-    const textConfig = config.ui.text;
-    const iconConfig = config.ui.icons;
-    const storageKeys = config.storageKeys;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const textConfig = C.ui.text;
+    const iconConfig = C.ui.icons;
+    const storageKeys = C.storageKeys;
 
     class ModalManager {
         constructor(controller) {
@@ -102,11 +103,10 @@
             if (modalName === 'welcome' || modalName === 'laserConfig') {
                 // If users click outside the laser config, assume default UV laser settings
                 if (modalName === 'laserConfig') {
-                    const laserDefaults = config.laserDefaults || {};
                     const laserConfig = {
                         laserType: 'uv',
-                        outputFormat: laserDefaults.outputFormat || 'svg',
-                        layerColors: { ...(laserDefaults.layerColors || {}) }
+                        outputFormat: D.laser.exportFormat,
+                        layerColors: { ...(D.laser.layerColors) }
                     };
                     this.controller.setPipeline('laser', laserConfig);
 
@@ -119,7 +119,7 @@
                 this.activeModal?.classList.remove('active');
                 this.activeModal = null;
                 this.modalStack = [];
-                
+
                 // Move forward to quickstart if not disabled
                 const hideWelcome = localStorage.getItem(storageKeys.hideWelcome);
                 if (!hideWelcome) {
@@ -372,7 +372,7 @@
 
         getActiveModalName() {
             if (!this.activeModal) return null;
-            
+
             for (const [name, modal] of Object.entries(this.modals)) {
                 if (modal === this.activeModal) {
                     return name;
@@ -385,8 +385,6 @@
             const modal = this.modals.laserConfig;
             if (!modal) return;
 
-            const laserDefaults = config.laserDefaults || {};
-
             // UV card — full laser pipeline
             const uvCard = document.getElementById('laser-select-uv');
             if (uvCard) {
@@ -394,8 +392,8 @@
                     e.preventDefault();
                     const laserConfig = {
                         laserType: 'uv',
-                        outputFormat: laserDefaults.outputFormat || 'svg',
-                        layerColors: { ...(laserDefaults.layerColors || {}) }
+                        outputFormat: D.laser.exportFormat,
+                        layerColors: { ...(D.laser.layerColors) }
                     };
                     this.controller.setPipeline('laser', laserConfig);
 
@@ -413,17 +411,17 @@
             if (fiberCard) {
                 fiberCard.onclick = (e) => {
                     e.preventDefault();
-                    
+
                     // --- HYBRID LOCK ---
                     this.ui.showStatus('Hybrid pipeline is currently locked for testing.', 'info');
                     return; 
                     // -------------------
 
-                    /* COMMENTED OUT UNTIL READY:
+                    /* COMMENTED OUT UNTIL ALL LASER OPERATIONS ARE THOROUGHLY TESTED:
                     const laserConfig = {
                         laserType: 'fiber',
-                        outputFormat: laserDefaults.outputFormat || 'svg',
-                        layerColors: { ...(laserDefaults.layerColors || {}) }
+                        outputFormat: D.laser.exportFormat || 'svg',
+                        layerColors: { ...(D.laser.layerColors || {}) }
                     };
                     this.controller.setPipeline('hybrid', laserConfig);
 
@@ -607,10 +605,10 @@
 
         showQuickstartHandler(options = {}) {
             const modal = this.modals.quickstart;
-            
+
             // Get the modal content wrapper (to apply the mode class)
             const modalContent = modal.querySelector('.modal-content');
-            
+
             // Determine pipeline State
             const pipeline = this.selectedPipeline || 'cnc';
 
@@ -928,45 +926,19 @@
 
             // Laser specific init (only if laser ops present)
             if (this.jobHasLaser) {
-                const laserFormat = window.pcbcam?.core?.settings?.laser?.exportFormat || 'svg';
+                const laserSettings = this.controller.core.settings.laser;
 
-                const pngWarning = document.getElementById('laser-png-warning');
-                if (pngWarning) pngWarning.style.display = laserFormat === 'png' ? '' : 'none';
-
-                const dpiField = document.getElementById('laser-dpi-field');
-                if (dpiField) dpiField.style.display = laserFormat === 'png' ? '' : 'none';
-
-                // Populate padding and DPI from settings
-                const laserSettings = this.controller.core?.settings?.laser || {};
-
+                // Populate the per-job padding input from persisted settings
                 const paddingInput = document.getElementById('laser-exporter-padding');
                 if (paddingInput) {
-                    paddingInput.value = laserSettings.exportPadding ?? config.laserDefaults?.exportPadding ?? 5.0;
+                    paddingInput.value = laserSettings.exportPadding ?? D.laser.exportPadding;
                 }
 
-                const dpiInput = document.getElementById('laser-exporter-dpi');
-                if (dpiInput) {
-                    dpiInput.value = laserSettings.exportDPI ?? config.laserDefaults?.rasterDPI ?? 1000;
-                }
-
-                // Initialize laser export UI controls to defaults
-                const cutOrderSelect = document.getElementById('laser-cut-order');
-                if (cutOrderSelect) cutOrderSelect.value = 'normal';
-
-                const svgGroupingSelect = document.getElementById('laser-svg-grouping');
-                if (svgGroupingSelect) svgGroupingSelect.value = 'layer';
-
-                const colorPerPassCheckbox = document.getElementById('laser-color-per-pass');
-                if (colorPerPassCheckbox) colorPerPassCheckbox.checked = true;
-
-                const heatCheckbox = document.getElementById('laser-heat-management');
-                const heatWarning = document.getElementById('laser-heat-warning');
-                if (heatCheckbox) {
-                    heatCheckbox.checked = true;
-                    if (heatWarning) heatWarning.style.display = '';
-                    heatCheckbox.onchange = (e) => {
-                        if (heatWarning) heatWarning.style.display = e.target.checked ? '' : 'none';
-                    };
+                // Update profile summary label in the modal
+                const activeProfile = laserSettings.profiles?.[laserSettings.activeProfile];
+                const summaryLabel = document.getElementById('laser-profile-summary-label');
+                if (summaryLabel && activeProfile) {
+                    summaryLabel.textContent = activeProfile.label;
                 }
             }
 
@@ -974,8 +946,8 @@
             if (this.jobHasStencil) {
                 const stencilPaddingInput = document.getElementById('stencil-exporter-padding');
                 if (stencilPaddingInput) {
-                    const laserSettings = this.controller.core?.settings?.laser || {};
-                    stencilPaddingInput.value = laserSettings.exportPadding ?? config.laserDefaults?.exportPadding ?? 5.0;
+                    const laserSettings = this.controller.core.settings.laser;
+                    stencilPaddingInput.value = laserSettings.exportPadding ?? D.laser.exportPadding;
                 }
             }
 
@@ -983,18 +955,19 @@
             const filenameInput = document.getElementById('exporter-filename');
             if (filenameInput) {
                 let ext = '.nc';
-                
+
                 if (this.jobHasLaser && !this.jobHasCNC) {
-                    ext = window.pcbcam?.core?.settings?.laser?.exportFormat === 'png' ? '.png' : '.svg';
+                    ext = this.controller.core.settings.laser.exportFormat === 'png' ? '.png' : '.svg';
                 } else if (this.jobHasStencil && !this.jobHasCNC && !this.jobHasLaser) {
                     ext = '.svg';
                 } else if (this.jobHasCNC) {
-                    const postProcessor = this.controller.core?.settings?.gcode?.postProcessor || 'grbl';
-                    const processorInfo = window.pcbcam?.gcodeGenerator?.getProcessorInfo(postProcessor);
-                    ext = processorInfo?.fileExtension || '.nc';
+                    const postProcessor = this.controller.core.settings.gcode.postProcessor;
+                    const processorInfo = this.controller.gcodeGenerator.getProcessorInfo(postProcessor);
+                    ext = processorInfo.fileExtension;
                 }
-                
-                const currentName = filenameInput.value || 'pcb-output';
+
+                const defaultBaseName = this.controller.core.settings.export.defaultBaseName;
+                const currentName = filenameInput.value || defaultBaseName;
                 const baseName = currentName.replace(/\.[^/.]+$/, ''); // Strip old extension if present
                 filenameInput.value = `${baseName}${ext}`;
             }
@@ -1017,12 +990,12 @@
                 if (op.type === 'stencil') {
                     routeBadge = '<span class="exporter-route-badge exporter-route-badge--stencil">SVG</span>';
                 } else if (this.controller.isLaserExportForOperation(op.type)) {
-                    const laserFormat = (this.controller.core?.settings?.laser?.exportFormat || 'svg').toUpperCase();
+                    const laserFormat = (this.controller.core.settings.laser.exportFormat).toUpperCase();
                     routeBadge = `<span class="exporter-route-badge exporter-route-badge--laser">${laserFormat}</span>`;
                 } else {
-                    const postProcessor = this.controller.core?.settings?.gcode?.postProcessor || 'grbl';
-                    const processorInfo = window.pcbcam?.gcodeGenerator?.getProcessorInfo(postProcessor);
-                    const ext = (processorInfo?.fileExtension || '.nc').replace('.', '').toUpperCase();
+                    const postProcessor = this.controller.core.settings.gcode.postProcessor;
+                    const processorInfo = window.pcbcam.gcodeGenerator.getProcessorInfo(postProcessor);
+                    const ext = (processorInfo?.fileExtension).replace('.', '').toUpperCase();
                     routeBadge = `<span class="exporter-route-badge exporter-route-badge--cnc">${ext}</span>`;
                 }
 
@@ -1103,7 +1076,7 @@
 
             if (cancelBtn) cancelBtn.onclick = () => this.closeModal();
             if (closeBtn) closeBtn.onclick = () => this.closeModal();
-            
+
             if (calcBtn) {
                 calcBtn.onclick = () => this.runToolpathOrchestration(calcBtn);
             }
@@ -1142,8 +1115,6 @@
             const executeBtn = document.getElementById('exporter-execute-btn');
             const loadingOverlay = document.getElementById('loading-overlay');
             const loadingText = document.getElementById('loading-text');
-
-            
 
             if (executeBtn) {
                 executeBtn.disabled = true;
@@ -1231,9 +1202,9 @@
             // CNC EXPORT (G-CODE / RML)
             // ════════════════════════════════════════════
             if (cncOps.length > 0) {
-                const postProcessor = this.controller.core?.settings?.gcode?.postProcessor || 'grbl';
-                const processorInfo = window.pcbcam?.gcodeGenerator?.getProcessorInfo(postProcessor);
-                const cncExt = processorInfo?.fileExtension || '.nc';
+                const postProcessor = this.controller.core.settings.gcode.postProcessor;
+                const processorInfo = window.pcbcam.gcodeGenerator.getProcessorInfo(postProcessor);
+                const cncExt = processorInfo.fileExtension;
 
                 const downloadBlob = (content, filename) => {
                     const blob = new Blob([content], { type: 'text/plain' });
@@ -1308,46 +1279,40 @@
                     const names = unreadyOps.map(o => o.file.name).join(', ');
                     this.ui.showStatus(`Cannot export: Generate paths for ${names} first.`, 'error');
                 } else {
-                    const colors = {
-                        isolation: document.getElementById('laser-exporter-color-isolation')?.value,
-                        drill: document.getElementById('laser-exporter-color-drill')?.value,
-                        clearing: document.getElementById('laser-exporter-color-clearing')?.value,
-                        cutout: document.getElementById('laser-exporter-color-cutout')?.value
-                    };
-
-                    // Grab dynamic modal values
-                    const laserSettings = this.controller.core?.settings?.laser || {};
-                    const paddingInput = document.getElementById('laser-exporter-padding');
-                    const dpiInput = document.getElementById('laser-exporter-dpi');
-
-                    const exportPadding = paddingInput ? parseFloat(paddingInput.value) : 5.0;
-                    const exportDPI = dpiInput ? parseInt(dpiInput.value, 10) : 1000;
-
-                    // Save choices to core settings for persistence
-                    this.controller.core?.updateSettings('laser', {
-                        exportPadding: exportPadding,
-                        exportDPI: exportDPI
-                    });
-
+                    // All structural settings now come from the persisted core state, populated by the active laser profile in Machine Settings.
+                    const laserSettings = this.controller.core.settings.laser;
                     const exportFormat = laserSettings.exportFormat || 'svg';
 
-                    try {
-                        const heatCheckbox = document.getElementById('laser-heat-management');
-                        const cutOrderSelect = document.getElementById('laser-cut-order');
-                        const svgGroupingSelect = document.getElementById('laser-svg-grouping');
-                        const colorPerPassCheckbox = document.getElementById('laser-color-per-pass');
+                    // Retrieve the active profile so it can pass its palette
+                    const activeProfileKey = laserSettings.activeProfile || 'generic';
+                    const activeProfile = laserSettings.profiles?.[activeProfileKey] || {};
 
+                    // Per-job settings: padding is the only laser-specific value still in the modal
+                    const paddingInput = document.getElementById('laser-exporter-padding');
+                    const exportPadding = paddingInput ? parseFloat(paddingInput.value) : laserSettings.exportPadding;
+
+                    // Persist padding for next session
+                    this.controller.core?.updateSettings('laser', {
+                        exportPadding: exportPadding
+                    });
+
+                    try {
                         const result = await this.controller.orchestrateLaserExport(laserOps, {
-                            layerColors: colors,
+                            layerColors: laserSettings.layerColors,
                             format: exportFormat,
-                            dpi: exportDPI,
+                            dpi: laserSettings.exportDPI,
                             padding: exportPadding,
                             singleFile: isSingleFile,
                             baseName: baseName,
-                            heatManagement: (heatCheckbox?.checked && exportFormat !== 'png') ? 'standard' : 'off',
-                            reverseCutOrder: cutOrderSelect ? cutOrderSelect.value === 'reverse' : false,
-                            svgGrouping: svgGroupingSelect ? svgGroupingSelect.value : 'layer',
-                            colorPerPass: colorPerPassCheckbox?.checked || false
+                            // Profile-driven structural settings — read from persisted state
+                            heatManagement: (laserSettings.heatManagement !== 'off' && exportFormat !== 'png')
+                                ? laserSettings.heatManagement : 'off',
+                            reverseCutOrder: laserSettings.reverseCutOrder || false,
+                            svgGrouping: laserSettings.svgGrouping || 'layer',
+                            colorPerPass: laserSettings.colorPerPass || false,
+                            // Pass palette configurations
+                            palette: activeProfile.palette || null,
+                            paletteLumping: activeProfile.paletteLumping || false
                         });
 
                         if (result.success && result.files?.length > 0) {
@@ -1428,7 +1393,7 @@
                 if (executeBtn) {
                     executeBtn.disabled = false;
                 }
-                
+
                 // Hide the global wait spinner gracefully
                 if (loadingOverlay) {
                     loadingOverlay.style.opacity = '0';
@@ -1489,11 +1454,6 @@
             attachTo('exporter-single-file', 'tooltips.modals.exporter.singleFile');
             attachTo('exporter-split-drills', 'tooltips.modals.exporter.splitDrills');
             attachTo('exporter-filename', 'tooltips.modals.exporter.filename');
-            attachTo('laser-heat-management', 'tooltips.modals.exporter.heatManagement');
-            attachTo('laser-reverse-order', 'tooltips.modals.exporter.reverseCutOrder');
-            attachTo('laser-exporter-dpi', 'tooltips.machineSettings.laserExportDPI');
-            attachTo('laser-exporter-padding', 'tooltips.machineSettings.laserExportPadding');
-            attachTo('laser-exporter-color-isolation', 'tooltips.modals.exporter.layerColors');
             attachTo('laser-exporter-padding', 'tooltips.machineSettings.laserExportPadding');
             attachTo('laser-exporter-dpi', 'tooltips.machineSettings.laserExportDPI');
             attachTo('stencil-exporter-padding', 'tooltips.machineSettings.stencilExportPadding');

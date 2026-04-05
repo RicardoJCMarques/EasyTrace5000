@@ -28,9 +28,9 @@
 (function() {
     'use strict';
 
-    // Get config reference
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
 
     class CoordinateSystemManager {
         constructor(options = {}) {
@@ -156,7 +156,7 @@
         }
 
         syncToRenderer() {
-            if (debugConfig.logging?.coordinateConversion) {
+            if (debugState.logging?.coordinateConversion) {
                 this.debug(`Sync requested: (${this.previewOrigin.x.toFixed(3)}, ${this.previewOrigin.y.toFixed(3)}), rotation: ${this.currentRotation}°`);
             }
             // Notify listeners that a change has occurred
@@ -512,7 +512,7 @@
             const offset = this.getOffsetFromSaved();
 
             // Use config precision for comparison
-            const precision = config.precision.coordinate;
+            const precision = C.precision.coordinate;
 
             // Mirror center is board center for correct visual mirroring
             const mirrorCenter = this.boardBounds ? {

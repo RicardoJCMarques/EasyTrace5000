@@ -26,11 +26,13 @@
  */
 
 (function() {
+    // WARNING - NOT FULLY UPDATED TO NEW CONFIG STRUCTURE YET
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
+    const debugState = D.debug;
 
     /**
      * Analytic contour offsetter for mixed line + arc geometry.
@@ -38,7 +40,7 @@
      * Algorithm (4-phase):
      *   Phase 1 — Build offset entities: each contour edge becomes a parallel
      *             line (shifted by the normal) or a concentric arc (radius ±
-     *             offset). Collapsed arcs (radius < precision) are removed.
+     *             offset). Collapsed arcs (radius < PRECISION) are removed.
      *   Phase 2 — Compute joints: adjacent entity pairs are classified as
      *             trim (converging) or fillet (diverging). Trim joints use
      *             analytic line–line, line–circle, or circle–circle
@@ -60,7 +62,6 @@
     class GeometryAnalyticOffsetter {
         constructor(options = {}) {
             this.options = {
-                precision: config.precision.coordinate,
                 miterLimit: options.miterLimit || geomConfig.offsetting?.miterLimit || 2.0
             };
         }
@@ -77,7 +78,6 @@
         offsetContour(contour, distance) {
             const isInternal = distance < 0;
             const offsetDist = Math.abs(distance);
-            const precision = this.options.precision;
 
             const points = contour.points;
             const arcSegments = contour.arcSegments || [];
@@ -111,7 +111,7 @@
                 if (arc && arc.endIndex === endIndex) {
                     const newRadius = arc.radius + (normalDirection * offsetDist);
 
-                    if (newRadius < precision) {
+                    if (newRadius < PRECISION) {
                         // Arc collapsed — mark gap, neighbors will extend to meet
                         entities.push({
                             type: 'collapsed',
@@ -171,7 +171,7 @@
                     const dy = p2.y - p1.y;
                     const len = Math.hypot(dx, dy);
 
-                    if (len < precision) continue;
+                    if (len < PRECISION) continue;
 
                     const nx = normalDirection * (-dy / len);
                     const ny = normalDirection * (dx / len);
@@ -213,11 +213,10 @@
                 const len1 = Math.hypot(v1End.x, v1End.y);
                 const len2 = Math.hypot(v2Start.x, v2Start.y);
                 let dot = 0;
-                if (len1 > precision && len2 > precision) {
+                if (len1 > PRECISION && len2 > PRECISION) {
                     dot = (v1End.x * v2Start.x + v1End.y * v2Start.y) / (len1 * len2);
                 }
-                const collinearThreshold = geomConfig.offsetting?.collinearDotThreshold || 0.995;
-                const isCollinear = dot > collinearThreshold;
+                const isCollinear = dot > C.precision.collinearDot;
 
                 // Joint classifier: same-sign cross×normal → trim, opposite → fillet
                 let needsTrim = (crossProduct * normalDirection >= 0);
@@ -245,7 +244,7 @@
                     const arcPoints = GeometryMath.createRoundJoint(
                         ent1.originalVertex,
                         v1End, v2Start,
-                        normalDirection, offsetDist, distance, precision
+                        normalDirection, offsetDist, distance, PRECISION
                     );
 
                     joints.push({ type: 'fillet', points: arcPoints });
@@ -292,8 +291,7 @@
                         if (sweep < 0) sweep += 2 * Math.PI;
                     }
 
-                    // Detect inversion: if the sweep suddenly grew by more than 180°
-                    // beyond the original, the trim endpoints crossed over each other.
+                    // Detect inversion: if the sweep suddenly grew by more than 180° beyond the original, the trim endpoints crossed over each other.
                     const originalAbsSweep = Math.abs(ent.sweepAngle);
                     const newAbsSweep = Math.abs(sweep);
 
@@ -366,7 +364,7 @@
                 const dx = f.x - l.x;
                 const dy = f.y - l.y;
 
-                if ((dx * dx + dy * dy) < (precision * precision)) {
+                if ((dx * dx + dy * dy) < (PRECISION * PRECISION)) {
                     const oldEndIdx = finalPoints.length - 1;
                     if (l.curveId && !f.curveId) {
                         f.curveId = l.curveId;
@@ -390,7 +388,7 @@
                 const dx = prev.x - curr.x;
                 const dy = prev.y - curr.y;
 
-                if ((dx * dx + dy * dy) > (precision * precision)) {
+                if ((dx * dx + dy * dy) > (PRECISION * PRECISION)) {
                     indexRemap.push(dedupedPoints.length);
                     dedupedPoints.push(curr);
                 } else {
@@ -429,7 +427,6 @@
          * @throws {Error} If entities miss each other (topology collapse).
          */
         _computeTrimJoint(ent1, ent2, originalVertex, miterLimit) {
-            const precision = this.options.precision;
             let candidates;
 
             // Line–Line
@@ -445,15 +442,15 @@
 
             // Line–Arc
             if (ent1.type === 'line' && ent2.type === 'arc') {
-                candidates = GeometryMath.lineCircleIntersect(ent1.p1, ent1.p2, ent2.center, ent2.radius, precision);
+                candidates = GeometryMath.lineCircleIntersect(ent1.p1, ent1.p2, ent2.center, ent2.radius, PRECISION);
             }
             // Arc–Line
             else if (ent1.type === 'arc' && ent2.type === 'line') {
-                candidates = GeometryMath.lineCircleIntersect(ent2.p1, ent2.p2, ent1.center, ent1.radius, precision);
+                candidates = GeometryMath.lineCircleIntersect(ent2.p1, ent2.p2, ent1.center, ent1.radius, PRECISION);
             }
             // Arc–Arc
             else if (ent1.type === 'arc' && ent2.type === 'arc') {
-                candidates = GeometryMath.circleCircleIntersect(ent1.center, ent1.radius, ent2.center, ent2.radius, precision);
+                candidates = GeometryMath.circleCircleIntersect(ent1.center, ent1.radius, ent2.center, ent2.radius, PRECISION);
             }
             else {
                 return null;
@@ -524,7 +521,7 @@
         // ==========================================
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[AnalyticOffsetter] ${message}`, data);
                 } else {

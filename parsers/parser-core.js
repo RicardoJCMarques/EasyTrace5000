@@ -28,10 +28,11 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const debugConfig = config.debug;
-    const validationConfig = debugConfig.validation;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
+    const debugState = D.debug;
+    const validationConfig = debugState.validation;
 
     class ParserCore {
         constructor(options = {}) {
@@ -110,7 +111,7 @@
             }
 
             // Check for reasonable coordinate ranges
-            const maxCoordinate = geomConfig.maxCoordinate;
+            const maxCoordinate = C.geometry.maxCoordinate;
             if (validationConfig.validateCoordinates && 
                 (Math.abs(coordinates.x) > maxCoordinate || Math.abs(coordinates.y) > maxCoordinate)) {
                 this.coordinateValidation.suspiciousCoordinates.push({
@@ -122,12 +123,11 @@
             }
 
             // Check precision
-            const precision = config.precision.coordinate;
-            const xRounded = Math.round(coordinates.x / precision) * precision;
-            const yRounded = Math.round(coordinates.y / precision) * precision;
+            const xRounded = Math.round(coordinates.x / PRECISION) * PRECISION;
+            const yRounded = Math.round(coordinates.y / PRECISION) * PRECISION;
 
-            if (Math.abs(coordinates.x - xRounded) > precision * 0.1 || 
-                Math.abs(coordinates.y - yRounded) > precision * 0.1) {
+            if (Math.abs(coordinates.x - xRounded) > PRECISION * 0.1 || // REVIEW - double check config epsilons. Is the *0.1 necessary? Why not use an existing or smaller epsilon?
+                Math.abs(coordinates.y - yRounded) > PRECISION * 0.1) {
                 this.debug(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
             }
 
@@ -267,7 +267,7 @@
 
         // Edge deduplication utilities
         createEdgeKey(p1, p2) {
-            const keyPrecision = geomConfig.edgeKeyPrecision || 3;
+            const keyPrecision = C.geometry.edgeKeyPrecision || 3; // REVIEW - Are these just decimals? Leave "precision" labels for epsilons
             const x1 = p1.x.toFixed(keyPrecision);
             const y1 = p1.y.toFixed(keyPrecision);
             const x2 = p2.x.toFixed(keyPrecision);
@@ -280,13 +280,13 @@
 
             regions.forEach((region, idx) => {
                 if (!region.points || region.points.length < 2) return;
-                
+
                 for (let i = 0; i < region.points.length - 1; i++) {
                     const p1 = region.points[i];
                     const p2 = region.points[i + 1];
                     const edgeKey = this.createEdgeKey(p1, p2);
                     edgeMap.set(edgeKey, `region${idx}_edge${i}`);
-                    
+
                     // Store reverse edge for bidirectional matching
                     const reverseKey = this.createEdgeKey(p2, p1);
                     edgeMap.set(reverseKey, `region${idx}_edge${i}_reverse`);
@@ -331,7 +331,7 @@
 
         // Logging utilities
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[Parser] ${message}`, data);
                 } else {
@@ -341,8 +341,8 @@
         }
 
         logStatistics() {
-            if (!debugConfig.enabled) return;
-            
+            if (!debugState.enabled) return;
+
             this.debug('Parse Statistics:');
             this.debug(`  Lines processed: ${this.stats.linesProcessed}`);
             this.debug(`  Objects created: ${this.stats.objectsCreated}`);

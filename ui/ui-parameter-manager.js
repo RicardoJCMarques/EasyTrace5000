@@ -28,9 +28,10 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const validationRules = config.ui.validation;
-    const paramOptions = config.ui.parameterOptions;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const validationRules = C.ui.validation;
+    const paramOptions = C.ui.parameterOptions;
 
     class ParameterManager {
         constructor() {
@@ -70,8 +71,6 @@
                     type: 'number',
                     label: 'Tool Diameter',
                     unit: 'mm',
-                    step: 0.01, // connect to config
-                    min: 0.01, // connect to config
                     ...validationRules.toolDiameter,
                     stage: 'geometry',
                     category: 'tool',
@@ -125,8 +124,6 @@
                     type: 'number',
                     label: 'Cut Depth',
                     unit: 'mm',
-                    step: 0.01, // connect to config
-                    min: 0.01, // connect to config
                     ...validationRules.cutDepth,
                     stage: 'strategy',
                     category: 'depth'
@@ -135,8 +132,6 @@
                     type: 'number',
                     label: 'Depth per Pass',
                     unit: 'mm',
-                    step: 0.01, // connect to config
-                    min: 0.01, // connect to config
                     ...validationRules.depthPerPass,
                     stage: 'strategy',
                     category: 'depth',
@@ -156,20 +151,10 @@
                     stage: 'strategy',
                     category: 'strategy'
                 },
-                cannedCycle: {
-                    type: 'select',
-                    label: 'Canned Cycle',
-                    options: paramOptions.cannedCycle,
-                    stage: 'strategy',
-                    category: 'drill',
-                    operationType: 'drill',
-                },
                 peckDepth: {
                     type: 'number',
                     label: 'Peck Depth',
                     unit: 'mm',
-                    step: 0.01, // connect to config
-                    min: 0.01, // connect to config
                     ...validationRules.peckDepth,
                     stage: 'strategy',
                     category: 'drill',
@@ -179,8 +164,6 @@
                     type: 'number',
                     label: 'Dwell Time',
                     unit: 's',
-                    step: 1, // connect to config
-                    min: 1, // connect to config
                     ...validationRules.dwellTime,
                     stage: 'strategy',
                     category: 'drill',
@@ -190,18 +173,22 @@
                     type: 'number',
                     label: 'Retract Height',
                     unit: 'mm',
-                    step: 0.1, // connect to config
-                    min: 0.1, // connect to config
                     ...validationRules.retractHeight,
                     stage: 'strategy',
                     category: 'drill',
                     operationType: 'drill'
                 },
+                cannedCycle: {
+                    type: 'select',
+                    label: 'Canned Cycle',
+                    options: paramOptions.cannedCycle,
+                    stage: 'strategy',
+                    category: 'drill',
+                    operationType: 'drill',
+                },
                 tabs: {
                     type: 'number',
                     label: 'Number of Tabs',
-                    step: 1, // connect to config
-                    min: 1, // connect to config
                     ...validationRules.tabs,
                     stage: 'strategy',
                     category: 'cutout',
@@ -211,8 +198,6 @@
                     type: 'number',
                     label: 'Tab Width',
                     unit: 'mm',
-                    step: 0.1, // connect to config
-                    min: 0.1, // connect to config
                     ...validationRules.tabWidth,
                     stage: 'strategy',
                     category: 'cutout',
@@ -222,8 +207,6 @@
                     type: 'number',
                     label: 'Tab Height',
                     unit: 'mm',
-                    step: 0.1, // connect to config
-                    min: 0.1, // connect to config
                     ...validationRules.tabHeight,
                     stage: 'strategy',
                     category: 'cutout',
@@ -235,8 +218,6 @@
                     type: 'number',
                     label: 'Feed Rate',
                     unit: 'mm/min',
-                    step: 1, // connect to config
-                    min: 1, // connect to config
                     ...validationRules.feedRate,
                     stage: 'machine',
                     category: 'feeds'
@@ -245,8 +226,6 @@
                     type: 'number',
                     label: 'Plunge Rate',
                     unit: 'mm/min',
-                    step: 1, // connect to config
-                    min: 1, // connect to config
                     ...validationRules.plungeRate,
                     stage: 'machine',
                     category: 'feeds'
@@ -255,8 +234,6 @@
                     type: 'number',
                     label: 'Spindle Speed',
                     unit: 'RPM',
-                    step: 1, // connect to config
-                    min: 1, // connect to config
                     ...validationRules.spindleSpeed,
                     stage: 'machine',
                     category: 'feeds'
@@ -390,7 +367,7 @@
                 laserCutSide: {
                     type: 'select',
                     label: 'Cut Side',
-                    options: null, // Populated from config.ui.parameterOptions.laserCutSide
+                    options: null, // Populated from C.ui.parameterOptions.laserCutSide
                     default: 'outside',
                     stage: 'geometry',
                     category: 'laser_cutout',
@@ -487,6 +464,7 @@
                     };
                 }
                 // Add more validators for 'select', 'checkbox' etc. if needed
+                // REVIEW - Are they needed?
             }
             return validators;
         }
@@ -516,6 +494,7 @@
                 };
             } else if (isRoland && !machineProfile.supportsRC) {
                 // Fixed or manual spindle - accept any value but it won't be emitted
+                // REVIEW - Is this supposed to be doing something? Why is it empty?
             }
 
             // Update feed rate constraints from profile max speeds
@@ -567,8 +546,6 @@
 
         // Restores validators to their original config-based limits.
         _restoreDefaultValidators(paramNames) {
-            const validationRules = config.ui.validation;
-
             for (const name of paramNames) {
                 const def = this.parameterDefinitions[name];
                 if (!def || def.type !== 'number') continue;
@@ -689,7 +666,6 @@
 
         /**
          * Loads parameters from an operation's settings into the manager's state.
-         * This function now acts as the bridge from the persistent (but dumb) operation.settings object into the manager's live state.
          */
         loadFromOperation(operation) {
             if (!operation) return;
@@ -772,7 +748,7 @@
             const params = [];
             const isLaser = pipelineType === 'laser' || pipelineType === 'hybrid';
 
-            const exportFormat = window.pcbcam?.core?.settings?.laser?.exportFormat || 'svg';
+            const exportFormat = window.pcbcam.core.settings.laser.exportFormat;
 
             for (const [name, def] of Object.entries(this.parameterDefinitions)) {
                 // Stage matching: 'export_summary' has no parameters — it's a display-only stage
@@ -803,7 +779,7 @@
                 // Resolve dynamic options from config
                 const resolved = { name, ...def };
                 if (resolved.options === null) {
-                    const configOptions = config.ui?.parameterOptions?.[name];
+                    const configOptions = C.ui.parameterOptions?.[name];
                     if (configOptions) {
                         resolved.options = configOptions;
                     }
@@ -863,10 +839,10 @@
 
         // Get default values for operation type
         getDefaults(operationType) {
-            const opConfig = config.operations?.[operationType];
-            const cuttingConfig = opConfig?.cutting;
-            const settingsConfig = opConfig?.defaultSettings;
-            const defaultToolId = opConfig?.defaultTool;
+            const opConfig = D.operations?.[operationType] || {};
+            const cuttingConfig = opConfig.cutting || {};
+            const settingsConfig = opConfig.defaultSettings || {};
+            const defaultToolId = opConfig.defaultTool;
 
             let toolDiameter;
             if (defaultToolId && window.pcbcam?.ui?.toolLibrary) {
@@ -876,60 +852,31 @@
                 }
             }
 
-            // CNC defaults
+            // Flatten the config objects directly without shadow fallbacks
             const defaults = {
                 tool: defaultToolId,
                 toolDiameter: toolDiameter,
-                multiDepth: settingsConfig?.multiDepth ?? true,
-                passes: settingsConfig?.passes ?? 1,
-                stepOver: settingsConfig?.stepOver ?? 50,
-                entryType: settingsConfig?.entryType ?? 'plunge',
-
-                // Cutting
-                cutDepth: cuttingConfig?.cutDepth ?? -0.1,
-                depthPerPass: cuttingConfig?.passDepth ?? 0.1,
-                feedRate: cuttingConfig?.cutFeed ?? 150,
-                plungeRate: cuttingConfig?.plungeFeed ?? 50,
-                spindleSpeed: cuttingConfig?.spindleSpeed ?? 10000,
-
-                // Drill-specific
-                millHoles: settingsConfig?.millHoles ?? true,
-                cannedCycle: settingsConfig?.cannedCycle ?? 'none',
-                peckDepth: settingsConfig?.peckDepth ?? 0,
-                dwellTime: settingsConfig?.dwellTime ?? 0,
-                retractHeight: settingsConfig?.retractHeight ?? 0.5,
-
-                // Cutout-specific
-                tabs: settingsConfig?.tabs ?? 4,
-                tabWidth: settingsConfig?.tabWidth ?? 3.0,
-                tabHeight: settingsConfig?.tabHeight ?? 0.5,
-                cutSide: settingsConfig?.cutSide ?? 'outside'
+                ...cuttingConfig,
+                ...settingsConfig
             };
 
-            // Laser defaults — merge from config + machine settings
+            // Handle specific pipeline injections (Laser/Stencil)
             const controller = window.pcbcam;
             if (controller?.isLaserPipeline?.()) {
                 const laserMachine = controller.core?.settings?.laser || {};
-                const opLaserDefaults = config.laser.operationDefaults?.[operationType] || {};
+                const opLaserDefaults = D.laser.operations?.[operationType];
 
                 defaults.laserSpotSize = laserMachine.spotSize;
-                defaults.laserIsolationWidth = opLaserDefaults.isolationWidth;
-                defaults.laserClearingPadding = opLaserDefaults.clearingPadding;
-                defaults.laserStepOver = opLaserDefaults.stepOver;
-                defaults.laserClearStrategy = opLaserDefaults.clearStrategy;
-                defaults.laserHatchAngle = opLaserDefaults.hatchAngle;
-                defaults.laserCutSide = opLaserDefaults.cutSide;
+                defaults.laserExportFormat = laserMachine.exportFormat;
+                defaults.laserExportDPI = laserMachine.exportDPI;
+                
+                // Spread operation-specific laser overrides directly
+                Object.assign(defaults, opLaserDefaults);
             }
 
-            // Stencil defaults — merge from operation config
             if (operationType === 'stencil') {
-                const stencilSettings = config.operations?.stencil?.defaultSettings || {};
-                defaults.stencilOffset = stencilSettings.stencilOffset ?? -0.05;
-                defaults.stencilIgnoreRegions = stencilSettings.stencilIgnoreRegions ?? true;
-                defaults.stencilExcludeDrillPads = stencilSettings.stencilExcludeDrillPads ?? true;
-                defaults.stencilAddRegHoles = stencilSettings.stencilAddRegHoles ?? false;
-                defaults.stencilRegDiameter = stencilSettings.regHoleDiameter ?? 3.0;
-                defaults.stencilRegMargin = stencilSettings.regHoleMargin ?? 5.0;
+                const stencilSettings = D.operations.stencil.defaultSettings || {};
+                Object.assign(defaults, stencilSettings);
             }
 
             return defaults;
@@ -963,7 +910,7 @@
         importState(state) {
             this.operationStates.clear();
             this.dirtyFlags.clear();
-            
+
             for (const [opId, opState] of Object.entries(state)) {
                 this.operationStates.set(opId, opState);
             }
@@ -976,7 +923,7 @@
         }
 
         debug(message, data = null) {
-            if (window.PCBCAMConfig.debug.enabled) {
+            if (D.debug.enabled) {
                 if (data !== null) {
                     console.log(`[ParameterManager] ${message}`, data);
                 } else {

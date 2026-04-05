@@ -28,26 +28,20 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
 
     class GeometryProcessor {
         constructor(options = {}) {
             this.options = {
-                scale: options.scale || geomConfig.clipperScale,
                 preserveOriginals: options.preserveOriginals !== undefined ? options.preserveOriginals : true,
                 ...options
             };
 
             // Initialize sub-modules
-            this.clipper = new ClipperWrapper({
-                scale: this.options.scale,
-            });
-
-            this.arcReconstructor = new ArcReconstructor({
-                scale: this.options.scale
-            });
+            this.clipper = new ClipperWrapper();
+            this.arcReconstructor = new ArcReconstructor();
 
             // Optional external resolver — set via setSelfIntersectionResolver()
             this.selfIntersectionResolver = null;
@@ -84,7 +78,7 @@
         async initialize() {
             try {
                 await this.clipper.initialize();
-                
+
                 this.debug('Initialized with arc reconstruction pipeline');
                 return true;
             } catch (error) {
@@ -139,7 +133,7 @@
             this.cachedStates.preprocessedGeometry.push(...preprocessed);
 
             // Verify metadata propagation
-            if (fusionOptions.enableArcReconstruction && debugConfig.enabled) {
+            if (fusionOptions.enableArcReconstruction && debugState.enabled) {
                 this.verifyMetadataPropagation(preprocessed, 'After preprocessing');
             }
 
@@ -147,7 +141,7 @@
             let fused = await this._performFusion(preprocessed);
 
             // Verify metadata survival
-            if (fusionOptions.enableArcReconstruction && debugConfig.enabled) {
+            if (fusionOptions.enableArcReconstruction && debugState.enabled) {
             this.verifyMetadataPropagation(fused, 'After fusion');
             }
 
@@ -173,7 +167,7 @@
                 this.debug(`  Partial arcs found: ${stats.partialArcs}`);
                 this.debug(`  Groups with gaps merged: ${stats.wrappedGroups}`);
 
-                if (debugConfig.enabled) {
+                if (debugState.enabled) {
                     this.verifyReconstructionResults(finalGeometry);
                 }
                 this.debug('Exiting arc reconstruction block. Result count:', finalGeometry.length);
@@ -355,7 +349,7 @@
                 if (!this._validatePrimitive(primitive)) continue;
 
                 const curveIds = primitive.curveIds || [];
-                
+
                 // Track strokes for statistics
                 if ((primitive.properties?.stroke && !primitive.properties?.fill) || 
                     primitive.properties?.isTrace) {
@@ -364,7 +358,7 @@
 
                 // primitiveToPath handles everything: strokes, analytics, paths
                 const processed = this.standardizePrimitive(primitive, curveIds);
-                
+
                 if (processed) {
                     // Handle arrays returned by traceToPolygon
                     if (Array.isArray(processed)) {
@@ -423,7 +417,7 @@
                     console.error(`[GeometryProcessor] primitiveToPath failed to create contours for ${primitive.type} (ID: ${primitive.id})`);
                     return null;
                 }
-                
+
                 if (localCurveIds.length > 0) {
                     pathPrimitive.curveIds = localCurveIds;
                 }
@@ -570,7 +564,7 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[GeometryProcessor] ${message}`, data);
                 } else {

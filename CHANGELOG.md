@@ -4,6 +4,19 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-05
+
+### Added
+- **Laser Control Profiles:** Since controller programs can be very picky with how the geometry is interpreted the new system can help diferentiate which parameters apply to what files.
+
+### Fixed
+- **Laser SVG Export:** Previous attempts at managing heat build-up broke most functionality unrelated to concentric offset strategy.
+- **Reworked Config.js:** Preset values are not split into constants that are frozen and defaults that the tool can overwrite.
+- **Canned Drill Cycles:** Updated UI and internal logic, needs further testing but G-codes are now exported "correctly".
+
+### Changed
+- **Tool Library:** Now the module only looks for tools.json, both externally during development and internally after building.
+
 ## [1.1.3] - 2026-03-30
 
 ### Added

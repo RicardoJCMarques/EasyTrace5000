@@ -28,6 +28,9 @@
 (function() {
     'use strict';
 
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+
     class LanguageManager {
         constructor() {
             this.strings = {};
@@ -62,8 +65,8 @@
                 console.warn(`[Lang] Tried to get key "${key}" before strings were loaded.`);
             }
 
-            // This reducer handily navigates nested JSON keys
-            // 'tooltips.toolDiameter' -> this.strings['tooltips']['toolDiameter']
+            // REVIEW - Can this be optimized?
+            // This reducer handily navigates nested JSON keys 'tooltips.toolDiameter' -> this.strings['tooltips']['toolDiameter']
             try {
                 const value = key.split('.').reduce((obj, k) => obj[k], this.strings);
                 return value !== undefined ? value : defaultValue;

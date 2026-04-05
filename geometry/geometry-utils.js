@@ -28,9 +28,10 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
+    const debugState = D.debug;
 
     class UnionFind {
         constructor(size) {
@@ -58,17 +59,14 @@
     }
 
     const GeometryUtils = {
-        PRECISION: geomConfig.coordinatePrecision,
-
         _calculateSegments(radius, targetLength, minSegments, maxSegments) {
+            const minSeg = C.geometry.segments.defaultMinSegments;
             // For zero/negative radius, return the minimum valid count.
             if (radius <= 0) {
-                const minSeg = geomConfig.segments.defaultMinSegments;
                 return Math.max(minSeg, Math.ceil(minSegments / minSeg) * minSeg);
             }
 
             // Adjust boundaries to be multiples of 8, ensuring a valid range.
-            const minSeg = geomConfig.segments.defaultMinSegments;
             const min = Math.max(minSeg, Math.ceil(minSegments / minSeg) * minSeg);
             const max = Math.floor(maxSegments / minSeg) * minSeg;
 
@@ -91,7 +89,7 @@
 
         // Tessellation helpers
         tessellateCubicBezier(p0, p1, p2, p3) {
-            const a = [], t = geomConfig.tessellation?.bezierSegments || 32; // 't' is segment count
+            const a = [], t = C.geometry.tessellation.bezierSegments || 32; // 't' is segment count
             // This loop starts at 0, so it *includes* the start point
             for (let s = 0; s <= t; s++) {
                 const e = s / t, o = 1 - e;
@@ -104,7 +102,7 @@
         },
 
         tessellateQuadraticBezier(p0, p1, p2) {
-            const a = [], t = geomConfig.tessellation?.bezierSegments || 32
+            const a = [], t = C.geometry.tessellation.bezierSegments || 32;
             // This loop starts at 0, so it *includes* the start point
             for (let s = 0; s <= t; s++) {
                 const e = s / t, o = 1 - e;
@@ -128,9 +126,9 @@
             let m = I([(r - M) / rx, (h - g) / ry], [(-r - M) / rx, (-h - g) / ry]);
             0 === fS && m > 0 ? m -= 2 * Math.PI : 1 === fS && m < 0 && (m += 2 * Math.PI);
 
-            const targetLength = window.PCBCAMConfig?.geometry?.segments?.targetLength || 0.1;
+            const targetLength = C.geometry.segments.targetLength;
             const approxArcLength = Math.abs(m) * ((rx + ry) / 2);
-            const minSegs = geomConfig.tessellation?.minEllipticalSegments || 8;
+            const minSegs = C.geometry.tessellation.minEllipticalSegments;
             const k = Math.max(minSegs, Math.ceil(approxArcLength / targetLength));
 
             const P = [];
@@ -217,7 +215,7 @@
             const h = primitive.height;
             const r = Math.min(w, h) / 2;
 
-            if (r <= this.PRECISION) return null;
+            if (r <= PRECISION) return null;
 
             const isHorizontal = w > h;
             const points = [];
@@ -434,7 +432,7 @@
         },
 
         getOptimalSegments(radius, type) {
-            const config = window.PCBCAMConfig.geometry.segments;
+            const config = C.geometry.segments;
             const finalTargetLength = config.targetLength;
 
             let finalMin, finalMax;
@@ -463,12 +461,13 @@
         },
 
         // Validate Clipper scale factor
-        validateScale(scale, min, max) {
-            const minScale = min ?? geomConfig.clipper.minScale;
-            const maxScale = max ?? geomConfig.clipper.maxScale;
-            const defaultScale = geomConfig.clipperScale;
-            return Math.max(minScale, Math.min(maxScale, scale || defaultScale));
-        },
+        // REVIEW - Dead code?
+        // validateScale(scale, min, max) {
+        //     const minScale = min ?? C.geometry.clipper.minScale;
+        //     const maxScale = max ?? C.geometry.clipper.maxScale;
+        //     const defaultScale = C.geometry.clipperScale;
+        //     return Math.max(minScale, Math.min(maxScale, scale || defaultScale));
+        // },
 
         // Calculate winding (signed area)
         calculateWinding(points) {
@@ -501,7 +500,6 @@
         traceToPolygon(points, strokeWidth, props = {}) {
             const boundaryStrokes = [];
             const offsetDist = strokeWidth / 2;
-            const precision = this.PRECISION || 0.001;
 
             if (!points || points.length < 2) return [];
 
@@ -511,10 +509,10 @@
                 stroke: false, strokeWidth: 0, isTrace: false  
             };
 
-            // 1. Generate Circle Joints
+            // Generate Circle Joints
             for (let i = 0; i < points.length; i++) {
                 const pt = points[i];
-                    
+
                 let curveId = null;
                 if (window.globalCurveRegistry) {
                     curveId = window.globalCurveRegistry.register({
@@ -527,7 +525,7 @@
                 const circlePrim = {
                     type: 'circle', center: pt, radius: offsetDist, properties: { ...cleanProps }
                 };
-                
+
                 const circlePath = this.circleToPath(circlePrim);
                 if (circlePath) {
                     delete circlePath.properties.stroke;
@@ -543,7 +541,7 @@
                 }
             }
 
-            // 2. Generate Rectangle Bodies
+            // Generate Rectangle Bodies
             for (let i = 0; i < points.length - 1; i++) {
                 const p1 = points[i];
                 const p2 = points[i + 1];
@@ -553,8 +551,7 @@
                 const segLen = Math.hypot(dx, dy);
 
                 // Skip microscopic segments
-                // Skip microscopic segments
-                if (segLen < precision * 2) continue;
+                if (segLen < PRECISION * 2) continue;
 
                 /* --- DEPRECATED EPSILON SHIFT ---
                  * Pull the endpoints inwards by epsilon to hide floating point spikes inside the joint circles.
@@ -578,12 +575,12 @@
                 // Generate pure, unshifted rectangle bounds
                 const ux = dx / segLen;
                 const uy = dy / segLen;
-                
+
                 const nx = (-uy) * offsetDist;
                 const ny = (ux) * offsetDist;
 
                 const isHole = cleanProps.polarity === 'clear';
-                
+
                 // Natively assign array order based on winding requirement (CCW for outers, CW for holes in Y-up)
                 const rectPoints = isHole ? [
                     { x: p1.x + nx, y: p1.y + ny },
@@ -667,7 +664,7 @@
                 const dy = p2.y - p1.y;
                 const len = Math.sqrt(dx * dx + dy * dy);
 
-                if (len < this.PRECISION) continue;
+                if (len < PRECISION) continue;
 
                 const ux = dx / len;
                 const uy = dy / len;
@@ -709,10 +706,9 @@
         closedContourToStrokePolygons(contour, strokeWidth) {
             const boundaryStrokes = [];
             const offsetDist = strokeWidth / 2;
-            const precision = this.PRECISION || 0.001;
-            
+
             // Threshold to absorb micro-segments that cause floating-point normal breakdown.
-            const minSegLen = Math.max(precision, offsetDist * 0.02); 
+            const minSegLen = Math.max(PRECISION, offsetDist * 0.02); 
 
             let rawPoints = contour.points;
             if (!rawPoints || rawPoints.length < 2) return [];
@@ -720,7 +716,7 @@
             // Clean closing duplicates
             const first = rawPoints[0];
             const last = rawPoints[rawPoints.length - 1];
-            if (rawPoints.length > 2 && Math.hypot(first.x - last.x, first.y - last.y) < precision) {
+            if (rawPoints.length > 2 && Math.hypot(first.x - last.x, first.y - last.y) < PRECISION) {
                 rawPoints = rawPoints.slice(0, -1);
             }
 
@@ -731,7 +727,7 @@
             const arcMapRaw = new Map();
             const arcMap = new Map();
             const arcEndIndices = new Set();
-            
+
             if (contour.arcSegments) {
                 contour.arcSegments.forEach(arc => {
                     if (arc.startIndex < lenRaw && arc.endIndex < lenRaw) {
@@ -763,14 +759,14 @@
                     lastKeptIndex = i;
                 }
             }
-            
+
             // Handle closure segment cleanup
             if (points.length > 2) {
                 const pFirst = points[0];
                 const pLast = points[points.length - 1];
                 const dist = Math.hypot(pFirst.x - pLast.x, pFirst.y - pLast.y);
                 const isProtected = (pLast.curveId && pLast.curveId > 0) || arcEndIndices.has(lastKeptIndex);
-                
+
                 if (dist < minSegLen && !arcMapRaw.has(lastKeptIndex) && !isProtected) {
                     points.pop();
                 } else if (arcMapRaw.has(lastKeptIndex)) {
@@ -790,7 +786,7 @@
                 const dy = p2.y - p1.y;
                 const segLen = Math.hypot(dx, dy);
 
-                if (segLen < precision) continue;
+                if (segLen < PRECISION) continue;
 
                 // Add Vertex Joint (Circle)
                 const circlePrim = {
@@ -851,7 +847,7 @@
             const halfWidth = width / 2;
 
             // Zero-length line becomes circle with metadata
-            if (len < this.PRECISION) {
+            if (len < PRECISION) {
                 const segments = this.getOptimalSegments(halfWidth, 'circle');
                 const points = [];
                 // Register circle end-cap with clockwise=false
@@ -925,8 +921,8 @@
             startCapPoints.forEach((point, i) => {
                 if (i === 0 && points.length > 0) {
                     const lastPoint = points[points.length - 1];
-                    if (Math.abs(point.x - lastPoint.x) < this.PRECISION &&
-                        Math.abs(point.y - lastPoint.y) < this.PRECISION) {
+                    if (Math.abs(point.x - lastPoint.x) < PRECISION &&
+                        Math.abs(point.y - lastPoint.y) < PRECISION) {
                         Object.assign(lastPoint, {
                             curveId: point.curveId,
                             segmentIndex: point.segmentIndex,
@@ -958,8 +954,8 @@
             endCapPoints.forEach((point, i) => {
                 if (i === 0 && points.length > 0) {
                     const lastPoint = points[points.length - 1];
-                    if (Math.abs(point.x - lastPoint.x) < this.PRECISION &&
-                        Math.abs(point.y - lastPoint.y) < this.PRECISION) {
+                    if (Math.abs(point.x - lastPoint.x) < PRECISION &&
+                        Math.abs(point.y - lastPoint.y) < PRECISION) {
                         Object.assign(lastPoint, {
                             curveId: point.curveId,
                             segmentIndex: point.segmentIndex,
@@ -996,7 +992,7 @@
             const endCapCenter = arc.endPoint;
 
             // Handle filled circle
-            if (innerR < this.PRECISION) {
+            if (innerR < PRECISION) {
                 const circleSegments = this.getOptimalSegments(outerR, 'circle');
                 const curveId = window.globalCurveRegistry?.register({
                     type: 'circle', center: { x: center.x, y: center.y }, radius: outerR,
@@ -1126,7 +1122,7 @@
             // Final check for duplicate closing point
             const first = points[0];
             const last = points[points.length - 1];
-            if (Math.hypot(first.x - last.x, first.y - last.y) < this.PRECISION) {
+            if (Math.hypot(first.x - last.x, first.y - last.y) < PRECISION) {
                 points.pop();
                 this.debug("arcToPolygon removed duplicate closing point.");
             }
@@ -1179,7 +1175,7 @@
 
             // Collect canonical grid angles strictly inside the cap sweep
             const gridPoints = [];
-            const epsilon = gridStep * 0.01;
+            const margin = gridStep * 0.01;
 
             for (let k = 0; k < fullSegments; k++) {
                 const gridAngle = k * gridStep;
@@ -1190,7 +1186,7 @@
                 delta = ((delta % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
                 // Accept if strictly inside (0, π) — excludes start/end boundaries
-                if (delta > epsilon && delta < Math.PI - epsilon) {
+                if (delta > margin && delta < Math.PI - margin) {
                     gridPoints.push({ angle: gridAngle, delta: delta });
                 }
             }
@@ -1235,7 +1231,7 @@
             const dy2 = p2.y - p1.y;
             const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
 
-            if (len1 < this.PRECISION || len2 < this.PRECISION) {
+            if (len1 < PRECISION || len2 < PRECISION) {
                 return {
                     left: { x: p1.x - halfWidth, y: p1.y },
                     right: { x: p1.x + halfWidth, y: p1.y }
@@ -1257,7 +1253,7 @@
             const miterY = (n1y + n2y) / 2;
 
             const miterLen = Math.sqrt(miterX * miterX + miterY * miterY);
-            const miterLimit = geomConfig.offsetting?.miterLimit || 2.0;
+            const miterLimit = D.geometry.offsetting.miterLimit ;
             const maxMiter = halfWidth * miterLimit;
 
             if (miterLen > maxMiter) {
@@ -1301,7 +1297,7 @@
                 if (primitive.type === 'arc') {
                     return this.arcToPolygon(primitive, props.strokeWidth);
                 } else if (primitive.type === 'path' && primitive.contours?.[0]?.points) {
-                    
+
                     // --- NEW EXPERIMENTAL TRACE-TO-POLYGON METHOD ---
                     // Returns an array of overlapping shapes (circles & rectangles)
                     return this.traceToPolygon(primitive.contours[0].points, props.strokeWidth, props);
@@ -1554,7 +1550,6 @@
          */
         mergeSegmentsIntoClosedPath(segments, forceClose = false, customTolerance = null) {
             if (!segments || segments.length < 2) return { success: false };
-            const precision = config.precision.coordinate;
 
             this.debug('Merge input:', segments.map((s, i) => `[${i}] ${s.type}`).join(', '));
 
@@ -1582,12 +1577,12 @@
             const chain = [];
             edges[0].used = true;
             chain.push({ edge: edges[0], dir: 'forward' });
-            
+
             let head = edges[0].start; // Front of the chain
             let tail = edges[0].end;   // End of the chain
 
             // Apply the custom tolerance if provided
-            const chainTolerance = customTolerance !== null ? customTolerance : (forceClose ? 0.5 : precision);
+            const chainTolerance = customTolerance !== null ? customTolerance : (forceClose ? 0.5 : PRECISION);
             const chainTolSq = chainTolerance * chainTolerance;
 
             let added = true;
@@ -1605,7 +1600,7 @@
                     if (e.used) continue;
                     const dxStart = e.start.x - tail.x, dyStart = e.start.y - tail.y;
                     const dStartSq = dxStart * dxStart + dyStart * dyStart;
-                    
+
                     const dxEnd = e.end.x - tail.x, dyEnd = e.end.y - tail.y;
                     const dEndSq = dxEnd * dxEnd + dyEnd * dyEnd;
 
@@ -1617,11 +1612,11 @@
                     bestMatch.used = true;
                     chain.push({ edge: bestMatch, dir: bestDir });
                     tail = bestDir === 'forward' ? bestMatch.end : bestMatch.start;
-                    
+
                     const actualDist = Math.sqrt(bestDistSq);
-                    if (actualDist > precision) gapCount++;
+                    if (actualDist > PRECISION) gapCount++;
                     maxGap = Math.max(maxGap, actualDist);
-                    
+
                     added = true;
                     continue;
                 }
@@ -1635,7 +1630,7 @@
                     if (e.used) continue;
                     const dxEnd = e.end.x - head.x, dyEnd = e.end.y - head.y;
                     const dEndSq = dxEnd * dxEnd + dyEnd * dyEnd;
-                    
+
                     const dxStart = e.start.x - head.x, dyStart = e.start.y - head.y;
                     const dStartSq = dxStart * dxStart + dyStart * dyStart;
 
@@ -1647,11 +1642,11 @@
                     bestMatch.used = true;
                     chain.unshift({ edge: bestMatch, dir: bestDir });
                     head = bestDir === 'forward' ? bestMatch.start : bestMatch.end;
-                    
+
                     const actualDist = Math.sqrt(bestDistSq);
-                    if (actualDist > precision) gapCount++;
+                    if (actualDist > PRECISION) gapCount++;
                     maxGap = Math.max(maxGap, actualDist);
-                    
+
                     added = true;
                 }
             }
@@ -1661,10 +1656,10 @@
             // ==========================================
             const unchainedCount = edges.length - chain.length;
             const gapDistance = Math.hypot(head.x - tail.x, head.y - tail.y);
-            const isClosed = gapDistance <= precision;
+            const isClosed = gapDistance <= PRECISION;
             const isFullyChained = unchainedCount === 0;
-            
-            if (gapDistance > precision) gapCount++;
+
+            if (gapDistance > PRECISION) gapCount++;
             maxGap = Math.max(maxGap, gapDistance);
 
             if (!isFullyChained) {
@@ -1740,7 +1735,7 @@
 
             // Cleanup duplicate endpoint
             const lastIdx = rawPoints.length - 1;
-            if (lastIdx > 0 && Math.hypot(rawPoints[0].x - rawPoints[lastIdx].x, rawPoints[0].y - rawPoints[lastIdx].y) < precision) {
+            if (lastIdx > 0 && Math.hypot(rawPoints[0].x - rawPoints[lastIdx].x, rawPoints[0].y - rawPoints[lastIdx].y) < PRECISION) {
                 rawPoints.pop();
                 rawArcs.forEach(arc => {
                     if (arc.startIndex === lastIdx) arc.startIndex = 0;
@@ -1755,7 +1750,7 @@
             if (winding < 0) { // CW area -> Reverse array and mirror arcs to make it CCW
                 const n = rawPoints.length;
                 rawPoints.reverse();
-                
+
                 rawArcs.forEach(arc => {
                     // Mirror indices to the reversed array
                     let newStart = (n - 1) - arc.endIndex;
@@ -1980,7 +1975,7 @@
          * Groups cutout primitives into connected components by endpoint proximity, then stitches each component into a closed loop independently.
          */
         extractClosedLoops(primitives, tolerance) {
-            const precision = tolerance || this.PRECISION;
+            const precision = tolerance || PRECISION; // Coordinate epsilon parameter for user input on open polygons
             const closed = [];
             const open = [];
 
@@ -2127,7 +2122,7 @@
         },
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[GeoUtils] ${message}`, data);
                 } else {

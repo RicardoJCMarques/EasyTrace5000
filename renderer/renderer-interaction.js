@@ -27,10 +27,10 @@
 
 (function() {
     'use strict';
-    
-    const config = window.PCBCAMConfig;
-    const canvasConfig = config.rendering.canvas;
-    const interactionConfig = config.renderer.interaction;
+
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const interactionConfig = C.renderer.interaction;
 
     class InteractionHandler {
         constructor(core, renderer) {
@@ -172,7 +172,7 @@
             const canvasX = e.offsetX * dpr;
             const canvasY = e.offsetY * dpr;
 
-            const wheelSpeed = canvasConfig.wheelZoomSpeed;
+            const wheelSpeed = D.rendering.canvas.wheelZoomSpeed;
 
             const zoomDelta = e.deltaY * wheelSpeed;
             const zoomFactor = Math.exp(-zoomDelta);
@@ -362,18 +362,17 @@
             const userY = worldPos.y - origin.y;
 
             // 3. Display
-            const precision = 2;
-            coordX.textContent = userX.toFixed(precision);
-            coordY.textContent = userY.toFixed(precision);
+            const decimals = 2;
+            coordX.textContent = userX.toFixed(decimals);
+            coordY.textContent = userY.toFixed(decimals);
         }
 
         updateZoomDisplay() {
             const zoomLevel = document.getElementById('zoom-level');
             if (zoomLevel) {
-                const precision = interactionConfig.zoomPrecision;
                 // This logic from index.html (100%) vs (10x) is confusing. // Review - These comments are confusing? What does this mean?
                 // Let's use the 100% logic from index.html // Review - These comments are confusing? What does this mean?
-                const zoomPercent = (this.core.viewScale * 10).toFixed(precision);
+                const zoomPercent = (this.core.viewScale * 10).toFixed(interactionConfig.zoomPrecision);
                 zoomLevel.textContent = zoomPercent + '%';
             }
         }

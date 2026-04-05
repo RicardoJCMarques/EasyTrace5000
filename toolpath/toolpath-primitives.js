@@ -49,6 +49,9 @@
 
             // Optional parameters
             if (params.dwell) this.dwell = params.dwell;
+            if (params.cycleType) this.cycleType = params.cycleType; // Review - why not !== undefined?
+            if (params.retract !== undefined) this.retract = params.retract; // Review - why !== undefined?
+            if (params.peckDepth !== undefined) this.peckDepth = params.peckDepth; // Review - why !== undefined?
             if (params.comment) this.comment = params.comment;
         }
     }
@@ -113,6 +116,14 @@
 
         addDwell(duration) {
             this.commands.push(new MotionCommand('DWELL', {x: null, y: null, z: null}, {dwell: duration}));
+        }
+
+        addCannedSimple(x, y, z, retract, feed, dwell) {
+            this.commands.push(new MotionCommand('CANNED_SIMPLE', {x, y, z}, {retract, feed, dwell}));
+        }
+
+        addCannedPeck(x, y, z, retract, peckDepth, feed, cycleType = 'G83') {
+            this.commands.push(new MotionCommand('CANNED_PECK', {x, y, z}, {retract, peckDepth, feed, cycleType}));
         }
     }
 

@@ -28,9 +28,9 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
 
     class ArcReconstructor {
         constructor(options = {}) {
@@ -39,7 +39,7 @@
             };
 
             // Simplified thresholds
-            const arcConfig = geomConfig.arcReconstruction;
+            const arcConfig = C.geometry.arcReconstruction;
             this.minArcPoints = arcConfig.minArcPoints;
             this.maxGapPoints = arcConfig.maxGapPoints;
             this.minCirclePoints = arcConfig.minCirclePoints;
@@ -148,7 +148,7 @@
                 }  
             }
 
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 const holes = reconstructed.filter(p => p.properties?.isHole).length;
                 console.log(`[ArcReconstructor] Results: ${primitives.length} → ${reconstructed.length} primitives (${holes} holes)`);
                 console.log(`[ArcReconstructor] Full circles: ${this.stats.fullCircles}, Partial arcs: ${this.stats.partialArcs}`);
@@ -391,7 +391,7 @@
                 }
             }
 
-            if (debugConfig.enabled && groups.length > 1) {
+            if (debugState.enabled && groups.length > 1) {
                 const curveGroups = groups.filter(g => g.type === 'curve');
                 if (curveGroups.length > 1) {
                     console.warn(`[ArcReconstructor] Fragmentation Alert: Path split into ${groups.length} groups. Curve fragments: ${curveGroups.length}. This indicates Clipper generated >1 point gaps.`);
@@ -457,24 +457,20 @@
                 return null;
             }
 
-            const totalSweep = this.calculateAngularSweep(group.points, curveData.center, primitive.closed);
+            this.stats.fullCircles++;
+            this.stats.reconstructed++;
 
-            if (Math.abs(totalSweep) >= (2 * Math.PI * 0.99)) {
-                this.stats.fullCircles++;
-                this.stats.reconstructed++;
-
-                if (typeof CirclePrimitive !== 'undefined') {
-                    return new CirclePrimitive(
-                        curveData.center,
-                        curveData.radius,
-                        {
-                            ...primitive.properties,
-                            reconstructed: true,
-                            originalCurveId: group.curveId,
-                            reconstructionMethod: 'sweep'
-                        }
-                    );
-                }
+            if (typeof CirclePrimitive !== 'undefined') {
+                return new CirclePrimitive(
+                    curveData.center,
+                    curveData.radius,
+                    {
+                        ...primitive.properties,
+                        reconstructed: true,
+                        originalCurveId: group.curveId,
+                        reconstructionMethod: 'sweep'
+                    }
+                );
             }
 
             return null;
@@ -591,7 +587,7 @@
                 return null;
             }).filter(Boolean);
 
-            if (debugConfig.enabled && remappedArcs.length > 0) {
+            if (debugState.enabled && remappedArcs.length > 0) {
                 if (dedupedPoints.length >= originalPointCount) {
                     console.warn(`[ArcReconstructor] Point count not reduced: ${originalPointCount} -> ${dedupedPoints.length}. Acceptable if arcs had few segments.`, {
                         primitiveId: primitive.id
@@ -625,10 +621,10 @@
          * Tiny, nearly-flat arcs are left as linear segments so downstream simplification (DP) can handle them if need be.
          */
         _isArcWorthReconstruction(arcParams, points) {
-            const minSweepDeg = 2.0; 
-            const minChordLen = 0.01; 
+            const minSweepDeg = 2.0;
+            const minChordLen = 0.01;
 
-            const maxFlatnessRatio = 1.0001; 
+            const maxFlatnessRatio = 1.0001; // REVIEW - Double check relationship to tolerance? 1+EPSILON?
 
             const absSweep = Math.abs(arcParams.sweepAngle);
 
@@ -750,7 +746,7 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[ArcReconstructor] ${message}`, data);
                 } else {

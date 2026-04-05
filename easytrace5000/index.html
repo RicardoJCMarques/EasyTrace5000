@@ -152,7 +152,7 @@
                 "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
                 "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
             ],
-            "softwareVersion": "1.1.3",
+            "softwareVersion": "1.2.0",
             "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
             "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
             "installUrl": "https://cam.eltryus.design/easytrace5000/",
@@ -606,14 +606,64 @@
                         <div class="property-field">
                             <label for="laser-export-format">Export Format</label>
                             <select id="laser-export-format">
-                                <option value="svg" selected>SVG — Vector (LightBurn, RDWorks)</option>
+                                <option value="svg" selected>SVG — Vector</option>
                                 <option value="png">PNG — Raster Image</option>
                             </select>
                         </div>
-                        <div class="property-field laser-png-sidebar-warning" id="laser-png-sidebar-warning" style="display: none;">
+                        <div class="property-field" id="laser-dpi-sidebar-field" style="display: none;">
+                            <label for="laser-export-dpi">Raster Resolution</label>
+                            <div class="input-unit">
+                                <input type="number" id="laser-export-dpi" value="1000" step="100" min="100" max="4000" aria-label="Export resolution in dots per inch">
+                                <span class="unit" aria-hidden="true">DPI</span>
+                            </div>
+                        </div>
+                        <div class="property-field" id="laser-png-sidebar-warning" style="display: none;">
                             <p class="help-text" style="color: var(--color-warning); margin: 0;">
                                 <strong>PNG mode:</strong> Only Isolation and Clearing are rasterized. Drill and Cutout export as a separate SVG with vector strokes.
                             </p>
+                        </div>
+                        <div class="property-field">
+                            <label for="laser-profile-select">Target Laser Software</label>
+                            <select id="laser-profile-select">
+                                </select>
+                        </div>
+                        <div class="property-field field-group">
+                            <label class="checkbox-label" style="background: var(--color-bg-tertiary); border: 1px solid var(--color-border-secondary);">
+                                <input type="checkbox" id="laser-lock-defaults">
+                                <span>Lock to Profile Defaults</span>
+                            </label>
+                        </div>
+
+                        <div id="laser-override-container" class="is-locked-guardrail">
+                            <div class="property-field">
+                                <label for="laser-svg-grouping">SVG Grouping</label>
+                                <select id="laser-svg-grouping">
+                                    <option value="none">None (Flat Geometry)</option>
+                                    <option value="layer">By Layer</option>
+                                    <option value="group">By Group</option>
+                                </select>
+                            </div>
+
+                            <div class="property-field field-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="laser-reverse-cut">
+                                    <span>Reverse Cut Order (Bottom-Up)</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="laser-heat-management">
+                                    <span>Enable Heat Management</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="laser-color-per-pass">
+                                    <span>Unique Color Per Pass</span>
+                                </label>
+                            </div>
+
+                            <div class="property-field" id="laser-profile-colors-display">
+                                <label>Layer Colors</label>
+                                <div class="laser-color-grid" id="laser-color-grid-container">
+                                    </div>
+                            </div>
                         </div>
                     </div>
 
@@ -809,7 +859,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.1.3</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.2.0</a> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -1453,79 +1503,19 @@
                     <div id="exporter-laser-options" data-pipeline-group="laser" class="is-hidden">
                         <h3>Laser Export Options</h3>
 
-                        <div class="property-field field-group laser-png-warning" id="laser-png-warning" style="display: none;">
-                            <p class="help-text" style="color: var(--color-warning); margin: 0;">
-                                <strong>PNG mode:</strong> Only Isolation and Clearing operations are rasterized. Drill and Cutout operations will be exported as a separate SVG file with vector strokes.
+                        <div class="property-field field-group">
+                            <label for="laser-exporter-padding">Export Margin Padding</label>
+                            <div class="input-unit">
+                                <input type="number" id="laser-exporter-padding" value="5" step="0.5" min="0" max="20" aria-label="Physical padding around the exported board bounds in mm">
+                                <span class="unit" aria-hidden="true">mm</span>
+                            </div>
+                        </div>
+
+                        <div class="property-field field-group" id="laser-profile-summary">
+                            <p class="help-text" style="margin: 0;">
+                                Using profile: <strong id="laser-profile-summary-label">LightBurn</strong>.
+                                Change in Machine Settings (right sidebar).
                             </p>
-                        </div>
-
-                        <div class="laser-settings-grid">
-                            <div class="property-field field-group" id="laser-dpi-field">
-                                <label for="laser-exporter-dpi">Raster Resolution (DPI)</label>
-                                <input type="number" id="laser-exporter-dpi" value="1000" step="100" min="100" max="4000" aria-label="Export resolution in dots per inch">
-                            </div>
-
-                            <div class="property-field field-group">
-                                <label for="laser-exporter-padding">Export Margin Padding (mm)</label>
-                                <input type="number" id="laser-exporter-padding" value="5" step="0.1" min="0" max="20" aria-label="Physical padding around the exported board bounds">
-                            </div>
-
-                            <div class="property-field field-group col-span-full">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="laser-heat-management">
-                                    <span>Heat Management (Reorder Geometry)</span>
-                                </label>
-                                <div class="laser-heat-warning" id="laser-heat-warning" style="display: none;">
-                                    <p class="help-text" style="color: var(--color-warning); margin: 0;">
-                                        <strong>Important:</strong> Your laser software must process paths in file order for this to work. In LightBurn (or the program you use), look for and disable "Optimize Cut Path" or set optimization to "Order by Layer."
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div class="property-field field-group col-span-full">
-                                <label for="laser-cut-order">Export DOM Order</label>
-                                <select id="laser-cut-order">
-                                    <option value="normal" selected>Top-Down (First Pass, Smallest Geometry First)</option>
-                                    <option value="reverse">Bottom-Up (Last Pass Largest Geometry First)</option>
-                                </select>
-                            </div>
-
-                            <div class="property-field field-group col-span-full">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="laser-color-per-pass">
-                                    <span>Unique color per pass (for color-based layer software)</span>
-                                </label>
-                            </div>
-
-                            <div class="property-field field-group col-span-full">
-                                <label for="laser-svg-grouping">SVG Grouping Structure</label>
-                                <select id="laser-svg-grouping">
-                                    <option value="layer" selected>Inkscape Layers (Standard)</option>
-                                    <option value="group">Standard Groups (&lt;g&gt;)</option>
-                                    <option value="none">No Grouping (Flat Geometry)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <h3>Layer Colors</h3>
-                        <p class="help-text">Colors map to power/speed layers in your laser software.</p>
-                        <div class="laser-color-grid">
-                            <div class="property-field laser-color-field">
-                                <label for="laser-exporter-color-isolation">Isolation Routing</label>
-                                <input type="color" id="laser-exporter-color-isolation" value="#ff0000" aria-label="Isolation layer color">
-                            </div>
-                            <div class="property-field laser-color-field">
-                                <label for="laser-exporter-color-drill">Drilling</label>
-                                <input type="color" id="laser-exporter-color-drill" value="#0000ff" aria-label="Drill layer color">
-                            </div>
-                            <div class="property-field laser-color-field">
-                                <label for="laser-exporter-color-clearing">Copper Clearing</label>
-                                <input type="color" id="laser-exporter-color-clearing" value="#00ff00" aria-label="Clearing layer color">
-                            </div>
-                            <div class="property-field laser-color-field">
-                                <label for="laser-exporter-color-cutout">Board Cutout</label>
-                                <input type="color" id="laser-exporter-color-cutout" value="#000000" aria-label="Cutout layer color">
-                            </div>
                         </div>
                     </div>
 
@@ -1593,11 +1583,8 @@
 
     <input type="file" id="file-input-hidden" class="hidden" multiple>
 
-    <!-- Theme Loader (must load before other scripts) -->
-    <script defer src="../themes/theme-loader.js"></script>
-
-    <!-- Application Scripts (defer = parallel download) -->
     <script defer src="../config.js"></script>
+    <script defer src="../themes/theme-loader.js"></script>
     <script defer src="../language/language-manager.js"></script>
     <script defer src="../geometry/clipper2z.js"></script>
     <script defer src="../geometry/geometry-processor.js"></script>
@@ -1645,7 +1632,6 @@
     <script defer src="../export/gcode-generator.js"></script>
     <script defer src="../export/laser-image-exporter.js"></script>
     <script defer src="../utils/coordinate-system.js"></script>
-    <!-- DEPRECATED <script defer src="../utils/unit-converter.js"></script> -->
     <script defer src="../utils/canvas-exporter.js"></script>
     <script defer src="../cam-core.js"></script>
     <script defer src="../cam-ui.js"></script>
@@ -1654,7 +1640,7 @@
     <!-- Initialization -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('EasyTrace5000 Advanced Workspace v1.1.3');
+            console.log('EasyTrace5000 Advanced Workspace v1.2.0');
 
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');

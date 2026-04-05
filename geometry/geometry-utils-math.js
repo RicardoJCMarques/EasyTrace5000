@@ -26,11 +26,12 @@
  */
 
 (function() {
+    // WARNING - NOT FULLY UPDATED TO NEW CONFIG STRUCTURE YET
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
 
     /**
      * Shared low-level math for the offset pipelines.
@@ -61,7 +62,7 @@
          */
         lineLineIntersection(p1, p2, p3, p4) {
             const den = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
-            const epsilon = geomConfig.offsetting?.epsilon || 1e-9;
+            const epsilon = geomConfig.offsetting?.epsilon || 1e-9; // REVIEW - Double check if such a small epsilon is necessar
             if (Math.abs(den) < epsilon) return null;
 
             const t_num = (p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x);
@@ -284,7 +285,7 @@
 
             const fullCircleSegments = GeometryUtils.getOptimalSegments(offsetDist, 'circle');
             const proportionalSegments = fullCircleSegments * (Math.abs(angleDiff) / (2 * Math.PI));
-            const minSegments = geomConfig.offsetting?.minRoundJointSegments || 2;
+            const minSegments = D.geometry.offsetting.minRoundJointSegments;
             const arcSegments = Math.max(minSegments, Math.ceil(proportionalSegments));
 
             const arcPoints = [];
@@ -309,7 +310,7 @@
         // ==========================================
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[GeometryMath] ${message}`, data);
                 } else {

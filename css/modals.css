@@ -1060,10 +1060,35 @@
     align-items: start;
 }
 
+.laser-profile-colors-display {
+    margin-top: -8px;
+}
+
+.laser-profile-colors-display label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-hint);
+}
+
+.color-swatch-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.laser-color-swatch {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--color-border-secondary);
+    border-radius: 4px;
+    cursor: pointer;
+    background: none;
+}
+
 .laser-color-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: var(--spacing-md);
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--spacing-sm);
     background: var(--color-bg-tertiary);
     padding: var(--spacing-md);
     border-radius: var(--radius);
@@ -1074,16 +1099,31 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    margin-bottom: 0; /* Override property-field margin if needed */
 }
 
 .laser-color-field input[type="color"] {
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
     border: 1px solid var(--color-border-secondary);
-    border-radius: var(--radius);
+    border-radius: 4px;
     cursor: pointer;
+    background: none;
     flex-shrink: 0;
+}
+
+.laser-color-field label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-primary);
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Guardrail styling */
+.is-locked-guardrail {
+    opacity: 0.5;
+    pointer-events: none;
+    filter: grayscale(0.5);
 }
 
 .laser-diode-note {

@@ -28,8 +28,8 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
 
     class GlobalCurveRegistry {
         constructor() {
@@ -38,7 +38,6 @@
             this.primitiveIdToCurves = new Map();
             this.offsetCurveMap = new Map();
             this.nextId = 1;
-            this.hashPrecision = geomConfig.curveRegistry?.hashPrecision || 1000;
 
             // Statistics
             this.stats = {
@@ -51,17 +50,18 @@
         }
 
         generateHash(metadata) {
+            const hashPrecision = C.geometry.curveRegistry.hashPrecision
             const roundedCenter = {
-                x: Math.round(metadata.center.x * this.hashPrecision) / this.hashPrecision,
-                y: Math.round(metadata.center.y * this.hashPrecision) / this.hashPrecision
+                x: Math.round(metadata.center.x * hashPrecision) / hashPrecision,
+                y: Math.round(metadata.center.y * hashPrecision) / hashPrecision
             };
-            const roundedRadius = Math.round(metadata.radius * this.hashPrecision) / this.hashPrecision;
+            const roundedRadius = Math.round(metadata.radius * hashPrecision) / hashPrecision;
 
             let str = `${metadata.type}_${roundedCenter.x}_${roundedCenter.y}_${roundedRadius}`;
 
             if (metadata.type === 'arc') {
-                const roundedStartAngle = Math.round((metadata.startAngle || 0) * this.hashPrecision) / this.hashPrecision;
-                const roundedEndAngle = Math.round((metadata.endAngle || Math.PI * 2) * this.hashPrecision) / this.hashPrecision;
+                const roundedStartAngle = Math.round((metadata.startAngle || 0) * hashPrecision) / hashPrecision;
+                const roundedEndAngle = Math.round((metadata.endAngle || Math.PI * 2) * hashPrecision) / hashPrecision;
                 str += `_${roundedStartAngle}_${roundedEndAngle}_${metadata.clockwise === true}`;
             }
 
@@ -155,7 +155,8 @@
             };
         }
 
-        // Review - clearOffsetCurves possibly zombie function.
+        // REVIEW - Dead code?
+        /* 
         clearOffsetCurves() {
             const offsetIds = Array.from(this.offsetCurveMap.keys());
             offsetIds.forEach(id => {
@@ -171,6 +172,7 @@
             this.stats.registered -= offsetIds.length;
             this.stats.offsetDerived = 0;
         }
+        */
 
         getStats() {
             return {
@@ -180,9 +182,5 @@
         }
     }
 
-    // Create and expose global registry
-    window.globalCurveRegistry = new GlobalCurveRegistry();
-
-    // Also expose the class for potential multiple instances
     window.GlobalCurveRegistry = GlobalCurveRegistry;
 })();

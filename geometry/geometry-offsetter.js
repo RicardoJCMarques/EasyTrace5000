@@ -28,14 +28,14 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
+    const debugState = D.debug;
 
     class GeometryOffsetter {
         constructor(options = {}) {
             this.options = {
-                precision: config.precision.coordinate,
                 miterLimit: options.miterLimit
             };
             this.initialized = true;
@@ -58,7 +58,7 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[Offsetter] ${message}`, data);
                 } else {
@@ -78,7 +78,7 @@
          * 3. Path primitives (polygon and hybrid arc+polygon) — contour offset
          */
         async offsetPrimitive(primitive, distance) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 console.log('[Offsetter] offsetPrimitive:', {
                     type: primitive?.type,
                     id: primitive?.id,
@@ -92,7 +92,7 @@
             }
 
             if (!primitive || !primitive.type) return null;
-            if (Math.abs(distance) < this.options.precision) return primitive;
+            if (Math.abs(distance) < PRECISION) return primitive;
 
             const props = primitive.properties || {};
             const isCutout = props.isCutout || props.layerType === 'cutout';
@@ -143,7 +143,7 @@
             const originalWidth = props.strokeWidth;
             const totalWidth = originalWidth + (distance * 2);
 
-            if (totalWidth < this.options.precision) {
+            if (totalWidth < PRECISION) {
                 this.debug(`Stroke collapsed: ${totalWidth.toFixed(4)}mm`);
                 return null;
             }
@@ -203,7 +203,7 @@
                 return strokes;
 
             } else {
-                if (debugConfig.enabled) console.warn(`[Offsetter] Unhandled stroke type: ${primitive.type}`);
+                if (debugState.enabled) console.warn(`[Offsetter] Unhandled stroke type: ${primitive.type}`);
                 return null;
             }
         }
@@ -456,7 +456,7 @@
                         }], makeProps(contour.isHole ? 'clear' : 'dark'));
                     }
                 } catch (e) {
-                    console.log(`Analytic offset failed (${e.message}), falling back to polygon offsetter.`);
+                    this.debug(`Analytic offset failed (${e.message}), falling back to polygon offsetter.`);
                 }
             }
 
@@ -501,12 +501,12 @@
             // Remove closing duplicate
             const first = polygonPoints[0];
             const last = polygonPoints[polygonPoints.length - 1];
-            if (Math.hypot(first.x - last.x, first.y - last.y) < this.options.precision) {
+            if (Math.hypot(first.x - last.x, first.y - last.y) < PRECISION) {
                 polygonPoints.pop();
             }
 
             // Simplification for internal offsets only
-            const simplificationConfig = config.geometry?.simplification;
+            const simplificationConfig = D.geometry.simplification;
             if (isInternal && simplificationConfig?.enabled && polygonPoints.length > 10) {
                 const tolerance = simplificationConfig.tolerance || 0.001;
                 const sqTolerance = tolerance * tolerance;
@@ -551,7 +551,7 @@
                 const dx = p2.x - p1.x;
                 const dy = p2.y - p1.y;
                 const len = Math.sqrt(dx * dx + dy * dy); // ~4x faster than Math.hypot
-                if (len < this.options.precision) continue;
+                if (len < PRECISION) continue;
 
                 const nx = normalDirection * (-dy / len);
                 const ny = normalDirection * (dx / len);
@@ -592,12 +592,11 @@
                 const len2 = Math.hypot(v2_vec.x, v2_vec.y);
                 let dot = 0;
 
-                if (len1 > this.options.precision && len2 > this.options.precision) {
+                if (len1 > PRECISION && len2 > PRECISION) {
                     dot = (v1_vec.x * v2_vec.x + v1_vec.y * v2_vec.y) / (len1 * len2);
                 }
 
-                const collinearThreshold = geomConfig.offsetting?.collinearDotThreshold || 0.995;
-                const isCollinear = (dot > collinearThreshold) || (len1 < this.options.precision) || (len2 < this.options.precision);
+                const isCollinear = (dot > C.precision.collinearDot) || (len1 < PRECISION) || (len2 < PRECISION);
 
                 // UNIVERSAL JOINT CLASSIFIER
                 let isMiterJoint = (crossProduct * normalDirection >= 0);
@@ -631,7 +630,7 @@
 
                     const arcPoints = GeometryMath.createRoundJoint(
                         curr, v1_vec, v2_vec,
-                        normalDirection, offsetDist, distance, this.options.precision
+                        normalDirection, offsetDist, distance, PRECISION
                     );
                     roundCount++;
 
@@ -648,7 +647,7 @@
             // Close path
             const firstFinal = finalPoints[0];
             const lastFinal = finalPoints[finalPoints.length - 1];
-            if (Math.hypot(firstFinal.x - lastFinal.x, firstFinal.y - lastFinal.y) > this.options.precision) {
+            if (Math.hypot(firstFinal.x - lastFinal.x, firstFinal.y - lastFinal.y) > PRECISION) {
                 finalPoints.push({ ...firstFinal });
             }
 
@@ -688,7 +687,7 @@
             const newRadius = circle.radius + distance;
             const isInternal = distance < 0;
 
-            if (newRadius < this.options.precision) {
+            if (newRadius < PRECISION) {
                 this.debug(`Circle collapsed: r=${newRadius.toFixed(4)}`);
                 return null;
             }
@@ -773,8 +772,8 @@
             };
 
             // Handle degenerate cases
-            if (newWidth < this.options.precision || newHeight < this.options.precision) {
-                this.debug(`Obround collapsed: ${newWidth.toFixed(3)}×${newHeight.toFixed(3)}`);
+            if (newWidth < PRECISION || newHeight < PRECISION) {
+                this.debug(`Obround collapsed: ${newWidth.toFixed(3)}x${newHeight.toFixed(3)}`);
                 return null;
             }
 
@@ -811,7 +810,7 @@
                 });
             }
 
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 const pointCount = contour.points.length;
                 const curveCount = contour.curveIds?.length || 0;
                 console.log(`Successfully created offset obround path with ${pointCount} points and ${curveCount} registered curves.`);

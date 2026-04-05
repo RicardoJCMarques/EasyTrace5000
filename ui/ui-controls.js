@@ -28,9 +28,10 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
-    const renderDefaults = config.rendering?.defaultOptions;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
+    const renderingOptions = D.rendering.defaultOptions;
 
     class UIControls {
         constructor(ui) {
@@ -159,7 +160,7 @@
 
             const processedLabels = new Set();
 
-            // Helper to find the label for an input
+            // Find the label for an input
             const attachTo = (inputId, tooltipKey) => {
                 const input = document.getElementById(inputId);
                 if (!input) return;
@@ -190,7 +191,7 @@
                 }
             };
 
-            // Helper for standalone labels (not associated with inputs)
+            // Standalone labels (not associated with inputs)
             const attachToLabel = (labelId, tooltipKey) => {
                 const label = document.getElementById(labelId);
                 if (!label || processedLabels.has(label)) return;
@@ -234,8 +235,11 @@
             attachTo('roland-spindle-mode', 'tooltips.machineSettings.rolandSpindleMode');
 
             // Laser Machine Settings
+            attachTo('laser-profile-select', 'tooltips.machineSettings.laserProfile');
+            attachTo('laser-profile-colors-display', 'tooltips.machineSettings.laserProfileColors');
             attachTo('laser-spot-size', 'tooltips.machineSettings.laserSpotSize');
             attachTo('laser-export-format', 'tooltips.machineSettings.laserExportFormat');
+            attachTo('laser-export-dpi', 'tooltips.machineSettings.laserExportDPI');
 
             // Visualization Panel Toggles
             attachTo('show-grid', 'tooltips.vizPanel.grid');
@@ -270,8 +274,8 @@
             // Iterate over all checkboxes with a [data-option]
             vizControls.querySelectorAll('input[type="checkbox"][data-option]').forEach(el => {
                 const option = el.dataset.option;
-                if (option && renderDefaults[option] !== undefined) {
-                    const initialState = renderDefaults[option];
+                if (option && renderingOptions[option] !== undefined) {
+                    const initialState = renderingOptions[option];
                     el.checked = initialState;
                     // Sync the renderer's options to this default
                     this.renderer.options[option] = initialState;
@@ -281,13 +285,13 @@
             // Special case: Debug log toggle
             const debugLogToggle = document.getElementById('debug-log-toggle');
             if (debugLogToggle) {
-                debugLogToggle.checked = debugConfig.enabled || false;
+                debugLogToggle.checked = debugState;
             }
 
             // Attach Single Event Listener
             vizControls.addEventListener('change', async (e) => {
                 const el = e.target;
-                
+
                 // Ensure it's a checkbox that changed
                 if (el.tagName !== 'INPUT' || el.type !== 'checkbox') {
                     return;
@@ -360,7 +364,7 @@
                     case 'toggle-debug':
                         // Special case for the global debug flag
                         if (window.PCBCAMConfig) {
-                            window.PCBCAMConfig.debug.enabled = isChecked;
+                            D.debug.enabled = isChecked;
                         }
                         if (this.ui.statusManager) {
                             this.ui.statusManager.setDebugVisibility(isChecked);
@@ -391,22 +395,22 @@
             this.ui.core.operations.forEach(op => {
                 if (!window.pcbcam?.isLaserExportForOperation(op.type)) return;
                 if (!this.ui.core.isExportReady(op)) return;
-                if (affectedTypes && !affectedTypes.includes(op.type)) return; {
-                    op.exportReady = false;
-                    if (op.preview) op.preview.ready = false;
-                    
-                    // Explicit invalidation state
-                    op.isInvalidated = true;
-                    op.invalidatedReason = reasonMessage;
-                    
-                    invalidated = true;
+                if (affectedTypes && !affectedTypes.includes(op.type)) return;
 
-                    // Force tree node to update and show invalidation styling
-                    if (this.ui.navTreePanel) {
-                        const fileNode = this.ui.navTreePanel.getNodeByOperationId(op.id);
-                        if (fileNode) {
-                            this.ui.navTreePanel.updateFileGeometries(fileNode.id, op);
-                        }
+                op.exportReady = false;
+                if (op.preview) op.preview.ready = false;
+
+                // Explicit invalidation state
+                op.isInvalidated = true;
+                op.invalidatedReason = reasonMessage;
+
+                invalidated = true;
+
+                // Force tree node to update and show invalidation styling
+                if (this.ui.navTreePanel) {
+                    const fileNode = this.ui.navTreePanel.getNodeByOperationId(op.id);
+                    if (fileNode) {
+                        this.ui.navTreePanel.updateFileGeometries(fileNode.id, op);
                     }
                 }
             });
@@ -452,14 +456,14 @@
 
                 xInput.addEventListener('blur', handleValueChange);
                 yInput.addEventListener('blur', handleValueChange);
-                
+
                 const handleEnter = (e) => {
                     if (e.key === 'Enter') {
                         handleValueChange();
                         this.applyOffsetAndSetOrigin();
                     }
                 };
-                
+
                 xInput.addEventListener('keypress', handleEnter);
                 yInput.addEventListener('keypress', handleEnter);
             }
@@ -638,7 +642,7 @@
             if (xInput && yInput && this.coordinateSystem) {
 
                 const offset = this.coordinateSystem.getOffsetFromSaved();
-                const precision = config.gcode?.precision?.coordinates || 3;
+                const precision = D.gcode.decimals.coordinates;
                 const newXValue = offset.x.toFixed(precision);
                 const newYValue = offset.y.toFixed(precision);
 
@@ -680,7 +684,7 @@
 
         applyOffsetAndSetOrigin() {
             if (!this.coordinateSystem) return;
-            
+
             const result = this.coordinateSystem.saveCurrentOrigin();
             if (result.success) {
                 // The change listener will fire and call updateOffsetInputsWithTracking which now correctly updates the inputs AND the trackers.
@@ -857,7 +861,7 @@
         setupMachineSettings() {
             const loadedSettings = this.ui.core.settings;
 
-             // Roland machine profiles
+            // --- Roland machine profiles ---
             const rolandProcessor = window.pcbcam?.gcodeGenerator?.getProcessor('roland');
             const ROLAND_PROFILES = rolandProcessor?.profiles || {};
             const rolandSettings = loadedSettings.processorSettings?.roland || {};
@@ -867,7 +871,7 @@
             const startCodeTA = document.getElementById('start-code-ta');
             const endCodeTA = document.getElementById('end-code-ta');
 
-            // REVIEW - All default Roland Profile logic
+            // REVIEW - Double check all default Roland Profile logic
             const updateRolandSettings = (newSettings) => {
                 const currentRoland = this.ui.core.settings.processorSettings?.roland || {};
                 this.ui.core.updateSettings('processorSettings', {
@@ -992,7 +996,8 @@
                 rolandModelSelect.value = rolandSettings.rolandModel;
                 rolandModelSelect.addEventListener('change', (e) => {
                     const modelId = e.target.value;
-                    const profile = ROLAND_PROFILES[modelId];
+                    const rolandProcessor = window.pcbcam.gcodeGenerator.getProcessor('roland');
+                    const profile = rolandProcessor.profiles[modelId];
                     if (!profile) return;
 
                     // Compute a sensible default spindle RPM from profile
@@ -1090,87 +1095,242 @@
             }
 
             // --- Laser-specific fields ---
+            const laserProfileSelect = document.getElementById('laser-profile-select');
             const laserSpotSizeInput = document.getElementById('laser-spot-size');
             const laserExportFormatSelect = document.getElementById('laser-export-format');
+            const laserExportDpiInput = document.getElementById('laser-export-dpi');
 
             // Initialize laser settings from loaded state
-            const laserSettings = loadedSettings.laser || {};
+            const laserSettings = loadedSettings.laser;
 
-            if (laserSpotSizeInput) {
-                laserSpotSizeInput.value = laserSettings.spotSize;
-                laserSpotSizeInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('laser', { spotSize: parseFloat(e.target.value)});
+            // Apply format-dependent visibility in the sidebar
+            const updateFormatDependentVisibility = (format) => {
+                const isPng = format === 'png';
+                const dpiField = document.getElementById('laser-dpi-sidebar-field');
+                const pngWarning = document.getElementById('laser-png-sidebar-warning');
+                if (dpiField) dpiField.style.display = isPng ? '' : 'none';
+                if (pngWarning) pngWarning.style.display = isPng ? '' : 'none';
+            };
 
-                    // Invalidate geometry on spot size change
-                    this.invalidateLaserOperations('Laser spot size changed. Please regenerate laser paths.');
+            const laserOverrideContainer = document.getElementById('laser-override-container');
+            const laserLockDefaults = document.getElementById('laser-lock-defaults');
+            const svgGroupingSelect = document.getElementById('laser-svg-grouping');
+            const reverseCutCheck = document.getElementById('laser-reverse-cut');
+            const heatCheck = document.getElementById('laser-heat-management');
+            const colorPassCheck = document.getElementById('laser-color-per-pass');
+            const colorGridContainer = document.getElementById('laser-color-grid-container');
+
+            // Hydrate the Lock Checkbox from State
+            if (laserLockDefaults) {
+                laserLockDefaults.checked = laserSettings.profileLocked !== false; 
+                laserOverrideContainer.classList.toggle('is-locked-guardrail', laserLockDefaults.checked);
+
+                laserLockDefaults.addEventListener('change', (e) => {
+                    const isLocked = e.target.checked;
+                    this.ui.core.updateSettings('laser', { profileLocked: isLocked });
+                    laserOverrideContainer.classList.toggle('is-locked-guardrail', isLocked);
+
+                    if (isLocked) {
+                        applyLaserProfile(laserProfileSelect.value, true);
+                        this.invalidateLaserOperations('Reverted to profile defaults. Regeneration recommended.');
+                    }
                 });
             }
 
-            if (laserExportFormatSelect) {
-                laserExportFormatSelect.value = laserSettings.exportFormat || 'svg';
-                laserExportFormatSelect.addEventListener('change', (e) => {
-                    const format = e.target.value;
-                    this.ui.core.updateSettings('laser', { exportFormat: format });
+            const applyLaserProfile = (profileId, forceLock = false) => {
+                const profile = laserSettings.profiles?.[profileId];
+                if (!profile) return;
 
-                    // Show/hide DPI field
-                    const dpiField = document.getElementById('laser-dpi-field');
-                    if (dpiField) dpiField.style.display = format === 'png' ? '' : 'none';
+                if (forceLock && laserLockDefaults) {
+                    laserLockDefaults.checked = true;
+                    laserOverrideContainer.classList.add('is-locked-guardrail');
+                    this.ui.core.updateSettings('laser', { profileLocked: true });
+                }
 
-                    // Show/hide PNG warning in sidebar and modal
-                    const sidebarPngWarning = document.getElementById('laser-png-sidebar-warning');
-                    if (sidebarPngWarning) sidebarPngWarning.style.display = format === 'png' ? '' : 'none';
-                    const modalPngWarning = document.getElementById('laser-png-warning');
-                    if (modalPngWarning) modalPngWarning.style.display = format === 'png' ? '' : 'none';
+                const isLocked = laserLockDefaults ? laserLockDefaults.checked : true;
 
-                    // Invalidate geometry on format change — drill/cutout are always SVG vectors, unaffected
-                    this.invalidateLaserOperations(
-                        'Export format changed to ' + format.toUpperCase() + '. Geometry is incompatible.',
-                        ['isolation', 'clearing']
-                    );
+                // Synchronize State
+                if (isLocked) {
+                    this.ui.core.updateSettings('laser', {
+                        activeProfile: profileId,
+                        svgGrouping: profile.svgGrouping,
+                        reverseCutOrder: profile.reverseCutOrder,
+                        heatManagement: profile.heatManagement,
+                        colorPerPass: profile.colorPerPass,
+                        layerColors: { ...profile.layerColors }
+                    });
+                } else {
+                    this.ui.core.updateSettings('laser', { activeProfile: profileId });
+                }
+
+                // Hydrate UI from ACTIVE STATE (not profile defaults)
+                const activeState = this.ui.core.settings.laser;
+
+                if (svgGroupingSelect) svgGroupingSelect.value = activeState.svgGrouping;
+                if (reverseCutCheck) reverseCutCheck.checked = activeState.reverseCutOrder;
+                if (heatCheck) heatCheck.checked = activeState.heatManagement !== 'off';
+                if (colorPassCheck) colorPassCheck.checked = activeState.colorPerPass;
+
+                const summaryLabel = document.getElementById('laser-profile-summary-label');
+                if (summaryLabel) summaryLabel.textContent = profile.label;
+
+                if (colorGridContainer && activeState.layerColors) {
+                    colorGridContainer.innerHTML = '';
+                    Object.entries(activeState.layerColors).forEach(([layerName, colorHex]) => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'laser-color-field';
+
+                        const colorInput = document.createElement('input');
+                        colorInput.type = 'color';
+                        colorInput.value = colorHex;
+                        colorInput.id = `laser-color-${layerName}`;
+
+                        const label = document.createElement('label');
+                        label.htmlFor = colorInput.id;
+                        label.textContent = layerName.charAt(0).toUpperCase() + layerName.slice(1);
+
+                        colorInput.addEventListener('change', (e) => {
+                            const newColor = e.target.value;         
+                            // Update the specific profile's memory so it persists
+                            profile.layerColors[layerName] = newColor;
+                            // Update the active working state
+                            const currentColors = this.ui.core.settings.laser.layerColors;
+                            this.ui.core.updateSettings('laser', {
+                                layerColors: { ...currentColors, [layerName]: newColor }
+                            });
+                            this.invalidateLaserOperations('Color override applied. Regeneration recommended.');
+                        });
+
+                        wrapper.appendChild(colorInput);
+                        wrapper.appendChild(label);
+                        colorGridContainer.appendChild(wrapper);
+                    });
+                }
+            };
+
+            const wireOverride = (el, settingKey, isCheckbox = false) => {
+                if (el) el.addEventListener('change', (e) => {
+                    const val = isCheckbox ? e.target.checked : e.target.value;
+                    const finalVal = settingKey === 'heatManagement' ? (val ? 'standard' : 'off') : val;
+                    this.ui.core.updateSettings('laser', { [settingKey]: finalVal });
+                    this.invalidateLaserOperations(`${settingKey} overridden. Regeneration recommended.`);
+                });
+            };
+
+            wireOverride(svgGroupingSelect, 'svgGrouping');
+            wireOverride(reverseCutCheck, 'reverseCutOrder', true);
+            wireOverride(heatCheck, 'heatManagement', true);
+            wireOverride(colorPassCheck, 'colorPerPass', true);
+
+            if (laserProfileSelect) {
+                laserProfileSelect.innerHTML = '';
+                const profiles = laserSettings.profiles || {};
+                Object.entries(profiles).forEach(([id, profile]) => {
+                    const opt = document.createElement('option');
+                    opt.value = id;
+                    opt.textContent = profile.label;
+                    laserProfileSelect.appendChild(opt);
                 });
 
-                // Apply initial visibility on load
-                const initialFormat = laserExportFormatSelect.value;
-                const dpiField = document.getElementById('laser-dpi-field');
-                if (dpiField) {
-                    dpiField.style.display = initialFormat === 'png' ? '' : 'none';
+                // Ensure value matches an actual option, fallback to 'generic' if missing/mismatched
+                let initialProfile = laserSettings.activeProfile || 'generic';
+                if (!laserSettings.profiles[initialProfile]) {
+                    initialProfile = 'generic'; 
                 }
-                const sidebarPngWarning = document.getElementById('laser-png-sidebar-warning');
-                if (sidebarPngWarning) {
-                    sidebarPngWarning.style.display = initialFormat === 'png' ? '' : 'none';
-                }
+                laserProfileSelect.value = initialProfile;
+
+                // Hydrate on load without forcing a lock
+                applyLaserProfile(laserProfileSelect.value);
+
+                laserProfileSelect.addEventListener('change', (e) => {
+                    // Force lock when switching ecosystems to guarantee safety
+                    applyLaserProfile(e.target.value, true);
+                    const profile = laserSettings.profiles?.[e.target.value];
+                    this.ui.showStatus(`Laser profile: ${profile?.label || e.target.value}`, 'info');
+                    this.invalidateLaserOperations('Laser profile changed. Regeneration recommended.');
+                });
+            }
+
+            // Spot size
+            if (laserSpotSizeInput) {
+                laserSpotSizeInput.value = laserSettings.spotSize;
+                laserSpotSizeInput.addEventListener('change', (e) => {
+                    const newSpotSize = parseFloat(e.target.value);
+
+                    // Update the global machine state
+                    this.ui.core.updateSettings('laser', { spotSize: newSpotSize });
+                    this.invalidateLaserOperations('Laser spot size changed. Please regenerate laser paths.');
+
+                    // Propagate instantly to the active operation state
+                    if (this.ui.operationPanel && this.ui.operationPanel.currentOperation) {
+                        const opId = this.ui.operationPanel.currentOperation.id;
+                        this.ui.operationPanel.parameterManager.setParameter(opId, 'geometry', 'laserSpotSize', newSpotSize);
+
+                        // Update the read-only DOM input if it's currently visible
+                        const propInput = document.getElementById('prop-laserSpotSize');
+                        if (propInput) propInput.value = newSpotSize;
+                    }
+                });
+            }
+
+            // Export format
+            if (laserExportFormatSelect) {
+                laserExportFormatSelect.value = laserSettings.exportFormat;
+                laserExportFormatSelect.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('laser', { exportFormat: e.target.value });
+                    updateFormatDependentVisibility(e.target.value);
+                });
+
+                // Apply initial visibility
+                updateFormatDependentVisibility(laserExportFormatSelect.value);
+            }
+
+            // DPI
+            if (laserExportDpiInput) {
+                laserExportDpiInput.value = laserSettings.exportDPI || 1000;
+                laserExportDpiInput.addEventListener('change', (e) => {
+                    this.ui.core.updateSettings('laser', { exportDPI: parseInt(e.target.value, 10) || 1000 });
+                });
             }
 
             // --- Universal fields ---
             const thicknessInput = document.getElementById('pcb-thickness');
             if (thicknessInput) {
-                thicknessInput.value = loadedSettings.pcb.thickness;
+                thicknessInput.value = loadedSettings.machine.pcb.thickness;
                 thicknessInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('pcb', { thickness: parseFloat(e.target.value) });
+                    this.ui.core.updateSettings('machine', { 
+                        pcb: { ...loadedSettings.machine.pcb, thickness: parseFloat(e.target.value) } 
+                    });
                 });
             }
 
             const safeZInput = document.getElementById('safe-z');
             if (safeZInput) {
-                safeZInput.value = loadedSettings.machine.safeZ;
+                safeZInput.value = loadedSettings.machine.heights.safeZ;
                 safeZInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { safeZ: parseFloat(e.target.value) });
+                    this.ui.core.updateSettings('machine', { 
+                        heights: { ...loadedSettings.machine.heights, safeZ: parseFloat(e.target.value) } 
+                    });
                 });
             }
 
             const travelZInput = document.getElementById('travel-z');
             if (travelZInput) {
-                travelZInput.value = loadedSettings.machine.travelZ;
+                travelZInput.value = loadedSettings.machine.heights.travelZ;
                 travelZInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { travelZ: parseFloat(e.target.value) });
+                    this.ui.core.updateSettings('machine', { 
+                        heights: { ...loadedSettings.machine.heights, travelZ: parseFloat(e.target.value) } 
+                    });
                 });
             }
 
             const rapidFeedInput = document.getElementById('rapid-feed');
             if (rapidFeedInput) {
-                rapidFeedInput.value = loadedSettings.machine.rapidFeed;
+                rapidFeedInput.value = loadedSettings.machine.speeds.rapidFeed;
                 rapidFeedInput.addEventListener('change', (e) => {
-                    this.ui.core.updateSettings('machine', { rapidFeed: parseFloat(e.target.value) });
+                    this.ui.core.updateSettings('machine', { 
+                        speeds: { ...loadedSettings.machine.speeds, rapidFeed: parseFloat(e.target.value) } 
+                    });
                 });
             }
 
@@ -1237,7 +1397,7 @@
 
             const pipelineType = controller.pipelineState.type;
             const machineSection = document.querySelector('.sidebar-section.machine-section');
-            
+
             if (!machineSection) return;
 
             // Always show the Machine Settings section
@@ -1387,6 +1547,6 @@
             }
         }
     }
-    
+
     window.UIControls = UIControls;
 })();

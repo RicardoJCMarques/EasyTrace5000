@@ -28,10 +28,11 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const timingConfig = config.ui.timing;
-    const textConfig = config.ui.text;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const timingConfig = D.ui.timing;
+    const textConfig = C.ui.text;
+    const debugState = D.debug;
 
     class StatusManager {
         constructor(ui) {
@@ -43,7 +44,7 @@
 
             this.logHistory = [];
             this.isExpanded = false;
-            this.showDebugMessages = config.rendering.defaultOptions.showDebugInLog;
+            this.showDebugMessages = D.rendering.defaultOptions.showDebugInLog;
 
             this.footerBar = document.getElementById('footer-bar'); // The whole footer
             this.statusBar = document.getElementById('status-bar'); // The clickable center part
@@ -110,7 +111,7 @@
             const isDebug = type === 'debug';
 
             // If this is a debug message and the global debug flag is off, skip it.
-            if (isDebug && !debugConfig.enabled) {
+            if (isDebug && !debugState.enabled) {
                 return;
             }
 
@@ -138,7 +139,7 @@
             if (!this.logHistoryContainer) return;
 
             // Filter log based on debug setting
-            const showThisDebugMessage = debugConfig.enabled || this.showDebugMessages;
+            const showThisDebugMessage = debugState.enabled || this.showDebugMessages;
             const entriesToRender = this.logHistory.filter(entry => {
                 return entry.type !== 'debug' || showThisDebugMessage;
             });
@@ -147,7 +148,7 @@
             for (const entry of entriesToRender) {
                 fragment.appendChild(this._createLogElement(entry));
             }
-            
+
             this.logHistoryContainer.innerHTML = ''; // Clear old content
             this.logHistoryContainer.appendChild(fragment);
             this.logHistoryContainer.scrollTop = this.logHistoryContainer.scrollHeight;
@@ -204,14 +205,14 @@
                 if (hasOps) {
                     const stats = this.ui.core.getStats();
                     // Get the string from en.json
-                    defaultMessage = this.lang.get('status.readyDynamic', textConfig.statusDefault);
+                    defaultMessage = this.lang.get('status.readyDynamic', textConfig.statusReady);
                     // Replace the placeholders
                     defaultMessage = defaultMessage
                                         .replace('{ops}', stats.operations)
                                         .replace('{prims}', stats.totalPrimitives);
                 } else {
                     // Get the default string:
-                    defaultMessage = this.lang.get('status.default', textConfig.statusDefault);
+                    defaultMessage = this.lang.get('status.default', textConfig.statusReady);
                 }
 
                 this.statusTextEl.textContent = defaultMessage;
@@ -237,9 +238,8 @@
         }
 
         hideProgress() {
-            const progressContainer = document.getElementById('status-progress');
-            if (progressContainer) {
-                progressContainer.classList.add('hidden');
+            if (this.progressContainerEl) {
+                this.progressContainerEl.classList.add('hidden');
                 this.progressVisible = false;
             }
         }
@@ -261,7 +261,7 @@
                 });
 
                 this.hideProgress();
-                this.updateStatus(textConfig.success, 'success');
+                this.updateStatus(textConfig.statusSuccess, 'success');
                 return result;
             } catch (error) {
                 this.hideProgress();

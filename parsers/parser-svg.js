@@ -28,7 +28,9 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
+    const C = window.PCBCAMConfig.constants;
+    const PRECISION = C.precision.coordinate;
+    const D = window.PCBCAMConfig.defaults;
 
     class SVGParser extends ParserCore {
         constructor(options = {}) {
@@ -138,11 +140,11 @@
             // Calculate scale from viewBox to mm
             if (this.viewBox && this.viewBox.width > 0) {
                 this.unitScale = this.documentWidth / this.viewBox.width;
-                
+
                 // Check for non-uniform scaling
                 if (this.viewBox.height > 0) {
                     const yScale = this.documentHeight / this.viewBox.height;
-                    if (Math.abs(this.unitScale - yScale) > 0.001) {
+                    if (Math.abs(this.unitScale - yScale) > PRECISION) {
                         this.warnings.push('SVG has non-uniform viewBox scaling. Geometry may be distorted.');
                     }
                 }
@@ -271,7 +273,7 @@
         _processFilledShape(geometry, transform) {
             const transformed = this._applyTransformToGeometry(geometry, transform);
 
-            if (config.debug.enabled && transformed.type === 'path') {
+            if (D.debug && transformed.type === 'path') {
                 const sp = transformed.subpaths || [];
                 const pts = transformed.points || [];
                 console.log(`[ParserSVG fillShape] subpaths: ${sp.length}, points: ${pts.length}, first subpath length: ${sp[0]?.length || 0}`);
@@ -292,8 +294,7 @@
         }
 
         /**
-         * Process stroked shapes — converts SVG stroked paths into trace objects
-         * that the plotter can handle with correct width expansion.
+         * Process stroked shapes — converts SVG stroked paths into trace objects that the plotter can handle with correct width expansion.
          */
         _processStrokedShape(geometry, transform, strokeWidth) {
             const transformed = this._applyTransformToGeometry(geometry, transform);
@@ -328,8 +329,7 @@
             }
 
             // Subpath-based paths (from PathDataParser)
-            // Extract points from segments and create trace objects for linear paths,
-            // or region objects for paths containing curves.
+            // Extract points from segments and create trace objects for linear paths, or region objects for paths containing curves.
             for (const subpath of subpaths) {
                 if (!subpath || subpath.length === 0) continue;
 
@@ -373,8 +373,7 @@
                     });
                     this.stats.objectsCreated++;
                 } else {
-                    // Complex path with curves → region with stroke properties
-                    // (plotter will need to handle stroke expansion for these)
+                    // Complex path with curves → region with stroke properties (plotter will need to handle stroke expansion for these)
                     this.layers.objects.push({
                         type: 'region',
                         analyticSubpaths: [subpath],
@@ -496,9 +495,8 @@
             }
 
             // Check if it's an obround (corner radius equals half the smaller dimension)
-            const tolerance = config.precision.coordinate;
             const minDim = Math.min(width, height);
-            const isObround = Math.abs(rx - minDim / 2) < tolerance && Math.abs(ry - minDim / 2) < tolerance;
+            const isObround = Math.abs(rx - minDim / 2) < PRECISION && Math.abs(ry - minDim / 2) < PRECISION;
 
             if (isObround) {
                 return { type: 'obround', x, y, width, height };

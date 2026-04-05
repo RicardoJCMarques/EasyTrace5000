@@ -28,12 +28,12 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
-    const textConfig = config.ui.text;
-    const timingConfig = config.ui.timing;
-    const storageKeys = config.storageKeys;
-    const opsConfig = config.operations;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
+    const textConfig = C.ui.text;
+    const timingConfig = D.ui.timing;
+    const opsConfig = D.operations;
 
     // PCB Example definitions
     const PCB_EXAMPLES = {
@@ -228,7 +228,7 @@
         isLaserPipeline() {
             return this.pipelineState.type === 'laser' || this.pipelineState.type === 'hybrid';
         }
-        
+
         /**
          * Returns true if this specific operation type should use laser SVG export in the current pipeline. Stencils are routed independently — they use the same LaserImageExporter backend but have their own UI and hardcoded settings.
          */
@@ -260,7 +260,7 @@
                 this.restorePipeline();
 
                 // Instantiate pipeline components *after* core exists
-                this.gcodeGenerator = new GCodeGenerator(config.gcode);
+                this.gcodeGenerator = new GCodeGenerator(D.gcode);
                 this.gcodeGenerator.setCore(this.core);
                 this.gcodeGenerator.setLanguageManager(this.languageManager);
                 this.geometryTranslator = new GeometryTranslator(this.core);
@@ -482,7 +482,7 @@
                         this.ui?.updateStatus('Canvas exported successfully', 'success');
                     } catch (error) {
                         console.error('Canvas export error:', error);
-                        this.ui?.updateStatus('Canvas' + error.message, 'error');
+                        this.ui?.updateStatus('Canvas export failed: ' + error.message, 'error');
                     }
 
                     quickActionsBtn.classList.remove('active');
@@ -997,7 +997,7 @@
                     if (success) {
                         const count = operation.primitives.length;
 
-                        if (operation.parsed?.hasArcs && debugConfig.enabled) {
+                        if (operation.parsed?.hasArcs && debugState.enabled) {
                             console.log(`Preserved ${operation.originalArcs?.length || 0} arcs for potential reconstruction`);
                         }
 
@@ -1014,7 +1014,7 @@
                                 // Run initial probe
                                 const runProbe = (tol) => {
                                     const { loops, orphans } = GeometryUtils.extractClosedLoops(info.rawPrimitives, tol);
-                                    
+
                                     return {
                                         // Only succeed if ALL segments found a home
                                         success: orphans.length === 0 && loops.length > 0,
@@ -1054,7 +1054,7 @@
                                 const orphanCount = info.rawPrimitives.length;
                                 const contextNote = extractedCount > 0
                                     ? `${extractedCount} closed loop(s) were extracted successfully. ${orphanCount} segment(s) could not be assigned to any closed loop.`
-                                    : `The cutout geometry in <strong>${operation.file.name}</strong> does not form a closed loop at the default precision (${(config.precision.coordinate || 0.001).toFixed(3)} mm).`;
+                                    : `The cutout geometry in <strong>${operation.file.name}</strong> does not form a closed loop at the default precision (${(C.precision.coordinate).toFixed(3)} mm).`;
 
                                 const bodyHTML = `
                                     <p>${contextNote}</p>
@@ -1086,11 +1086,11 @@
                                                 const allLoops = operation._extractedLoops 
                                                     ? [...operation._extractedLoops, ...resolvedLoops] 
                                                     : resolvedLoops;
-                                                    
+
                                                 // Re-run topology classification to find holes inside the newly closed boards
                                                 const topology = GeometryUtils.classifyCutoutTopology(allLoops);
                                                 const compounds = GeometryUtils.assembleCutoutCompounds(topology);
-                                                
+
                                                 operation.primitives = compounds.length > 0 ? compounds : allLoops;
                                                 delete operation._extractedLoops;
 
@@ -1304,7 +1304,7 @@
 
                     // Update statistics
                     this.ui?.updateStatistics?.();
-                    
+
                     resolve();
                 };
 
@@ -1326,7 +1326,7 @@
             for (let file of files) {
                 const ext = file.name.toLowerCase().split('.').pop();
                 const opType = this.getOperationTypeFromExtension(ext);
-                
+
                 if (opType) {
                     if (this.initState.fullyReady) {
                         await this.processFile(file, opType);
@@ -1354,8 +1354,7 @@
         }
 
         getOperationTypeFromExtension(ext) {
-            const operations = config.operations;
-            for (let [type, op] of Object.entries(operations)) {
+            for (let [type, op] of Object.entries(opsConfig)) {
                 if (op.extensions && op.extensions.some(e => e.slice(1) === ext)) {
                     return type;
                 }
@@ -1511,8 +1510,6 @@
                 includeComments: options.includeComments,
                 singleFile: options.singleFile,
                 toolChanges: options.toolChanges,
-                // Let the generator resolve from processor defaults.
-                // Only pass user overrides if they exist.
                 userStartCode: gcodeConfig.userStartCode,
                 userEndCode: gcodeConfig.userEndCode,
                 units: gcodeConfig.units,
@@ -1520,9 +1517,7 @@
                 travelZ: machineConfig.travelZ,
                 coolant: machineConfig.coolant,
                 vacuum: machineConfig.vacuum,
-                // Processor-specific settings — consumed only by the matching processor.
-                // Roland reads these in generateHeader(); G-code processors ignore them.
-                rolandModel: rolandSettings.rolandModel || 'mdx50',
+                rolandModel: rolandSettings.rolandModel,
                 rolandStepsPerMM: rolandSettings.rolandStepsPerMM,
                 rolandMaxFeed: rolandSettings.rolandMaxFeed,
                 rolandZMode: rolandSettings.rolandZMode,
@@ -1582,7 +1577,7 @@
          */
         _preprocessRolandContext(ctx, operation) {
             const rolandSettings = ctx.processorSettings?.roland || {};
-            const rolandModel = rolandSettings.rolandModel || 'mdx50';
+            const rolandModel = rolandSettings.rolandModel;
 
             // Get profile from the Roland processor itself (single source of truth)
             const rolandProcessor = this.gcodeGenerator.getProcessor('roland');
@@ -1641,12 +1636,13 @@
                 return { success: false };
             }
 
-            const spotSize = this.core.settings?.laser?.spotSize || 0.05;
-            const format = exportOptions.format || this.core.settings?.laser?.exportFormat || 'svg';
-            const dpi = exportOptions.dpi || this.core.settings?.laser?.exportDPI || 1000;
-            const padding = exportOptions.padding ?? config.laserDefaults?.exportPadding ?? 5.0;
+            // REVIEW - These laser default fallbacks need more consistency.
+            const spotSize = this.core.settings.laser.spotSize;
+            const format = exportOptions.format || this.core.settings.laser.exportFormat;
+            const dpi = exportOptions.dpi || this.core.settings.laser.exportDPI;
+            const padding = exportOptions.padding ?? D.laser.exportPadding;
             const singleFile = exportOptions.singleFile !== false; // default true
-            const baseName = exportOptions.baseName || 'pcb-output';
+            const baseName = exportOptions.baseName;
 
             // Build coordinate transforms
             const transforms = {
@@ -1667,7 +1663,9 @@
                 heatManagement: exportOptions.heatManagement || 'off',
                 reverseCutOrder: exportOptions.reverseCutOrder || false,
                 svgGrouping: exportOptions.svgGrouping || 'layer',
-                colorPerPass: exportOptions.colorPerPass || false
+                colorPerPass: exportOptions.colorPerPass || false,
+                palette: exportOptions.palette || null,
+                paletteLumping: exportOptions.paletteLumping || false
             };
 
             // Build layer objects from operations
@@ -1679,7 +1677,13 @@
                     passIndex: idx + 1,
                     type: offset.type || 'offset',
                     primitives: offset.primitives || [],
-                    metadata: offset.metadata || {}
+                    metadata: {
+                        ...(offset.metadata || {}),
+                        offsetType: offset.offsetType || 'external',
+                        thermalGroup: offset.metadata?.thermalGroup || offset.thermalGroup || 'shell',
+                        pass: offset.pass || idx + 1,
+                        distance: offset.distance
+                    }
                 }));
 
                 // Build a descriptive layer name for the SVG output.
@@ -1822,7 +1826,7 @@
 
         // Debug utilities
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data !== null) {
                     console.log(`[Controller] ${message}`, data);
                 } else {
@@ -1832,12 +1836,12 @@
         }
 
         enableDebug() {
-            debugConfig.enabled = true;
+            debugState.enabled = true;
             console.log('Debug mode enabled');
         }
 
         disableDebug() {
-            debugConfig.enabled = false;
+            debugState.enabled = false;
             console.log('Debug mode disabled');
         }
 
@@ -1845,7 +1849,7 @@
             console.group('PCB CAM State');
             console.log('Initialization:', this.initState);
             console.log('Statistics:', this.getStats());
-            console.log('Config:', config);
+            console.log('Config:', window.PCBCAMConfig);
             console.groupEnd();
         }
     }
@@ -1881,12 +1885,12 @@
     };
 
     window.enablePCBDebug = function() {
-        debugConfig.enabled = true;
+        debugState.enabled = true;
         console.log('Debug mode enabled');
     };
 
     window.disablePCBDebug = function() {
-        debugConfig.enabled = false;
+        debugState.enabled = false;
         console.log('Debug mode disabled');
     };
 

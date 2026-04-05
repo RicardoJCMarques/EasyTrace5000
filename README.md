@@ -169,7 +169,6 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   └── dark.json                         # Dark Theme
 │
 ├── utils/
-│   ├── unit-converter.js                 # DEPRECATED Rudimentary unit conversion system (SVG parsing only)
 │   ├── canvas-exporter.js                # SVG export of canvas contents
 │   └── coordinate-system.js              # Coordinate transformations
 │
@@ -397,4 +396,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.1.2 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.2.0 | **Platform**: Client-side Web

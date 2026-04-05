@@ -45,8 +45,8 @@ const CONFIG = {
 
     // JavaScript files in load order (from index.html)
     jsFiles: [
-        'themes/theme-loader.js',
         'config.js',
+        'themes/theme-loader.js',
         'language/language-manager.js',
         'geometry/clipper2z.js',
         'geometry/geometry-processor.js',

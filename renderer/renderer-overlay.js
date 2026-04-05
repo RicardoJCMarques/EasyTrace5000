@@ -28,10 +28,12 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const gridConfig = config.rendering.grid;
-    const overlayConfig = config.renderer.overlay;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const gridConfig = D.rendering.grid;
+    const canvasConfig = D.rendering.canvas;
+    const overlayConfig = C.renderer.overlay;
+    const debugState = D.debug;
 
     class OverlayRenderer {
         constructor(core) {
@@ -98,10 +100,10 @@
             const scaleFactor = fc.invScale * uiScale;
 
             // Scale configuration values by the DPI factor
-            const markerSize = (config.rendering.canvas.originMarkerSize) * scaleFactor;
-            const circleSize = (config.rendering.canvas.originCircleSize) * scaleFactor;
-            const strokeWidth = (config.renderer.overlay.originStrokeWidth) * scaleFactor;
-            const outlineWidth = (config.renderer.overlay.originOutlineWidth) * scaleFactor;
+            const markerSize = (canvasConfig.originMarkerSize) * scaleFactor;
+            const circleSize = (canvasConfig.originCircleSize) * scaleFactor;
+            const strokeWidth = (overlayConfig.originStrokeWidth) * scaleFactor;
+            const outlineWidth = (overlayConfig.originOutlineWidth) * scaleFactor;
 
             const originX = this.core.originPosition?.x || 0;
             const originY = this.core.originPosition?.y || 0;
@@ -198,15 +200,14 @@
             if (!colors) return;
 
             // Setup Scaling & Font
-            const uiScale = this.core.devicePixelRatio || 1;
-            const overlayConf = config.renderer.overlay;
+            const uiScale = this.core.devicePixelRatio;
 
             // Scale config dimensions
-            const rulerSize = (config.rendering.canvas.rulerSize || 20) * uiScale;
-            const tickLen = (config.rendering.canvas.rulerTickLength || 5) * uiScale;
+            const rulerSize = (canvasConfig.rulerSize) * uiScale;
+            const tickLen = (canvasConfig.rulerTickLength) * uiScale;
 
             // Setup Font
-            const confFont = overlayConf.rulerFont || '11px Arial';
+            const confFont = overlayConfig.rulerFont;
             const sizeMatch = confFont.match(/(\d+)px/);
             const baseFontSize = sizeMatch ? parseInt(sizeMatch[1]) : 11;
             const fontSize = baseFontSize * uiScale;
@@ -265,7 +266,7 @@
 
                     if (tickIndex % stride === 0) {
                         const labelVal = wx - origin.x;
-                        const label = Math.abs(labelVal) < config.precision.zeroLength ? "0" : 
+                        const label = Math.abs(labelVal) < C.precision.zeroLength ? "0" : // REVIEW - check against config epsilon values
                                     (stepWorld < 1 ? labelVal.toFixed(3).replace(/0+$/, '') : 
                                     stepWorld < 10 ? labelVal.toFixed(1).replace(/\.0$/, '') : 
                                     labelVal.toFixed(0));
@@ -320,13 +321,13 @@
             this.ctx.textBaseline = 'middle';
 
             // Parse the corner font settings too if present, or scale default
-            const cornerFont = overlayConf.rulerCornerFont || '9px Arial';
+            const cornerFont = overlayConfig.rulerCornerFont || '9px Arial';
             const cornerMatch = cornerFont.match(/(\d+)px/);
             const cornerSize = (cornerMatch ? parseInt(cornerMatch[1]) : 9) * uiScale;
 
             this.ctx.font = `${cornerSize}px system-ui, sans-serif`;
 
-            const unitText = overlayConf.rulerCornerText || 'mm';
+            const unitText = overlayConfig.rulerCornerText || 'mm';
             this.ctx.fillText(unitText, rulerSize/2, rulerSize/2);
         }
 
@@ -345,7 +346,6 @@
             }
 
             const uiScale = this.core.devicePixelRatio || 1;
-            const overlayConfig = config.renderer.overlay;
 
             // Dimensions
             const padding = (overlayConfig.scaleIndicatorPadding || 10) * uiScale;
@@ -359,7 +359,6 @@
             const y = this.canvas.height - padding - yOffset;
 
             // Calculate length
-            const gridConfig = config.rendering.grid;
             const possibleLengths = gridConfig.steps;
             const niceLength = possibleLengths.find(len => len * this.core.viewScale >= minPixels);
             
@@ -380,8 +379,7 @@
             const halo = 2 * uiScale;
 
             // --- Render Helper ---
-            // Define a function to draw the shape so it can be called twice
-            // expansion: how much to inflate the shape (0 for foreground, >0 for halo)
+            // Define a function to draw the shape so it can be called twice expansion: how much to inflate the shape (0 for foreground, >0 for halo)
             const drawScaleBar = (expansion) => {
                 // Horizontal Bar
                 this.ctx.fillRect(
@@ -514,7 +512,7 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[Primitives] ${message}`, data);
                 } else {

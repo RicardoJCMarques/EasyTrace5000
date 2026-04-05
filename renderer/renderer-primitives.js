@@ -28,9 +28,10 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const primitivesConfig = config.renderer.primitives;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const primitivesConfig = C.renderer.primitives;
+    const debugState = D.debug;
 
     class PrimitiveRenderer {
         constructor(core) {
@@ -128,7 +129,6 @@
 
         /**
          * Main offset renderer - uses immediate mode for speed.
-         * Uses pre-calculated frame cache for scale values.
          */
         renderOffsetPrimitive(primitive, color, context) {
             if (primitive.properties?.isToolPeckMark || primitive.properties?.role === 'peck_mark') {
@@ -455,7 +455,7 @@
 
         _drawPrimitivePath(primitive) {
             this.ctx.beginPath();
-            
+
             if (primitive.type === 'path') {
                 if (primitive.contours && primitive.contours.length > 0) {
                     for (const contour of primitive.contours) {
@@ -772,7 +772,7 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) console.log(`[Primitives] ${message}`, data);
                 else console.log(`[Primitives] ${message}`);
             }

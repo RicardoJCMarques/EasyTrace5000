@@ -28,8 +28,10 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
+    const debugState = D.debug;
 
     /**
      * Smart translator from parser analytic objects to primitives.
@@ -98,7 +100,7 @@
             this.reset();
 
             const drillData = excellonData.drillData;
-            
+
             if (drillData.holes) {
                 drillData.holes.forEach((item, index) => {
                     let primitive = null;
@@ -108,7 +110,7 @@
                         polarity: 'dark',
                         diameter: item.diameter
                     };
-                    
+
                     if (!item.start || !item.end) {
                         item.start = { ...(item.position || { x: 0, y: 0 }) };
                         item.end = { ...(item.position || { x: 0, y: 0 }) };
@@ -120,12 +122,9 @@
                     const length = Math.sqrt(dx * dx + dy * dy);
                     const radius = item.diameter / 2;
 
-                    // Tolerance for floating point zero checks
-                    const slotTolerance = 0.005; // 5 microns // Review - epsilon values in the config
-
                     this.debug(`Plotter Input [${index}]: type=${item.type}, start=(${item.start.x.toFixed(3)}, ${item.start.y.toFixed(3)}), end=(${item.end.x.toFixed(3)}, ${item.end.y.toFixed(3)}), diameter=${item.diameter.toFixed(3)}, calculated length=${length.toFixed(5)}`);
 
-                    if (length < slotTolerance) {
+                    if (length < PRECISION) { // Change to 5 * PRECISION? That was the previous tollerance.
                         // It's a hole
                         properties.role = 'drill_hole';
                         primitive = new CirclePrimitive(
@@ -133,7 +132,7 @@
                             radius,
                             properties
                         );
-                        this.debug(`Plotter Output [${index}]: Creating drill_hole (length < ${slotTolerance}mm)`);
+                        this.debug(`Plotter Output [${index}]: Creating drill_hole (length < ${PRECISION}mm)`);
                     } else {
                         // It's a slot
                         properties.role = 'drill_slot';
@@ -151,7 +150,7 @@
                             maxY - minY,          // Height
                             properties
                         );
-                        this.debug(`Plotter Output [${index}]: Creating drill_slot (length >= ${slotTolerance}mm)`);
+                        this.debug(`Plotter Output [${index}]: Creating drill_slot (length >= ${PRECISION}mm)`);
                     }
 
                     if (primitive) {
@@ -233,7 +232,6 @@
             }
 
             // Main Analytic Subpath Processing
-            const tolerance = config.precision.coordinate;
             const contours = []; // This will be the final list of contours
 
             // Process each analytic subpath (contour)
@@ -299,7 +297,7 @@
                             points.push(seg.p1);
                             break;
                         case 'arc':
-                            if (Math.abs(seg.rx - seg.ry) < tolerance && Math.abs(seg.phi) < tolerance) {
+                            if (Math.abs(seg.rx - seg.ry) < PRECISION && Math.abs(seg.phi) < PRECISION) {
                                 // This is a circular arc - register it
                                 let curveId = null;
                                 if (window.globalCurveRegistry) {
@@ -358,7 +356,7 @@
                     }
                 });
 
-                if (config.debug.enabled && points.length > 0) {
+                if (debugState && points.length > 0) {
                     let maxCoord = 0;
                     let maxIdx = 0;
                     points.forEach((p, i) => {
@@ -437,7 +435,7 @@
          * Creates analytic primitives for traces
          */
         plotTrace(trace) {
-            const width = trace.width || config.formats?.gerber?.defaultAperture;
+            const width = trace.width || C.formats.gerber.defaultAperture;
             const properties = {
                 isTrace: true,
                 fill: false,
@@ -567,8 +565,7 @@
                     );
 
                 case 'obround':
-                    const tolerance = config.precision.coordinate;
-                    if (Math.abs(flash.width - flash.height) < tolerance) {
+                    if (Math.abs(flash.width - flash.height) < PRECISION) {
                         this.creationStats.circularObrounds++;
                         this.creationStats.flashesCreated++;
                         return new CirclePrimitive(flash.position, flash.width / 2, properties);
@@ -626,7 +623,7 @@
         }
 
         validatePrimitive(primitive) {
-            if (!debugConfig.validation?.validateGeometry) return true;
+            if (!debugState.validation?.validateGeometry) return true;
 
             try {
                 if (typeof primitive.getBounds !== 'function') return false;
@@ -638,12 +635,12 @@
 
                 if (primitive.type === 'path') {
                     // A path is invalid if:
-                    // 1. The contours array itself is missing or empty.
+                    // The contours array itself is missing or empty.
                     if (!primitive.contours || primitive.contours.length === 0) {
                         return false;
                     }
 
-                    // 2. Not a *single* contour in the array has any points.
+                    // Not a *single* contour in the array has any points.
                     const hasAnyPoints = primitive.contours.some(
                         c => c.points && c.points.length > 0
                     );
@@ -716,7 +713,7 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[Plotter] ${message}`, data);
                 } else {

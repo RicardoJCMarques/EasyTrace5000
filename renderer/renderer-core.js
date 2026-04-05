@@ -28,18 +28,18 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const renderConfig = config.rendering;
-    const defaultconfig = renderConfig.defaultOptions;
-    const canvasConfig = renderConfig.canvas;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const renderingOptions = D.rendering.defaultOptions;
+    const canvasConfig = D.rendering.canvas;
+    const debugState = D.debug;
 
     class RendererCore {
         constructor(canvas) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d', { 
-                alpha: config.renderer.context.alpha,
-                desynchronized: config.renderer.context?.desynchronized
+                alpha: C.renderer.context.alpha,
+                desynchronized: C.renderer.context?.desynchronized
             });
 
             if (!this.ctx) {
@@ -76,31 +76,31 @@
 
             // Render options
             this.options = {
-                showWireframe: defaultconfig.showWireframe,
-                showGrid: defaultconfig.showGrid,
-                showOrigin: defaultconfig.showOrigin,
-                showBounds: defaultconfig.showBounds,
-                showRulers: defaultconfig.showRulers,
-                showPads: defaultconfig.showPads,
-                showRegions: defaultconfig.showRegions,
-                showTraces: defaultconfig.showTraces,
-                showDrills: defaultconfig.showDrills,
-                showCutouts: defaultconfig.showCutouts,
-                fuseGeometry: defaultconfig.fuseGeometry,
-                showOffsets: defaultconfig.showOffsets,
-                showPreviews: defaultconfig.showPreviews,
-                showPreprocessed: defaultconfig.showPreprocessed,
-                enableArcReconstruction: defaultconfig.enableArcReconstruction,
-                blackAndWhite: defaultconfig.blackAndWhite,
-                debugPoints: defaultconfig.debugPoints,
-                debugArcs: defaultconfig.debugArcs,
-                showToolPreview: defaultconfig.showToolPreview,
-                theme: defaultconfig.theme,
-                showStats: defaultconfig.showStats
+                showWireframe: renderingOptions.showWireframe,
+                showGrid: renderingOptions.showGrid,
+                showOrigin: renderingOptions.showOrigin,
+                showBounds: renderingOptions.showBounds,
+                showRulers: renderingOptions.showRulers,
+                showPads: renderingOptions.showPads,
+                showRegions: renderingOptions.showRegions,
+                showTraces: renderingOptions.showTraces,
+                showDrills: renderingOptions.showDrills,
+                showCutouts: renderingOptions.showCutouts,
+                fuseGeometry: renderingOptions.fuseGeometry,
+                showOffsets: renderingOptions.showOffsets,
+                showPreviews: renderingOptions.showPreviews,
+                showPreprocessed: renderingOptions.showPreprocessed,
+                enableArcReconstruction: renderingOptions.enableArcReconstruction,
+                blackAndWhite: renderingOptions.blackAndWhite,
+                debugPoints: renderingOptions.debugPoints,
+                debugArcs: renderingOptions.debugArcs,
+                showToolPreview: renderingOptions.showToolPreview,
+                theme: renderingOptions.theme,
+                showStats: renderingOptions.showStats
             };
 
             // LOD threshold (screen pixels)
-            this.lodThreshold = config.renderer.lodThreshold || 0.5;
+            this.lodThreshold = C.renderer.lodThreshold || 0.5;
 
             // Color schemes
             this.colors = {};
@@ -402,7 +402,7 @@
                     maxY = Math.max(maxY, bounds.maxY);
                     validCount++;
                 } catch (error) {
-                    if (debugConfig.validation?.warnOnInvalidData) {
+                    if (debugState.validation?.warnOnInvalidData) {
                         console.warn(`[RendererCore] Primitive ${index} bounds failed:`, error);
                     }
                 }
@@ -452,7 +452,7 @@
 
         zoomFit(includeOrigin = false) {
             if (!this.overallBounds) {
-                const emptyConfig = config.renderer.emptyCanvas;
+                const emptyConfig = C.renderer.emptyCanvas;
                 this.viewScale = emptyConfig.defaultScale;
                 const canvasX = this.canvas.width * emptyConfig.originMarginLeft;
                 const canvasY = this.canvas.height * (1 - emptyConfig.originMarginBottom);
@@ -463,8 +463,8 @@
             // Use wider padding only if origin placement checked AND not fitted
             const useWidePadding = includeOrigin && !this.originIncludedInFit;
             const fitPadding = useWidePadding 
-                ? config.renderer.zoom.fitPaddingWithOrigin 
-                : config.renderer.zoom.fitPadding;
+                ? C.renderer.zoom.fitPaddingWithOrigin 
+                : C.renderer.zoom.fitPadding;
 
             let bounds = { ...this.overallBounds };
 
@@ -480,7 +480,7 @@
 
             // Shift the effective canvas area inward by the ruler size so geometry isn't hidden behind them
             const rulerSize = this.options.showRulers
-                ? (config.rendering.canvas.rulerSize || 20) * (this.devicePixelRatio || 1)
+                ? (D.rendering.canvas.rulerSize || 20) * (this.devicePixelRatio || 1)
                 : 0;
 
             if (includeOrigin) {
@@ -600,13 +600,13 @@
             };
         }
 
-        zoomIn(factor = config.renderer.zoom.factor) {
+        zoomIn(factor = C.renderer.zoom.factor) {
             const cx = this.canvas.width / 2;
             const cy = this.canvas.height / 2;
             this.zoomToPoint(cx, cy, factor);
         }
 
-        zoomOut(factor = config.renderer.zoom.factor) {
+        zoomOut(factor = C.renderer.zoom.factor) {
             const cx = this.canvas.width / 2;
             const cy = this.canvas.height / 2;
             this.zoomToPoint(cx, cy, 1 / factor);
@@ -615,8 +615,8 @@
         zoomToPoint(canvasX, canvasY, factor) {
             const worldBefore = this.canvasToWorld(canvasX, canvasY);
             this.viewScale *= factor;
-            this.viewScale = Math.max(config.renderer.zoom.min, 
-                             Math.min(config.renderer.zoom.max, this.viewScale));
+            this.viewScale = Math.max(C.renderer.zoom.min, 
+                             Math.min(C.renderer.zoom.max, this.viewScale));
             this.viewOffset.x = canvasX - worldBefore.x * this.viewScale;
             this.viewOffset.y = canvasY + worldBefore.y * this.viewScale;
         }
@@ -914,7 +914,7 @@
             // Align with effectiveAngle logic used in _actualRender
             const isMirrored = (this.mirrorX ? 1 : 0) ^ (this.mirrorY ? 1 : 0);
             const effectiveAngle = isMirrored ? -this.currentRotation : this.currentRotation;
-            
+
             // Inverse rotation to map the view bounds backwards
             const rad = (-effectiveAngle * Math.PI) / 180;
             const cos = Math.cos(rad);
@@ -971,7 +971,7 @@
             this.renderStats.renderTime = endTime - startTime;
             this.renderStats.lastRenderTime = Date.now();
 
-            if (this.renderStats.lastSignificantChange && debugConfig.enabled) {
+            if (this.renderStats.lastSignificantChange && debugState.enabled) {
                 console.log(`[RendererCore] Rendered ${this.renderStats.renderedPrimitives} prims, ` +
                     `${this.renderStats.drawCalls} draws, ${this.renderStats.renderTime.toFixed(1)}ms ` +
                     `(${this.renderStats.lastSignificantChange})`);

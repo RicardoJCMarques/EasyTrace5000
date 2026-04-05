@@ -28,7 +28,8 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
 
     class GCodeGenerator {
         constructor(config) {
@@ -84,12 +85,8 @@
             return this.processors.get(name.toLowerCase());
         }
 
-        // ── Descriptor API ─────────────────────────────────────────
-        // These methods expose processor metadata for UI population, code resolution, and parameter validation. Consumers should use these instead of reading config.js.
-
         /**
          * Returns the full descriptor for a registered processor.
-         * Replaces the old getProcessorInfo() shape.
          */
         getProcessorInfo(name) {
             const processor = this.getProcessor(name);
@@ -99,7 +96,6 @@
 
         /**
          * Returns descriptors for all registered processors.
-         * Can be used to populate the post-processor dropdown instead of config.ui.parameterOptions.postProcessor.
          */
         getAllProcessorDescriptors() {
             const result = [];
@@ -252,6 +248,8 @@
                 }
             }
 
+            let inCannedCycle = false;
+
             // Process remaining plans
             for (let i = 0; i < toolpathPlans.length; i++) {
                 // Only skip the specific init plan index processed manually.
@@ -277,6 +275,20 @@
                 for (const cmd of plan.commands) {
                     const startPosForTransform = { ...this.untransformedPosition };
 
+                    // Check modal transitions for Canned Cycles
+                    const isCannedCmd = (cmd.type === 'CANNED_SIMPLE' || cmd.type === 'CANNED_PECK');
+
+                    if (inCannedCycle && !isCannedCmd) {
+                        // Transitioning out of canned cycle, issue G80
+                        if (this.currentProcessor.cancelCannedCycle) {
+                            const cancelCode = this.currentProcessor.cancelCannedCycle(options);
+                            if (cancelCode) output.push(cancelCode);
+                        }
+                        inCannedCycle = false;
+                    } else if (isCannedCmd) {
+                        inCannedCycle = true;
+                    }
+
                     let commandsToProcess = [cmd];
 
                     // Linearize arcs if processor doesn't support them
@@ -295,6 +307,26 @@
                     for (const commandToProcess of commandsToProcess) {
                         let transformedCmd = this.transformCommand(commandToProcess, originOffset);
 
+                        // Final Safety Validation Layer
+                        if (this.currentProcessor.validateCommand) {
+                            // Pass down machine limits from options
+                            const validationOptions = {
+                                maxFeed: options.maxFeed,
+                                lowestZ: options.lowestZ
+                            };
+
+                            const validation = this.currentProcessor.validateCommand(transformedCmd, validationOptions);
+
+                            if (validation.errors && validation.errors.length > 0) {
+                                // Hard abort. This bubbles up to your UI try/catch block.
+                                throw new Error(`Validation failed: ${validation.errors.join(' | ')}`);
+                            }
+                            if (validation.warnings && validation.warnings.length > 0) {
+                                // For now, just log warnings to the console without breaking the UI
+                                console.warn(`[GCodeGenerator] Warning: ${validation.warnings.join(' | ')}`);
+                            }
+                        }
+
                         const gcode = this.currentProcessor.processCommand(transformedCmd);
                         if (gcode) {
                             output.push(gcode);
@@ -312,6 +344,12 @@
                         }
                     }
                 }
+            }
+
+            // Cancel canned cycle if it was the last operation before footer
+            if (inCannedCycle && this.currentProcessor.cancelCannedCycle) {
+                const cancelCode = this.currentProcessor.cancelCannedCycle(options);
+                if (cancelCode) output.push(cancelCode);
             }
 
             output.push(this.currentProcessor.generateFooter(options));
@@ -356,7 +394,7 @@
             };
             const radius = Math.hypot(cmd.i || 0, cmd.j || 0);
 
-            if (radius < 1e-9) {
+            if (radius < 1e-9) { // REVIEW - There are plenty of epsilons in the config file?
                 return [new MotionCommand('LINEAR', end, { feed: cmd.f })];
             }
 

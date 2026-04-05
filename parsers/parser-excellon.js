@@ -28,8 +28,9 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const formatConfig = config.formats.excellon;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const formatConfig = C.formats.excellon;
 
     class ExcellonParser extends ParserCore {
         constructor(options = {}) {
@@ -161,8 +162,8 @@
 
         processLine(line, lineNumber) {
             this.stats.commandsProcessed++;
-            
-            // 1. Header/Metadata Commands (Always processed)
+
+            // Header/Metadata Commands (Always processed)
             if (line.startsWith(';FILE_FORMAT=')) {
                 this.parseFileFormat(line);
                 return;
@@ -198,31 +199,31 @@
                 return;
             }
 
-            // 2. Modal/Action Commands (Processed after header ends)
+            // Modal/Action Commands (Processed after header ends)
             if (this.headerEnded) {
                 if (line.match(/^T\d+$/)) {
                     this.selectTool(line, lineNumber);
                     return;
                 }
-                
+
                 if (line === 'M15') {
                     this.handleM15();
                     return;
                 }
-                
+
                 if (line === 'M16') {
                     this.handleM16(lineNumber);
                     return;
                 }
-                
-                // 3. Coordinate Handling (G-codes, Drills, Slots)
+
+                // Coordinate Handling (G-codes, Drills, Slots)
                 const coordinates = this.extractCoordinatesFromLine(line, lineNumber);
-                
+
                 // If coordinates found, update the core position
                 if (coordinates) {
                     this.state.position = coordinates;
                 }
-                
+
                 // Check for drill/slot operation on the line (G85, or implicit X/Y move)
                 this.processDrillOrSlotCommand(line, lineNumber);
             }
@@ -265,7 +266,7 @@
             }
 
             const number = parseInt(match[1]);
-            const toolKeyPadding = formatConfig.toolKeyPadding || 2;
+            const toolKeyPadding = formatConfig.toolKeyPadding;
             const toolKey = `T${number.toString().padStart(toolKeyPadding, '0')}`;
             let diameter = parseFloat(match[2]);
 
@@ -303,7 +304,7 @@
                 return;
             }
 
-            const toolKeyPadding = formatConfig.toolKeyPadding || 2;
+            const toolKeyPadding = formatConfig.toolKeyPadding;
             const toolKey = `T${number.toString().padStart(toolKeyPadding, '0')}`;
 
             if (!this.tools.has(toolKey)) {
@@ -322,7 +323,7 @@
         handleM15() {
             this.debug('Start Slot/Route (M15)');
             this.slotState.inSlot = true;
-            
+
             // Capture the current position (set by a preceding G00/G01) as the slot start
             this.slotState.startPos = { ...this.state.position }; 
             this.debug(`M15: Captured StartPos: (${this.slotState.startPos.x.toFixed(3)}, ${this.slotState.startPos.y.toFixed(3)})`);
@@ -349,7 +350,7 @@
                 }
                 return;
             }
-            
+
             // Check for G85 slot command
             if (line.includes('G85')) {
                 this.parseG85Slot(line, lineNumber);
@@ -411,7 +412,7 @@
 
         createDrillOperation(position) {
             const tool = this.tools.get(this.currentTool);
-            
+
             this.drillData.holes.push({
                 type: 'hole',
                 position: position,
@@ -455,11 +456,11 @@
         extractCoordinatesFromLine(line, lineNumber) {
             const xMatch = line.match(/X([+-]?\d+\.?\d*)/);
             const yMatch = line.match(/Y([+-]?\d+\.?\d*)/);
-            
+
             if (!xMatch && !yMatch) {
                 return null;
             }
-        
+
             try {
                 // Start with the last known position, only update if coordinate is present
                 const coordinates = { ...this.state.position };
@@ -500,7 +501,7 @@
             this.calculateDrillBounds();
             this.validateCoordinateConsistency();
             this.generateDrillStats();
-            
+
             this.drillData.units = 'mm';
         }
 

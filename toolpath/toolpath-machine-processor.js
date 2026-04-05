@@ -28,8 +28,9 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const debugState = D.debug;
 
     class MachineProcessor {
         constructor(core) {
@@ -52,8 +53,10 @@
             }
 
             this.context = context;
+            // Grab the feedHeight from config properly // Review this logic
+            this.FEED_HEIGHT = this.context.machine.feedHeight || 1.0;  // REVIEW - Add to config.js
             const machineReadyPlans = [];
-            
+
             // Initialize current position.
             // Use provided initialPos, or default to Safe Z if starting fresh
             this.currentPosition = { ...(initialPos || { x: 0, y: 0, z: this.context.machine.safeZ }) };
@@ -61,7 +64,7 @@
             this.debug(`Starting Batch. Initial Pos: Z${this.currentPosition.z.toFixed(3)}`, this.currentPosition);
 
             const initPlan = new ToolpathPlan('init');
-            
+
             // Use '<=' to force an explicit Safety Z retract at the start, even if the internal tracker thinks it's already there
             if (this.currentPosition.z <= this.context.machine.safeZ) {
                 initPlan.addRapid(null, null, this.context.machine.safeZ);
@@ -87,9 +90,23 @@
                 const plan = toolpathPlans[i];
                 const planMetadata = plan.metadata || {};
 
-                if (debugConfig.enabled && planMetadata.isTabbedPass) {
+                if (debugState.enabled && planMetadata.isTabbedPass) {
                     const tabCmds = plan.commands.filter(c => c.metadata?.isTab === true).length;
                     console.log(`[MachineProcessor] Received TABBED plan: ${tabCmds}/${plan.commands.length} tab commands`);
+                }
+
+                if (planMetadata.isPeckMark) {
+                    this.debug(`Processing Peck Mark ${i+1}/${toolpathPlans.length}`);
+                    const peckPlan = this.processPeckMark(plan);
+                    machineReadyPlans.push(peckPlan);
+
+                    // Update the machine position tracker (processPeckMark ends with a retract to travelZ)
+                    this.currentPosition = {
+                        x: planMetadata.entryPoint.x,
+                        y: planMetadata.entryPoint.y,
+                        z: this.context.machine.travelZ
+                    };
+                    continue;
                 }
 
                 // Handle drill mill macro (complete hole-clearing sequence)
@@ -192,7 +209,7 @@
 
                     const currentEntry = planMetadata.entryPoint || {x:0, y:0};
                     const prevExit = this.currentPosition;
-                    const isSameXY = Math.hypot(currentEntry.x - prevExit.x, currentEntry.y - prevExit.y) < 0.01;
+                    const isSameXY = Math.hypot(currentEntry.x - prevExit.x, currentEntry.y - prevExit.y) < 0.01; // REVIEW - precision value in config?
 
                     if (isSameOp && isDeeper && !planMetadata.isPeckMark && !planMetadata.isDrillMilling && isSameXY) {
                          isMultiDepthPlunge = true;
@@ -207,7 +224,7 @@
                         planMetadata.entryPoint.x, 
                         planMetadata.entryPoint.y, 
                         planMetadata.entryPoint.z, 
-                        this.context.machine.plungeRate 
+                        this.context.cutting.plungeRate 
                     );
                     connectionPlan.metadata.type = 'multidepth_plunge';
                     this.currentPosition.z = planMetadata.entryPoint.z;
@@ -265,11 +282,11 @@
                 let currentPassDepth = this.currentPosition.z; 
                 const isTabbedPass = planMetadata.isTabbedPass === true;
                 const tabTopZ = planMetadata.tabTopZ; 
-                const plungeRate = this.context.machine.plungeRate;
-                
+                const plungeRate = this.context.cutting.plungeRate;
+
                 for (const cmd of plan.commands) {
                     const requiresTabSequence = isTabbedPass && cmd.metadata?.isTab === true;
-                    
+
                     if (requiresTabSequence) {
                         // Tab Lift
                         this.debug(`Generating Tab Lift to Z${tabTopZ}`);
@@ -346,8 +363,9 @@
 
             if (entryType === 'helix' && !planMetadata.isSimpleCircle) {
                 this.generateHelixEntry(plan, entryPoint, cutDepth, plungeRate);
-            } else if (entryType === 'ramp') { 
-                this.generateRampEntry(plan, planMetadata, cutDepth, plungeRate);
+            // IGNORE RAMP ENTRY UNTIL PROPERLY DEVELOPED AND TESTED
+            // } else if (entryType === 'ramp') { 
+            //     this.generateRampEntry(plan, planMetadata, cutDepth, plungeRate);
             } else {
                 // Standard Plunge from FEED_HEIGHT (1mm) down
                 plan.addLinear(
@@ -387,6 +405,7 @@
             plan.addLinear(entryPoint.x, entryPoint.y, targetDepth, plungeRate);
         }
 
+        /* IGNORE UNTIL PROPERLY DEVELOPED AND TESTED
         generateRampEntry(plan, purePlan, targetDepth, plungeRate) {
             // Feed to material surface (Z0)
             plan.addLinear(null, null, 0, plungeRate);
@@ -423,6 +442,7 @@
                 plan.addLinear(null, null, targetDepth, plungeRate);
             }
         }
+        */
 
         processPeckMark(purePlan) {
             const machinePlan = new ToolpathPlan(purePlan.operationId);
@@ -437,7 +457,11 @@
             const strategy = planContext.strategy.drill;
             const cutting = planContext.cutting;
 
-            // Retract to Travel Z if needed
+            // Check if current post-processor supports canned cycles
+            const postProcessorName = planContext.gcode.postProcessor;
+            const processorInfo = window.pcbcam.gcodeGenerator.getProcessorInfo(postProcessorName);
+            const supportsCanned = processorInfo?.capabilities?.supportsCannedCycles;
+
             if (this.currentPosition.z < machine.travelZ) {
                 machinePlan.addRapid(null, null, machine.travelZ);
                 this.currentPosition.z = machine.travelZ;
@@ -450,17 +474,26 @@
             // Rapid to Feed Height
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
 
-            if (strategy.cannedCycle === 'none' || strategy.peckDepth === 0 ||
-                strategy.peckDepth >= Math.abs(finalDepth)) {
+            // Single plunge
+            if (supportsCanned && strategy.cannedCycle !== 'none') {
+                // Dispatch to Canned Cycle Primitive, passing the specific cycle type
+                if (strategy.cannedCycle === 'G83' || strategy.cannedCycle === 'G73') {
+                    machinePlan.addCannedPeck(position.x, position.y, finalDepth, strategy.retractHeight, strategy.peckDepth, cutting.plungeRate, strategy.cannedCycle);
+                } else {
+                    machinePlan.addCannedSimple(position.x, position.y, finalDepth, strategy.retractHeight, cutting.plungeRate, strategy.dwellTime);
+                }
+                // Update tracker: Machine ends cycle at the retract plane
+                this.currentPosition.z = strategy.retractHeight;
 
-                // Single plunge
+            } else if (strategy.cannedCycle === 'none' || strategy.peckDepth === 0 || strategy.peckDepth >= Math.abs(finalDepth)) {
+                // Standard manual single plunge
                 machinePlan.addPlunge(finalDepth, cutting.plungeRate);
                 if (strategy.dwellTime > 0) {
                     machinePlan.addDwell(strategy.dwellTime);
                 }
                 machinePlan.addRetract(machine.travelZ);
             } else {
-                // Multi-peck cycle
+                // Standard manual pecking loop
                 let lastCutDepth = 0;
                 const retractPlane = strategy.retractHeight;
                 const rapidDownClearance = 0.1;
@@ -559,7 +592,7 @@
 
             // Negative angleSpan = CW traversal, Positive = CCW
             const angleSpan = revolutions * 2 * Math.PI * (arcCW ? -1 : 1);
-            
+
             let lastX = startX, lastY = startY;
 
             for (let i = 1; i <= totalSegments; i++) {
@@ -612,7 +645,7 @@
             const center = innerRing.center;
             const entryPoint = purePlan.metadata.optimization?.optimizedEntryPoint
                 || purePlan.metadata.entryPoint;
-            
+
             // Track the angle dynamically!
             let currentAngle = Math.atan2(
                 entryPoint.y - center.y,
@@ -623,7 +656,7 @@
             const initialEntryY = center.y + innerRing.radius * Math.sin(currentAngle);
             const minHelixDia = this.context.config.entry?.drilling?.minHelixDiameter || 0;
             const useHelix = entryType === 'helix' && (innerRing.radius * 2) >= minHelixDia;
-            
+
             machinePlan.addRapid(initialEntryX, initialEntryY, this.context.machine.travelZ);
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
             machinePlan.addLinear(initialEntryX, initialEntryY, 0, plungeRate);
@@ -689,11 +722,11 @@
 
             const deltaZ = Math.abs(toZ - fromZ);
             if (deltaZ < 1e-6) return startAngle; // Already at target
-            
+
             const requestedPitch = Math.abs(this.context.strategy.depthPerPass);
             const maxPitchForTool = toolDiameter * 0.5;
             const helixPitch = Math.min(requestedPitch, maxPitchForTool);
-            
+
             // Allow natural float revolutions!
             const revolutions = Math.max(1, deltaZ / helixPitch); 
             const segmentsPerRev = 16;
@@ -718,7 +751,7 @@
                 lastX = x;
                 lastY = y;
             }
-            
+
             // Return the exact angle where the helix finished
             return finalAngle % (2 * Math.PI);
         }
@@ -763,7 +796,7 @@
             const minHelixDia = this.context.config.entry?.drilling?.minHelixDiameter || 0;
             const useHelix = entryType === 'helix' && (innerRing.slotRadius * 2) >= minHelixDia;
 
-            // ── Approach ──
+            // Approach
             machinePlan.addRapid(innerEntry.x, innerEntry.y, this.context.machine.travelZ);
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
 
@@ -773,13 +806,13 @@
             let currentZ = 0;
             const finalDepth = depthLevels[depthLevels.length - 1];
 
-            // ── Single-ring shortcut ──
+            // Single-ring shortcut
             if (rings.length === 1 && useHelix) {
                 this._helixDownObround(machinePlan, innerRing, 0, finalDepth, plungeRate, feedRate, toolDiameter);
                 this._obroundLoopAtDepth(machinePlan, innerRing, finalDepth, feedRate);
 
             } else {
-                // ── Multi-ring depth-staged loop ──
+                // Multi-ring depth-staged loop
                 for (let d = 0; d < depthLevels.length; d++) {
                     const targetZ = depthLevels[d];
 

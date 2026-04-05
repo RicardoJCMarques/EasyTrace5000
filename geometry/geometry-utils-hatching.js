@@ -28,9 +28,10 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
-    const PRECISION = config.geometry?.coordinatePrecision || config.precision?.coordinate || 0.001;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
+    const debugState = D.debug;
 
     /**
      * Static hatch fill generator.
@@ -200,7 +201,7 @@
                 const ry2 = center.y + dx2 * sin + dy2 * cos;
 
                 // Skip truly degenerate edges (protects against division-by-zero).
-                // Use a tight epsilon — NOT PRECISION (0.001mm) — so that thin-sliver edges from Clipper boolean artifacts survive into the edge pool.
+                // Use a tight epsilon — SMALLER THAN PRECISION (0.001mm) — so that thin-sliver edges from Clipper boolean artifacts survive into the edge pool.
                 // Near-coincident crossings from surviving slivers are handled by intersection deduplication in _scanAndPair.
                 if (Math.abs(ry1 - ry2) < 1e-10) return;
 
@@ -303,8 +304,8 @@
                 }
             }
 
-            // Handle near-zero sweep that represents a full circle
-            if (Math.abs(sweepAngle) < 1e-6) {
+            // Handle near-zero sweep that represents a full circle // REVIEW - Is this really still needed?
+            if (Math.abs(sweepAngle) < PRECISION) {
                 // Check if start and end points are the same (full circle)
                 const dist = Math.hypot(startPoint.x - endPoint.x, startPoint.y - endPoint.y);
                 if (dist < PRECISION) {
@@ -494,7 +495,7 @@
         },
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[HatchGenerator] ${message}`, data);
                 } else {

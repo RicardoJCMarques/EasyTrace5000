@@ -418,6 +418,8 @@
         "rolandSpindleMode": "'Direct RPM' sends explicit speed values via !RC. 'Indexed' sends a preset 1-15 via !RC. 'Manual Only' means the machine has a fixed speed — software only controls on/off via !MC.",
         "rolandSpindleSpeed": "Target spindle speed sent via the !RC command. Only applies in 'Direct RPM' mode.",
         "rolandSpindleIndex": "Speed preset index (1 = slowest, 15 = fastest) sent via !RC. Only applies in 'Indexed' mode.",
+        "laserProfile": "Select the target software you will use to cut the exported file. This automatically configures SVG grouping, layer colors, and DOM ordering to match what that specific software expects.",
+        "laserProfileColors": "Click any swatch to override the default layer color for the current profile. These colors map to the power/speed settings in your target laser software.",
         "laserSpotSize": "The effective cut width (kerf) of your laser beam on copper. Measure by making a single test line and measuring the actual ablated width. Typical values: UV laser 0.02-0.08mm, Fiber laser 0.03-0.15mm, CO2 laser 0.1-0.3mm.",
         "laserExportFormat": "SVG exports vector paths that laser software (LightBurn, RDWorks) interprets with its own power/speed settings per color layer. PNG exports a raster image at the specified DPI — useful for direct image engraving modes.",
         "laserExportDPI": "Resolution of the exported PNG image. Higher DPI gives finer detail but larger file size. 1000 DPI is suitable for most PCB work. Match this to your laser software's engraving resolution setting.",

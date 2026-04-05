@@ -28,6 +28,9 @@
 (function() {
     'use strict';
 
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+
     class ThemeLoader {
         constructor() {
             this.currentTheme = 'dark'; // Matches CSS default

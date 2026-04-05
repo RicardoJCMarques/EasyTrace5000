@@ -28,8 +28,9 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const iconConfig = config.ui.icons;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const iconConfig = C.ui.icons;
 
     class NavTreePanel {
         constructor(ui) {
@@ -271,10 +272,10 @@
                     // Fetch the actual mathematical pass count, fallback to array length
                     const passes = operation.offsets[0]?.metadata?.offset?.passes || operation.offsets.length;
                     const totalPrimitives = operation.offsets.reduce((sum, off) => sum + (off.primitives?.length || 0), 0);
-                    
+
                     // Dynamically update the label so users know it's a combined multi-pass
                     const label = isLaser ? 'Laser Paths' : `Offsets (${passes} Passes)`;
-                    
+
                     this.addGeometryNode(fileId, 'offsets_combined', label, totalPrimitives, {
                         offset: operation.offsets[0].distance.toFixed(2),
                         combined: true,
@@ -326,7 +327,7 @@
             if (sourceVisBtn && operation.type === 'stencil') {
                 const hasOffsets = operation.offsets && operation.offsets.length > 0;
                 sourceVisBtn.classList.toggle('is-hidden', hasOffsets);
-                
+
                 // Pre-emptively sync the renderer layer to prevent flashing during the transition
                 const layerName = `source_${operation.id}`;
                 if (this.ui.renderer && this.ui.renderer.layers.has(layerName)) {

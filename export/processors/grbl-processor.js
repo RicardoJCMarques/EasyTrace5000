@@ -31,73 +31,26 @@
     class GRBLPostProcessor extends BasePostProcessor {
         constructor() {
             super('GRBL', {
+                label: 'Grbl',
                 fileExtension: '.nc',
-                supportsToolChange: false,
+                supportsToolChange: false, // REVIEW - Consider a manual tool change macro. Stops spindle, goes to origin, raises Z, allows change, probe? raise again, finally allows resume? Makera has a similar system?
                 supportsArcCommands: true,
                 supportsCannedCycles: false,
+                useM6: false,
+                supportsToolLengthComp: false,
+                pauseAfterToolChange: false,
                 arcFormat: 'IJ',
-                coordinatePrecision: 3,
-                feedPrecision: 0,
-                spindlePrecision: 0,
+                coordinateDecimals: 3,
+                feedDecimals: 0,
+                spindleDecimals: 0,
                 modalCommands: true,
-                maxSpindleSpeed: 30000, // in config?
-                maxRapidRate: 1000,
-                label: 'Grbl',
+                maxSpindleSpeed: 30000,
+                maxRapidRate: 2000,
                 defaults: {
                     startCode: 'T1\n',
                     endCode: 'M5\nG0 X0Y0\nM2',
                 }
             });
-        }
-
-        generateToolChange(tool, options) {
-            const lines = [];
-            const c = options.comments || {};
-            const safeZ = options.safeZ || this.config.safetyHeight;
-
-            lines.push('');
-            this.pushCommentLine(lines, (c.toolChange || 'Tool change: {name}').replace('{name}', tool.name || tool.id), options);
-            this.pushCommentLine(lines, (c.toolDiameter || 'Diameter: {diameter}mm').replace('{diameter}', tool.diameter), options);
-
-            // Call the silent setSpindle(0)
-            const stopGcode = this.setSpindle(0, 0, options);
-            if (stopGcode) {
-                lines.push(stopGcode);
-            } else if (this.currentSpindle > 0) {
-                lines.push(this.appendComment('M5', c.spindleStop, options));
-                this.currentSpindle = 0;
-            }
-
-            lines.push(this.appendComment(`G0 Z${this.formatCoordinate(safeZ)}`, c.retractSafeZ, options));
-            this.currentPosition.z = safeZ;
-            lines.push(this.appendComment('M0', c.toolChangePause, options));
-            lines.push('');
-
-            const spindleSpeed = tool.spindleSpeed || 12000;
-
-            // Call the silent setSpindle(newSpeed)
-            const startGcode = this.setSpindle(spindleSpeed, 0, options);
-            if (startGcode) lines.push(startGcode);
-
-            lines.push('');
-            return lines.join('\n');
-        }
-        
-        // GRBL-specific: validate command safety
-        validateCommand(cmd) {
-            const warnings = [];
-            
-            // Check spindle speed limits
-            if (cmd.type === 'SPINDLE' && cmd.speed > this.config.maxSpindleSpeed) {
-                warnings.push(`Spindle speed ${cmd.speed} exceeds maximum ${this.config.maxSpindleSpeed}`);
-            }
-            
-            // Check for unsupported features
-            if (cmd.type && cmd.type.includes('CANNED')) {
-                warnings.push('Canned cycles not supported by GRBL - will be expanded');
-            }
-            
-            return warnings;
         }
     }
 

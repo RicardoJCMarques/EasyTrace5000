@@ -28,12 +28,12 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const geomConfig = config.geometry;
-    const machineConfig = config.machine;
-    const gcodeConfig = config.gcode;
-    const opsConfig = config.operations;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const EPSILON = C.precision.epsilon;
+    const PRECISION = C.precision.coordinate;
+    const opsConfig = D.operations;
+    const debugState = D.debug;
 
     class PCBCamCore {
         constructor(options = {}) {
@@ -106,15 +106,14 @@
             // Initialize GeometryProcessor
             if (typeof GeometryProcessor !== 'undefined') {
                 this.geometryProcessor = new GeometryProcessor({
-                    scale: geomConfig.clipperScale,
                     preserveOriginals: true
                 });
 
                 // Initialize GeometryOffsetter
                 if (typeof GeometryOffsetter !== 'undefined') {
                     this.geometryOffsetter = new GeometryOffsetter({
-                        precision: config.precision.coordinate,
-                        miterLimit: geomConfig.offsetting?.miterLimit
+                        precision: PRECISION,
+                        miterLimit: D.geometry.offsetting.miterLimit
                     });
 
                     // Link processor for union operations
@@ -153,7 +152,7 @@
 
         async ensureProcessorReady() {
             if (!this.processorInitialized && this.initializationPromise) {
-                if (debugConfig.logging?.wasmOperations) {
+                if (debugState.logging?.wasmOperations) {
                     console.log('Waiting for Clipper2...');
                 }
                 await this.initializationPromise;
@@ -165,84 +164,61 @@
         }
 
         loadSettings() {
-            const defaults = {
-                pcb: { ...machineConfig.pcb },
-                machine: {
-                    safeZ: machineConfig.heights.safeZ,
-                    travelZ: machineConfig.heights.travelZ,
-                    rapidFeed: machineConfig.speeds?.rapidFeed,
-                    workCoordinateSystem: machineConfig.workspace.system,
-                    maxX: machineConfig.workspace?.maxX,
-                    maxY: machineConfig.workspace?.maxY,
-                },
-                gcode: {
-                    postProcessor: gcodeConfig.postProcessor,
-                    // User overrides only — undefined means "use processor default".
-                    // Resolved at export time by GCodeGenerator.resolveStartCode/EndCode.
-                    userStartCode: undefined,
-                    userEndCode: undefined,
-                    units: gcodeConfig.units
-                },
-                // Processor-specific settings bag.
-                // Keyed by processor ID, stores custom parameter overrides (e.g. processorSettings.roland.rolandModel = 'srm20').
-                processorSettings: {},
-                laser: {
-                    spotSize: config.laser.defaults.spotSize,
-                    exportFormat: config.laser.defaults.exportFormat,
-                    exportDPI: config.laser.defaults.exportDPI,
-                    defaultClearStrategy: config.laser.defaults.defaultClearStrategy
-                },
-                ui: {
-                    theme: config.ui?.theme,
-                    showTooltips: config.ui?.showTooltips !== false
-                },
-                geometry: {
-                    preserveArcs: geomConfig.fusion.preserveArcs,
-                    adaptiveSegmentation: geomConfig.segments.adaptiveSegmentation !== false,
-                    targetSegmentLength: geomConfig.segments.targetLength
-                }
-            };
+            const defaults = JSON.parse(JSON.stringify(D));
 
             try {
-                const raw = localStorage.getItem('pcbcam-settings');
+                const raw = localStorage.getItem(C.storageKeys.settings);
                 if (!raw) return defaults;
 
                 const saved = JSON.parse(raw);
 
-                // Deep merge: preserve new defaults when localStorage has partial sub-objects
-                for (const key of Object.keys(defaults)) {
-                    if (saved[key] === undefined) continue;
-
-                    if (typeof defaults[key] === 'object' && !Array.isArray(defaults[key]) &&
-                        typeof saved[key] === 'object' && !Array.isArray(saved[key])) {
-                        defaults[key] = { ...defaults[key], ...saved[key] };
-                    } else {
-                        defaults[key] = saved[key];
+                // Intercept Laser Profiles to prevent aggressive caching
+                if (saved.laser && saved.laser.profiles) {
+                    for (const [profId, savedProf] of Object.entries(saved.laser.profiles)) {
+                        if (defaults.laser.profiles[profId] && savedProf.layerColors) {
+                            // Splice the saved custom colors into the fresh factory defaults
+                            defaults.laser.profiles[profId].layerColors = {
+                                ...defaults.laser.profiles[profId].layerColors,
+                                ...savedProf.layerColors
+                            };
+                        }
                     }
+                    // Delete the cached profiles object so mergeDeep doesn't blindly overwrite the live defaults with the rest of the outdated cached data.
+                    delete saved.laser.profiles; 
                 }
 
-                // REVIEW IF STILL NECESSARY
-                // Migration: if localStorage still has old-style startCode/endCode or Roland fields from before the refactor, move them to the new structure.
-                if (saved.gcode?.startCode !== undefined && defaults.gcode.userStartCode === undefined) {
-                    defaults.gcode.userStartCode = saved.gcode.startCode;
+                // Deep Merge Utility
+                const isObject = item => (item && typeof item === 'object' && !Array.isArray(item));
+                const mergeDeep = (target, ...sources) => {
+                    if (!sources.length) return target;
+                    const source = sources.shift();
+                    if (isObject(target) && isObject(source)) {
+                        for (const key in source) {
+                            if (isObject(source[key])) {
+                                if (!target[key]) Object.assign(target, { [key]: {} });
+                                mergeDeep(target[key], source[key]);
+                            } else {
+                                Object.assign(target, { [key]: source[key] });
+                            }
+                        }
+                    }
+                    return mergeDeep(target, ...sources);
+                };
+
+                // Safely deep merge saved settings over defaults
+                const mergedSettings = mergeDeep({}, defaults, saved);
+
+                // Handle specific legacy fallbacks REVIEW - Is this still necessary?
+                if (saved.gcode?.startCode !== undefined && mergedSettings.gcode.userStartCode === undefined) {
+                    mergedSettings.gcode.userStartCode = saved.gcode.startCode;
                 }
-                if (saved.gcode?.endCode !== undefined && defaults.gcode.userEndCode === undefined) {
-                    defaults.gcode.userEndCode = saved.gcode.endCode;
-                }
-                if (saved.machine?.rolandModel !== undefined) {
-                    if (!defaults.processorSettings.roland) defaults.processorSettings.roland = {};
-                    const rm = defaults.processorSettings.roland;
-                    rm.rolandModel = saved.machine.rolandModel ?? rm.rolandModel;
-                    rm.rolandStepsPerMM = saved.machine.rolandStepsPerMM ?? rm.rolandStepsPerMM;
-                    rm.rolandMaxFeed = saved.machine.rolandMaxFeed ?? rm.rolandMaxFeed;
-                    rm.rolandZMode = saved.machine.rolandZMode ?? rm.rolandZMode;
-                    rm.rolandSpindleMode = saved.machine.rolandSpindleMode ?? rm.rolandSpindleMode;
-                    rm.rolandSpindleSpeed = saved.machine.rolandSpindleSpeed ?? rm.rolandSpindleSpeed;
+                if (saved.gcode?.endCode !== undefined && mergedSettings.gcode.userEndCode === undefined) {
+                    mergedSettings.gcode.userEndCode = saved.gcode.endCode;
                 }
 
-                return defaults;
+                return mergedSettings;
             } catch (error) {
-                console.warn('Error loading settings:', error);
+                console.warn('Error loading settings from localStorage:', error);
                 return defaults;
             }
         }
@@ -295,7 +271,7 @@
 
         async parseOperation(operation) {
             try {
-                if (debugConfig.logging?.parseOperations) {
+                if (debugState.logging?.parseOperations) {
                     console.log(`Parsing ${operation.file.name}...`);
                 }
 
@@ -456,12 +432,12 @@
                 operation.processed = true;
                 this.isToolpathCacheValid = false;
 
-                if (debugConfig.logging?.parseOperations) {
+                if (debugState.logging?.parseOperations) {
                     console.log(`Parsed ${operation.file.name}: ${operation.primitives.length} primitives`);
                 }
 
                 return true;
-                
+
             } catch (error) {
                 operation.error = error.message;
                 console.error(`Parse error for ${operation.file.name}:`, error);
@@ -512,8 +488,7 @@
          * Rejects non-circular/non-obround shapes with warnings.
          */
         _classifySVGDrillPrimitives(operation) {
-            const precision = config.precision.coordinate || 0.001;
-            const quantize = (value) => Math.round(value / precision) * precision;
+            const quantize = (value) => Math.round(value / PRECISION) * PRECISION;
 
             const accepted = [];
             const warnings = [];
@@ -533,7 +508,7 @@
                     prim.properties.diameter = diameter;
                     prim.center = prim.center || prim.getCenter();
 
-                    if (Math.abs(rawDiameter - diameter) > precision * 0.1) {
+                    if (Math.abs(rawDiameter - diameter) > PRECISION * 0.1) {
                         this.debug(`[SVG Drill] Quantized circle diameter: ${rawDiameter.toFixed(6)} → ${diameter.toFixed(3)}mm`);
                     }
 
@@ -544,7 +519,7 @@
                 } else if (prim.type === 'obround') {
                     const w = prim.width;
                     const h = prim.height;
-                    const isCircular = Math.abs(w - h) < precision;
+                    const isCircular = Math.abs(w - h) < PRECISION;
 
                     if (isCircular) {
                         // Square obround → drill hole (same as plotter logic)
@@ -590,7 +565,7 @@
                 } else if (prim.type === 'rectangle') {
                     const w = prim.width;
                     const h = prim.height;
-                    const isSquare = Math.abs(w - h) < precision;
+                    const isSquare = Math.abs(w - h) < PRECISION;
 
                     if (isSquare) {
                         // Square rectangle → approximate as circular drill hole
@@ -744,7 +719,6 @@
             const contour = primitive.contours[0];
             if (!contour.arcSegments || contour.arcSegments.length !== 2) return null;
 
-            const precision = config.precision.coordinate || 0.001;
             const arc1 = contour.arcSegments[0];
             const arc2 = contour.arcSegments[1];
 
@@ -752,10 +726,10 @@
 
             // Same center
             const centerDist = Math.hypot(arc1.center.x - arc2.center.x, arc1.center.y - arc2.center.y);
-            if (centerDist > precision) return null;
+            if (centerDist > PRECISION) return null;
 
             // Same radius
-            if (Math.abs(arc1.radius - arc2.radius) > precision) return null;
+            if (Math.abs(arc1.radius - arc2.radius) > PRECISION) return null;
 
             // Combined sweep ≈ 2π
             const sweep1 = arc1.sweepAngle !== undefined ? Math.abs(arc1.sweepAngle) : Math.abs(arc1.endAngle - arc1.startAngle);
@@ -787,14 +761,13 @@
             if (!contour.arcSegments || contour.arcSegments.length !== 2) return null;
             if (!contour.points || contour.points.length < 4) return null;
 
-            const precision = config.precision.coordinate || 0.001;
             const arc1 = contour.arcSegments[0];
             const arc2 = contour.arcSegments[1];
 
             if (!arc1.center || !arc2.center || !arc1.radius || !arc2.radius) return null;
 
             // Same radius (both caps are semicircles of equal size)
-            if (Math.abs(arc1.radius - arc2.radius) > precision) return null;
+            if (Math.abs(arc1.radius - arc2.radius) > PRECISION) return null;
 
             // Each arc sweeps ≈ π (semicircle)
             const sweep1 = arc1.sweepAngle !== undefined ? Math.abs(arc1.sweepAngle) : Math.abs(arc1.endAngle - arc1.startAngle);
@@ -804,7 +777,7 @@
 
             // Centers must not coincide (that would be a circle, not an obround)
             const centerDist = Math.hypot(arc1.center.x - arc2.center.x, arc1.center.y - arc2.center.y);
-            if (centerDist < precision) return null;
+            if (centerDist < PRECISION) return null;
 
             // Verify non-arc segments are linear (no additional curves)
             const arcPointIndices = new Set();
@@ -842,8 +815,7 @@
         _promoteDrillRecoverable(operation, acceptCircles, acceptObrounds) {
             if (!operation.drillRecoverable) return;
 
-            const precision = config.precision.coordinate || 0.001;
-            const quantize = (value) => Math.round(value / precision) * precision;
+            const quantize = (value) => Math.round(value / PRECISION) * PRECISION;
             let promoted = 0;
 
             if (acceptCircles && operation.drillRecoverable.circles) {
@@ -940,7 +912,7 @@
             primitives.forEach((primitive, index) => {
                 try {
                     if (typeof primitive.getBounds !== 'function') {
-                        if (debugConfig.validation?.warnOnInvalidData) {
+                        if (debugState.validation?.warnOnInvalidData) {
                             console.warn(`Primitive ${index} missing getBounds()`);
                         }
                         return;
@@ -949,14 +921,14 @@
                     const bounds = primitive.getBounds();
                     if (!isFinite(bounds.minX) || !isFinite(bounds.minY) ||
                         !isFinite(bounds.maxX) || !isFinite(bounds.maxY)) {
-                        if (debugConfig.validation?.warnOnInvalidData) {
+                        if (debugState.validation?.warnOnInvalidData) {
                             console.warn(`Primitive ${index} invalid bounds:`, bounds);
                         }
                         return;
                     }
 
-                    if (debugConfig.validation?.validateCoordinates) {
-                        const maxCoord = geomConfig.maxCoordinate || 1000;
+                    if (debugState.validation?.validateCoordinates) {
+                        const maxCoord = C.geometry.maxCoordinate;
                         if (Math.abs(bounds.minX) > maxCoord || Math.abs(bounds.minY) > maxCoord ||
                             Math.abs(bounds.maxX) > maxCoord || Math.abs(bounds.maxY) > maxCoord) {
                             console.warn(`Primitive ${index} exceeds max coordinate ${maxCoord}`);
@@ -966,13 +938,13 @@
                     validPrimitives.push(primitive);
 
                 } catch (error) {
-                    if (debugConfig.validation?.warnOnInvalidData) {
+                    if (debugState.validation?.warnOnInvalidData) {
                         console.warn(`Primitive ${index} validation failed:`, error);
                     }
                 }
             });
 
-            if (validPrimitives.length !== primitives.length && debugConfig.enabled) {
+            if (validPrimitives.length !== primitives.length && debugState.enabled) {
                 console.warn(`Filtered ${primitives.length - validPrimitives.length} invalid primitives`);
             }
 
@@ -1117,7 +1089,7 @@
             });
 
             this.debug(`[Compositing] === SEQUENTIAL COMPOSITING COMPLETE ===`);
-            
+
             // Re-combine the composited regions with the protected independent geometry
             const finalResult = [...accumulator, ...independentGeometry];
             this.debug(`[Compositing] Result: ${primitives.length} input → ${finalResult.length} output primitives`);
@@ -1620,7 +1592,7 @@
                 const resolvedPrimitives = [];
                 for (const prim of primitivesToProcess) {
                     const isRegion = prim.type === 'path' && prim.properties?.fill && !prim.properties?.stroke && !prim.properties?.isTrace && !prim.properties?.isComposited;
-                    
+
                     if (isRegion) {
                         try {
                             const resolved = await this.geometryProcessor.unionGeometry([prim]);
@@ -1700,7 +1672,8 @@
                     return out;
                 };
 
-                let finalPassGeometry = [];
+                let shellPassGeometry = [];
+                let holePassGeometry = [];
 
                 if (levelBuckets.length > 0) {
                     // ── EAGLE LOGIC: Level-by-Level Recomposition ──
@@ -1717,23 +1690,29 @@
                         if (offsetBucket.length === 0) continue;
 
                         if (lvl === 0) {
-                            finalPassGeometry = await this.geometryProcessor.unionGeometry(offsetBucket);
+                            shellPassGeometry = await this.geometryProcessor.unionGeometry(offsetBucket);
                         } else if (isHoleLevel) {
-                            if (finalPassGeometry.length > 0) {
-                                const holeUnion = await this.geometryProcessor.unionGeometry(offsetBucket);
-                                finalPassGeometry = await this.geometryProcessor.difference(finalPassGeometry, holeUnion);
+                            const holeUnion = await this.geometryProcessor.unionGeometry(offsetBucket);
+                            if (isLaserPipeline) {
+                                // LASER: Keep hole boundaries separate so the cut order can be reversed
+                                holePassGeometry.push(...holeUnion);
+                            } else {
+                                // CNC: Standard behavior, difference holes out of shells
+                                if (shellPassGeometry.length > 0) {
+                                    shellPassGeometry = await this.geometryProcessor.difference(shellPassGeometry, holeUnion);
+                                }
                             }
                         } else {
                             const islandUnion = await this.geometryProcessor.unionGeometry(offsetBucket);
-                            finalPassGeometry = await this.geometryProcessor.unionGeometry(finalPassGeometry.concat(islandUnion));
+                            shellPassGeometry = await this.geometryProcessor.unionGeometry(shellPassGeometry.concat(islandUnion));
                         }
                     }
 
                     if (offsetSimpleGeom.length > 0) {
-                        if (finalPassGeometry.length > 0) {
-                            finalPassGeometry = await this.geometryProcessor.unionGeometry(finalPassGeometry.concat(offsetSimpleGeom));
+                        if (shellPassGeometry.length > 0) {
+                            shellPassGeometry = await this.geometryProcessor.unionGeometry(shellPassGeometry.concat(offsetSimpleGeom));
                         } else {
-                            finalPassGeometry = await this.geometryProcessor.unionGeometry(offsetSimpleGeom);
+                            shellPassGeometry = await this.geometryProcessor.unionGeometry(offsetSimpleGeom);
                         }
                     }
                 } else {
@@ -1742,7 +1721,6 @@
                     const offsetSimpleGeom = await processGroup(simpleGeometry, distance);
                     const resolvedOffsetRegions = [];
 
-                    // Resolve ONLY regions with holes independently
                     for (const regionPrim of complexRegions) {
                         const regionShells = [];
                         const regionHoles = [];
@@ -1756,72 +1734,94 @@
                         const offsetShells = await processGroup(regionShells, distance);
                         const offsetHoles = await processGroup(regionHoles, -distance);
 
-                        let regionResult = [];
-                        if (offsetShells.length > 0) {
-                            const shellUnion = await this.geometryProcessor.unionGeometry(offsetShells);
+                        if (isLaserPipeline) {
+                            // LASER: Process separately
+                            if (offsetShells.length > 0) {
+                                const shellUnion = await this.geometryProcessor.unionGeometry(offsetShells);
+                                shellPassGeometry.push(...shellUnion);
+                            }
                             if (offsetHoles.length > 0) {
                                 const holeUnion = await this.geometryProcessor.unionGeometry(offsetHoles);
-                                regionResult = await this.geometryProcessor.difference(shellUnion, holeUnion);
-                            } else {
-                                regionResult = shellUnion;
+                                holePassGeometry.push(...holeUnion);
+                            }
+                        } else {
+                            // CNC: Standard difference
+                            let regionResult = [];
+                            if (offsetShells.length > 0) {
+                                const shellUnion = await this.geometryProcessor.unionGeometry(offsetShells);
+                                if (offsetHoles.length > 0) {
+                                    const holeUnion = await this.geometryProcessor.unionGeometry(offsetHoles);
+                                    regionResult = await this.geometryProcessor.difference(shellUnion, holeUnion);
+                                } else {
+                                    regionResult = shellUnion;
+                                }
+                            }
+                            if (regionResult.length > 0) {
+                                resolvedOffsetRegions.push(...regionResult);
                             }
                         }
-
-                        if (regionResult.length > 0) {
-                            resolvedOffsetRegions.push(...regionResult);
-                        }
                     }
 
-                    // Final Union
-                    if (resolvedOffsetRegions.length > 0) {
-                        if (offsetSimpleGeom.length > 0) {
-                            finalPassGeometry = await this.geometryProcessor.unionGeometry(resolvedOffsetRegions.concat(offsetSimpleGeom));
-                        } else {
-                            finalPassGeometry = await this.geometryProcessor.unionGeometry(resolvedOffsetRegions);
+                    if (!isLaserPipeline) {
+                        if (resolvedOffsetRegions.length > 0) {
+                            if (offsetSimpleGeom.length > 0) {
+                                shellPassGeometry = await this.geometryProcessor.unionGeometry(resolvedOffsetRegions.concat(offsetSimpleGeom));
+                            } else {
+                                shellPassGeometry = await this.geometryProcessor.unionGeometry(resolvedOffsetRegions);
+                            }
+                        } else if (offsetSimpleGeom.length > 0) {
+                            shellPassGeometry = await this.geometryProcessor.unionGeometry(offsetSimpleGeom);
                         }
                     } else if (offsetSimpleGeom.length > 0) {
-                        finalPassGeometry = await this.geometryProcessor.unionGeometry(offsetSimpleGeom);
+                        shellPassGeometry.push(...await this.geometryProcessor.unionGeometry(offsetSimpleGeom));
                     }
                 }
 
-                // Arc reconstruction - skip for on-line (zero offset) passes since source geometry already has correct arc metadata that the reconstructor cannot recover (points lack curveId tags)
-                if (!settings.skipArcReconstruction && Math.abs(distance) >= config.precision.coordinate) {
-                    this.debug(`Running arc reconstruction...`);
-                    finalPassGeometry = this.geometryProcessor.arcReconstructor.processForReconstruction(finalPassGeometry);
-                } else if (Math.abs(distance) < config.precision.coordinate) {
-                    this.debug(`Arc reconstruction skipped for on-line pass (source arcs preserved)`);
-                } else {
-                    this.debug(`Arc reconstruction skipped (caller will handle)`);
-                }
+                // Apply post-processing to both buckets
+                const processBucket = (geometryBucket, groupTag, actualDist) => {
+                    if (geometryBucket.length === 0) return;
 
-                // Post-reconstruction simplification
-                this.geometryOffsetter.simplifyOffsetResult(finalPassGeometry, Math.abs(distance));
-
-                this.debug(`Pass complete: ${finalPassGeometry.length} primitive(s).`);
-
-                const reconstructedGeometry = finalPassGeometry.map(p => {
-                    if (!p.properties) p.properties = {};
-                    p.properties.isOffset = true;
-                    p.properties.pass = passIndex + 1;
-                    p.properties.offsetDistance = distance;
-                    p.properties.offsetType = offsetType;
-                    p.properties.hasAnalyticArcs = (p.type === 'circle') || (p.arcSegments && p.arcSegments.length > 0);
-                    return p;
-                });
-
-                passResults.push({
-                    distance: distance,
-                    pass: passIndex + 1,
-                    offsetType: offsetType,
-                    primitives: reconstructedGeometry,
-                    metadata: {
-                        sourceCount: primitivesToProcess.length,
-                        finalCount: reconstructedGeometry.length,
-                        generatedAt: Date.now(),
-                        toolDiameter: settings.toolDiameter,
-                        wasFused: primitivesToProcess !== operation.primitives
+                    if (!settings.skipArcReconstruction && Math.abs(actualDist) >= PRECISION) {
+                        geometryBucket = this.geometryProcessor.arcReconstructor.processForReconstruction(geometryBucket);
                     }
-                });
+                    this.geometryOffsetter.simplifyOffsetResult(geometryBucket, Math.abs(actualDist));
+
+                    // A negative actual distance means the path shrinks inward (Clearing outers, Isolation holes)
+                    // A positive actual distance means the path grows outward (Isolation outers, Clearing islands)
+                    const thermalGroup = actualDist < 0 ? 'internal' : 'external';
+
+                    const reconstructedGeometry = geometryBucket.map(p => {
+                        if (!p.properties) p.properties = {};
+                        p.properties.isOffset = true;
+                        p.properties.pass = passIndex + 1;
+                        p.properties.offsetDistance = distance;
+                        p.properties.offsetType = offsetType;
+                        p.properties.thermalGroup = thermalGroup; 
+                        p.properties.hasAnalyticArcs = (p.type === 'circle') || (p.arcSegments && p.arcSegments.length > 0);
+                        return p;
+                    });
+
+                    passResults.push({
+                        distance: distance,         // The nominal loop distance
+                        actualDistance: actualDist, // The physical math distance
+                        pass: passIndex + 1,
+                        offsetType: offsetType,
+                        thermalGroup: thermalGroup,
+                        primitives: reconstructedGeometry,
+                        metadata: {
+                            sourceCount: primitivesToProcess.length,
+                            finalCount: reconstructedGeometry.length,
+                            generatedAt: Date.now(),
+                            toolDiameter: settings.toolDiameter,
+                            wasFused: primitivesToProcess !== operation.primitives,
+                            thermalGroup: thermalGroup
+                        }
+                    });
+                };
+
+                // Pass the true physical distance logic applied to each bucket
+                processBucket(shellPassGeometry, 'shell', distance);
+                processBucket(holePassGeometry, 'hole', -distance);
             }
 
             // Combine passes if requested
@@ -1865,7 +1865,6 @@
         _determineDrillStrategy(operation, settings) {
             const plan = [];
             const warnings = [];
-            const precision = config.precision.coordinate;
             const toolDiameter = parseFloat(settings.toolDiameter);
             const minMillingMargin = parseFloat(opsConfig.drill?.strategy?.minMillingMargin || 0.05);
 
@@ -1901,7 +1900,7 @@
                     const slot = primitive.properties.originalSlot;
                     if (slot) {
                         const len = Math.hypot(slot.end.x - slot.start.x, slot.end.y - slot.start.y);
-                        if (len < precision) {
+                        if (len < PRECISION) {
                             isSlot = false; // Treat as hole
                             primitive.center = slot.start;
                             if (!primitive.radius) primitive.radius = featureSize / 2;
@@ -1912,19 +1911,17 @@
                 // Calculate tool relation
                 const diff = featureSize - toolDiameter;
                 let toolRelation = 'exact';
-                if (diff < -precision) toolRelation = 'oversized';
-                else if (diff > precision) toolRelation = 'undersized';
+                if (diff < -PRECISION) toolRelation = 'oversized';
+                else if (diff > PRECISION) toolRelation = 'undersized';
 
                 // Hole logic
                 if (!isSlot) {
-                    // Use epsilon to prevent floating-point math from failing exact matches (e.g., 1.0 - 0.8)
-                    const epsilon = config.precision.epsilon;
-                    
+
                     // Only check if the hole is larger than the tool by the minimum margin.
                     if (settings.millHoles && 
                         toolRelation === 'undersized' && 
-                        diff >= (minMillingMargin - epsilon)) {
-                        
+                        diff >= (minMillingMargin - EPSILON)) {
+
                         plan.push({ 
                             type: 'mill',
                             primitiveToOffset: primitive, 
@@ -2020,7 +2017,7 @@
                         const pathRadius = holeRadius - toolRadius;
 
                         if (pathRadius > minFeatureSize) {
-                            const stepOverPct = settings.stepOver !== undefined ? settings.stepOver : config.toolpath.generation.drilling.defaultStepOver;
+                            const stepOverPct = settings.stepOver !== undefined ? settings.stepOver : D.toolpath.generation.drilling.defaultStepOver;
                             const stepDist = toolDiameter * (stepOverPct / 100);
 
                             const concentricPasses = [];
@@ -2090,7 +2087,7 @@
                             const centerY = (originalSlot.start.y + originalSlot.end.y) / 2;
                             // Determine slot orientation - ObroundPrimitive only supports axis-aligned
                             const isHorizontal = Math.abs(dx) > Math.abs(dy);
-                            const stepOverPct = settings.stepOver !== undefined ? settings.stepOver : config.toolpath.generation.drilling.defaultStepOver;
+                            const stepOverPct = settings.stepOver !== undefined ? settings.stepOver : D.toolpath.generation.drilling.defaultStepOver;
                             const stepDist = toolDiameter * (stepOverPct / 100);
 
                             const concentricPasses = [];
@@ -2250,7 +2247,7 @@
             let processedGeometry = [];
             const offsetDist = settings.stencilOffset || 0;
 
-            if (Math.abs(offsetDist) > config.precision.coordinate && this.geometryOffsetter) {
+            if (Math.abs(offsetDist) > PRECISION && this.geometryOffsetter) {
                 this.debug(`Applying stencil offset: ${offsetDist.toFixed(3)}mm`);
 
                 for (const prim of primitivesToProcess) {
@@ -2424,7 +2421,7 @@
             let currentDepth = 0;
 
             // Loop while currentDepth is greater than (less negative than) finalDepth
-            while (currentDepth - step > finalDepth - 1e-9) { // Review - there are epsilon in the config.
+            while (currentDepth - step > finalDepth - EPSILON) {
                 currentDepth -= step;
                 levels.push(currentDepth);
             }
@@ -2453,11 +2450,6 @@
             const machine = this.settings.machine;
             const gcode = this.settings.gcode;
 
-            // Get precision values
-            const toolpathConfig = config.toolpath || {};
-            const precision = config.precision.coordinate;
-            const offsettingEpsilon = config.geometry.offsetting?.epsilon;
-
             // Compute derived values
             const isInternal = (operation.type === 'clearing');
             const offsetDistances = this._calculateOffsetDistances(
@@ -2477,7 +2469,7 @@
                 params.cutDepth,
                 params.depthPerPass,
                 params.multiDepth,
-                precision
+                PRECISION
             );
 
             // Assemble final context
@@ -2488,7 +2480,18 @@
                 fileName: operation.file.name,
 
                 // Global Settings
-                machine: { ...machine },
+                machine: { 
+                    ...machine,
+                    safeZ: machine.heights.safeZ,
+                    travelZ: machine.heights.travelZ,
+                    probeZ: machine.heights.probeZ,
+                    homeZ: machine.heights.homeZ,
+                    feedHeight: machine.heights.feedHeight,
+                    rapidFeed: machine.speeds.rapidFeed,
+                    probeFeed: machine.speeds.probeFeed,
+                    maxFeed: machine.speeds.maxFeed,
+                    maxAcceleration: machine.speeds.maxAcceleration
+                },
                 gcode: { ...gcode },
 
                 // Processor-specific settings (Roland, Makera, etc.)
@@ -2544,11 +2547,11 @@
 
                 // Config References
                 config: {
-                    entry: toolpathConfig.generation?.entry,
-                    tabs: toolpathConfig.tabs,
-                    optimization: config.gcode?.optimization,
-                    precision: precision,
-                    offsettingEpsilon: offsettingEpsilon
+                    entry: D.toolpath.generation?.entry,
+                    tabs: D.toolpath.tabs,
+                    optimization: D.gcode.optimization,
+                    precision: PRECISION,
+                    offsettingEpsilon: EPSILON
                 },
 
                 // Laser-specific (only populated in laser/hybrid pipeline)
@@ -2665,7 +2668,7 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data !== null) {
                     console.log(`[Core] ${message}`, data);
                 } else {

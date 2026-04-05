@@ -28,6 +28,9 @@
 (function() {
     'use strict';
 
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+
     class TooltipManager {
         constructor() {
             this.tooltip = null;
@@ -197,8 +200,8 @@
         }
 
         debug(message, data = null) {
-            if (this.ui.debug) {
-                this.ui.debug(`[TooltipManager] ${message}`, data);
+            if (D.debug.enabled) {
+                console.log(`[TooltipManager] ${message}`, data ? data : '');
             }
         }
     }

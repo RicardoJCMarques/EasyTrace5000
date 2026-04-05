@@ -28,12 +28,13 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const textConfig = config.ui.text;
-    const iconConfig = config.ui.icons;
-    const inspectorConfig = config.ui.operationPanel;
-    const timingConfig = config.ui.timing;
-    const layoutConfig = config.layout;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const textConfig = C.ui.text;
+    const iconConfig = C.ui.icons;
+    const inspectorConfig = C.ui.operationPanel;
+    const timingConfig = D.ui.timing;
+    const layoutConfig = D.layout;
 
     class OperationPanel {
         constructor(ui) {
@@ -446,10 +447,11 @@
                 const postProcessor = this.core.settings?.gcode?.postProcessor;
                 if (postProcessor === 'roland') {
                     const rolandModel = this.core.settings?.machine?.rolandModel || 'mdx50';
-                    const profile = window.PCBCAMConfig?.roland?.getProfile?.(rolandModel);
+                    const rolandProcessor = window.pcbcam?.gcodeGenerator?.getProcessor('roland');
+                    const profile = rolandProcessor?.profiles?.[rolandModel];
                     if (profile && !profile.supportsRC) {
                         field.style.display = 'none';
-                        return field; // Return hidden field, skip input creation
+                        return field; 
                     }
                 }
             }
@@ -511,7 +513,7 @@
 
         createCheckboxField(field, param, value) {
             const label = field.querySelector('label');
-            
+
             // Safely rescue the tooltip icon DOM element before wiping the label
             const icon = label.querySelector('.tooltip-trigger');
             if (icon) {
@@ -520,7 +522,7 @@
 
             // Fetch the clean text directly from the dictionary (avoids the '?' text bug)
             const labelText = this.lang.get('parameters.' + param.name, param.label);
-            
+
             // Clear the label and set the class
             label.textContent = ''; 
             label.className = 'checkbox-label';
@@ -540,7 +542,7 @@
             // Reassemble the DOM
             label.appendChild(input);
             label.appendChild(span);
-            
+
             // Re-insert the rescued tooltip icon with event isolation.
             // Even with 'for' removed, the label still wraps the checkbox — clicks on any label descendant still toggle the input by default.
             // Stop propagation so the tooltip trigger can receive focus and show its tooltip instead of toggling the checkbox.
@@ -871,6 +873,53 @@
 
                 field.style.display = shouldShow ? '' : 'none';
             });
+
+            // Dynamic Canned Cycle Viability Logic
+            if (operation.type === 'drill') {
+                const cannedSelect = container.querySelector('#prop-cannedCycle');
+
+                // Is it a panel that contains this select?
+                if (cannedSelect) {
+                    const currentSelection = cannedSelect.value;
+                    const peckDepth = currentValues.peckDepth || 0;
+                    const dwellTime = currentValues.dwellTime || 0;
+
+                    // Clear existing options
+                    cannedSelect.innerHTML = '';
+
+                    const addOption = (val, label) => {
+                        const opt = document.createElement('option');
+                        opt.value = val;
+                        opt.textContent = label;
+                        cannedSelect.appendChild(opt);
+                    };
+
+                    // Baseline options always available
+                    addOption('none', 'None (G0 + G1)');
+                    addOption('G81', 'G81 - Simple Drill');
+
+                    // Conditional options
+                    if (dwellTime > 0) {
+                        addOption('G82', 'G82 - Dwell');
+                    }
+                    if (peckDepth > 0) {
+                        addOption('G83', 'G83 - Peck (Full Retract)');
+                        addOption('G73', 'G73 - Peck (Chip Break)');
+                    }
+
+                    // Enforce fallback if previous selection is no longer viable
+                    const optionExists = Array.from(cannedSelect.options).some(opt => opt.value === currentSelection);
+                    
+                    if (optionExists) {
+                        cannedSelect.value = currentSelection;
+                    } else {
+                        const fallback = 'none';
+                        cannedSelect.value = fallback;
+                        // Alert the parameter manager that a change was made so the backend state stays in sync
+                        this.onParameterChange('cannedCycle', fallback, true); 
+                    }
+                }
+            }
         }
 
         onParameterChange(name, value, isRealtime = false) {
@@ -1275,7 +1324,7 @@
                     const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
                     if (fileNode) {
                         this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
-                        
+
                         // Auto-select the newly generated elevated node
                         this.ui.navTreePanel.selectHighestStage(fileNode.id);
                     }
@@ -1302,7 +1351,7 @@
                     const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
                     if (fileNode) {
                         this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
-                        
+
                         // Auto-select the newly generated elevated node
                         this.ui.navTreePanel.selectHighestStage(fileNode.id);
                     }
@@ -1514,7 +1563,7 @@
                 const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
                 if (fileNode) {
                     this.ui.navTreePanel.updateFileGeometries(fileNode.id, operation);
-                    
+
                     // Auto-select the newly generated elevated node
                     this.ui.navTreePanel.selectHighestStage(fileNode.id);
                 }

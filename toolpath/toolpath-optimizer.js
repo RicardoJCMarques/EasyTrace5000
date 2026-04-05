@@ -28,15 +28,18 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const EPSILON = C.precision.epsilon;
+    const PRECISION = C.precision.coordinate;
+    const debugState = D.debug;
 
     class ToolpathOptimizer {
         constructor(options = {}) {
             this.options = {
-                enablePathOrdering: config.gcode.optimization.pathOrdering,
-                enableSegmentSimplification: config.gcode.optimization.segmentSimplification,
-                enableZLevelGrouping: config.gcode.optimization.zLevelGrouping,
+                enablePathOrdering: D.gcode.optimization.pathOrdering,
+                enableSegmentSimplification: D.gcode.optimization.segmentSimplification,
+                enableZLevelGrouping: D.gcode.optimization.zLevelGrouping,
                 angleTolerance: 1.0,
                 minSegmentLength: 0.05,
                 safeZ: 5.0,
@@ -108,8 +111,7 @@
                         const stepDistance = toolDiameter * (1.0 - (stepOver / 100.0));
 
                         // Strict Threshold: StepDistance + Epsilon
-                        const epsilon = config.precision.epsilon;
-                        const strictThreshold = stepDistance + epsilon;
+                        const strictThreshold = stepDistance + EPSILON;
 
                         // Use strict threshold
                         const clusters = this.buildStaydownClusters(zGroup, strictThreshold);
@@ -183,7 +185,7 @@
 
             this.stats.optimizedPathCount = finalOrderedPlans.length;
             this.stats.optimizationTime = performance.now() - startTime;
-            
+
             this.debug(`Complete: ${finalOrderedPlans.length} paths ordered`);
             this.debug(`Stats:`, this.getStats());
 
@@ -377,7 +379,7 @@
                 let bestIdx = 0;
                 let bestResult = this.calculatePathLinkCost(currentPos, remaining[0], options.allowStaydown);
                 let bestDist = bestResult.cost;
-                
+
                 // Search all remaining plans
                 for (let i = 1; i < remaining.length; i++) {
                     const result = this.calculatePathLinkCost(currentPos, remaining[i], options.allowStaydown);
@@ -487,9 +489,8 @@
                 const stepOverRatio = stepOverPercent / 100.0;
                 const stepDistance = toolDiameter * (1.0 - stepOverRatio);
 
-                // Threshold is the expected step distance plus a small tolerance
-                const tolerance = config.precision.coordinate;
-                const staydownThreshold = stepDistance + tolerance;
+                // Threshold is the expected step distance plus a small tolerance // REVIEW - use smaller epsilon?
+                const staydownThreshold = stepDistance + C.precision.coordinate;
 
                 this.debug(`Plan ${planMetadata.operationId} (Pass ${planMetadata.pass || 1}): ToolD=${toolDiameter.toFixed(3)}, StepOver=${stepOverPercent}%, StepDist=${stepDistance.toFixed(3)}, Threshold=${staydownThreshold.toFixed(3)}`);
                 this.debug(`   Original Entry Dist: ${originalEntryDist.toFixed(3)}`);
@@ -540,7 +541,7 @@
 
             const rapidCost = this.calculateRapidCost(fromPos, bestRapidPoint, closestRapidXYDist);
 
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 const reason = !allowStaydown ? "Not Allowed" : (planMetadata.isPeckMark || planMetadata.isDrillMilling) ? "Drill Op" : "Too Far";
                 console.log(`[Optimizer]   >> Using Rapid Link (${reason}). Cost: ${rapidCost.toFixed(1)}, Dist: ${closestRapidXYDist.toFixed(3)}, Index: ${rapidCommandIndex}`);
             }
@@ -559,7 +560,7 @@
          */
         calculateRapidCost(fromPos, toPos, xyDist) {
             // Get optimization config
-            const rapidConfig = config.toolpath?.generation?.rapidCost || {};
+            const rapidConfig = D.toolpath.generation.rapidCost;
             const zTravelThreshold = rapidConfig.zTravelThreshold;
             const zCostFactor = rapidConfig.zCostFactor;
             const baseCost = rapidConfig.baseCost;
@@ -676,7 +677,7 @@
             const newCommands = [...postPivot];
 
             // If implicit loop (gap > epsilon), insert a linear bridge move
-            if (distToOriginalEntry > 0.001) {
+            if (distToOriginalEntry > PRECISION) {
                  const bridgeCmd = new MotionCommand(
                     'LINEAR',
                     { 
@@ -837,7 +838,7 @@
                     if (nextCmd.type === 'ARC_CW' || nextCmd.type === 'ARC_CCW') {
                         const arcLength = Math.hypot(nextCmdTargetPos.x - sequenceEndPoint.x, nextCmdTargetPos.y - sequenceEndPoint.y);
                         const nextArcRadius = Math.hypot(nextCmd.i || 0, nextCmd.j || 0); // Check the radius
-                        
+
                         if (arcLength < 0.01 && nextArcRadius < 0.01) {
                             isNextIgnorableArc = true;
                         }
@@ -879,7 +880,7 @@
                     // Check for zero-length segments / duplicate start point
                     const dist = Math.hypot(tempPos.x - lastPushedPoint.x, tempPos.y - lastPushedPoint.y, tempPos.z - lastPushedPoint.z);
 
-                    if (dist > 1e-6) { // Use a small epsilon - exists in the config file?
+                    if (dist > EPSILON) {
                         points.push({ ...tempPos, isStart: false, cmd: linearCmd });
                         lastPushedPoint = tempPos;
                     } else if (points.length > 0) {
@@ -922,7 +923,7 @@
 
             const simplified = [points[0]]; // Always keep the start point
 
-            const simpConfig = config.toolpath.generation.simplification;
+            const simpConfig = D.toolpath.generation.simplification;
 
             // Get the 4 tolerance values from config
             const curveTolerance = simpConfig.curveToleranceFallback;
@@ -950,7 +951,7 @@
 
                 let angle = 0;
                 // Only calculate angle if segments are not zero-length
-                if (mag1 > 1e-9 && mag2 > 1e-9) { // Review - 1e-9 epsilon is in the config?
+                if (mag1 > 1e-9 && mag2 > 1e-9) { // Review - 1e-9 epsilon is in the config? Coordinate precision good enough?
                     const dot = v1x * v2x + v1y * v2y;
                     // Clamp to avoid floating point errors with acos()
                     const cosTheta = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
@@ -970,7 +971,7 @@
                     effectiveTolerance = curveTolerance;
                 }
 
-                // 4. Keep the point ONLY if it deviates more than the nuanced tolerance
+                // Keep the point ONLY if it deviates more than the nuanced tolerance
                 if (dist >= effectiveTolerance) {
                     simplified.push(p1); 
                 }
@@ -996,11 +997,11 @@
                     point.y - lineStart.y
                 );
             }
-            
+
             // Parameter t of projection onto line
             let t = ((point.x - lineStart.x) * dx +
                     (point.y - lineStart.y) * dy) / lengthSquared;
-            
+
             t = Math.max(0, Math.min(1, t)); // Clamp t to [0, 1] for a line segment
 
             // Projected point
@@ -1038,7 +1039,7 @@
         }
 
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[Optimizer] ${message}`, data);
                 } else {
@@ -1047,6 +1048,6 @@
             }
         }
     }
-    
+
     window.ToolpathOptimizer = ToolpathOptimizer;
 })();

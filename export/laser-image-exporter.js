@@ -28,32 +28,19 @@
 (function() {
     'use strict';
 
-    /**
-     * Generates SVG or PNG files from laser pipeline geometry.
-     *
-     * Expected layer structure:
-     * {
-     *   operationId, operationType, layerName,
-     *   baseColor: '#ff0000',       // user-chosen color from export modal
-     *   strokeWidth: 0.05,          // laser spot size in mm (used for PNG min-width only)
-     *   passes: [{
-     *     passIndex: 1,
-     *     type: 'offset' | 'filled' | 'hatch' | 'drill' | 'stencil',
-     *     primitives: PathPrimitive[] | CirclePrimitive[],
-     *     metadata: { isHatch, angle, strategy, ... }
-     *   }]
-     * }
-     */
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+
     class LaserImageExporter {
         constructor() {
-            this.PRECISION = 4;
+            this.DECIMAL = 4;
             this.HAIRLINE_STROKE = 0.01; // mm — standard laser hairline
             this.MAX_CANVAS_DIM = 16000;
-            this.FUSION_TOLERANCE = 0.001;
+            this.FUSION_TOLERANCE = 0.001;  // REVIEW - Check if this should just be coordinate epsilon?
         }
 
         async generate(layers, options) {
-            // Fuse colinear hatch segments across layers before export
+            // Fuse colinear hatch segments across operation layers before export
             this._fuseColinearSegments(layers);
 
             // Build user-transform matrix (rotation, mirror, origin — no bounds shift or Y-flip)
@@ -76,7 +63,9 @@
                 heatManagement: options.heatManagement || 'off',
                 reverseCutOrder: options.reverseCutOrder || false,
                 svgGrouping: options.svgGrouping || 'layer',
-                colorPerPass: options.colorPerPass || false
+                colorPerPass: options.colorPerPass || false,
+                palette: options.palette || null,
+                paletteLumping: options.paletteLumping || false
             };
 
             if (options.format === 'png') {
@@ -251,38 +240,236 @@
 
         async _generateSVG(layers, renderCtx) {
             const { mat, widthMm, heightMm, svgGrouping, reverseCutOrder } = renderCtx;
-            const p = this.PRECISION;
-            const fmt = (n) => this._formatNumber(n, this.PRECISION);
+            const p = this.DECIMAL;
+            const fmt = (n) => this._formatNumber(n, this.DECIMAL);
 
             const lines = [];
             lines.push(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`);
             lines.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="${widthMm.toFixed(p)}mm" height="${heightMm.toFixed(p)}mm" viewBox="0 0 ${widthMm.toFixed(p)} ${heightMm.toFixed(p)}" version="1.1">`);
-            lines.push(`<style>path,circle,line{vector-effect:non-scaling-stroke;stroke-width:1px;-inkscape-stroke:hairline}</style>`);
 
-            // Master transform group — required because coordinates are in raw CAM space.
-            // Apply the global matrix transform here (handles origin, rotation, mirror, and Y-flip natively)
+            lines.push(`<style>path,circle,line{vector-effect:non-scaling-stroke;-inkscape-stroke:hairline}</style>`);
+
             const transformAttr = `transform="matrix(${mat.a}, ${mat.b}, ${mat.c}, ${mat.d}, ${mat.e}, ${mat.f})"`;
-            lines.push(`<g id="EasyTrace_Export" ${transformAttr}>`);
+
+            lines.push(`<g id="EasyTrace_Export" ${transformAttr} stroke-linecap="round" stroke-linejoin="round" stroke-width="1px">`);
 
             const orderedLayers = reverseCutOrder ? layers.slice().reverse() : layers;
             const useGroups = svgGrouping !== 'none';
             const useLayers = svgGrouping === 'layer';
 
+            // ════════════════════════════════════════════════════════════
+            // COLOR GROUPING BRANCH (xTool Studio)
+            // ════════════════════════════════════════════════════════════
+            if (svgGrouping === 'color') {
+                const colorBuckets = new Map();     // hex -> array of offset/hatch primitives
+                const filledBuckets = new Map();    // hex -> array of filled primitives
+
+                for (const layer of orderedLayers) {
+                    const orderedPasses = reverseCutOrder ? layer.passes.slice().reverse() : layer.passes;
+
+                    const isFilledLayer = layer.passes.some(p => p.type === 'filled');
+
+                    // Because shells and holes are split into separate pass objects, orderedPasses.length is double the physical pass count. Find the max pass index for correct palette length.
+                    const physicalPassCount = Math.max(...orderedPasses.map(p => p.metadata?.pass || 1), 1);
+
+                    let passColorsExt = null;
+                    let passColorsInt = null;
+
+                    // Compute per-pass colors for offset AND hatch strategies (not filled)
+                    if (renderCtx.colorPerPass && physicalPassCount > 0 && !isFilledLayer) {
+                        if (renderCtx.palette && renderCtx.palette.length > 0) {
+                            passColorsExt = this._generatePaletteMappedColors(physicalPassCount, 'external', renderCtx.palette, renderCtx.paletteLumping);
+                            passColorsInt = this._generatePaletteMappedColors(physicalPassCount, 'internal', renderCtx.palette, renderCtx.paletteLumping);
+                        } else {
+                            passColorsExt = this._generatePassColors(layer.baseColor, physicalPassCount);
+                            passColorsInt = passColorsExt.slice().reverse();
+                        }
+                    }
+
+                    for (let i = 0; i < orderedPasses.length; i++) {
+                        const pass = orderedPasses[i];
+                        if (!pass.primitives || pass.primitives.length === 0) continue;
+
+                        const physicalIndex = (pass.metadata?.pass || 1) - 1;
+                        const thermalGroup = pass.metadata?.thermalGroup || 'external';
+
+                        // Filled: collect separately to preserve hole topology (evenodd fill-rule)
+                        if (pass.type === 'filled') {
+                            let colorHex = layer.baseColor;
+                            if (renderCtx.colorPerPass && passColorsExt) {
+                                colorHex = passColorsExt[physicalIndex] || layer.baseColor;
+                            }
+                            const safeColor = colorHex.toUpperCase();
+                            if (!filledBuckets.has(safeColor)) filledBuckets.set(safeColor, []);
+
+                            for (const prim of pass.primitives) {
+                                filledBuckets.get(safeColor).push(prim);
+                            }
+                            continue;
+                        }
+
+                        // Hatch passes: assign palette color per angular pass, funnel into color buckets.
+                        // Each hatch pass gets its own color so xCS treats them as separate operations.
+                        if (pass.metadata?.isHatch === true) {
+                            let colorHex = layer.baseColor;
+                            if (renderCtx.colorPerPass && passColorsExt) {
+                                colorHex = passColorsExt[physicalIndex] || layer.baseColor;
+                            }
+                            const safeColor = colorHex.toUpperCase();
+                            if (!colorBuckets.has(safeColor)) colorBuckets.set(safeColor, []);
+                            const bucket = colorBuckets.get(safeColor);
+                            for (const prim of pass.primitives) {
+                                // Tag primitives so the render loop can detect hatch buckets
+                                if (!prim.properties) prim.properties = {};
+                                prim.properties.isHatch = true;
+                                bucket.push(prim);
+                            }
+                            continue;
+                        }
+
+                        // Offset passes: decompose and assign to color buckets
+                        for (const prim of pass.primitives) {
+                            const assignToBucket = (singlePrim, isHoleContext) => {
+                                let colorHex = layer.baseColor;
+
+                                if (renderCtx.colorPerPass && passColorsExt) {
+                                    const activeThermalGroup = isHoleContext
+                                        ? (thermalGroup === 'external' ? 'internal' : 'external')
+                                        : thermalGroup;
+
+                                    const isReversed = (activeThermalGroup === 'internal');
+                                    const colorMap = isReversed ? passColorsInt : passColorsExt;
+                                    colorHex = colorMap[physicalIndex] || layer.baseColor;
+                                }
+
+                                const safeColor = colorHex.toUpperCase();
+                                if (!colorBuckets.has(safeColor)) colorBuckets.set(safeColor, []);
+                                colorBuckets.get(safeColor).push(singlePrim);
+                            };
+
+                            if (prim.contours && prim.contours.length > 0) {
+                                for (const contour of prim.contours) {
+                                    const singlePrim = { ...prim, contours: [contour] };
+                                    assignToBucket(singlePrim, contour.isHole);
+                                }
+                            } else {
+                                assignToBucket(prim, false);
+                            }
+                        }
+                    }
+                }
+
+                // Render color buckets in profile palette order
+                const renderOrder = renderCtx.palette
+                    ? [...renderCtx.palette.map(c => c.toUpperCase()), '#000000']
+                    : Array.from(colorBuckets.keys());
+
+                if (reverseCutOrder) {
+                    renderOrder.reverse();
+                }
+
+                const renderedColors = new Set();
+
+                for (const color of renderOrder) {
+                    if (!colorBuckets.has(color) || renderedColors.has(color)) continue;
+                    renderedColors.add(color);
+
+                    let primitives = colorBuckets.get(color);
+
+                    // Detect if this bucket contains hatch lines
+                    const hasHatch = primitives.some(p => p.properties?.isHatch);
+
+                    // Skip thermal sorting and reversing for hatch buckets — preserves zig-zag scan order
+                    if (renderCtx.heatManagement !== 'off' && !hasHatch) {
+                        primitives = this._applyHeatManagementSort(primitives);
+                    }
+                    if (reverseCutOrder && !hasHatch) {
+                        primitives = primitives.slice().reverse();
+                    }
+
+                    const safeId = color.replace('#', '');
+                    const groupId = hasHatch ? `xCS_Hatch_${safeId}` : `xCS_Layer_${safeId}`;
+                    lines.push(`  <g id="${groupId}" fill="none" stroke="${color}">`);
+
+                    if (hasHatch) {
+                        // Hatch: batch all scan lines into a single <path> to preserve order
+                        const batchedData = this._buildRawPathData(primitives);
+                        if (batchedData) lines.push(`    <path d="${batchedData}"/>`);
+                    } else {
+                        // Offset: individual elements for circle/path rendering
+                        for (const prim of primitives) {
+                            if (prim.type === 'circle' && prim.center && prim.radius) {
+                                lines.push(`    <circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
+                            } else {
+                                if (prim.contours && prim.contours.length > 1) {
+                                    for (const contour of prim.contours) {
+                                        const singlePrim = { ...prim, contours: [contour] };
+                                        const pathData = this._buildRawPathData([singlePrim]);
+                                        if (pathData) lines.push(`    <path d="${pathData}"/>`);
+                                    }
+                                } else {
+                                    const singlePathData = this._buildRawPathData([prim]);
+                                    if (singlePathData) lines.push(`    <path d="${singlePathData}"/>`);
+                                }
+                            }
+                        }
+                    }
+                    lines.push(`  </g>`);
+                }
+
+                // Render filled regions as a single group preserving hole topology
+                for (const [color, primitives] of filledBuckets.entries()) {
+                    const safeId = color.replace('#', '');
+                    lines.push(`  <g id="xCS_Filled_${safeId}" fill="${color}" stroke="none">`);
+
+                    // Output each primitive as its OWN path to prevent evenodd interference
+                    for (const prim of primitives) {
+                        if (prim.type === 'circle' && prim.center && prim.radius) continue; // Handled below
+                        const pathData = this._buildRawPathData([prim]);
+                        if (pathData) lines.push(`    <path d="${pathData}" fill-rule="evenodd"/>`);
+                    }
+
+                    this._appendRawCircles(lines, primitives, '    ');
+                    lines.push(`  </g>`);
+                }
+
+                lines.push(`</g>`);
+                lines.push(`</svg>`);
+
+                const blob = new Blob([lines.join('\n')], { type: 'image/svg+xml;charset=utf-8' });
+                return { blob };
+            }
+
+            // ════════════════════════════════════════════════════════════
+            // LAYER / GROUP / NONE BRANCHES (LightBurn, RDWorks, Generic)
+            // ════════════════════════════════════════════════════════════
             for (const layer of orderedLayers) {
                 const layerId = this._sanitizeId(layer.layerName);
                 const orderedPasses = reverseCutOrder ? layer.passes.slice().reverse() : layer.passes;
 
-                // Generate per-pass colors if enabled, otherwise all passes use baseColor
-                const passColors = renderCtx.colorPerPass
-                    ? this._generatePassColors(layer.baseColor, orderedPasses.length)
-                    : null;
+                // Calculate true physical pass count to prevent palette skewing
+                const physicalPassCount = Math.max(...orderedPasses.map(p => p.metadata?.pass || 1), 1);
 
-                // Indentation depends on whether passes are wrapped in an operation group
-                // Only use operation-level groups in 'group' mode (not 'layer' or 'none')
+                let passColorsExt = null;
+                let passColorsInt = null;
+
+                const isFilledLayer = layer.passes.some(p => p.type === 'filled');
+
+                // Compute per-pass colors for offset AND hatch strategies (not filled)
+                if (renderCtx.colorPerPass && physicalPassCount > 0 && !isFilledLayer) {
+                    if (renderCtx.palette && renderCtx.palette.length > 0) {
+                        passColorsExt = this._generatePaletteMappedColors(physicalPassCount, 'external', renderCtx.palette, renderCtx.paletteLumping);
+                        passColorsInt = this._generatePaletteMappedColors(physicalPassCount, 'internal', renderCtx.palette, renderCtx.paletteLumping);
+                    } else {
+                        passColorsExt = this._generatePassColors(layer.baseColor, physicalPassCount);
+                        passColorsInt = passColorsExt.slice().reverse();
+                    }
+                }
+
                 const wrapOperation = useGroups && !useLayers && orderedLayers.length > 1;
 
                 if (wrapOperation) {
-                    lines.push(`  <g id="Layer_${layerId}" stroke-linecap="round" stroke-linejoin="round">`);
+                    lines.push(`  <g id="Layer_${layerId}">`);
                 }
 
                 const indent = wrapOperation ? '    ' : '  ';
@@ -292,24 +479,35 @@
                     const pass = orderedPasses[i];
                     if (!pass.primitives || pass.primitives.length === 0) continue;
 
-                    // Use the pass's own index for naming so Pass 1 always labels the innermost offset
-                    const originalIndex = pass.passIndex != null ? pass.passIndex - 1 : i;
+                    const physicalIndex = (pass.metadata?.pass || 1) - 1;
+                    const thermalGroup = pass.metadata?.thermalGroup || 'external';
 
                     const isFilled = pass.type === 'filled';
-                    const color = passColors ? passColors[originalIndex] : layer.baseColor;
-                    const passId = this._buildPassId(layer.layerName, pass, originalIndex);
+                    const passId = this._buildPassId(layer.layerName, pass, physicalIndex);
                     const isHatch = pass.metadata?.isHatch === true;
 
-                    // Area sort within each pass (always active, regardless of heat management)
-                    let sortablePrimitives = (!isFilled && !isHatch)
+                    // Assign pass color based on topology
+                    let color = layer.baseColor;
+                    if (renderCtx.colorPerPass && passColorsExt) {
+                        if (isHatch) {
+                            // Hatch: no shell/hole topology — always use external palette order
+                            color = passColorsExt[physicalIndex] || layer.baseColor;
+                        } else {
+                            const isReversed = (thermalGroup === 'internal');
+                            const colorMap = isReversed ? passColorsInt : passColorsExt;
+                            color = colorMap[physicalIndex] || layer.baseColor;
+                        }
+                    }
+
+                    let sortablePrimitives = (!isFilled && !isHatch && pass.primitives.length > 1)
                         ? this._applyHeatManagementSort(pass.primitives)
                         : pass.primitives;
 
-                    if (reverseCutOrder && !isFilled) {
+                    // Reverse cut order for non-filled, non-hatch passes only
+                    if (reverseCutOrder && !isFilled && !isHatch) {
                         sortablePrimitives = sortablePrimitives.slice().reverse();
                     }
 
-                    // Build group opening tag based on mode
                     const layerAttrs = useLayers
                         ? ` inkscape:groupmode="layer" inkscape:label="${passId}"`
                         : '';
@@ -317,39 +515,64 @@
                     if (isFilled) {
                         if (useGroups) {
                             lines.push(`${indent}<g id="${passId}"${layerAttrs} fill="${color}" stroke="none">`);
-                            const pathData = this._buildRawPathData(sortablePrimitives);
-                            if (pathData) lines.push(`${innerIndent}<path d="${pathData}" fill-rule="evenodd"/>`);
+                            for (const prim of sortablePrimitives) {
+                                if (prim.type === 'circle' && prim.center && prim.radius) continue; // Handled below
+                                const pathData = this._buildRawPathData([prim]);
+                                if (pathData) lines.push(`${innerIndent}<path d="${pathData}" fill-rule="evenodd"/>`);
+                            }
                             this._appendRawCircles(lines, sortablePrimitives, innerIndent);
                             lines.push(`${indent}</g>`);
                         } else {
-                            const pathData = this._buildRawPathData(sortablePrimitives);
-                            if (pathData) lines.push(`${indent}<path d="${pathData}" fill="${color}" stroke="none" fill-rule="evenodd"/>`);
                             for (const prim of sortablePrimitives) {
                                 if (prim.type === 'circle' && prim.center && prim.radius) {
                                     lines.push(`${indent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}" fill="${color}" stroke="none"/>`);
+                                } else {
+                                    const pathData = this._buildRawPathData([prim]);
+                                    if (pathData) lines.push(`${indent}<path d="${pathData}" fill="${color}" stroke="none" fill-rule="evenodd"/>`);
                                 }
                             }
                         }
                     } else {
+                        // Stroked passes (offset and hatch)
                         if (useGroups) {
-                            lines.push(`${indent}<g id="${passId}"${layerAttrs} fill="none" stroke="${color}" stroke-width="${this.HAIRLINE_STROKE}">`);
-                            for (const prim of sortablePrimitives) {
-                                if (prim.type === 'circle' && prim.center && prim.radius) {
-                                    lines.push(`${innerIndent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
-                                } else {
-                                    const singlePathData = this._buildRawPathData([prim]);
-                                    if (singlePathData) lines.push(`${innerIndent}<path d="${singlePathData}"/>`);
+                            lines.push(`${indent}<g id="${passId}"${layerAttrs} fill="none" stroke="${color}">`);
+                            if (isHatch) {
+                                const batchedData = this._buildRawPathData(sortablePrimitives);
+                                if (batchedData) lines.push(`${innerIndent}<path d="${batchedData}"/>`);
+                            } else {
+                                for (const prim of sortablePrimitives) {
+                                    if (prim.type === 'circle' && prim.center && prim.radius) {
+                                        lines.push(`${innerIndent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
+                                    } else if (prim.contours && prim.contours.length > 1) {
+                                        for (const contour of prim.contours) {
+                                            const singlePrim = { ...prim, contours: [contour] };
+                                            const pathData = this._buildRawPathData([singlePrim]);
+                                            if (pathData) lines.push(`${innerIndent}<path d="${pathData}"/>`);
+                                        }
+                                    } else {
+                                        const singlePathData = this._buildRawPathData([prim]);
+                                        if (singlePathData) lines.push(`${innerIndent}<path d="${singlePathData}"/>`);
+                                    }
                                 }
                             }
                             lines.push(`${indent}</g>`);
                         } else {
-                            for (const prim of sortablePrimitives) {
-                                if (prim.type === 'circle' && prim.center && prim.radius) {
-                                    lines.push(`${indent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}" fill="none" stroke="${color}" stroke-width="${this.HAIRLINE_STROKE}"/>`);
-                                } else {
-                                    const singlePathData = this._buildRawPathData([prim]);
-                                    if (singlePathData) {
-                                        lines.push(`${indent}<path d="${singlePathData}" fill="none" stroke="${color}" stroke-width="${this.HAIRLINE_STROKE}"/>`);
+                            if (isHatch) {
+                                const batchedData = this._buildRawPathData(sortablePrimitives);
+                                if (batchedData) lines.push(`${indent}<path d="${batchedData}" fill="none" stroke="${color}"/>`);
+                            } else {
+                                for (const prim of sortablePrimitives) {
+                                    if (prim.type === 'circle' && prim.center && prim.radius) {
+                                        lines.push(`${innerIndent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
+                                    } else if (prim.contours && prim.contours.length > 1) {
+                                        for (const contour of prim.contours) {
+                                            const singlePrim = { ...prim, contours: [contour] };
+                                            const pathData = this._buildRawPathData([singlePrim]);
+                                            if (pathData) lines.push(`${innerIndent}<path d="${pathData}" fill="none" stroke="${color}"/>`);
+                                        }
+                                    } else {
+                                        const singlePathData = this._buildRawPathData([prim]);
+                                        if (singlePathData) lines.push(`${innerIndent}<path d="${singlePathData}" fill="none" stroke="${color}"/>`);
                                     }
                                 }
                             }
@@ -454,9 +677,14 @@
          * Formats numbers to strip trailing zeros and leading zeros.
          * Example: 0.5000 -> .5 | -0.2500 -> -.25 | 10.0000 -> 10
          */
+        // REVIEW - the performance penalty is negligeable, worth keeping? File size only matters if laser control programs care. If it speeds parsing or not.
+        // _formatNumber(value, precision) {
+        //     const s = parseFloat(value.toFixed(precision)).toString();
+        //     return s.startsWith('0.') ? s.substring(1) : (s.startsWith('-0.') ? '-' + s.substring(2) : s);
+        // }
+
         _formatNumber(value, precision) {
-            const s = parseFloat(value.toFixed(precision)).toString();
-            return s.startsWith('0.') ? s.substring(1) : (s.startsWith('-0.') ? '-' + s.substring(2) : s);
+            return parseFloat(value.toFixed(precision)).toString();
         }
 
         /**
@@ -464,7 +692,7 @@
          */
         _buildRawPathData(primitives) {
             const chunks = [];
-            const prec = this.PRECISION;
+            const prec = this.DECIMAL;
             const fmt = (n) => this._formatNumber(n, prec);
 
             for (const prim of primitives) {
@@ -479,7 +707,7 @@
 
                     let cx = pts[0].x;
                     let cy = pts[0].y;
-                    
+
                     // Start absolute
                     let d = `M${fmt(cx)} ${fmt(cy)}`;
 
@@ -536,7 +764,7 @@
 
                     const isClosed = prim.properties?.closed !== false && pts.length > 2;
                     if (isClosed) d += 'Z';
-                    
+
                     chunks.push(d);
                 }
             }
@@ -548,7 +776,7 @@
          * Appends raw <circle>
          */
         _appendRawCircles(lines, primitives, indent) {
-            const fmt = (n) => this._formatNumber(n, this.PRECISION);
+            const fmt = (n) => this._formatNumber(n, this.DECIMAL);
 
             for (const prim of primitives) {
                 if (prim.type !== 'circle' || !prim.center || !prim.radius) continue;
@@ -607,7 +835,7 @@
                             // Canvas arc: counterclockwise param
                             // Baseline: CAM CW (true) -> Canvas CW (false). CAM CCW (false) -> Canvas CCW (true).
                             let ccw = !arc.clockwise;
-                            
+
                             // Only flip the winding if the user explicitly mirrored the geometry
                             // (A standard Y-down projection has det < 0. A mirrored one has det > 0)
                             if (det > 0) ccw = !ccw;
@@ -677,7 +905,7 @@
                         const p1 = { x: pts[1].x * cosA - pts[1].y * sinA, y: pts[1].x * sinA + pts[1].y * cosA };
 
                         const perpDist = Math.round(p0.y / tol) * tol;
-                        const key = `${angle}_${perpDist.toFixed(4)}`;
+                        const key = `${li}_${pi}_${angle}_${perpDist.toFixed(4)}`;
 
                         const xMin = Math.min(p0.x, p1.x);
                         const xMax = Math.max(p0.x, p1.x);
@@ -768,6 +996,63 @@
                     pass.primitives.push(...newPrims);
                     totalAdded += newPrims.length;
                 }
+
+                // Restore Zig-Zag order for the pass
+                if (pass.metadata?.isHatch) {
+                    const angle = pass.metadata.angle || 0;
+                    const rad = -angle * Math.PI / 180;
+                    const cosA = Math.cos(rad);
+                    const sinA = Math.sin(rad);
+
+                    // Sort by perpendicular distance, then parallel distance
+                    pass.primitives.sort((a, b) => {
+                        const pA = a.contours[0].points[0];
+                        const pB = b.contours[0].points[0];
+                        const perpA = pA.x * sinA + pA.y * cosA;
+                        const perpB = pB.x * sinA + pB.y * cosA;
+                        if (Math.abs(perpA - perpB) > this.FUSION_TOLERANCE) {
+                            return perpA - perpB;
+                        }
+                        const parA = pA.x * cosA - pA.y * sinA;
+                        const parB = pB.x * cosA - pB.y * sinA;
+                        return parA - parB;
+                    });
+
+                    // Re-apply alternating Zig-Zag direction and segment order
+                    let currentPerp = null;
+                    let scanlineStart = 0;
+                    let scanlineIndex = -1;
+
+                    for (let si = 0; si <= pass.primitives.length; si++) {
+                        const prim = si < pass.primitives.length ? pass.primitives[si] : null;
+                        const pts = prim ? prim.contours[0].points : null;
+                        const perp = pts ? pts[0].x * sinA + pts[0].y * cosA : null;
+
+                        const isNewScanline = prim === null || currentPerp === null || 
+                            Math.abs(perp - currentPerp) > this.FUSION_TOLERANCE;
+
+                        if (isNewScanline) {
+                            // Process previous scanline group
+                            if (scanlineIndex >= 0 && scanlineIndex % 2 === 1) {
+                                // Odd scanlines: reverse segment order AND flip each segment's direction
+                                const group = pass.primitives.slice(scanlineStart, si);
+                                group.reverse();
+                                for (const g of group) {
+                                    g.contours[0].points.reverse();
+                                }
+                                pass.primitives.splice(scanlineStart, group.length, ...group);
+                            } else if (scanlineIndex >= 0) {
+                                // Even scanlines: ensure L→R (already sorted ascending, no-op)
+                            }
+
+                            if (prim) {
+                                scanlineStart = si;
+                                scanlineIndex++;
+                                currentPerp = perp;
+                            }
+                        }
+                    }
+                }
             }
 
             if (totalRemoved > 0) {
@@ -825,6 +1110,58 @@
         // ────────────────────────────────────────────────────────────
         // Naming helpers
         // ────────────────────────────────────────────────────────────
+
+        /**
+         * Assigns colors based on laser controller profile palettes
+         */
+        _generatePaletteMappedColors(passCount, offsetType, palette, enableLumping) {
+            const maxColors = palette.length;
+            const colors = [];
+
+            if (passCount <= maxColors || !enableLumping) {
+                // If no lumping is needed, map 1:1, but respect direction
+                for (let i = 0; i < passCount; i++) {
+                    if (offsetType === 'internal') {
+                        // Clearing: Pass[passCount-1] is smallest -> mapped to palette[0]
+                        colors.push(palette[passCount - 1 - i]); 
+                    } else {
+                        // Isolation: Pass[0] is smallest -> mapped to palette[0]
+                        colors.push(palette[i]); 
+                    }
+                }
+                return colors;
+            }
+
+            // If Lumping larger passes required
+            const lumpCount = passCount - maxColors + 1; // Number of passes sharing the 'massive' color
+
+            if (offsetType === 'internal') {
+                // Clearing: Pass 0 is the massive outer boundary. Pass[passCount-1] is the tiny center.
+                for (let i = 0; i < passCount; i++) {
+                    if (i < lumpCount) {
+                        // Massive outer rings dumped into the LAST color in the palette
+                        colors.push(palette[maxColors - 1]); 
+                    } else {
+                        // Map the remaining center rings back towards palette[0]
+                        const distFromEnd = (passCount - 1) - i;
+                        colors.push(palette[distFromEnd]);
+                    }
+                }
+            } else {
+                // Isolation: Pass 0 is tight against the trace. Pass[passCount-1] is massive.
+                for (let i = 0; i < passCount; i++) {
+                    if (i < maxColors - 1) {
+                        // Tight rings get unique early colors
+                        colors.push(palette[i]); 
+                    } else {
+                        // Outermost rings dumped into the LAST color in the palette
+                        colors.push(palette[maxColors - 1]); 
+                    }
+                }
+            }
+
+            return colors;
+        }
 
         /**
          * Generates a distinct color for each pass by rotating hue from a base color.

@@ -28,7 +28,8 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
 
     class LayerRenderer {
         constructor(canvasId, core) {
@@ -927,9 +928,6 @@
         _renderDebugOverlayWorld() {
             const fc = this.core.frameCache;
             const uiScale = this.core.devicePixelRatio || 1;
-            const pointSize = 3 * fc.invScale * uiScale;
-            const halfPoint = pointSize;
-            const pointDiameter = pointSize * 2;
             const arcStrokeWidth = 2 * fc.invScale * uiScale;
             const hasReconstruction = this.options.enableArcReconstruction;
             const vb = fc.viewBounds;
@@ -937,18 +935,18 @@
             // POINTS
             if (this.options.debugPoints) {
                 this.ctx.fillStyle = this.core.colors.debug.points;
-                
+
                 // Calculate scaling constants once per frame
                 const pointRadius = 1.5 * fc.invScale * uiScale; 
-                
+
                 this.ctx.beginPath();
 
                 for (const prim of this.debugPrimitives) {
-                    
-                    // 1. Handle Standalone Circles
+
+                    // Handle Standalone Circles
                     if (prim.type === 'circle' && prim.center) {
                         if (hasReconstruction && prim.properties?.reconstructed) continue;
-                        
+
                         if (!hasReconstruction && prim.properties?.reconstructed) {
                             const segments = GeometryUtils.getOptimalSegments(prim.radius, 'circle');
                             const step = (2 * Math.PI) / segments;
@@ -956,9 +954,9 @@
                                 const angle = s * step;
                                 const px = prim.center.x + prim.radius * Math.cos(angle);
                                 const py = prim.center.y + prim.radius * Math.sin(angle);
-                                
+
                                 if (px < vb.minX || px > vb.maxX || py < vb.minY || py > vb.maxY) continue;
-                                
+
                                 // Draw perfectly round dot
                                 this.ctx.moveTo(px + pointRadius, py);
                                 this.ctx.arc(px, py, pointRadius, 0, Math.PI * 2);
@@ -974,7 +972,7 @@
                         continue;
                     }
 
-                    // 2. Handle Paths and Offset Geometry
+                    // Handle Paths and Offset Geometry
                     if (!prim.contours) continue;
 
                     for (const contour of prim.contours) {
@@ -987,7 +985,7 @@
                         for (let i = 0; i < contour.points.length; i++) {
                             const p = contour.points[i];
                             if (p.x < vb.minX || p.x > vb.maxX || p.y < vb.minY || p.y > vb.maxY) continue;
-                            
+
                             this.ctx.moveTo(p.x + pointRadius, p.y);
                             this.ctx.arc(p.x, p.y, pointRadius, 0, Math.PI * 2);
                         }
@@ -1012,9 +1010,9 @@
                                     const angle = arc.startAngle + sweep * t;
                                     const px = arc.center.x + arc.radius * Math.cos(angle);
                                     const py = arc.center.y + arc.radius * Math.sin(angle);
-                                    
+
                                     if (px < vb.minX || px > vb.maxX || py < vb.minY || py > vb.maxY) continue;
-                                    
+
                                     this.ctx.moveTo(px + pointRadius, py);
                                     this.ctx.arc(px, py, pointRadius, 0, Math.PI * 2);
                                 }
@@ -1085,7 +1083,7 @@
                         if (!contour.arcSegments) continue;
                         for (const arc of contour.arcSegments) {
                             if (!arc.center) continue;
-                            
+
                             // Draw perfectly round dot
                             this.ctx.moveTo(arc.center.x + arcCenterRadius, arc.center.y);
                             this.ctx.arc(arc.center.x, arc.center.y, arcCenterRadius, 0, Math.PI * 2);
@@ -1122,6 +1120,6 @@
             }
         }
     }
-    
+
     window.LayerRenderer = LayerRenderer;
 })();

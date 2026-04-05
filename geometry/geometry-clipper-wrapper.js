@@ -30,13 +30,15 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const debugConfig = config.debug;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const scale = C.geometry.clipperScale;
+    const debugState = D.debug;
 
     class ClipperWrapper {
         constructor(options = {}) {
             this.options = {
-                scale: options.scale,
+                ...options
             };
 
             this.clipper2 = null;
@@ -121,7 +123,7 @@
                      (packedSegmentIndex << 24n) | 
                      (packedClockwise << 55n) |
                      (packedReserved << 56n);
-            
+
             return z;
         }
 
@@ -280,8 +282,8 @@
                 // Winding is trusted from upstream (parser enforces outer=CCW, hole=CW in Y-up).
                 for (let i = 0; i < points.length; i++) {
                     const p = points[i];
-                    const x = BigInt(Math.round(p.x * this.options.scale));
-                    const y = BigInt(Math.round(p.y * this.options.scale));
+                    const x = BigInt(Math.round(p.x * scale));
+                    const y = BigInt(Math.round(p.y * scale));
 
                     let z = BigInt(0);
                     if (this.supportsZ && p.curveId !== undefined &&
@@ -322,8 +324,8 @@
                 for (let j = 0; j < rootPoly.size(); j++) {
                     const pt = rootPoly.get(j);
                     const point = {
-                        x: Number(pt.x) / this.options.scale,
-                        y: Number(pt.y) / this.options.scale
+                        x: Number(pt.x) / scale,
+                        y: Number(pt.y) / scale
                     };
 
                     if (this.supportsZ && pt.z !== undefined) {
@@ -355,8 +357,8 @@
                     for (let k = 0; k < poly.size(); k++) {
                         const pt = poly.get(k);
                         const point = {
-                            x: Number(pt.x) / this.options.scale,
-                            y: Number(pt.y) / this.options.scale
+                            x: Number(pt.x) / scale,
+                            y: Number(pt.y) / scale
                         };
 
                         // Extract metadata for ALL contours
@@ -423,7 +425,7 @@
                 primitives.push(primitive);
             }
 
-            if (debugConfig.enabled && primitives.length > 0) {
+            if (debugState.enabled && primitives.length > 0) {
                 const totalContours = primitives.reduce((sum, p) => sum + (p.contours?.length || 0), 0);
                 const maxDepth = Math.max(...primitives.flatMap(p => 
                     (p.contours || []).map(c => c.nestingLevel)
@@ -458,7 +460,7 @@
 
         // Debug logging
         debug(message, data = null) {
-            if (debugConfig.enabled) {
+            if (debugState.enabled) {
                 if (data) {
                     console.log(`[ClipperWrapper] ${message}`, data);
                 } else {
@@ -472,7 +474,7 @@
             return {
                 initialized: this.initialized,
                 supportsZ: this.supportsZ,
-                scale: this.options.scale,
+                scale: scale,
                 metadataPacking: {
                     curveIdBits: Number(this.metadataPacking.curveIdBits),
                     segmentIndexBits: Number(this.metadataPacking.segmentIndexBits),

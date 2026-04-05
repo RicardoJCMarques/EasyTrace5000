@@ -28,8 +28,10 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
-    const formatConfig = config.formats.gerber;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
+    const formatConfig = C.formats.gerber;
 
     class GerberParser extends ParserCore {
         constructor(options = {}) {
@@ -71,14 +73,14 @@
                 // Reset state
                 this.reset();
 
-                // Phase 1: Tokenize into commands
+                // Tokenize into commands
                 const commands = this.tokenize(content);
                 this.debug(`Tokenized ${commands.length} commands`);
 
-                // Phase 2: Execute commands sequentially
+                // Execute commands sequentially
                 this.executeCommands(commands);
 
-                // Phase 3: Finalize
+                // Finalize
                 this.finalizeParse();
                 this.debug(`Parse complete: ${this.layers.objects.length} objects created`);
                 this.logStatistics();
@@ -183,7 +185,7 @@
                     if (macroContent.endsWith('*')) {
                         macroContent = macroContent.slice(0, -1);
                     }
-                    
+
                     this.state.macros.set(macroName, { 
                         name: macroName, 
                         content: macroContent 
@@ -427,7 +429,7 @@
             if (remaining.startsWith('M02') || remaining.startsWith('M00') || remaining.startsWith('M30')) {
                 commands.push({ type: 'EOF', params: {}, line: lineNumber });
             }
-            
+
             return commands;
         }
 
@@ -483,7 +485,7 @@
          */
         evaluateMacroParam(param, variables) {
             if (typeof param === 'number') return param;
-            
+
             let expr = String(param);
 
             // Substitute $N variables
@@ -554,7 +556,7 @@
                                 // Close the polygon if not already closed
                                 const first = points[0];
                                 const last = points[points.length - 1];
-                                if (Math.abs(first.x - last.x) > 0.0001 || Math.abs(first.y - last.y) > 0.0001) {
+                                if (Math.abs(first.x - last.x) > 0.0001 || Math.abs(first.y - last.y) > 0.0001) { // REVIEW - double check epsilons in the config, lower to coordinate precision?
                                     points.push({ ...first });
                                 }
                                 shapes.push({ type: 'polygon', points: points });
@@ -668,7 +670,6 @@
         macroShapesToPolygon(shapes, position) {
             // For RoundRect-style macros, tessellate circles and combine
             const allPoints = [];
-            const tolerance = config.precision.coordinate || 0.001;
 
             // If it's a simple case (circles at corners + lines), build rounded rect directly
             const circles = shapes.filter(s => s.type === 'circle');
@@ -726,7 +727,7 @@
                         });
                     }
                 }
-                
+
                 return points;
             }
 
@@ -847,9 +848,10 @@
                     const drawPos = this.parsePosition(command.params);
 
                     // Zero-length draw detection: converts degenerate draws to flashes.
-                    // Only applies OUTSIDE regions (G36/G37). Inside regions, near-identical consecutive vertices are normal (dense curve approximations in KiCad pour polygons). Intercepting them here creates spurious flash circles and drops vertices from the region, which can corrupt or destroy the pour polygon geometry.
+                    // Only applies OUTSIDE regions (G36/G37). Inside regions, near-identical consecutive vertices are normal (dense curve approximations in KiCad pour polygons).
+                    // Intercepting them here creates spurious flash circles and drops vertices from the region, which can corrupt or destroy the pour polygon geometry.
                     if (!this.state.inRegion) {
-                        const precision = config.precision.zeroLength;
+                        const precision = C.precision.zeroLength;
                         const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
                                                  Math.abs(this.state.position.y - drawPos.y) < precision;
                         // If start and end positions are the same treat it as a flash.
@@ -926,8 +928,6 @@
                 return;
             }
 
-            const epsilon = config.precision.coordinate;
-
             // ── Pass 1: Deduplicate consecutive near-identical vertices ──
             // Dense KiCad pour polygons have vertices <1μm apart at curve transitions. Without deduplication these create degenerate zero-length edges that confuse downstream boolean operations.
             const rawPoints = this.state.regionPoints;
@@ -938,7 +938,7 @@
                 const curr = rawPoints[i];
                 const dx = curr.x - prev.x;
                 const dy = curr.y - prev.y;
-                if (dx * dx + dy * dy > epsilon * epsilon) {
+                if (dx * dx + dy * dy > PRECISION * PRECISION) {
                     deduped.push(curr);
                 }
             }
@@ -957,7 +957,7 @@
             //
             // RELAXED GATE: The dot-product threshold is now configurable via cosAngleGate. The original code used 0 (catches only >90° reversals).
             // A positive value like 0.25 catches shallower zigzags (~75°+) that KiCad's polygon approximation routinely produces. The perpendicular deviation test still protects intentional sharp features.
-            const spikeTolerance = epsilon * 4;
+            const spikeTolerance = PRECISION * 4;
             const { points: cleaned, removed: spikesRemoved } = this._removeSpikeVertices(deduped, spikeTolerance);
 
             if (spikesRemoved > 0) {
@@ -973,7 +973,7 @@
             // Collapses near-collinear vertex runs and over-tessellated curve approximations that the spike detector doesn't catch (forward-progressing zigzags where dot > 0). This is the industry-standard algorithm for polyline simplification in GIS/CNC/CAD.
             // Tolerance rationale: the smallest meaningful PCB feature (trace-to-trace clearance) is typically ≥ 0.1mm.
             // A simplification tolerance of 0.005–0.01mm is invisible on copper but eliminates thousands of noise vertices that otherwise get amplified into sawtooth artifacts by the Clipper offset pipeline.
-            const rdpTolerance = config.precision.rdpSimplification
+            const rdpTolerance = C.precision.rdpSimplification;
 
             const simplified = this._simplifyRDP(cleaned, rdpTolerance);
 
@@ -992,7 +992,7 @@
             const first = finalPoints[0];
             const last = finalPoints[finalPoints.length - 1];
 
-            if (Math.abs(first.x - last.x) > epsilon || Math.abs(first.y - last.y) > epsilon) {
+            if (Math.abs(first.x - last.x) > PRECISION || Math.abs(first.y - last.y) > PRECISION) {
                 finalPoints.push({ ...first });
             }
 
@@ -1193,7 +1193,7 @@
             }
 
             const scale = this.state.units === 'inch' ? 25.4 : 1;
-            let traceWidth = formatConfig.defaultAperture || 0.1;
+            let traceWidth = formatConfig.defaultAperture;
             if (aperture.parameters && aperture.parameters.length > 0) {
                 traceWidth = aperture.parameters[0] * scale;
             }

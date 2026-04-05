@@ -28,15 +28,16 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
 
     /**
      * Calculates and returns tab positions (start/end distances) along a closed contour.
      */
     class ToolpathTabPlanner {
         constructor() {
-            this.TOLERANCE = config.precision.coordinate;
-            this.MIN_SEGMENT_LENGTH = config.toolpath.tabs.minTabLength;
+            // REVIEW - Should this be empty?
         }
 
         /**
@@ -52,7 +53,7 @@
             if (tabCount <= 0 || !geometrySource.points) return [];
 
             const totalLength = this._calculateTotalLength(geometrySource);
-            if (totalLength <= this.TOLERANCE || totalLength < tabWidth * tabCount) {
+            if (totalLength <= PRECISION || totalLength < tabWidth * tabCount) {
                 return [];
             }
 
@@ -77,7 +78,7 @@
 
             // Find qualifying straight segments (linear and long enough)
             const straightSegments = segments
-                .filter(s => s.type === 'linear' && s.length >= this.MIN_SEGMENT_LENGTH)
+                .filter(s => s.type === 'linear' && s.length >= D.toolpath.tabs.minTabLength)
                 .sort((a, b) => b.length - a.length);
 
             // Priority 1: Place tabs centered on longest straight segments
@@ -104,8 +105,8 @@
 
                     // Check overlap with already-placed tabs
                     const overlaps = placedTabs.some(tab =>
-                        tab.start < proposedEnd + this.TOLERANCE &&
-                        tab.end > proposedStart - this.TOLERANCE
+                        tab.start < proposedEnd + PRECISION &&
+                        tab.end > proposedStart - PRECISION
                     );
 
                     if (!overlaps) {
@@ -120,7 +121,7 @@
             }
 
             return placedTabs
-                .filter(t => (t.end - t.start) > this.TOLERANCE)
+                .filter(t => (t.end - t.start) > PRECISION)
                 .sort((a, b) => a.start - b.start);
         }
 
@@ -186,14 +187,14 @@
                     const splitDistance = split.dist;
 
                     // Check if the path is currently in a tab (distance-wise)
-                    const isInTab = tabRanges.some(t => t.start <= lastSplitDistance + this.TOLERANCE && t.end >= splitDistance - this.TOLERANCE);
+                    const isInTab = tabRanges.some(t => t.start <= lastSplitDistance + PRECISION && t.end >= splitDistance - PRECISION);
 
                     // Calculate Split Position
                     const distAlongSegment = splitDistance - segmentStartDistance;
                     const splitPos = this._getPointAlongSegment(points[i], segmentEndPos, arc, segData, distAlongSegment);
 
                     // Add the segment piece (from last split to current split)
-                    if (splitDistance > lastSplitDistance + this.TOLERANCE) {
+                    if (splitDistance > lastSplitDistance + PRECISION) {
                          const newCmd = this._createSegmentCommand(lastSplitPos, splitPos, arc, segData, feedRate, isInTab);
                          motionCommands.push(newCmd);
                     }
@@ -204,8 +205,8 @@
 
                 // Add the remaining segment (from the last split point to the end of the segment)
                 const remainingLength = segmentEndDistance - lastSplitDistance;
-                if (remainingLength > this.TOLERANCE) {
-                    const isInTab = tabRanges.some(t => t.start <= lastSplitDistance + this.TOLERANCE && t.end >= segmentEndDistance - this.TOLERANCE);
+                if (remainingLength > PRECISION) {
+                    const isInTab = tabRanges.some(t => t.start <= lastSplitDistance + PRECISION && t.end >= segmentEndDistance - PRECISION);
 
                     const finalCmd = this._createSegmentCommand(lastSplitPos, segmentEndPos, arc, segData, feedRate, isInTab);
                     motionCommands.push(finalCmd);
@@ -217,7 +218,6 @@
 
             return motionCommands;
         }
-
 
         // Geometric Utility Methods
 
@@ -233,9 +233,9 @@
 
              let sweep = endAngle - startAngle;
              if (arc.clockwise) {
-                 if (sweep > this.TOLERANCE) sweep -= 2 * Math.PI;
+                 if (sweep > PRECISION) sweep -= 2 * Math.PI;
              } else {
-                 if (sweep < -this.TOLERANCE) sweep += 2 * Math.PI;
+                 if (sweep < -PRECISION) sweep += 2 * Math.PI;
              }
 
              return {
@@ -250,21 +250,21 @@
         }
 
         _getPointAlongSegment(startPoint, endPoint, arc, segData, distanceAlong) {
-            if (distanceAlong < this.TOLERANCE) return startPoint;
+            if (distanceAlong < PRECISION) return startPoint;
 
             if (!arc) {
                 // Linear Interpolation
                 const dx = endPoint.x - startPoint.x;
                 const dy = endPoint.y - startPoint.y;
                 const len = Math.hypot(dx, dy);
-                if (len < this.TOLERANCE) return startPoint;
+                if (len < PRECISION) return startPoint;
 
                 const ratio = Math.min(1.0, distanceAlong / len);
                 return { x: startPoint.x + dx * ratio, y: startPoint.y + dy * ratio };
             } 
             else {
                 // Angular Interpolation (Preserves Radius)
-                if (!segData || segData.length < this.TOLERANCE) return startPoint;
+                if (!segData || segData.length < PRECISION) return startPoint;
 
                 const ratio = Math.min(1.0, distanceAlong / segData.length);
                 const targetAngle = segData.startAngle + (segData.sweep * ratio);
@@ -310,7 +310,7 @@
                 newTabs.push(tab);
             }
 
-            return newTabs.filter(t => (t.end - t.start) > this.TOLERANCE);
+            return newTabs.filter(t => (t.end - t.start) > PRECISION);
         }
 
         _mapSegmentsToDistance(geometry) {
@@ -378,13 +378,13 @@
                 if (arc && arc.endIndex === nextI) {
                     let sweep = arc.endAngle - arc.startAngle;
                     if (arc.clockwise) {
-                        if (sweep > this.TOLERANCE) sweep -= 2 * Math.PI;
+                        if (sweep > PRECISION) sweep -= 2 * Math.PI;
                     } else {
-                        if (sweep < -this.TOLERANCE) sweep += 2 * Math.PI;
+                        if (sweep < -PRECISION) sweep += 2 * Math.PI;
                     }
 
                     const distToNext = Math.hypot(points[nextI].x - points[i].x, points[nextI].y - points[i].y);
-                    if (distToNext < this.TOLERANCE && Math.abs(sweep) < Math.PI * 0.5) {
+                    if (distToNext < PRECISION && Math.abs(sweep) < Math.PI * 0.5) {
                         sweep = arc.clockwise ? -2 * Math.PI : 2 * Math.PI;
                     }
 

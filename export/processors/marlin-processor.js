@@ -38,9 +38,9 @@
                 supportsArcCommands: true,
                 supportsCannedCycles: false,
                 arcFormat: 'IJ',
-                coordinatePrecision: 3,
-                feedPrecision: 0,
-                spindlePrecision: 0,
+                coordinateDecimals: 3,
+                feedDecimals: 0,
+                spindleDecimals: 0,
                 modalCommands: false,
                 maxSpindleSpeed: 255, // PWM range
                 maxRapidRate: 1000,
@@ -54,7 +54,7 @@
         // Read for undocumented options.useM3 flag to decide between using the Spindle (M3/M5) or a PWM Fan port (M106/M107)
         setSpindle(speed, dwell = 0, options = {}) {
             if (speed === this.currentSpindle) return null;
-            
+
             const c = options.comments || {};
             this.currentSpindle = speed;
             const lines = [];
@@ -63,7 +63,7 @@
                 const pwmValue = Math.min(255, Math.round((speed / 30000) * 255));
                 const cmd = options.useM3 ? `M3 S${pwmValue}` : `M106 S${pwmValue}`;
                 lines.push(this.appendComment(cmd, c.spindleStart, options));
-                
+
                 if (dwell > 0) {
                     // Marlin typically uses milliseconds for G4 P
                     lines.push(this.appendComment(`G4 P${Math.round(dwell * 1000)}`, c.spindleDwell, options));
@@ -76,6 +76,8 @@
             return lines.join('\n');
         }
 
+        // REVIEW - Useless?
+        /*
         generateToolChange(tool, options) {
             const lines = [];
             const c = options.comments || {};
@@ -109,6 +111,7 @@
 
             return lines.join('\n');
         }
+        */
     }
 
     window.MarlinPostProcessor = MarlinPostProcessor;

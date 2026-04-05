@@ -28,7 +28,8 @@
 (function() {
     'use strict';
 
-    const config = window.PCBCAMConfig;
+    const C = window.PCBCAMConfig.constants;
+    const D = window.PCBCAMConfig.defaults;
 
     let nextPrimitiveId = 1;
 
@@ -279,10 +280,9 @@
             this.position = position;
             this.width = width;
             this.height = height;
-            
-            const tolerance = config.precision.coordinate;
-            this.isCircular = Math.abs(width - height) < tolerance;
-            
+
+            this.isCircular = Math.abs(width - height) < C.precision.coordinate;
+
             this.geometricContext.isAnalytic = true;
             this.geometricContext.metadata = {
                 position: { ...position },
