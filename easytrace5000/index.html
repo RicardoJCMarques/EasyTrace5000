@@ -152,7 +152,7 @@
                 "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
                 "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
             ],
-            "softwareVersion": "1.2.0",
+            "softwareVersion": "1.2.1",
             "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
             "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
             "installUrl": "https://cam.eltryus.design/easytrace5000/",
@@ -630,7 +630,7 @@
                         <div class="property-field field-group">
                             <label class="checkbox-label" style="background: var(--color-bg-tertiary); border: 1px solid var(--color-border-secondary);">
                                 <input type="checkbox" id="laser-lock-defaults">
-                                <span>Lock to Profile Defaults</span>
+                                <span>Use Profile Defaults</span>
                             </label>
                         </div>
 
@@ -641,6 +641,7 @@
                                     <option value="none">None (Flat Geometry)</option>
                                     <option value="layer">By Layer</option>
                                     <option value="group">By Group</option>
+                                    <option value="color">By Color</option>
                                 </select>
                             </div>
 
@@ -859,7 +860,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.2.0</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.2.1</a> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -1085,7 +1086,7 @@
                         <h3>Fiber Laser</h3>
                         <span class="pipeline-badge pipeline-badge--dev">Coming Soon</span>
                         <p class="pipeline-desc">Laser for isolation and clearing. CNC G-code for drilling and board cutout.</p>
-                        <span class="pipeline-action" aria-hidden="true">Locked</span>
+                        <span class="pipeline-action" aria-hidden="true">Locked, try UV</span>
                     </a>
                 </div>
 
@@ -1640,7 +1641,7 @@
     <!-- Initialization -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('EasyTrace5000 Advanced Workspace v1.2.0');
+            console.log('EasyTrace5000 Advanced Workspace v1.2.1');
 
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');

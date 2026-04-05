@@ -182,5 +182,6 @@
         }
     }
 
-    window.GlobalCurveRegistry = GlobalCurveRegistry;
+    window.GlobalCurveRegistry = GlobalCurveRegistry;             // The Blueprint
+    window.globalCurveRegistry = new GlobalCurveRegistry();       // The Live Data Container
 })();

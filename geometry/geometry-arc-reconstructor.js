@@ -47,13 +47,7 @@
             // Use global registry
             this.registry = window.globalCurveRegistry;
             if (!this.registry) {
-                console.error('[ArcReconstructor] Global curve registry not found!');
-                this.registry = { 
-                    register: () => null, 
-                    getCurve: () => null,
-                    clear: () => {},
-                    getCurvesForPrimitive: () => []
-                };
+                throw new Error('[ArcReconstructor] Global curve registry not found! Arc reconstruction isn\'t possible without it.');
             }
 
             // Statistics

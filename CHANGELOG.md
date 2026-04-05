@@ -4,6 +4,13 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-04-06
+
+### Fixed
+- **Laser SVG Ordering:** Laser will move away from all source geometry to protect it from heat build-up.
+- **Arc-Reconstruction:** Removed a silent error, fixed the underlying problem.
+- **Gerber Comments:** Will now be ignored, as they should've been.
+
 ## [1.2.0] - 2026-04-05
 
 ### Added

@@ -347,6 +347,11 @@
             const commands = [];
             let remaining = block;
 
+            // Ignore G04 comments completely
+            if (remaining.startsWith('G04')) {
+                return commands;
+            }
+
             // Extract G-codes
             if (remaining.includes('G36')) {
                 commands.push({ type: 'START_REGION', params: {}, line: lineNumber });
@@ -398,31 +403,12 @@
 
             // Create operation command
             if (coords || operation) {
-                if (operation === 'FLASH') {
-                    commands.push({
-                        type: 'FLASH',
-                        params: coords || {},
-                        line: lineNumber
-                    });
-                } else if (operation === 'DRAW') {
-                    commands.push({
-                        type: 'DRAW',
-                        params: coords || {},
-                        line: lineNumber
-                    });
-                } else if (operation === 'MOVE') {
-                    commands.push({
-                        type: 'MOVE',
-                        params: coords || {},
-                        line: lineNumber
-                    });
-                } else if (coords) {
-                    commands.push({
-                        type: 'DRAW',
-                        params: coords,
-                        line: lineNumber
-                    });
-                }
+                commands.push({
+                    type: 'COORD_ACTION', // Use a single generic action
+                    params: coords || {},
+                    operation: operation, // Passes 'DRAW', 'MOVE', 'FLASH', or null
+                    line: lineNumber
+                });
             }
 
             // Handle M-codes
@@ -762,16 +748,17 @@
         extractCoordinates(text) {
             const coords = {};
 
-            const xMatch = text.match(/X([+-]?\d+)/);
+            // Allow optional decimal values
+            const xMatch = text.match(/X([+-]?\d+(?:\.\d+)?)/);
             if (xMatch) coords.x = xMatch[1];
 
-            const yMatch = text.match(/Y([+-]?\d+)/);
+            const yMatch = text.match(/Y([+-]?\d+(?:\.\d+)?)/);
             if (yMatch) coords.y = yMatch[1];
 
-            const iMatch = text.match(/I([+-]?\d+)/);
+            const iMatch = text.match(/I([+-]?\d+(?:\.\d+)?)/);
             if (iMatch) coords.i = iMatch[1];
 
-            const jMatch = text.match(/J([+-]?\d+)/);
+            const jMatch = text.match(/J([+-]?\d+(?:\.\d+)?)/);
             if (jMatch) coords.j = jMatch[1];
 
             return Object.keys(coords).length > 0 ? coords : null;
@@ -836,71 +823,71 @@
                     }
                     break;
 
-                case 'MOVE':
-                    const movePos = this.parsePosition(command.params);
-                    if (this.state.inRegion && this.state.regionPoints.length === 0) {
-                        this.state.regionPoints.push(movePos);
+                case 'COORD_ACTION': {
+                    // Update the modal state if a new D-code is explicitly provided on this line
+                    if (command.operation) {
+                        this.state.operationMode = command.operation;
                     }
-                    this.state.position = movePos;
+
+                    // Default to DRAW if no operation has ever been specified
+                    const opMode = this.state.operationMode || 'DRAW';
+                    const pos = this.parsePosition(command.params);
+
+                    if (opMode === 'FLASH') {
+                        this.createFlash(pos);
+                        this.state.position = pos;
+                    } 
+                    else if (opMode === 'MOVE') {
+                        if (this.state.inRegion && this.state.regionPoints.length === 0) {
+                            this.state.regionPoints.push(pos);
+                        }
+                        this.state.position = pos;
+                    } 
+                    else if (opMode === 'DRAW') {
+                        if (!this.state.inRegion) {
+                            const precision = C.precision.zeroLength;
+                            const isZeroLengthDraw = Math.abs(this.state.position.x - pos.x) < precision &&
+                                                     Math.abs(this.state.position.y - pos.y) < precision;
+
+                            if (isZeroLengthDraw) {
+                                this.debug(`Detected zero-length draw at (${pos.x}, ${pos.y}). Treating as a flash.`);
+                                this.createFlash(pos);
+                                this.state.position = pos;
+                                break;
+                            }
+
+                            // Parse arc offsets if present
+                            let arcData = null;
+                            if (command.params.i !== undefined || command.params.j !== undefined) {
+                                arcData = {};
+                                if (command.params.i !== undefined) {
+                                    arcData.i = this.parseCoordinateValue(command.params.i, this.state.format, this.state.units);
+                                    this.stats.coordinatesParsed++;
+                                }
+                                if (command.params.j !== undefined) {
+                                    arcData.j = this.parseCoordinateValue(command.params.j, this.state.format, this.state.units);
+                                    this.stats.coordinatesParsed++;
+                                }
+                            }
+
+                            this.createTrace(this.state.position, pos, arcData);
+                        } else {
+                            if (this.state.regionPoints.length === 0) {
+                                this.state.regionPoints.push({ ...this.state.position });
+                            }
+                            this.state.regionPoints.push(pos);
+                        }
+                        this.state.position = pos;
+                    }
                     break;
-
-                case 'DRAW':
-                    const drawPos = this.parsePosition(command.params);
-
-                    // Zero-length draw detection: converts degenerate draws to flashes.
-                    // Only applies OUTSIDE regions (G36/G37). Inside regions, near-identical consecutive vertices are normal (dense curve approximations in KiCad pour polygons).
-                    // Intercepting them here creates spurious flash circles and drops vertices from the region, which can corrupt or destroy the pour polygon geometry.
-                    if (!this.state.inRegion) {
-                        const precision = C.precision.zeroLength;
-                        const isZeroLengthDraw = Math.abs(this.state.position.x - drawPos.x) < precision &&
-                                                 Math.abs(this.state.position.y - drawPos.y) < precision;
-                        // If start and end positions are the same treat it as a flash.
-                        if (isZeroLengthDraw) {
-                            this.debug(`Detected zero-length draw at (${drawPos.x}, ${drawPos.y}). Treating as a flash.`);
-                            this.createFlash(drawPos);
-                            this.state.position = drawPos;
-                            break;
-                        }
-                    }
-
-                    // Parse arc offsets if present
-                    let arcData = null;
-                    if (command.params.i !== undefined || command.params.j !== undefined) {
-                        arcData = {};
-                        if (command.params.i !== undefined) {
-                            arcData.i = this.parseCoordinateValue(command.params.i, this.state.format, this.state.units);
-                            this.stats.coordinatesParsed++;
-                        }
-                        if (command.params.j !== undefined) {
-                            arcData.j = this.parseCoordinateValue(command.params.j, this.state.format, this.state.units);
-                            this.stats.coordinatesParsed++;
-                        }
-                    }
-
-                    if (this.state.inRegion) {
-                        if (this.state.regionPoints.length === 0) {
-                            this.state.regionPoints.push({ ...this.state.position });
-                        }
-                        this.state.regionPoints.push(drawPos);
-                    } else {
-                        // Pass arc data to createTrace
-                        this.createTrace(this.state.position, drawPos, arcData);
-                    }
-                    this.state.position = drawPos;
-                    break;
-
-                case 'FLASH':
-                    const flashPos = this.parsePosition(command.params);
-                    this.createFlash(flashPos);
-                    this.state.position = flashPos;
-                    break;
+                }
 
                 case 'EOF':
                     this.debug('End of file');
                     break;
             }
         }
-        
+
         parsePosition(params) {
             const newPos = { ...this.state.position };
 

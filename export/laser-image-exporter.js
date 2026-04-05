@@ -268,21 +268,15 @@
                     const orderedPasses = reverseCutOrder ? layer.passes.slice().reverse() : layer.passes;
 
                     const isFilledLayer = layer.passes.some(p => p.type === 'filled');
-
-                    // Because shells and holes are split into separate pass objects, orderedPasses.length is double the physical pass count. Find the max pass index for correct palette length.
                     const physicalPassCount = Math.max(...orderedPasses.map(p => p.metadata?.pass || 1), 1);
 
-                    let passColorsExt = null;
-                    let passColorsInt = null;
+                    let passColors = null;
 
-                    // Compute per-pass colors for offset AND hatch strategies (not filled)
                     if (renderCtx.colorPerPass && physicalPassCount > 0 && !isFilledLayer) {
                         if (renderCtx.palette && renderCtx.palette.length > 0) {
-                            passColorsExt = this._generatePaletteMappedColors(physicalPassCount, 'external', renderCtx.palette, renderCtx.paletteLumping);
-                            passColorsInt = this._generatePaletteMappedColors(physicalPassCount, 'internal', renderCtx.palette, renderCtx.paletteLumping);
+                            passColors = this._generatePaletteMappedColors(physicalPassCount, renderCtx.palette, renderCtx.paletteLumping);
                         } else {
-                            passColorsExt = this._generatePassColors(layer.baseColor, physicalPassCount);
-                            passColorsInt = passColorsExt.slice().reverse();
+                            passColors = this._generatePassColors(layer.baseColor, physicalPassCount);
                         }
                     }
 
@@ -291,13 +285,12 @@
                         if (!pass.primitives || pass.primitives.length === 0) continue;
 
                         const physicalIndex = (pass.metadata?.pass || 1) - 1;
-                        const thermalGroup = pass.metadata?.thermalGroup || 'external';
 
-                        // Filled: collect separately to preserve hole topology (evenodd fill-rule)
+                        // Filled: collect separately to preserve hole topology
                         if (pass.type === 'filled') {
                             let colorHex = layer.baseColor;
-                            if (renderCtx.colorPerPass && passColorsExt) {
-                                colorHex = passColorsExt[physicalIndex] || layer.baseColor;
+                            if (renderCtx.colorPerPass && passColors) {
+                                colorHex = passColors[physicalIndex] || layer.baseColor;
                             }
                             const safeColor = colorHex.toUpperCase();
                             if (!filledBuckets.has(safeColor)) filledBuckets.set(safeColor, []);
@@ -308,18 +301,16 @@
                             continue;
                         }
 
-                        // Hatch passes: assign palette color per angular pass, funnel into color buckets.
-                        // Each hatch pass gets its own color so xCS treats them as separate operations.
+                        // Hatch passes: assign palette color per angular pass, funnel into color buckets
                         if (pass.metadata?.isHatch === true) {
                             let colorHex = layer.baseColor;
-                            if (renderCtx.colorPerPass && passColorsExt) {
-                                colorHex = passColorsExt[physicalIndex] || layer.baseColor;
+                            if (renderCtx.colorPerPass && passColors) {
+                                colorHex = passColors[physicalIndex] || layer.baseColor;
                             }
                             const safeColor = colorHex.toUpperCase();
                             if (!colorBuckets.has(safeColor)) colorBuckets.set(safeColor, []);
                             const bucket = colorBuckets.get(safeColor);
                             for (const prim of pass.primitives) {
-                                // Tag primitives so the render loop can detect hatch buckets
                                 if (!prim.properties) prim.properties = {};
                                 prim.properties.isHatch = true;
                                 bucket.push(prim);
@@ -327,33 +318,24 @@
                             continue;
                         }
 
-                        // Offset passes: decompose and assign to color buckets
+                        const assignToBucket = (singlePrim) => {
+                            let colorHex = layer.baseColor;
+                            if (renderCtx.colorPerPass && passColors) {
+                                colorHex = passColors[physicalIndex] || layer.baseColor;
+                            }
+
+                            const safeColor = colorHex.toUpperCase();
+                            if (!colorBuckets.has(safeColor)) colorBuckets.set(safeColor, []);
+                            colorBuckets.get(safeColor).push(singlePrim);
+                        };
+
                         for (const prim of pass.primitives) {
-                            const assignToBucket = (singlePrim, isHoleContext) => {
-                                let colorHex = layer.baseColor;
-
-                                if (renderCtx.colorPerPass && passColorsExt) {
-                                    const activeThermalGroup = isHoleContext
-                                        ? (thermalGroup === 'external' ? 'internal' : 'external')
-                                        : thermalGroup;
-
-                                    const isReversed = (activeThermalGroup === 'internal');
-                                    const colorMap = isReversed ? passColorsInt : passColorsExt;
-                                    colorHex = colorMap[physicalIndex] || layer.baseColor;
-                                }
-
-                                const safeColor = colorHex.toUpperCase();
-                                if (!colorBuckets.has(safeColor)) colorBuckets.set(safeColor, []);
-                                colorBuckets.get(safeColor).push(singlePrim);
-                            };
-
-                            if (prim.contours && prim.contours.length > 0) {
+                            if (prim.contours && prim.contours.length > 1) {
                                 for (const contour of prim.contours) {
-                                    const singlePrim = { ...prim, contours: [contour] };
-                                    assignToBucket(singlePrim, contour.isHole);
+                                    assignToBucket({ ...prim, contours: [contour] });
                                 }
                             } else {
-                                assignToBucket(prim, false);
+                                assignToBucket(prim);
                             }
                         }
                     }
@@ -450,19 +432,15 @@
                 // Calculate true physical pass count to prevent palette skewing
                 const physicalPassCount = Math.max(...orderedPasses.map(p => p.metadata?.pass || 1), 1);
 
-                let passColorsExt = null;
-                let passColorsInt = null;
-
+                let passColors = null;
                 const isFilledLayer = layer.passes.some(p => p.type === 'filled');
 
                 // Compute per-pass colors for offset AND hatch strategies (not filled)
                 if (renderCtx.colorPerPass && physicalPassCount > 0 && !isFilledLayer) {
                     if (renderCtx.palette && renderCtx.palette.length > 0) {
-                        passColorsExt = this._generatePaletteMappedColors(physicalPassCount, 'external', renderCtx.palette, renderCtx.paletteLumping);
-                        passColorsInt = this._generatePaletteMappedColors(physicalPassCount, 'internal', renderCtx.palette, renderCtx.paletteLumping);
+                        passColors = this._generatePaletteMappedColors(physicalPassCount, renderCtx.palette, renderCtx.paletteLumping);
                     } else {
-                        passColorsExt = this._generatePassColors(layer.baseColor, physicalPassCount);
-                        passColorsInt = passColorsExt.slice().reverse();
+                        passColors = this._generatePassColors(layer.baseColor, physicalPassCount);
                     }
                 }
 
@@ -480,28 +458,17 @@
                     if (!pass.primitives || pass.primitives.length === 0) continue;
 
                     const physicalIndex = (pass.metadata?.pass || 1) - 1;
-                    const thermalGroup = pass.metadata?.thermalGroup || 'external';
 
                     const isFilled = pass.type === 'filled';
                     const passId = this._buildPassId(layer.layerName, pass, physicalIndex);
                     const isHatch = pass.metadata?.isHatch === true;
 
-                    // Assign pass color based on topology
                     let color = layer.baseColor;
-                    if (renderCtx.colorPerPass && passColorsExt) {
-                        if (isHatch) {
-                            // Hatch: no shell/hole topology — always use external palette order
-                            color = passColorsExt[physicalIndex] || layer.baseColor;
-                        } else {
-                            const isReversed = (thermalGroup === 'internal');
-                            const colorMap = isReversed ? passColorsInt : passColorsExt;
-                            color = colorMap[physicalIndex] || layer.baseColor;
-                        }
+                    if (renderCtx.colorPerPass && passColors) {
+                        color = passColors[physicalIndex] || layer.baseColor;
                     }
 
                     let sortablePrimitives = (!isFilled && !isHatch && pass.primitives.length > 1)
-                        ? this._applyHeatManagementSort(pass.primitives)
-                        : pass.primitives;
 
                     // Reverse cut order for non-filled, non-hatch passes only
                     if (reverseCutOrder && !isFilled && !isHatch) {
@@ -1114,52 +1081,19 @@
         /**
          * Assigns colors based on laser controller profile palettes
          */
-        _generatePaletteMappedColors(passCount, offsetType, palette, enableLumping) {
+        _generatePaletteMappedColors(passCount, palette, enableLumping) {
             const maxColors = palette.length;
             const colors = [];
 
-            if (passCount <= maxColors || !enableLumping) {
-                // If no lumping is needed, map 1:1, but respect direction
-                for (let i = 0; i < passCount; i++) {
-                    if (offsetType === 'internal') {
-                        // Clearing: Pass[passCount-1] is smallest -> mapped to palette[0]
-                        colors.push(palette[passCount - 1 - i]); 
-                    } else {
-                        // Isolation: Pass[0] is smallest -> mapped to palette[0]
-                        colors.push(palette[i]); 
-                    }
-                }
-                return colors;
-            }
-
-            // If Lumping larger passes required
-            const lumpCount = passCount - maxColors + 1; // Number of passes sharing the 'massive' color
-
-            if (offsetType === 'internal') {
-                // Clearing: Pass 0 is the massive outer boundary. Pass[passCount-1] is the tiny center.
-                for (let i = 0; i < passCount; i++) {
-                    if (i < lumpCount) {
-                        // Massive outer rings dumped into the LAST color in the palette
-                        colors.push(palette[maxColors - 1]); 
-                    } else {
-                        // Map the remaining center rings back towards palette[0]
-                        const distFromEnd = (passCount - 1) - i;
-                        colors.push(palette[distFromEnd]);
-                    }
-                }
-            } else {
-                // Isolation: Pass 0 is tight against the trace. Pass[passCount-1] is massive.
-                for (let i = 0; i < passCount; i++) {
-                    if (i < maxColors - 1) {
-                        // Tight rings get unique early colors
-                        colors.push(palette[i]); 
-                    } else {
-                        // Outermost rings dumped into the LAST color in the palette
-                        colors.push(palette[maxColors - 1]); 
-                    }
+            for (let i = 0; i < passCount; i++) {
+                if (enableLumping) {
+                    // Lumps all passes >= maxColors into the final palette color
+                    colors.push(palette[Math.min(i, maxColors - 1)]);
+                } else {
+                    // Wraps around the palette if lumping is disabled
+                    colors.push(palette[i % maxColors]);
                 }
             }
-
             return colors;
         }
 
