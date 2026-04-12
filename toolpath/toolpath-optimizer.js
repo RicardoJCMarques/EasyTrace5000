@@ -729,12 +729,7 @@
             const newEntryX = center.x + (dx / distToCenter) * radius;
             const newEntryY = center.y + (dy / distToCenter) * radius;
 
-            // Rebuild circle commands
             plan.commands = [];
-            plan.commands.push(new MotionCommand('LINEAR', 
-                { x: newEntryX, y: newEntryY, z: depth }, 
-                { feed: feedRate }
-            ));
 
             const i_val = center.x - newEntryX;
             const j_val = center.y - newEntryY;

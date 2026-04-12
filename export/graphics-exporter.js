@@ -1,6 +1,6 @@
 /*!
- * @file        export/laser-image-exporter.js
- * @description Laser image processor
+ * @file        export/graphics-exporter.js
+ * @description Graphics processor
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
@@ -31,10 +31,10 @@
     const C = window.PCBCAMConfig.constants;
     const D = window.PCBCAMConfig.defaults;
 
-    class LaserImageExporter {
+    class GraphicsExporter {
         constructor() {
             this.DECIMAL = 4;
-            this.HAIRLINE_STROKE = 0.01; // mm — standard laser hairline
+            this.HAIRLINE_STROKE = 0.01; // mm — standard svg hairline
             this.MAX_CANVAS_DIM = 16000;
             this.FUSION_TOLERANCE = 0.001;  // REVIEW - Check if this should just be coordinate epsilon?
         }
@@ -468,7 +468,10 @@
                         color = passColors[physicalIndex] || layer.baseColor;
                     }
 
-                    let sortablePrimitives = (!isFilled && !isHatch && pass.primitives.length > 1)
+                    let sortablePrimitives = pass.primitives;
+                    if (renderCtx.heatManagement !== 'off' && !isFilled && !isHatch && sortablePrimitives.length > 1) {
+                        sortablePrimitives = this._applyHeatManagementSort(sortablePrimitives);
+                    }
 
                     // Reverse cut order for non-filled, non-hatch passes only
                     if (reverseCutOrder && !isFilled && !isHatch) {
@@ -577,7 +580,7 @@
                 const s = Math.min(this.MAX_CANVAS_DIM / pxW, this.MAX_CANVAS_DIM / pxH);
                 pxW = Math.floor(pxW * s);
                 pxH = Math.floor(pxH * s);
-                console.warn(`[LaserImageExporter] Canvas clamped to ${pxW}x${pxH}. Effective DPI reduced.`);
+                console.warn(`[graphicsExporter] Canvas clamped to ${pxW}x${pxH}. Effective DPI reduced.`);
             }
 
             const scaleX = pxW / widthMm;
@@ -1023,7 +1026,7 @@
             }
 
             if (totalRemoved > 0) {
-                console.log(`[LaserImageExporter] Hatch fusion: removed ${totalRemoved}, added ${totalAdded} (saved ${totalRemoved - totalAdded} elements)`);
+                console.log(`[graphicsExporter] Hatch fusion: removed ${totalRemoved}, added ${totalAdded} (saved ${totalRemoved - totalAdded} elements)`);
             }
         }
 
@@ -1180,5 +1183,5 @@
         }
     }
 
-    window.LaserImageExporter = LaserImageExporter;
+    window.GraphicsExporter = GraphicsExporter;
 })();

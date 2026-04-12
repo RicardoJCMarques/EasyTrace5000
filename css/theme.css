@@ -71,7 +71,7 @@
     --color-operation-drill: #4488ff;
     --color-operation-clearing: #44ff88;
     --color-operation-cutout: #ff00ff;
-    --color-operation-stencil: #6d0079;
+    --color-operation-stencil: #DA6651;
     --color-operation-toolpath: #00ffff;
 
     /* Canvas Colors */
@@ -199,6 +199,10 @@
 
 [data-op-type="cutout"] .category-icon {
     color: var(--color-operation-cutout);
+}
+
+[data-op-type="stencil"] .category-icon {
+    color: var(--color-operation-stencil);
 }
 
 /* ============================================================================

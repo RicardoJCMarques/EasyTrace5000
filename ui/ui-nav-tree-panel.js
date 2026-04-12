@@ -39,7 +39,6 @@
             this.lang = ui.lang;
             this.nodes = new Map();
             this.selectedNode = null;
-            this.expandedCategories = new Set(['isolation', 'drill', 'clearing', 'cutout', 'stencil']);
 
             this.nextNodeId = 1;
 
@@ -57,16 +56,6 @@
 
             this.setupCategories();
 
-            const collapseAllBtn = document.getElementById('collapse-all-btn');
-            if (collapseAllBtn) {
-                collapseAllBtn.addEventListener('click', () => this.collapseAll());
-            }
-
-            const expandAllBtn = document.getElementById('expand-all-btn');
-            if (expandAllBtn) {
-                expandAllBtn.addEventListener('click', () => this.expandAll());
-            }
-
             // Add keyboard navigation
             this.setupKeyboardNavigation();
 
@@ -81,60 +70,15 @@
             categories.forEach(category => {
                 const header = category.querySelector('.category-header');
                 const opType = category.dataset.opType;
-                const addBtn = category.querySelector('.add-file-btn');
 
                 if (header) {
+                    // Make the entire header trigger the file input
                     header.addEventListener('click', (e) => {
-                        if (!e.target.closest('.add-file-btn')) {
-                            this.toggleCategory(opType);
-                        }
-                    });
-                }
-
-                if (addBtn) {
-                    addBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         this.ui.triggerFileInput(opType);
                     });
                 }
-
-                if (this.expandedCategories.has(opType)) {
-                    category.classList.add('expanded');
-                }
             });
-        }
-
-        toggleCategory(opType) {
-            const category = document.querySelector(`.operation-category[data-op-type="${opType}"]`);
-            if (!category) return;
-
-            const header = category.querySelector('.category-header');
-            const isExpanded = category.classList.contains('expanded');
-
-            if (isExpanded) {
-                category.classList.remove('expanded');
-                this.expandedCategories.delete(opType);
-                if (header) header.setAttribute('aria-expanded', 'false');
-            } else {
-                category.classList.add('expanded');
-                this.expandedCategories.add(opType);
-                if (header) header.setAttribute('aria-expanded', 'true');
-            }
-        }
-
-        expandAll() {
-            document.querySelectorAll('.operation-category').forEach(cat => {
-                cat.classList.add('expanded');
-                const opType = cat.dataset.opType;
-                if (opType) this.expandedCategories.add(opType);
-            });
-        }
-
-        collapseAll() {
-            document.querySelectorAll('.operation-category').forEach(cat => {
-                cat.classList.remove('expanded');
-            });
-            this.expandedCategories.clear();
         }
 
         addFileNode(operation) {
@@ -201,6 +145,7 @@
             }
 
             label.textContent = operation.file.name;
+            label.title = operation.file.name;
 
             // Attach listener for the main content click
             content.addEventListener('click', (e) => {
@@ -227,19 +172,6 @@
             });
 
             category.appendChild(fileNode);
-
-            // Update category aria-expanded since it now has files
-            const categoryElement = category.closest('.operation-category');
-            if (categoryElement) {
-                const categoryHeader = categoryElement.querySelector('.category-header');
-                if (!categoryElement.classList.contains('expanded')) {
-                    categoryElement.classList.add('expanded');
-                    this.expandedCategories.add(operation.type);
-                }
-                if (categoryHeader) {
-                    categoryHeader.setAttribute('aria-expanded', 'true');
-                }
-            }
 
             this.updateFileGeometries(fileId, operation);
 
@@ -770,17 +702,11 @@
                 const filesContainer = category.querySelector('.category-files');
 
                 if (header) {
-                    header.setAttribute('role', 'treeitem');
+                    header.setAttribute('role', 'button');
+                    header.setAttribute('aria-label', `Add file to ${category.dataset.opType}`);
                     header.setAttribute('tabindex', index === 0 ? '0' : '-1');
                     header.setAttribute('aria-level', '1');
-
-                    const hasFiles = filesContainer && filesContainer.children.length > 0;
-                    if (hasFiles) {
-                        header.setAttribute('aria-expanded', 
-                            category.classList.contains('expanded').toString());
-                    } else {
-                        header.removeAttribute('aria-expanded');
-                    }
+                    header.removeAttribute('aria-expanded'); // No longer expandable REVIEW IF THIS IS NECESSARY
                 }
 
                 if (filesContainer) {
@@ -810,15 +736,7 @@
 
                 case 'ArrowRight':
                     e.preventDefault();
-                    if (isCategory) {
-                        const category = focused.closest('.operation-category');
-                        if (!category.classList.contains('expanded')) {
-                            this.expandCategoryByHeader(focused);
-                        } else {
-                            const firstFile = category.querySelector('.file-node-content');
-                            if (firstFile) this.setFocusOnItem(focused, firstFile);
-                        }
-                    } else if (isFileContent) {
+                    if (isFileContent) {
                         const firstGeo = focused.closest('.file-node')?.querySelector('.geometry-node-content');
                         if (firstGeo) this.setFocusOnItem(focused, firstGeo);
                     }
@@ -826,9 +744,7 @@
 
                 case 'ArrowLeft':
                     e.preventDefault();
-                    if (isCategory) {
-                        this.collapseCategoryByHeader(focused);
-                    } else if (isGeometryContent) {
+                    if (isGeometryContent) {
                         const parentFile = focused.closest('.file-node')?.querySelector('.file-node-content');
                         if (parentFile) this.setFocusOnItem(focused, parentFile);
                     } else if (isFileContent) {
@@ -841,9 +757,7 @@
                 case ' ':
                     e.preventDefault();
                     if (isCategory) {
-                        this.toggleCategory(focused.closest('.operation-category').dataset.opType);
-                        focused.setAttribute('aria-expanded', 
-                            focused.closest('.operation-category').classList.contains('expanded').toString());
+                        this.ui.triggerFileInput(focused.closest('.operation-category').dataset.opType);
                     } else if (isFileContent) {
                         this.activateFileNode(focused);
                     } else if (isGeometryContent) {
@@ -990,24 +904,6 @@
             if (newItem) {
                 newItem.setAttribute('tabindex', '0');
                 newItem.focus();
-            }
-        }
-
-        expandCategoryByHeader(header) {
-            const category = header.closest('.operation-category');
-            if (category && !category.classList.contains('expanded')) {
-                category.classList.add('expanded');
-                header.setAttribute('aria-expanded', 'true');
-                this.expandedCategories.add(category.dataset.opType);
-            }
-        }
-
-        collapseCategoryByHeader(header) {
-            const category = header.closest('.operation-category');
-            if (category && category.classList.contains('expanded')) {
-                category.classList.remove('expanded');
-                header.setAttribute('aria-expanded', 'false');
-                this.expandedCategories.delete(category.dataset.opType);
             }
         }
 
@@ -1159,14 +1055,6 @@
                 
                 // Trigger the CSS fade-in
                 target.classList.add('onboarding-highlight');
-                
-                const category = target.closest('.operation-category');
-                // Ensure parent category is expanded so the highlight is visible
-                if (category && !category.classList.contains('expanded')) {
-                    category.classList.add('expanded');
-                    const opType = category.dataset.opType;
-                    if (opType) this.expandedCategories.add(opType);
-                }
             }, 300); 
         }
 

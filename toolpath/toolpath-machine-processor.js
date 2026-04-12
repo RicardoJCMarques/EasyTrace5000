@@ -147,7 +147,7 @@
                     const endXY = { x: plan.commands[0].x, y: plan.commands[0].y };
 
                     // Validate strategy parameters
-                    if (!strategy.feedRate || !strategy.plungeRate || !strategy.cutDepth) {
+                    if (strategy.feedRate === undefined || strategy.plungeRate === undefined || strategy.cutDepth === undefined) {
                         console.error('[MachineProcessor] Missing strategy parameters for centerline slot');
                         continue;
                     }

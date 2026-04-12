@@ -1,6 +1,6 @@
 /*!
- * @file        cam-controller.js
- * @description Initializes and connects core and UI
+ * @file        cam-easytrace5000.js
+ * @description EasyTrace5000 application controller — UI orchestration, file handling, export
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
@@ -30,8 +30,9 @@
 
     const C = window.PCBCAMConfig.constants;
     const D = window.PCBCAMConfig.defaults;
-    const debugState = D.debug;
+    const PRECISION = C.precision.coordinate;
     const textConfig = C.ui.text;
+    const debugState = D.debug;
     const timingConfig = D.ui.timing;
     const opsConfig = D.operations;
 
@@ -78,9 +79,8 @@
             this.parameterManager = null;
             this.modalManager = null;
 
-            // Pipeline components (declare but don't instantiate yet)
-            this.gcodeGenerator = null
-            this.toolpathOptimizer = null
+            // Application-specific pipeline components (G-code needs language manager)
+            this.gcodeGenerator = null;
 
             // Track initialization state
             this.initState = {
@@ -94,7 +94,7 @@
             // Pending operations queue
             this.pendingOperations = [];
 
-            // Upload modal file tracking - one per operation type
+            // Upload modal file tracking
             this.uploadedFiles = {
                 isolation: null,
                 drill: null,
@@ -106,7 +106,7 @@
             // Queued files for processing
             this.queuedFiles = [];
 
-            // Pipeline state — drives UI behavior across all modules
+            // Pipeline state
             this.pipelineState = {
                 type: 'cnc',        // 'cnc' | 'laser' | 'hybrid'
                 laser: null         // null for CNC, object for laser/hybrid
@@ -114,8 +114,9 @@
         }
 
         /**
-         * Sets the active pipeline. Called from laser config modal or welcome card.
+         * Pipeline Management
          */
+
         setPipeline(type, laserConfig = null) {
             this.pipelineState.type = type;
             this.pipelineState.laser = laserConfig;
@@ -158,7 +159,7 @@
             // HYBRID LOCK: Disabled until laser operations are fully verified.
             if (this.pipelineState.type === 'laser') {
                 this.debug(`Hybrid upgrade blocked for ${operationType} — feature locked.`);
-                return false; 
+                return false;
             }
 
             if (this.pipelineState.type !== 'laser') return false;
@@ -175,9 +176,6 @@
                 // Trigger UI updates for the new hybrid state
                 if (this.ui?.controls) {
                     this.ui.controls.updatePipelineFieldVisibility();
-                }
-                if (this.ui?.navTreePanel) {
-                    this.ui.navTreePanel.refreshTree();
                 }
                 return true;
             }
@@ -242,11 +240,15 @@
             return false;
         }
 
+        /**
+         * Initialization
+         */
+
         async initialize() {
             console.log('EasyTrace5000 Workspace initializing...');
 
             try {
-                // Initialize core with skip init flag to control WASM loading
+                // Initialize core engine with skip init flag to control WASM loading
                 this.core = new PCBCamCore({ skipInit: true });
 
                 // Initialize managers before UI
@@ -256,21 +258,38 @@
                 // Load the language file before the UI
                 await this.languageManager.load();
 
-                // Restore pipeline state before UI init so components can read it
+                // Restore pipeline state before UI init
                 this.restorePipeline();
 
-                // Instantiate pipeline components *after* core exists
+                // Application-specific: G-code generator (needs language manager)
                 this.gcodeGenerator = new GCodeGenerator(D.gcode);
                 this.gcodeGenerator.setCore(this.core);
                 this.gcodeGenerator.setLanguageManager(this.languageManager);
-                this.geometryTranslator = new GeometryTranslator(this.core);
-                this.toolpathOptimizer = new ToolpathOptimizer();
-                this.machineProcessor = new MachineProcessor(this.core);
+
+                // Initialize engine-owned pipeline components
+                this.core.initializePipeline();
 
                 // Expose early so UI modules can access controller during init
                 window.pcbcam = this;
 
-                // Initialize UI with core and language manager
+                // ── Register operation handlers ──
+                if (typeof IsolationOperationHandler !== 'undefined') {
+                    this.core.registerHandler('isolation', new IsolationOperationHandler(this.core));
+                }
+                if (typeof ClearingOperationHandler !== 'undefined') {
+                    this.core.registerHandler('clearing', new ClearingOperationHandler(this.core));
+                }
+                if (typeof CutoutOperationHandler !== 'undefined') {
+                    this.core.registerHandler('cutout', new CutoutOperationHandler(this.core));
+                }
+                if (typeof DrillOperationHandler !== 'undefined') {
+                    this.core.registerHandler('drill', new DrillOperationHandler(this.core));
+                }
+                if (typeof StencilOperationHandler !== 'undefined') {
+                    this.core.registerHandler('stencil', new StencilOperationHandler(this.core));
+                }
+
+                // Initialize UI
                 this.ui = new PCBCamUI(this.core, this.languageManager);
 
                 // Initialize UI (pass parameter manager)
@@ -281,8 +300,8 @@
                     throw new Error('UI initialization failed');
                 }
 
-                // Initialize managers that DO depend on UI
-                this.modalManager = new ModalManager(this)
+                // Initialize managers that depend on UI
+                this.modalManager = new ModalManager(this);
 
                 // Pass tool library to core if using advanced UI
                 if (this.ui.toolLibrary) {
@@ -298,7 +317,7 @@
                     this.ui?.updateStatus(textConfig.statusWarning || 'Warning: Clipper2 failed to load - fusion disabled', 'warning');
                 }
 
-                // Sync pipeline UI state after all components are ready
+                // Sync pipeline UI state
                 if (this.isLaserPipeline() && this.ui?.controls) {
                     this.ui.controls.updatePipelineFieldVisibility();
                 }
@@ -318,7 +337,7 @@
                 // Hide loading overlay and show UI
                 this.hideLoadingOverlay();
 
-                // Check if the user is trying to deep-link to support
+                // Handle deep-linking
                 const hash = window.location.hash.substring(1);
 
                 // Modals allowed to be deep-linked
@@ -337,7 +356,7 @@
 
                     // Clean the URL
                     history.replaceState(null, null, window.location.pathname);
-                } 
+                }
                 else {
                     // Standard Boot: always show Welcome.
                     this.modalManager.showModal('welcome', { examples: PCB_EXAMPLES });
@@ -399,6 +418,10 @@
                 }, duration);
             }
         }
+
+        /**
+         * Toolbar Handlers
+         */
 
         setupToolbarHandlers() {
             // Quick Actions dropdown
@@ -490,6 +513,10 @@
                 });
             }
         }
+
+        /**
+         * Global Event Handlers
+         */
 
         setupGlobalHandlers() {
             // Handle resize
@@ -733,30 +760,6 @@
                     return;
                 }
 
-                // Escape: Deselect / Close modal
-                if (key === 'Escape') {
-                    e.preventDefault();
-
-                    // If in parameter panel, return to tree
-                    const paramForm = document.getElementById('property-form');
-                    if (paramForm && paramForm.contains(document.activeElement)) {
-                        const selected = document.querySelector('.file-node-content.selected, .geometry-node-content.selected');
-                        if (selected) {
-                            selected.focus();
-                            return;
-                        }
-                    }
-
-                    // Otherwise deselect current selection
-                    if (this.ui?.navTreePanel?.selectedNode) {
-                        this.ui.navTreePanel.selectedNode = null;
-                        document.querySelectorAll('.file-node-content.selected, .geometry-node.selected')
-                            .forEach(el => el.classList.remove('selected'));
-                        this.ui?.operationPanel?.clearProperties();
-                    }
-                    return;
-                }
-
                 // ═══════════════════════════════════════════════════════════════
                 // Add a function to 1-0 numeric characters?
                 // Select source files? Select operation and cycle source files?
@@ -818,7 +821,7 @@
 
             const currentIndex = focusables.indexOf(document.activeElement);
             if (currentIndex === -1) return;
- 
+
             let nextIndex = currentIndex + direction;
             if (nextIndex < 0) nextIndex = focusables.length - 1;
             if (nextIndex >= focusables.length) nextIndex = 0;
@@ -854,6 +857,10 @@
                 this.ui.updateOriginDisplay();
             }
         }
+
+        /**
+         * File Processing
+         */
 
         async processUploadedFiles() {
             for (const [type, file] of Object.entries(this.uploadedFiles)) {
@@ -914,7 +921,7 @@
 
             // Load all files serially
             for (const [type, filepath] of Object.entries(example.files)) {
-                try {                    
+                try { 
                     const response = await fetch(filepath);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -929,7 +936,6 @@
                 } catch (e) {
                     console.error(`Failed to load example file ${filepath}:`, e);
                     this.ui?.updateStatus(`Failed to load ${filepath.split('/').pop()}`, 'error');
-                    this.ui?.showOperationMessage?.(type, `Failed to load ${filepath.split('/').pop()}`, 'error');
                 }
             }
 
@@ -944,11 +950,6 @@
             await this.ui.updateRendererAsync();
             this.ui.renderer.core.zoomFit();
             this.ui.renderer.render();
-
-            // Expand operations after loading
-            if (this.ui.navTreePanel) {
-                this.ui.navTreePanel.expandAll();
-            }
         }
 
         async processFile(file, type) {
@@ -1008,61 +1009,74 @@
                             setTimeout(() => {
                                 if (!this.modalManager) return;
 
-                                const defaultTolerance = 0.1;
-                                let lastProbeResult = null;
+                                const info = operation._closureInfo;
 
-                                // Run initial probe
+                                // Analyze and sort gaps FIRST
+                                const actualGaps = [...(info.gaps && info.gaps.length > 0 
+                                    ? info.gaps 
+                                    : GeometryUtils.analyzeSegmentGaps(info.rawPrimitives)
+                                )].reverse();
+
+                                // Calculate the suggested tolerance
+                                const suggestedTol = (Math.max(...actualGaps) + PRECISION).toFixed(3);
+
+                                // Run the initial probe
+                                let lastProbeResult = null;
                                 const runProbe = (tol) => {
                                     const { loops, orphans } = GeometryUtils.extractClosedLoops(info.rawPrimitives, tol);
-
                                     return {
-                                        // Only succeed if ALL segments found a home
                                         success: orphans.length === 0 && loops.length > 0,
                                         loops: loops,
                                         chainedCount: info.rawPrimitives.length - orphans.length,
                                         totalSegments: info.rawPrimitives.length,
                                         unchainedCount: orphans.length,
-                                        gapCount: loops.length, // Rough estimate
-                                        maxGap: tol
+                                        testedTol: tol
                                     };
                                 };
 
-                                lastProbeResult = runProbe(defaultTolerance);
+                                lastProbeResult = runProbe(parseFloat(suggestedTol));
+
+                                // Build the UI strings
+                                const gapTextList = actualGaps.length > 0 
+                                    ? actualGaps.slice(0, 3).map(g => g.toFixed(4) + 'mm').join(', ')
+                                    : 'Unknown';
 
                                 const formatResult = (result) => {
-                                    if (!result) {
-                                        return '<span style="color:var(--color-error, #ff4444);">Probe failed — no segments could be analyzed.</span>';
-                                    }
+                                    if (!result) return '<span style="color:var(--color-error, #ff4444);">Probe failed.</span>';
+                                    
                                     const ok = result.success;
                                     const color = ok ? 'var(--color-success, #44bb44)' : 'var(--color-error, #ff4444)';
                                     const icon = ok ? '✓' : '✗';
 
-                                    let html = `<span style="color:${color};font-weight:bold;">${icon} ${result.chainedCount}/${result.totalSegments} segments chained</span>`;
-                                    if (result.unchainedCount > 0) {
-                                        html += `<br><span style="color:var(--color-error, #ff4444);">${result.unchainedCount} segment(s) could not be chained — tolerance too low or geometry is fragmented.</span>`;
-                                    }
-                                    if (result.gapCount > 0) {
-                                        html += `<br>Gaps bridged: ${result.gapCount} (max: ${result.maxGap.toFixed(3)} mm)`;
-                                    }
+                                    let html = `<span style="color:${color};font-weight:bold;">${icon} ${result.chainedCount} of ${result.totalSegments} segments joined</span>`;
+
                                     if (ok) {
-                                        html += `<br><span style="color:var(--color-success, #44bb44);">Path can be closed.</span>`;
+                                        html += `<br><span style="color:var(--color-text-secondary);">Path successfully closed using ${result.testedTol}mm tolerance.</span>`;
+                                    } else {
+                                        html += `<br><span style="color:var(--color-error, #ff4444);">${result.unchainedCount} segment(s) remain disconnected.</span>`;
+                                        html += `<br><span style="color:var(--color-text-secondary);">Increase tolerance to bridge larger gaps.</span>`;
                                     }
                                     return html;
                                 };
 
                                 const extractedCount = operation._extractedLoops ? operation._extractedLoops.length : 0;
                                 const orphanCount = info.rawPrimitives.length;
-                                const contextNote = extractedCount > 0
-                                    ? `${extractedCount} closed loop(s) were extracted successfully. ${orphanCount} segment(s) could not be assigned to any closed loop.`
-                                    : `The cutout geometry in <strong>${operation.file.name}</strong> does not form a closed loop at the default precision (${(C.precision.coordinate).toFixed(3)} mm).`;
+                                
+                                let introHTML = `<p>The cutout geometry in <strong>${operation.file.name}</strong> contains disconnected segments.</p>`;
+                                if (extractedCount > 0) {
+                                    introHTML = `<p><strong>${extractedCount}</strong> closed loop(s) were extracted successfully, but <strong>${orphanCount}</strong> segment(s) remain disconnected.</p>`;
+                                }
 
                                 const bodyHTML = `
-                                    <p>${contextNote}</p>
-                                    <p>Set the maximum gap tolerance to bridge between segment endpoints:</p>
+                                    ${introHTML}
+                                    <div class="closure-gaps">
+                                        <strong>Detected Gaps:</strong> ${gapTextList}
+                                    </div>
+                                    <p>Set a tolerance large enough to bridge the maximum gap:</p>
                                     <div class="closure-controls">
                                         <label for="closure-tolerance">Tolerance:</label>
                                         <div class="input-unit">
-                                            <input type="number" id="closure-tolerance" value="${defaultTolerance}" min="0.001" max="5.0" step="0.01">
+                                            <input type="number" id="closure-tolerance" value="${suggestedTol}" min="0.001" max="5.0" step="0.001">
                                             <span class="unit">mm</span>
                                         </div>
                                         <button id="closure-test-btn" class="btn btn--secondary btn--compact">Test</button>
@@ -1082,12 +1096,9 @@
                                         onConfirm: async () => {
                                             const resolvedLoops = lastProbeResult?.loops;
                                             if (resolvedLoops && resolvedLoops.length > 0) {
-                                                // Merge with any loops that were already closed perfectly
                                                 const allLoops = operation._extractedLoops 
                                                     ? [...operation._extractedLoops, ...resolvedLoops] 
                                                     : resolvedLoops;
-
-                                                // Re-run topology classification to find holes inside the newly closed boards
                                                 const topology = GeometryUtils.classifyCutoutTopology(allLoops);
                                                 const compounds = GeometryUtils.assembleCutoutCompounds(topology);
 
@@ -1099,6 +1110,14 @@
 
                                                 delete operation.needsClosurePrompt;
                                                 delete operation._closureInfo;
+
+                                                // Clear the specific warning now that the geometry is fixed
+                                                if (operation.warnings) {
+                                                    operation.warnings = operation.warnings.filter(w => {
+                                                        const msg = typeof w === 'string' ? w : w.message;
+                                                        return !msg.includes('do not form closed loops');
+                                                    });
+                                                }
 
                                                 if (this.ui?.navTreePanel) {
                                                     const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
@@ -1127,7 +1146,6 @@
                                     }
                                 );
 
-                                // Wire up test button after modal renders
                                 requestAnimationFrame(() => {
                                     const testBtn = document.getElementById('closure-test-btn');
                                     const tolInput = document.getElementById('closure-tolerance');
@@ -1144,8 +1162,6 @@
                                             const tol = Math.min(5.0, Math.max(0.001, rawTol));
                                             lastProbeResult = runProbe(tol);
                                             resultsDiv.innerHTML = formatResult(lastProbeResult);
-
-                                            // Enable/disable confirm button based on result
                                             if (confirmBtn) {
                                                 confirmBtn.disabled = !lastProbeResult?.success;
                                             }
@@ -1155,8 +1171,6 @@
                                         tolInput.addEventListener('keypress', (e) => {
                                             if (e.key === 'Enter') doTest();
                                         });
-
-                                        // Set initial confirm button state
                                         if (confirmBtn) {
                                             confirmBtn.disabled = !lastProbeResult?.success;
                                         }
@@ -1238,7 +1252,7 @@
                                         confirmText: 'Convert',
                                         cancelText: 'Skip',
                                         onConfirm: async () => {
-                                            this.core._promoteDrillRecoverable(
+                                            this.core.getHandler('drill').promoteDrillRecoverable(
                                                 operation,
                                                 circleCount > 0,
                                                 obroundCount > 0
@@ -1266,6 +1280,15 @@
 
                         this.ui?.showOperationMessage?.(type, `Successfully loaded ${count} primitives`, 'success');
                         this.ui?.updateStatus(`Loaded ${operation.file.name}: ${count} primitives`, 'success');
+
+                        // Surface any classification warnings to the status log
+                        if (operation.warnings && operation.warnings.length > 0) {
+                            for (const w of operation.warnings) {
+                                const msg = typeof w === 'string' ? w : w.message;
+                                const severity = (typeof w === 'object' && w.severity) || 'warning';
+                                this.ui?.updateStatus(`${operation.file.name}: ${msg}`, severity);
+                            }
+                        }
 
                         // Update coordinate system after successful parse
                         if (this.core?.coordinateSystem) {
@@ -1354,8 +1377,8 @@
         }
 
         getOperationTypeFromExtension(ext) {
-            for (let [type, op] of Object.entries(opsConfig)) {
-                if (op.extensions && op.extensions.some(e => e.slice(1) === ext)) {
+            for (let [type, config] of Object.entries(this.core.fileTypes)) {
+                if (config.extensions && config.extensions.some(e => e.slice(1) === ext)) {
                     return type;
                 }
             }
@@ -1389,6 +1412,13 @@
             }
         }
 
+        /**
+         * Toolpath Orchestration
+         *
+         * Application-specific: gathers UI state, applies processor
+         * quirks, then delegates to the core engine pipeline.
+         */
+
         async orchestrateToolpaths(options) {
             if (!options?.operationIds || !this.core || !this.gcodeGenerator) {
                 console.error("[Controller] Orchestration failed");
@@ -1399,6 +1429,7 @@
 
             this.debug(`Building contexts for ${options.operationIds.length} operations...`);
 
+            // Gather UI state and build contexts (application-specific)
             const operationContextPairs = [];
             for (const opId of options.operationIds) {
                 try {
@@ -1413,8 +1444,7 @@
 
                     const ctx = this.core.buildToolpathContext(opId, this.parameterManager);
 
-                    // Processor-specific context preprocessing.
-                    // Roland compatibility: enforce machine-safe settings.
+                    // Apply application-specific processor changes
                     if (options.postProcessor === 'roland') {
                         this._preprocessRolandContext(ctx, operation);
                     }
@@ -1430,76 +1460,16 @@
                 return { gcode: "; No valid operations to process", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
             }
 
-            this.debug(`Batching ${operationContextPairs.length} operations by instance...`);
-            const operationSuperBatches = [];
+            // Execute the engine pipeline
+            this.debug('Executing pipeline...');
+            const { plans: allMachineReadyPlans } = await this.core.executePipeline(
+                operationContextPairs,
+                { optimize: options.optimize === true }
+            );
 
-            // Create one batch per operation instance (not by type)
-            for (const { operation, context } of operationContextPairs) {
-                operationSuperBatches.push({
-                    type: operation.type,
-                    operationId: operation.id,
-                    pairs: [{ operation, context }] // Single operation per batch
-                });
-            }
-
-            this.debug(`Created ${operationSuperBatches.length} super-batches (one per operation).`);
-
-            // Loop through the super-batches
-            const allMachineReadyPlans = [];
-            const firstContext = operationContextPairs[0].context; // Get global context
-
-            // This is the persistent machine position that tracks between batches
-            let currentMachinePos = { x: 0, y: 0, z: firstContext.machine.safeZ };
-
-            for (const superBatch of operationSuperBatches) {
-                this.debug(`--- Processing Super-Batch: ${superBatch.type} (${superBatch.pairs.length} op/s) ---`);
-
-                // Translate (for this super-batch only)
-                const batchPlans = await this.geometryTranslator.translateAllOperations(superBatch.pairs);
-
-                if (!batchPlans || batchPlans.length === 0) {
-                    this.debug(`--- Super-Batch ${superBatch.type} produced no plans. Skipping. ---`);
-                    continue;
-                }
-
-                // Optimize (for this super-batch only)
-                let plansToProcess = batchPlans;
-                if (options.optimize === true) {
-                    this.debug(`Optimizing ${batchPlans.length} plans for batch ${superBatch.type}...`);
-
-                    // Pass the machine's current position to the optimizer
-                    // The optimizer will group by tool (groupKey) within this batch
-                    plansToProcess = this.toolpathOptimizer.optimize(batchPlans, currentMachinePos);
-                }
-
-                if (plansToProcess.length === 0) {
-                    this.debug(`--- Super-Batch ${superBatch.type} had no plans after optimization. Skipping. ---`);
-                    continue;
-                }
-
-                // Add machine operations (for this batch only)
-                this.debug('Adding machine operations...');
-
-                // Pass the first context of this batch to the machine processor
-                const batchContext = superBatch.pairs[0].context;
-
-                // Pass the current position, and get the new position back
-                const { plans: machineReadyPlans, endPos } = this.machineProcessor.processPlans(
-                    plansToProcess,
-                    batchContext,
-                    currentMachinePos // Pass the starting position
-                );
-
-                allMachineReadyPlans.push(...machineReadyPlans);
-
-                // The returned endPos is the new starting position for the NEXT batch
-                currentMachinePos = endPos;
-
-                this.debug(`--- Super-Batch ${superBatch.type} complete. New machine pos: (${endPos.x.toFixed(2)}, ${endPos.y.toFixed(2)}, ${endPos.z.toFixed(2)}) ---`);
-            }
-
-            // Generate G-code (from all combined machine-ready plans)
+            // Generate G-code (application-specific export format)
             this.debug('Generating G-code...');
+            const firstContext = operationContextPairs[0].context;
             const gcodeConfig = firstContext.gcode;
             const machineConfig = firstContext.machine;
             const processorSettings = firstContext.processorSettings || {};
@@ -1530,7 +1500,7 @@
             // Calculate metrics
             this.debug('Calculating metrics...');
             // Pass context to metrics to get machine settings
-            const { estimatedTime, totalDistance } = this.machineProcessor.calculatePathMetrics(allMachineReadyPlans, firstContext);
+            const { estimatedTime, totalDistance } = this.core.machineProcessor.calculatePathMetrics(allMachineReadyPlans, firstContext);
 
             return {
                 gcode: gcode,
@@ -1625,9 +1595,9 @@
         }
 
         /**
-         * Orchestrates laser export for the given operations.
-         * Preserves the pass hierarchy so the exporter can assign distinct colors per hatch angle and apply correct stroke/fill per strategy.
+         * Laser Export Orchestration
          */
+
         async orchestrateLaserExport(operations, exportOptions = {}) {
             this.debug(`Orchestrating laser export for ${operations.length} operation(s)`);
 
@@ -1764,12 +1734,12 @@
                 return { success: false };
             }
 
-            if (typeof LaserImageExporter === 'undefined') {
+            if (typeof GraphicsExporter === 'undefined') {
                 this.ui?.updateStatus('Laser image exporter module not loaded', 'error');
                 return { success: false };
             }
 
-            const exporter = new LaserImageExporter();
+            const exporter = new GraphicsExporter();
             const files = [];
 
             try {
@@ -1798,7 +1768,10 @@
             return { success: false, files: [] };
         }
 
-        // API for external access
+        /**
+         * API for external access
+         */
+
         getCore() {
             return this.core;
         }
@@ -1854,7 +1827,10 @@
         }
     }
 
-    // Initialize application
+    /**
+     * Application Bootstrap
+     */
+
     let controller = null;
 
     async function startApplication() {

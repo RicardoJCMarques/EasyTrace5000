@@ -70,15 +70,9 @@
             });
         }
 
-        /**
-         * Override: UCCNC expects dwell in milliseconds (G4 P<ms>).
-         * The pipeline provides dwell in seconds.
-         */
-        generateDwell(cmd) {
-            const seconds = cmd.dwell || cmd.duration || 0;
-            const ms = Math.round(seconds * 1000);
-            if (ms <= 0) return '';
-            return `G4 P${ms}`;
+        // Needs dwell period in miliseconds
+        formatDwell(seconds) {
+            return Math.round(seconds * 1000);
         }
 
         /**

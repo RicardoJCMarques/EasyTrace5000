@@ -73,6 +73,12 @@
                             primitiveOrPrimitives : [primitiveOrPrimitives];
                         primArray.forEach(prim => {
                             if (this.validatePrimitive(prim)) {
+                                // Safety check: all parsers must output mm-normalized data.
+                                // If this fires, the source parser has a bug.
+                                if (gerberData.layers.units === 'inch') {
+                                    console.warn('[Plotter] Received inch-unit data — parser should have converted to mm. Applying fallback conversion.');
+                                    this._convertToMetric(prim); 
+                                }
                                 this.primitives.push(prim);
                                 this.creationStats.primitivesCreated++;
                             }
@@ -200,10 +206,28 @@
             if (!analyticSubpaths || analyticSubpaths.length === 0) {
                 if (region.points && region.points.length > 0) {
 
+                    // Pull arc metadata from the parser's contour structure if available
+                    let arcSegments = region.contours?.[0]?.arcSegments || [];
+                    let curveIds = region.contours?.[0]?.curveIds || [];
+
                     // Outer contours must be CCW (positive winding area)
                     const isCW = GeometryUtils.isClockwise(region.points);
                     if (isCW) {
                         region.points.reverse();
+
+                        // Reverse arc metadata to match the new point order
+                        if (arcSegments.length > 0) {
+                            const n = region.points.length;
+                            arcSegments = arcSegments.map(arc => ({
+                                ...arc,
+                                startIndex: (n - 1) - arc.endIndex,
+                                endIndex: (n - 1) - arc.startIndex,
+                                startAngle: arc.endAngle,
+                                endAngle: arc.startAngle,
+                                clockwise: !arc.clockwise
+                            }));
+                        }
+
                         this.debug(`Normalized Gerber fallback region to CCW (outer).`);
                     }
 
@@ -212,8 +236,8 @@
                         nestingLevel: 0,
                         isHole: false,
                         parentId: null,
-                        arcSegments: [],
-                        curveIds: []
+                        arcSegments: arcSegments,
+                        curveIds: curveIds
                     };
 
                     const primitive = new PathPrimitive([contour], {
@@ -620,6 +644,34 @@
             }
 
             return this.plotTrace(trace);
+        }
+
+        _convertToMetric(prim) {
+            const scale = 25.4;
+            if (prim.type === 'circle') {
+                prim.center.x *= scale;
+                prim.center.y *= scale;
+                prim.radius *= scale;
+            } else if (prim.type === 'arc') {
+                prim.center.x *= scale;
+                prim.center.y *= scale;
+                prim.radius *= scale;
+                prim.startPoint.x *= scale;
+                prim.startPoint.y *= scale;
+                prim.endPoint.x *= scale;
+                prim.endPoint.y *= scale;
+            } else if (prim.contours) {
+                prim.contours.forEach(c => {
+                    c.points.forEach(p => { p.x *= scale; p.y *= scale; });
+                    if (c.arcSegments) {
+                        c.arcSegments.forEach(as => {
+                            as.center.x *= scale; as.center.y *= scale; as.radius *= scale;
+                        });
+                    }
+                });
+            }
+            // Update bounds after scaling
+            prim.calculateBounds();
         }
 
         validatePrimitive(primitive) {

@@ -152,7 +152,7 @@
                 "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
                 "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
             ],
-            "softwareVersion": "1.2.1",
+            "softwareVersion": "1.3.0",
             "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
             "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
             "installUrl": "https://cam.eltryus.design/easytrace5000/",
@@ -298,116 +298,79 @@
             <div class="sidebar-section browser-section">
                 <header class="section-header">
                     <h2>Operations</h2>
-                    <div class="section-actions">
-                        <button class="btn--icon btn btn--icon btn--compact" id="collapse-all-btn" title="Collapse All" aria-label="Collapse All">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M13 11L8 6L3 11"/>
-                                <path d="M13 6L8 1L3 6"/>
-                            </svg>
-                        </button>
-                        <button class="btn--icon btn btn--icon btn--compact" id="expand-all-btn" title="Expand All" aria-label="Expand All">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M13 5L8 10L3 5"/>
-                                <path d="M13 10L8 15L3 10"/>
-                            </svg>
-                        </button>
-                    </div>
                 </header>
                 <div class="tree-view" id="operations-tree">
                     <div class="operation-category" data-op-type="isolation">
-                        <div class="category-header">
-                            <span class="tree-expand-icon">▶</span>
+                        <div class="category-header" title="Click to add Isolation file">
                             <span class="category-icon">
                                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                                    <circle cx="10" cy="10" r="8"/>
-                                    <circle cx="10" cy="10" r="5"/>
-                                    <circle cx="10" cy="10" r="2"/>
+                                    <circle cx="10" cy="10" r="8"/><circle cx="10" cy="10" r="5"/><circle cx="10" cy="10" r="2"/>
                                 </svg>
                             </span>
                             <span class="category-label">Isolation Routing</span>
-                            <button class="btn--icon btn--tiny add-file-btn btn btn--icon btn--compact" data-op-type="isolation" title="Add File" aria-label="Add Isolation File">
-                                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
-                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.5"/>
-                                </svg>
-                            </button>
+                            <span class="category-action-icon" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                            </span>
                         </div>
                         <div class="category-files"></div>
                     </div>
+
                     <div class="operation-category" data-op-type="drill">
-                        <div class="category-header">
-                            <span class="tree-expand-icon">▶</span>
+                        <div class="category-header" title="Click to add Drill file">
                             <span class="category-icon">
                                 <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                                    <circle cx="10" cy="10" r="6"/>
-                                    <line x1="10" y1="4" x2="10" y2="16"/>
-                                    <line x1="4" y1="10" x2="16" y2="10"/>
+                                    <circle cx="10" cy="10" r="6"/><line x1="10" y1="4" x2="10" y2="16"/><line x1="4" y1="10" x2="16" y2="10"/>
                                 </svg>
                             </span>
                             <span class="category-label">Drilling</span>
-                            <button class="btn--icon btn--tiny add-file-btn btn btn--icon btn--compact" data-op-type="drill" title="Add File" aria-label="Add Drill File">
-                                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
-                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.5"/>
-                                </svg>
-                            </button>
+                            <span class="category-action-icon" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                            </span>
                         </div>
                         <div class="category-files"></div>
                     </div>
+
                     <div class="operation-category" data-op-type="clearing">
-                        <div class="category-header">
-                            <span class="tree-expand-icon">▶</span>
+                        <div class="category-header" title="Click to add Clearing file">
                             <span class="category-icon">
                                 <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                                    <path d="M14 8 A6 6 0 1 1 6 8"/>
-                                    <polyline points="14,4 14,8 10,8"/>
+                                    <path d="M14 8 A6 6 0 1 1 6 8"/><polyline points="14,4 14,8 10,8"/>
                                 </svg>
                             </span>
                             <span class="category-label">Copper Clearing</span>
-                            <button class="btn--icon btn--tiny add-file-btn btn btn--icon btn--compact" data-op-type="clearing" title="Add File" aria-label="Add Clearing File">
-                                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
-                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.5"/>
-                                </svg>
-                            </button>
+                            <span class="category-action-icon" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                            </span>
                         </div>
                         <div class="category-files"></div>
                     </div>
+
                     <div class="operation-category" data-op-type="cutout">
-                        <div class="category-header">
-                            <span class="tree-expand-icon">▶</span>
+                        <div class="category-header" title="Click to add Cutout file">
                             <span class="category-icon">
                                 <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                                    <circle cx="6" cy="6" r="3"/>
-                                    <circle cx="6" cy="16" r="3"/>
-                                    <line x1="9" y1="8" x2="20" y2="2"/>
-                                    <line x1="9" y1="14" x2="20" y2="20"/>
+                                    <circle cx="6" cy="6" r="3"/><circle cx="6" cy="16" r="3"/><line x1="9" y1="8" x2="20" y2="2"/><line x1="9" y1="14" x2="20" y2="20"/>
                                 </svg>
                             </span>
                             <span class="category-label">Board Cutout</span>
-                            <button class="btn--icon btn--tiny add-file-btn btn btn--icon btn--compact" data-op-type="cutout" title="Add File" aria-label="Add Cutout File">
-                                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 20 20">
-                                    <path d="M10 5v10M5 10h10" stroke="currentColor" stroke-width="1.5"/>
-                                </svg>
-                            </button>
+                            <span class="category-action-icon" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                            </span>
                         </div>
                         <div class="category-files"></div>
                     </div>
+
                     <div class="operation-category" data-op-type="stencil">
-                        <div class="category-header" tabindex="-1" role="treeitem" aria-level="1">
-                            <span class="tree-expand-icon">▶</span>
+                        <div class="category-header" title="Click to add Stencil file">
                             <span class="category-icon">
                                 <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="2" y="3" width="16" height="14" rx="1.5"/>
-                                    <rect x="4.5" y="5.5" width="2.5" height="2" rx="0.5"/>
-                                    <rect x="8.75" y="5.5" width="2.5" height="2" rx="0.5"/>
-                                    <rect x="13" y="5.5" width="2.5" height="2" rx="0.5"/>
-                                    <circle cx="5.75" cy="13" r="1.25"/>
-                                    <circle cx="10" cy="13" r="1.25"/>
-                                    <circle cx="14.25" cy="13" r="1.25"/>
-                                    <circle cx="2" cy="10" r="0.75" fill="currentColor" stroke="none"/>
-                                    <circle cx="18" cy="10" r="0.75" fill="currentColor" stroke="none"/>
+                                    <rect x="2" y="3" width="16" height="14" rx="1.5"/><rect x="4.5" y="5.5" width="2.5" height="2" rx="0.5"/><rect x="8.75" y="5.5" width="2.5" height="2" rx="0.5"/><rect x="13" y="5.5" width="2.5" height="2" rx="0.5"/><circle cx="5.75" cy="13" r="1.25"/><circle cx="10" cy="13" r="1.25"/><circle cx="14.25" cy="13" r="1.25"/><circle cx="2" cy="10" r="0.75" fill="currentColor" stroke="none"/><circle cx="18" cy="10" r="0.75" fill="currentColor" stroke="none"/>
                                 </svg>
                             </span>
-                            <span class="category-label">Solder Stencil (Experimental)</span>
-                            <button class="btn btn--icon btn--compact add-file-btn" data-op-type="stencil" title="Add Stencil File" aria-label="Add Stencil File">+</button>
+                            <span class="category-label">Solder Stencil (Exp.)</span>
+                            <span class="category-action-icon" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                            </span>
                         </div>
                         <div class="category-files" role="group"></div>
                     </div>
@@ -860,7 +823,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.2.1</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.3.0</a> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -1622,6 +1585,13 @@
     <script defer src="../toolpath/toolpath-tab-planner.js"></script>
     <script defer src="../toolpath/toolpath-geometry-translator.js"></script>
     <script defer src="../export/processors/base-processor.js"></script>
+    <script defer src="../operations/base-operation-handler.js"></script>
+    <script defer src="../operations/offset-operation-handler.js"></script>
+    <script defer src="../operations/isolation-operation-handler.js"></script>
+    <script defer src="../operations/clearing-operation-handler.js"></script>
+    <script defer src="../operations/cutout-operation-handler.js"></script>
+    <script defer src="../operations/drill-operation-handler.js"></script>
+    <script defer src="../operations/stencil-operation-handler.js"></script>
     <script defer src="../export/processors/grbl-processor.js"></script>
     <script defer src="../export/processors/makera-processor.js"></script>
     <script defer src="../export/processors/grblHAL-processor.js"></script>
@@ -1631,17 +1601,17 @@
     <script defer src="../export/processors/mach3-processor.js"></script>
     <script defer src="../export/processors/linuxcnc-processor.js"></script>
     <script defer src="../export/gcode-generator.js"></script>
-    <script defer src="../export/laser-image-exporter.js"></script>
+    <script defer src="../export/graphics-exporter.js"></script>
     <script defer src="../utils/coordinate-system.js"></script>
     <script defer src="../utils/canvas-exporter.js"></script>
     <script defer src="../cam-core.js"></script>
     <script defer src="../cam-ui.js"></script>
-    <script defer src="../cam-controller.js"></script>
+    <script defer src="../cam-easytrace5000.js"></script>
 
     <!-- Initialization -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('EasyTrace5000 Advanced Workspace v1.2.1');
+            console.log('EasyTrace5000 Advanced Workspace v1.3.0');
 
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');

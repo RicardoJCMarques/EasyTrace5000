@@ -399,22 +399,50 @@
     align-items: center;
     padding: var(--spacing-sm) var(--spacing-md);
     background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border-primary);
     cursor: pointer;
     min-height: var(--touch-target-compact);
+    border-radius: var(--radius) var(--radius) 0 0; 
 }
 
 .category-header:hover {
     background: var(--color-bg-hover);
 }
 
-.tree-expand-icon {
-    width: 1rem;
-    font-size: var(--font-size-xs);
-    color: var(--color-text-secondary);
+.category-action-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-secondary); /* Matches the default text color */
+    transition: color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.operation-category.expanded .tree-expand-icon {
-    transform: rotate(90deg);
+.category-header:hover .category-action-icon {
+    transform: scale(1.1);
+}
+
+/* Operation-specific hover colors (Ring + Icon) */
+.operation-category[data-op-type="isolation"] .category-header:hover { 
+    box-shadow: inset 0 0 0 1px var(--color-operation-isolation); 
+}
+.operation-category[data-op-type="drill"] .category-header:hover { 
+    box-shadow: inset 0 0 0 1px var(--color-operation-drill);
+}
+.operation-category[data-op-type="clearing"] .category-header:hover { 
+    box-shadow: inset 0 0 0 1px var(--color-operation-clearing);
+}
+.operation-category[data-op-type="cutout"] .category-header:hover { 
+    box-shadow: inset 0 0 0 1px var(--color-operation-cutout);
+}
+.operation-category[data-op-type="stencil"] .category-header:hover { 
+    box-shadow: inset 0 0 0 1px var(--color-operation-stencil);
+}
+
+/* Ensure the label takes up the middle space to push the + icon to the right */
+.category-label {
+    flex: 1;
+    font-weight: 500;
+    font-size: var(--font-size-sm);
 }
 
 .category-icon {
@@ -440,13 +468,20 @@
 }
 
 .category-files {
-    display: none;
+    display: block;
     padding: var(--spacing-xs);
     background: var(--color-bg-secondary);
 }
 
-.operation-category.expanded .category-files {
-    display: block;
+/* Hide the container if the category has no file nodes inside it */
+.operation-category:not(:has(.file-node)) .category-files {
+    display: none;
+}
+
+/* Remove the flat bottom border from the header if there are no files */
+.operation-category:not(:has(.file-node)) .category-header {
+    border-bottom: none;
+    border-radius: var(--radius); 
 }
 
 /* File nodes */
@@ -944,9 +979,6 @@
     }
 
     /* Replace expand triangles with border indicator - Consider using both on winder screens */
-    .tree-expand-icon {
-        display: none;
-    }
 
     .category-icon {
         margin-left: 0;

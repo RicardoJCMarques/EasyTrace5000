@@ -1194,6 +1194,20 @@
     color: var(--color-text-hint);
 }
 
+.closure-gaps {
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius);
+    padding: var(--spacing-sm) var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    font-size: var(--font-size-sm);
+}
+
+.closure-gaps strong {
+    color: var(--color-warning);
+    margin-right: var(--spacing-xs);
+}
+
 .closure-results {
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius);

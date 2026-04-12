@@ -80,6 +80,13 @@ const CONFIG = {
         'toolpath/toolpath-machine-processor.js',
         'toolpath/toolpath-tab-planner.js',
         'toolpath/toolpath-geometry-translator.js',
+        'operations/base-operation-handler.js',
+        'operations/offset-operation-handler.js',
+        'operations/isolation-operation-handler.js',
+        'operations/clearing-operation-handler.js',
+        'operations/cutout-operation-handler.js',
+        'operations/drill-operation-handler.js',
+        'operations/stencil-operation-handler.js',
         'export/processors/base-processor.js',
         'export/processors/grbl-processor.js',
         'export/processors/makera-processor.js',
@@ -90,12 +97,12 @@ const CONFIG = {
         'export/processors/mach3-processor.js',
         'export/processors/linuxcnc-processor.js',
         'export/gcode-generator.js',
-        'export/laser-image-exporter.js',
+        'export/graphics-exporter.js',
         'utils/coordinate-system.js',
         'utils/canvas-exporter.js',
         'cam-core.js',
         'cam-ui.js',
-        'cam-controller.js'
+        'cam-easytrace5000.js'
     ],
 
     // Documentation pages to process (CSS inlining only)

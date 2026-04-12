@@ -875,7 +875,50 @@
                             if (this.state.regionPoints.length === 0) {
                                 this.state.regionPoints.push({ ...this.state.position });
                             }
-                            this.state.regionPoints.push(pos);
+
+                            const regionPt = { ...pos };
+
+                            // Extract arc data for region vertices (same logic as the non-region branch)
+                            if (command.params.i !== undefined || command.params.j !== undefined) {
+                                const arcI = command.params.i !== undefined
+                                    ? this.parseCoordinateValue(command.params.i, this.state.format, this.state.units) : 0;
+                                const arcJ = command.params.j !== undefined
+                                    ? this.parseCoordinateValue(command.params.j, this.state.format, this.state.units) : 0;
+                                this.stats.coordinatesParsed += (command.params.i !== undefined ? 1 : 0)
+                                                            + (command.params.j !== undefined ? 1 : 0);
+
+                                if (this.state.interpolation === 'cw_arc' || this.state.interpolation === 'ccw_arc') {
+                                    const isCW = this.state.interpolation === 'cw_arc';
+                                    const start = this.state.position;
+                                    const center = { x: start.x + arcI, y: start.y + arcJ };
+                                    const radius = Math.hypot(arcI, arcJ);
+                                    const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+                                    const endAngle = Math.atan2(pos.y - center.y, pos.x - center.x);
+
+                                    if (window.globalCurveRegistry) {
+                                        const curveId = window.globalCurveRegistry.register({
+                                            type: 'arc',
+                                            center: { x: center.x, y: center.y },
+                                            radius: radius,
+                                            startAngle: startAngle,
+                                            endAngle: endAngle,
+                                            clockwise: isCW,
+                                            source: 'gerber_region'
+                                        });
+
+                                        if (curveId) {
+                                            regionPt.curveId = curveId;
+                                            // Tag the preceding point (arc start) so the segment is bounded
+                                            const lastPt = this.state.regionPoints[this.state.regionPoints.length - 1];
+                                            if (lastPt && !lastPt.curveId) {
+                                                lastPt.curveId = curveId;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            this.state.regionPoints.push(regionPt);
                         }
                         this.state.position = pos;
                     }
@@ -925,7 +968,7 @@
                 const curr = rawPoints[i];
                 const dx = curr.x - prev.x;
                 const dy = curr.y - prev.y;
-                if (dx * dx + dy * dy > PRECISION * PRECISION) {
+                if (dx * dx + dy * dy > PRECISION * PRECISION || curr.curveId > 0 || prev.curveId > 0) {
                     deduped.push(curr);
                 }
             }
@@ -983,12 +1026,38 @@
                 finalPoints.push({ ...first });
             }
 
+            // Build arcSegments array from curveId-tagged vertices
+            const arcSegments = [];
+            const uniqueCurveIds = new Set();
+
+            for (let i = 1; i < finalPoints.length; i++) {
+                const pt = finalPoints[i];
+                if (pt.curveId && pt.curveId > 0 && window.globalCurveRegistry) {
+                    const curve = window.globalCurveRegistry.getCurve(pt.curveId);
+                    if (curve) {
+                        arcSegments.push({
+                            startIndex: i - 1,
+                            endIndex: i,
+                            center: curve.center,
+                            radius: curve.radius,
+                            startAngle: curve.startAngle,
+                            endAngle: curve.endAngle,
+                            clockwise: curve.clockwise,
+                            curveId: pt.curveId
+                        });
+                        uniqueCurveIds.add(pt.curveId);
+                    }
+                }
+            }
+
             // Create contours structure
             const contours = [{
                 points: finalPoints,
                 nestingLevel: 0,
                 isHole: false,
-                parentId: null
+                parentId: null,
+                arcSegments: arcSegments,
+                curveIds: Array.from(uniqueCurveIds)
             }];
 
             const region = {
@@ -1022,6 +1091,11 @@
             const keep = new Uint8Array(n); // initialized to 0
             keep[0] = 1;
             keep[n - 1] = 1;
+
+            // Protect vertices belonging to registered analytic curves
+            for (let i = 0; i < n; i++) {
+                if (points[i].curveId && points[i].curveId > 0) keep[i] = 1;
+            }
 
             // Iterative stack to avoid recursion depth issues.
             // Each entry is [startIndex, endIndex].
@@ -1124,6 +1198,12 @@
                     const A = result[result.length - 1];
                     const B = current[i];
                     const C = current[i + 1];
+
+                    // Never remove vertices that belong to a registered analytic curve
+                    if (B.curveId && B.curveId > 0) {
+                        result.push(B);
+                        continue;
+                    }
 
                     const abx = B.x - A.x, aby = B.y - A.y;
                     const bcx = C.x - B.x, bcy = C.y - B.y;
@@ -1307,6 +1387,10 @@
 
             // Calculate bounds
             this.layers.bounds = this.calculateBounds(this.layers.objects);
+
+            // All coordinates and dimensions were converted to mm during parsing.
+            // Mark the output as mm so downstream code doesn't double-convert.
+            this.layers.units = 'mm';
         }
 
         getApertureShape(char) {

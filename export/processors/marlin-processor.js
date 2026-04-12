@@ -60,7 +60,7 @@
             const lines = [];
 
             if (speed > 0) {
-                const pwmValue = Math.min(255, Math.round((speed / 30000) * 255));
+                const pwmValue = Math.min(255, Math.round((speed / this.config.maxSpindleSpeed) * 255));
                 const cmd = options.useM3 ? `M3 S${pwmValue}` : `M106 S${pwmValue}`;
                 lines.push(this.appendComment(cmd, c.spindleStart, options));
 
@@ -74,6 +74,11 @@
             }
             
             return lines.join('\n');
+        }
+
+        // Needs dwell period in miliseconds
+        formatDwell(seconds) {
+            return Math.round(seconds * 1000);
         }
 
         // REVIEW - Useless?

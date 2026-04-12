@@ -313,11 +313,10 @@
 
         /**
          * Formats dwell time for the P parameter.
-         * Base implementation: milliseconds (GRBL convention).
-         * Override in processors that expect seconds (LinuxCNC, some Mach3).
          */
         formatDwell(seconds) {
-            return Math.round(seconds * 1000);
+            // Standard G-code (GRBL, etc.) expects seconds for G4 P
+            return parseFloat(seconds.toFixed(3));
         }
 
         generateArc(cmd) {

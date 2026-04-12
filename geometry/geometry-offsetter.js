@@ -43,8 +43,7 @@
 
             // --- BOOLEAN OFFSET TOGGLE ---
             // When true:  all path offsetting routes through Clipper2 boolean operations.
-            // When false: arc-containing contours try the analytic offsetter first,
-            //             then fall back to the polygon-only offsetter.
+            // When false: arc-containing contours try the analytic offsetter first, then fall back to the polygon-only offsetter. NOTICE: All related code is commented out.
             this.USE_BOOLEAN_OFFSETTING = true;
 
             // Analytic strategy (loads gracefully if module is present)
@@ -234,6 +233,7 @@
             }
             // -----------------------------------
 
+            /**
             // Multi-contour decomposition
             if (path.contours.length > 1) {
                 this.debug(`Decomposing compound path with ${path.contours.length} contours for offset`);
@@ -260,6 +260,7 @@
             if (!contour.points || contour.points.length < 2) return null;
 
             return this._offsetSingleContour(contour, distance, path.properties);
+             */
         }
 
         /**
@@ -426,6 +427,7 @@
         /**
          * Offsets a single contour. Tries analytic (arc-aware) first if arcs are present and the analytic module is loaded, then falls back to the polygon-only path.
          */
+        /**
         _offsetSingleContour(contour, distance, pathProperties) {
             const hasArcs = contour.arcSegments && contour.arcSegments.length > 0;
 
@@ -487,11 +489,12 @@
                 polarity: contour.isHole ? 'clear' : 'dark'
             });
         }
+         */
 
         /*
          * POLYGON-ONLY CONTOUR OFFSET
          */
-
+        /**
         _offsetContourPoints(points, distance) {
             const isInternal = distance < 0;
             const offsetDist = Math.abs(distance);
@@ -653,11 +656,12 @@
 
             return finalPoints;
         }
+         */
 
         /*
          * POLYGON JOINT HELPERS
          */
-
+        /**
         _createMiterBevelJoint(seg1, seg2, miterLimit) {
             const intersection = GeometryMath.lineLineIntersection(
                 seg1.p1, seg1.p2,
@@ -678,6 +682,7 @@
                 return [seg1.p2];
             }
         }
+         */
 
         /*
          * ANALYTIC SHAPE OFFSETTERS

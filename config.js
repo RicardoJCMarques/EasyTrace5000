@@ -432,8 +432,8 @@ window.PCBCAMConfig = {
                 cutting: {
                     cutDepth: -0.04,
                     depthPerPass: 0.04,
-                    cutFeed: 100,
-                    plungeFeed: 50,
+                    feedRate: 100,
+                    plungeRate: 50,
                     spindleSpeed: 10000
                 },
                 defaultSettings: {
@@ -450,8 +450,8 @@ window.PCBCAMConfig = {
                 cutting: {
                     cutDepth: -1.8,
                     depthPerPass: 0.5,
-                    cutFeed: 50,
-                    plungeFeed: 25,
+                    feedRate: 50,
+                    plungeRate: 25,
                     spindleSpeed: 10000
                 },
                 strategy: {
@@ -475,8 +475,8 @@ window.PCBCAMConfig = {
                 cutting: {
                     cutDepth: -0.1,
                     depthPerPass: 0.1,
-                    cutFeed: 200,
-                    plungeFeed: 50,
+                    feedRate: 200,
+                    plungeRate: 50,
                     spindleSpeed: 10000
                 },
                 defaultSettings: {
@@ -493,8 +493,8 @@ window.PCBCAMConfig = {
                 cutting: {
                     cutDepth: -1.8,
                     depthPerPass: 0.3,
-                    cutFeed: 150,
-                    plungeFeed: 50,
+                    feedRate: 150,
+                    plungeRate: 50,
                     spindleSpeed: 10000
                 },
                 defaultSettings: {

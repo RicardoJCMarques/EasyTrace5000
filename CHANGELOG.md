@@ -4,6 +4,16 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-12
+
+### Changed
+- **Operation Orchestration:** Large refactor of the core and controller files, split operation handlers allow easier additions and maintenance in the future.
+- **NavTree Operations:** They are no longer collapsible. Instead, clicking on them triggers the file explorer to allow adding source geometry faster.
+
+### Fixed
+- **Default Dwell:** Base processor was scaling x1000 miliseconds values that were meant to be seconds. Now post-processors that need miliseconds do the overwritting.
+- **Typos in Config.js:** Small typos causing big problems.
+
 ## [1.2.1] - 2026-04-06
 
 ### Fixed

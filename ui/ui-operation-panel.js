@@ -1255,7 +1255,7 @@
 
             try {
                 // Run the heavy task
-                await this.core.generateOffsetGeometry(operation, params);
+                await this.core.getHandler(operation.type).generateGeometry(operation, params);
 
                 if (this.ui.navTreePanel) {
                     const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
@@ -1284,7 +1284,7 @@
                 'info'
             );
             try {
-                await this.core.generateDrillStrategy(operation, params);
+                await this.core.getHandler(operation.type).generateGeometry(operation, params);
                 if (this.ui.navTreePanel) {
                     const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
                     if (fileNode) {
@@ -1318,7 +1318,7 @@
 
             try {
                 // Pass the params object as the settings.
-                await this.core.generateOffsetGeometry(operation, params);
+                await this.core.getHandler(operation.type).generateGeometry(operation, params);
 
                 if (this.ui.navTreePanel) {
                     const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
@@ -1345,7 +1345,7 @@
             await new Promise(resolve => setTimeout(resolve, 10));
 
             try {
-                await this.core.generateStencilGeometry(operation, params);
+                await this.core.getHandler(operation.type).generateGeometry(operation, params);
 
                 if (this.ui.navTreePanel) {
                     const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);
@@ -1452,7 +1452,7 @@
             await new Promise(resolve => setTimeout(resolve, 10));
 
             try {
-                await this.core.generateLaserGeometry(operation, laserSettings);
+                await this.core.getHandler(operation.type).generateLaserGeometry(operation, laserSettings);
 
                 if (this.ui.navTreePanel) {
                     const fileNode = this.ui.navTreePanel.getNodeByOperationId(operation.id);

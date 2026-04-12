@@ -82,7 +82,7 @@
                     ...validationRules.passes,
                     stage: 'geometry',
                     category: 'offset',
-                    operationTypes: ['isolation', 'clearing', 'cutout']
+                    operationTypes: 'isolation'
                 },
                 stepOver: {
                     type: 'number',
@@ -91,7 +91,7 @@
                     ...validationRules.stepOver,
                     stage: 'geometry',
                     category: 'offset',
-                    operationTypes: ['isolation', 'clearing', 'cutout']
+                    operationTypes: 'isolation'
                 },
                 combineOffsets: {
                     type: 'checkbox',
@@ -99,7 +99,7 @@
                     default: true,
                     stage: 'geometry',
                     category: 'offset',
-                    operationTypes: ['isolation', 'clearing', 'cutout']
+                    operationTypes: 'isolation'
                 },
                 millHoles: {
                     type: 'checkbox',

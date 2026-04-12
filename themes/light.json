@@ -51,20 +51,20 @@
     },
     "canvas": {
       "background": "#cdcdcd",
-      "grid": "#373737",
-      "origin": "#373737",
+      "grid": "#909090",
+      "origin": "#909090",
       "originOutline": "#ffffff",
-      "bounds": "#373737",
-      "ruler": "373737",
-      "rulerText": "#373737"
+      "bounds": "#909090",
+      "ruler": "909090",
+      "rulerText": "#909090"
     },
     "geometry": {
       "source": {
-        "isolation": "#ff8844",
-        "drill": "#4488ff",
+        "isolation": "#ff9555",
+        "drill": "#5588bb",
         "clearing": "#44ff88",
-        "cutout": "#444444",
-        "stencil": "#860694"
+        "cutout": "#b0b0b0",
+        "stencil": "#cc55cc"
       },
       "offset": {
         "external": "#a60000",

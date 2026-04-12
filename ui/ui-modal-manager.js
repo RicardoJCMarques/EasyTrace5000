@@ -805,11 +805,6 @@
                 cutout: null
             };
 
-            // Update UI
-            if (this.ui?.navTreePanel) {
-                this.ui.navTreePanel.expandAll();
-            }
-
             if (this.ui?.renderer) {
                 setTimeout(() => {
                     this.ui.renderer.core.zoomFit();

@@ -1656,27 +1656,22 @@
             // ==========================================
             const unchainedCount = edges.length - chain.length;
             const gapDistance = Math.hypot(head.x - tail.x, head.y - tail.y);
-            const isClosed = gapDistance <= PRECISION;
+            const isClosed = gapDistance <= chainTolerance;
             const isFullyChained = unchainedCount === 0;
 
             if (gapDistance > PRECISION) gapCount++;
             maxGap = Math.max(maxGap, gapDistance);
 
-            if (!isFullyChained) {
-                console.warn(`[GeoUtils] Stitching failed: chained ${chain.length}/${edges.length} segments.`);
-                if (!forceClose) {
-                    return { success: false, isOpen: true, gapDistance, unchainedCount, totalSegments: edges.length, chainedCount: chain.length, gapCount, maxGap };
+            if (!isClosed || !isFullyChained) {
+                if (!isFullyChained) {
+                    if (!forceClose) {
+                        return { success: false, isOpen: true, gapDistance, unchainedCount, totalSegments: edges.length, chainedCount: chain.length, gapCount, maxGap };
+                    }
+                } else if (!isClosed) {
+                    if (!forceClose) {
+                        return { success: false, isOpen: true, gapDistance, unchainedCount: 0, totalSegments: edges.length, chainedCount: chain.length, gapCount, maxGap };
+                    }
                 }
-                // forceClose with unchained segments: proceed with partial chain
-                this.debug(`Force-closing with ${unchainedCount} unchained segment(s)`);
-            }
-
-            if (!isClosed && isFullyChained) {
-                console.warn(`[GeoUtils] Stitched segments did not form a closed loop. Gap: ${gapDistance.toFixed(4)}mm`);
-                if (!forceClose) {
-                    return { success: false, isOpen: true, gapDistance, unchainedCount: 0, totalSegments: edges.length, chainedCount: chain.length, gapCount, maxGap };
-                }
-                this.debug(`Force-closing gap of ${gapDistance.toFixed(4)}mm`);
             }
 
             // ==========================================
@@ -1840,6 +1835,68 @@
         },
 
         /**
+         * Analyzes gaps between endpoints of a set of primitives, generally cutouts.
+         * @param {Array} primitives - Array of RenderPrimitives or contours.
+         * @param {number} tolerance - Distance below which segments are considered connected.
+         * @returns {Array<number>} Sorted array of unique gap distances in mm.
+         */
+        analyzeSegmentGaps(primitives, tolerance = PRECISION) {
+            const endpoints = [];
+            
+            // Extract all start/end points from the primitives
+            for (let i = 0; i < primitives.length; i++) {
+                const prim = primitives[i];
+                let start, end;
+                if (prim.type === 'arc') {
+                    start = prim.startPoint;
+                    end = prim.endPoint;
+                } else if (prim.contours?.[0]?.points?.length > 1) {
+                    const pts = prim.contours[0].points;
+                    start = pts[0];
+                    end = pts[pts.length - 1];
+                }
+                if (start && end) {
+                    endpoints.push({ pt: start, primIdx: i });
+                    endpoints.push({ pt: end, primIdx: i });
+                }
+            }
+
+            const gaps = [];
+            // Find the closest neighbor for every endpoint (excluding its own other end)
+            for (let i = 0; i < endpoints.length; i++) {
+                let minSq = Infinity;
+                for (let j = 0; j < endpoints.length; j++) {
+                    // Don't compare a primitive to itself
+                    if (endpoints[i].primIdx === endpoints[j].primIdx) continue;
+                    
+                    const dx = endpoints[i].pt.x - endpoints[j].pt.x;
+                    const dy = endpoints[i].pt.y - endpoints[j].pt.y;
+                    const sq = dx * dx + dy * dy;
+                    if (sq < minSq) minSq = sq;
+                }
+                
+                if (minSq < Infinity) {
+                    const dist = Math.sqrt(minSq);
+                    // Filter out joints that are already successfully connected at current PRECISION
+                    if (dist > tolerance) { 
+                        gaps.push(dist);
+                    }
+                }
+            }
+
+            // Sort and deduplicate the gaps
+            gaps.sort((a, b) => a - b);
+            const uniqueGaps = [];
+            for (const g of gaps) {
+                if (uniqueGaps.length === 0 || Math.abs(g - uniqueGaps[uniqueGaps.length - 1]) > 1e-5) {
+                    uniqueGaps.push(g);
+                }
+            }
+            
+            return uniqueGaps;
+        },
+
+        /**
          * Expands arc segments in a contour into tessellated polyline points.
          * Returns a new contour with no arc metadata — pure polygon suitable for Clipper2.
          * The original contour is not modified.
@@ -1937,6 +1994,9 @@
         },
 
         _isPrimitiveClosed(prim, tolerance) {
+            // Inherently closed primitives
+            if (prim.type === 'circle' || prim.type === 'rectangle' || prim.type === 'obround') return true;
+
             if (!prim.contours || prim.contours.length === 0) return false;
             const pts = prim.contours[0].points;
             if (!pts || pts.length < 3) return false;
@@ -2050,15 +2110,33 @@
                 }
             }
 
-            return { loops: [...closed, ...stitchedLoops], orphans: [...skipped, ...orphans] };
+            const allOrphans = [...skipped, ...orphans];
+
+            // Analyze gaps across ALL orphan segments so callers get accurate data.
+            // Per-component analysis (inside mergeSegmentsIntoClosedPath) can be misleading when segments are split across multiple connected components.
+            let orphanGaps = [];
+            if (allOrphans.length > 0) {
+                orphanGaps = this.analyzeSegmentGaps(allOrphans);
+                this.debug(`${allOrphans.length} orphan segment(s), gaps: ${orphanGaps.map(g => g.toFixed(4) + 'mm').join(', ') || 'none'}`);
+            }
+
+            return { loops: [...closed, ...stitchedLoops], orphans: allOrphans, orphanGaps };
         },
 
         /**
          * Determines nesting hierarchy of closed loops via containment testing.
          * Assigns isHole and enforces correct winding (CCW outer, CW hole).
          */
-        classifyCutoutTopology(loops) {
-            if (!loops || loops.length === 0) return [];
+        classifyCutoutTopology(rawLoops) {
+            if (!rawLoops || rawLoops.length === 0) return [];
+
+            // Ensure all loops are PathPrimitives before topology checks
+            const loops = rawLoops.map(loop => {
+                if (loop.type !== 'path') {
+                    return this.primitiveToPath(loop) || loop;
+                }
+                return loop;
+            });
 
             if (loops.length === 1) {
                 const contour = loops[0].contours[0];

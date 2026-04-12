@@ -90,6 +90,11 @@
             document.documentElement.setAttribute('data-theme', themeId);
             this.applyColorVariables(theme.colors); // Overwrites the static CSS vars
 
+            document.querySelector('meta[name="theme-color"]').setAttribute(
+                'content', 
+                themeId === 'dark' ? '#1a1a1a' : '#f8f9fa'
+            );
+
             // Persist
             localStorage.setItem(this.storageKey, themeId);
             this.currentTheme = themeId;
