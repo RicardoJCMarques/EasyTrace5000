@@ -44,10 +44,9 @@
             if (!operation.primitives || operation.primitives.length === 0) {
                 return [];
             }
-
-            // Filter primitives based on user settings
             let primitivesToProcess;
 
+            // Filter out non-pad geometry (traces, solid pours)
             if (settings.stencilIgnoreRegions) {
                 primitivesToProcess = operation.primitives.filter(prim => {
                     const props = prim.properties || {};
@@ -62,7 +61,8 @@
                 primitivesToProcess = [...operation.primitives];
             }
 
-            // Exclude pads that overlap drill holes
+            // Filter out pads that sit over drill holes
+            let skippedDueToDrill = 0;
             if (settings.stencilExcludeDrillPads && primitivesToProcess.length > 0) {
                 const drillHoles = [];
                 for (const op of this.core.operations) {
@@ -85,19 +85,47 @@
                             const bounds = prim.getBounds();
                             const padRadius = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / 2;
                             if (dist < padRadius * 0.8) {
-                                return false;
+                                return false; // Pad overlaps a hole, discard it
                             }
                         }
                         return true;
                     });
+
+                    skippedDueToDrill = beforeCount - primitivesToProcess.length;
                     this.debug(`Drill hole exclusion: ${beforeCount} → ${primitivesToProcess.length}`);
                 }
             }
 
-            // Apply shrink/grow offset
+            // Emit Warnings and Abort if Empty
+            if (!operation.warnings) operation.warnings = [];
+
+            if (skippedDueToDrill > 0) {
+                operation.warnings.push({
+                    message: `Excluded ${skippedDueToDrill} stencil pad(s) because they overlapped with through-holes.`,
+                    severity: 'info'
+                });
+            }
+
+            if (primitivesToProcess.length === 0) {
+                this.debug('No valid stencil pads remaining. Aborting generation.');
+                operation.offsets = []; // Clear any previous offsets
+                operation.stencilMetadata = { skippedPads: skippedDueToDrill };
+
+                // Clear any leftover stencil generation warnings from previous runs to keep properties clean
+                if (operation.warnings) {
+                    operation.warnings = operation.warnings.filter(w => {
+                        const msg = typeof w === 'string' ? w : w.message;
+                        return !msg.includes('stencil pad');
+                    });
+                }
+
+                return []; // Early exit!
+            }
+
             let processedGeometry = [];
             const offsetDist = settings.stencilOffset || 0;
 
+            // Apply Aperture Shrink/Expand
             if (Math.abs(offsetDist) > PRECISION && this.core.geometryOffsetter) {
                 this.debug(`Applying stencil offset: ${offsetDist.toFixed(3)}mm`);
 
@@ -182,9 +210,12 @@
                     strategy: 'offset',
                     isStencil: true,
                     finalCount: processedGeometry.length,
-                    generatedAt: Date.now()
+                    generatedAt: Date.now(),
+                    skippedPads: skippedDueToDrill
                 }
             }];
+
+            operation.stencilMetadata = { skippedPads: skippedDueToDrill };
 
             this.core.isToolpathCacheValid = false;
             this.debug(`Stencil generation complete: ${processedGeometry.length} primitives`);

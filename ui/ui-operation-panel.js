@@ -724,6 +724,64 @@
                 info.appendChild(roleLine);
             }
 
+            // Check if generation has occurred (offsets exist or metadata is attached)
+            const hasGeneratedOutput = (operation.offsets && operation.offsets.length > 0) || operation.stencilMetadata;
+
+            if (hasGeneratedOutput) {
+                const outputDivider = document.createElement('div');
+                outputDivider.style.margin = 'var(--spacing-md) 0';
+                outputDivider.style.borderTop = '1px dashed var(--color-border-primary)';
+                info.appendChild(outputDivider);
+
+                const outTitle = document.createElement('div');
+                outTitle.className = 'summary-line';
+                outTitle.innerHTML = `<strong>Generated Output:</strong>`;
+                info.appendChild(outTitle);
+
+                // Stencil-specific stats
+                if (operation.type === 'stencil') {
+                    const generatedCount = operation.offsets?.[0]?.primitives?.length || 0;
+                    const skippedCount = operation.stencilMetadata?.skippedPads || 0;
+
+                    const genLine = document.createElement('div');
+                    genLine.className = 'summary-line';
+                    genLine.textContent = `Apertures: ${generatedCount}`;
+                    info.appendChild(genLine);
+
+                    if (skippedCount > 0) {
+                        const skipLine = document.createElement('div');
+                        skipLine.className = 'summary-line summary-warning';
+                        skipLine.textContent = `Skipped (Overlapping): ${skippedCount}`;
+                        info.appendChild(skipLine);
+                    }
+
+                    if (generatedCount === 0) {
+                        const errLine = document.createElement('div');
+                        errLine.className = 'summary-line';
+                        errLine.style.color = 'var(--color-error, #ff4444)';
+                        errLine.textContent = 'No valid pads remaining to generate.';
+                        info.appendChild(errLine);
+                    }
+                } 
+                // Easily expandable for CNC/Laser stats later
+                else {
+                    const totalGenerated = operation.offsets.reduce((sum, off) => sum + (off.primitives?.length || 0), 0);
+
+                    const outLine = document.createElement('div');
+                    outLine.className = 'summary-line';
+                    outLine.innerHTML = `<strong>Paths Generated:</strong> ${totalGenerated}`;
+                    info.appendChild(outLine);
+
+                    // If the boolean engine collapsed everything to nothing
+                    if (totalGenerated === 0) {
+                        const errLine = document.createElement('div');
+                        errLine.className = 'summary-line summary-warning';
+                        errLine.textContent = '0 paths generated. Tool diameter or offset may be too large for the source features.';
+                        info.appendChild(errLine);
+                    }
+                }
+            }
+
             section.appendChild(info);
             return section;
         }
@@ -1046,7 +1104,9 @@
                 if (stage === 'geometry') {
                     await this.generateStencilPaths(operation);
 
-                    if (operation.offsets && operation.offsets.length > 0) {
+                    const hasGeometry = operation.offsets && operation.offsets.length > 0;
+
+                    if (hasGeometry) {
                         operation.exportReady = true;
                         operation.exportMetadata = {
                             generatedAt: Date.now(),
@@ -1059,14 +1119,18 @@
                         if (previewToggle) previewToggle.checked = true;
 
                         await this.ui.updateRendererAsync();
-                        this.ui.showStatus('Stencil geometry generated — ready for export', 'success');
+
+                        // Only transition if generation succeeded
+                        if (layoutConfig?.ui?.autoTransition) {
+                            setTimeout(() => {
+                                this.switchGeometryStage('export_summary');
+                            }, transitionDelay);
+                        }
+                    } else {
+                        // If everything was skipped, refresh the current panel to show the warnings
+                        this.showOperationProperties(operation, 'geometry');
                     }
 
-                    if (layoutConfig?.ui?.autoTransition) {
-                        setTimeout(() => {
-                            this.switchGeometryStage('export_summary');
-                        }, transitionDelay);
-                    }
                     this.returnFocusToTree();
                     return;
                 }
@@ -1094,7 +1158,10 @@
 
                 // Mark operation as export-ready. In laser mode there's no separate preview step — the generated offsets ARE the exportable result.
                 // Set preview.ready so the Export Manager can filter ready operations.
-                if (operation.offsets && operation.offsets.length > 0) {
+
+                const hasGeometry = operation.offsets && operation.offsets.length > 0;
+
+                if (hasGeometry) {
                     const allPrimitives = [];
                     operation.offsets.forEach(offset => {
                         offset.primitives.forEach(prim => {
@@ -1118,12 +1185,15 @@
 
                     await this.ui.updateRendererAsync();
                     this.ui.showStatus('Laser paths generated — ready for export', 'success');
-                }
 
-                if (layoutConfig?.ui?.autoTransition) {
-                    setTimeout(() => {
-                        this.switchGeometryStage('export_summary');
-                    }, transitionDelay);
+                    // Only transition if geometry exists
+                    if (layoutConfig?.ui?.autoTransition) {
+                        setTimeout(() => {
+                            this.switchGeometryStage('export_summary');
+                        }, transitionDelay);
+                    }
+                } else {
+                    this.showOperationProperties(operation, 'geometry');
                 }
 
                 this.returnFocusToTree();
@@ -1155,10 +1225,15 @@
                     await this.generateOffsets(operation);
                 }
 
-                if (layoutConfig?.ui?.autoTransition) {
+                const hasGeometry = operation.offsets && operation.offsets.length > 0;
+
+                // Gate the transition
+                if (hasGeometry && layoutConfig?.ui?.autoTransition) {
                     setTimeout(() => {
                         this.switchGeometryStage('strategy');
                     }, transitionDelay);
+                } else if (!hasGeometry) {
+                    this.showOperationProperties(operation, 'geometry');
                 }
 
                 // Return focus to tree after action completes
@@ -1360,7 +1435,18 @@
                 await this.ui.updateRendererAsync();
 
                 const count = operation.offsets?.[0]?.primitives?.length || 0;
-                this.ui.showStatus(`Generated ${count} stencil aperture(s)`, 'success');
+                const skipped = operation.offsets?.[0]?.metadata?.skippedPads || operation.stencilMetadata?.skippedPads || 0;
+
+                let msg = `Generated ${count} stencil aperture(s)`;
+                if (skipped > 0) {
+                    msg += ` (${skipped} overlapping pads skipped)`;
+                }
+
+                if (count === 0) {
+                    this.ui.showStatus(skipped > 0 ? `No apertures generated (${skipped} overlapping pads skipped)` : 'No apertures generated (all filtered out)', 'warning');
+                } else {
+                    this.ui.showStatus(msg, 'success');
+                }
             } catch (error) {
                 console.error('[OperationPanel] Stencil generation failed:', error);
                 this.ui.showStatus('Stencil generation failed: ' + error.message, 'error');
@@ -1506,12 +1592,22 @@
             const offsetCount = operation.offsets?.length || 0;
             const primCount = operation.offsets?.reduce((sum, o) => sum + (o.primitives?.length || 0), 0) || 0;
 
-            summary.innerHTML = `
+            let html = `
                 <div><strong>Operation:</strong> ${operation.type}</div>
                 <div><strong>Strategy:</strong> ${strategy}</div>
                 <div><strong>Passes:</strong> ${offsetCount}</div>
                 <div><strong>Path count:</strong> ${primCount}</div>
             `;
+
+            // Carry skipped pad metrics forward so they aren't hidden on the previous tab
+            if (isStencil) {
+                const skipped = operation.offsets?.[0]?.metadata?.skippedPads || operation.stencilMetadata?.skippedPads || 0;
+                if (skipped > 0) {
+                    html += `<div style="color: var(--color-warning); margin-top: var(--spacing-sm);"><strong>Overlapping Pads Skipped:</strong> ${skipped}</div>`;
+                }
+            }
+
+            summary.innerHTML = html;
             section.appendChild(summary);
             container.appendChild(section);
 

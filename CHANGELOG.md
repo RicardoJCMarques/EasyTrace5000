@@ -4,6 +4,23 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-04-22
+
+### Fixed
+- **Arc Offsetting:** Source geometry that includes paths with arcs is now run through the main offset path instead of the minimalist analytic algorithm meant for straight segment paths only.
+- **Unit Parsing:** New single-source of truth for project unit management and metric conversions.
+- **SVG Arc Parsing:** SVG arc-winding direction setting during parsing.
+- **SVG Nested Parsing:** SVG hole and complex nested path parsing.
+- **Source Oversimplification:** Lowered source pre-processing Douglas-Peucker aggressiveness in some edge cases.
+- **Overlapped Arc Points:** Arc-reconstruction can now recover arc start/end-points that lack metadata because they are shared with other geometry.
+- **Clearing Operations:** Now work with more complex geometry with arcs. Needs more testing.
+
+### Added
+- **Skipped Warnings:** If all geometry is skipped in an operation (like through-hole stencils) a notice will inform that the operation ran as expected but created no geometry.
+- **More Pre-processed Debug Viz:** Extended temporary offset polygons to also show up during Pre-Processed geometry viewing. May warrant it's own toggle in the future.
+
+
+
 ## [1.3.0] - 2026-04-12
 
 ### Changed
@@ -14,12 +31,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Default Dwell:** Base processor was scaling x1000 miliseconds values that were meant to be seconds. Now post-processors that need miliseconds do the overwritting.
 - **Typos in Config.js:** Small typos causing big problems.
 
+
 ## [1.2.1] - 2026-04-06
 
 ### Fixed
 - **Laser SVG Ordering:** Laser will move away from all source geometry to protect it from heat build-up.
 - **Arc-Reconstruction:** Removed a silent error, fixed the underlying problem.
 - **Gerber Comments:** Will now be ignored, as they should've been.
+
 
 ## [1.2.0] - 2026-04-05
 
@@ -33,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 - **Tool Library:** Now the module only looks for tools.json, both externally during development and internally after building.
+
 
 ## [1.1.3] - 2026-03-30
 
@@ -52,6 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 - **Operation Export Order:** Reordered operations in the internal export logic. UI flow can also lock reordering when it's irrelevant, like for Laser pipeline.
 - **Post-Processor Extensions:** The file name text-box in the Export Modal will show the correct file type connected to the selected post-processor.
+
 
 ## [1.1.2] - 2026-03-20
 
@@ -73,6 +94,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Single File Export Default:** Export Manager Modal now has single file export turned off by default, for safety.
 - **New User Hint Animation:** Instead of holding static with 1 source geometry node highlight will now pulse every few seconds.
 
+
 ## [1.1.1] - 2026-03-17
 
 ### Added
@@ -81,6 +103,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 - **Only Drill Pecks:** Drill Milling toggle Off state wasn't propagating correctly. Will now allow regular pecks.
+
 
 ## [1.1.0] - 2026-03-16
 
@@ -107,6 +130,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Known Bugs:** Canvas viewport culling doesn't update correctly when board is rotated. No logic to close opened cutout polygons.
 
+
 ## [1.0.9] - 2026-03-11
 
 ### Fixed
@@ -118,6 +142,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Optimized Laser SVG File Size:** Moved to relative commands and stripped unnecessary leading and trailing 0's.
 
 - **Known Bugs:** Some KiCAD copper pour regions aren't interacting with other geometry as expected.
+
 
 ## [1.0.8] - 2026-03-07
 
@@ -136,6 +161,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Removed Analytic Offsets:** Analytic offsets will be developed independently from the live tool. Clipper2 deals better with self-intersection artifacts, for now.
 - **Another Attempt At SEO**
 
+
 ## [1.0.7] - 2026-03-02
 
 ### Added
@@ -149,10 +175,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Moved EasyTrace5000 out of Root:** Now the application itself is accessible through the [easytrace5000/](https://cam.eltryus.design/easytrace5000/) folder to try and appease crawler bots and get the subdomain listed again.
 - **File Extensions are set automatically:** The User only needs to input the file name and the pipeline handles the file extensions.
 
+
 ## [1.0.6] - 2026-02-12
 
 ### Fixed
 - **Full Refactor of Roland PostProcessor:** Complete rework of the RML-1 post-processor module. Should now have all required nuance to work with common Roland desktop CNCs.
+
 
 ## [1.0.5] - 2026-02-03
 

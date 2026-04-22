@@ -28,6 +28,8 @@
 (function() {
     'use strict';
 
+    const C = window.PCBCAMConfig.constants;
+
     class ClearingOperationHandler extends OffsetOperationHandler {
 
         _isInternalOffset() { return true; }
@@ -35,26 +37,28 @@
         _needsCutInResolution() { return true; }
 
         async generateGeometry(operation, settings) {
-            // Clone to prevent mutating shared state
             settings = { ...settings };
 
-            // Automatically calculate the passes required to clear the entire bounding box
-            if (operation.bounds && settings.toolDiameter > 0) {
-                const stepOver = 50; // 50% is the optimal stepover for flat end mills
-                const stepDistance = settings.toolDiameter * (1 - (stepOver / 100));
+            const stepOver = settings.stepOver;
+            const stepDistance = settings.toolDiameter * (1 - (stepOver / 100));
 
-                // The maximum distance to clear is half the smallest dimension of the bounds
+            // Auto-calculate passes to cover the full geometry
+            if (operation.bounds && stepDistance > 0) {
                 const smallestDim = Math.min(
                     operation.bounds.maxX - operation.bounds.minX,
                     operation.bounds.maxY - operation.bounds.minY
                 );
-
                 settings.passes = Math.ceil((smallestDim / 2) / stepDistance);
-                settings.stepOver = stepOver;
-                settings.combineOffsets = true; // Always combine for cleaner clearing paths
 
-                this.debug(`Auto-calculated clearing passes: ${settings.passes} (tool: ${settings.toolDiameter}mm)`);
+                // Clamp to safety limit
+                const maxPasses = C.ui.validation.maxAutoPasses; 
+                settings.passes = Math.min(settings.passes, maxPasses);
             }
+
+            settings.stepOver = stepOver;
+            settings.combineOffsets = true;
+
+            this.debug(`Auto-calculated clearing: ${settings.passes} passes, ${stepOver}% stepover`);
 
             return super.generateGeometry(operation, settings);
         }

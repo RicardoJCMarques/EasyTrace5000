@@ -837,6 +837,13 @@
                 // Recalculate angles based on transformed geometry
                 result.startAngle = Math.atan2(p0.y - center.y, p0.x - center.x);
                 result.endAngle = Math.atan2(p1.y - center.y, p1.x - center.x);
+
+                // Explicitly preserve the sweep angle across matrix transforms
+                let sweep = seg.endAngle - seg.startAngle;
+                if (isReflection) {
+                    sweep = -sweep; // Reflecting the Y-axis flips the sweep direction
+                }
+                result.sweepAngle = sweep;
             }
 
             return result;
@@ -1294,7 +1301,7 @@
             return {
                 center: { x: cx, y: cy }, rx, ry, phi,
                 startAngle: theta1, endAngle: theta1 + dtheta,
-                clockwise: fS === 1
+                clockwise: fS === 0
             };
         }
     }

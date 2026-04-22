@@ -123,6 +123,9 @@
             this.currentTool = null;
             this.inHeader = false;
             this.headerEnded = false;
+
+            this.formatExplicitlySet = false;
+
             this.errors = [];
             this.warnings = [];
 
@@ -184,11 +187,29 @@
             } else if (line === 'METRIC' || line === 'M71') {
                 this.options.units = 'mm';
                 this.drillData.units = 'mm';
+
+                if (!this.formatExplicitlySet) {
+                    this.options.format = { integer: 3, decimal: 3 };
+                    this.drillData.format = this.options.format;
+                    const warnMsg = "No explicit format found. Defaulting to 3.3 (Metric). If holes/slots are misaligned, the file might use a different format.";
+                    this.warnings.push(warnMsg);
+                    console.warn(`[ExcellonParser] Line ${lineNumber}: ${warnMsg}`);
+                }
+
                 this.debug('Units: mm');
                 return;
             } else if (line === 'INCH' || line === 'M72') {
                 this.options.units = 'inch';
                 this.drillData.units = 'inch';
+
+                if (!this.formatExplicitlySet) {
+                    this.options.format = { integer: 2, decimal: 5 };
+                    this.drillData.format = this.options.format;
+                    const warnMsg = "No explicit format found. Defaulting to 2.5 (Inch). If holes/slots are misaligned, the file might use a different format.";
+                    this.warnings.push(warnMsg);
+                    console.warn(`[ExcellonParser] Line ${lineNumber}: ${warnMsg}`);
+                }
+
                 this.debug('Units: inch');
                 return;
             } else if (line.startsWith('FMAT')) {
@@ -234,6 +255,8 @@
         parseFileFormat(line) {
             const match = line.match(/FILE_FORMAT[=\s]+(\d+):(\d+)/i);
             if (match) {
+                this.formatExplicitlySet = true;
+
                 const intDigits = parseInt(match[1]);
                 const decDigits = parseInt(match[2]);
                 this.options.format = { integer: intDigits, decimal: decDigits };
@@ -245,6 +268,8 @@
         parseFormat(line, lineNumber) {
             const match = line.match(/FMAT,?(\d)/);
             if (match) {
+                this.formatExplicitlySet = true;
+
                 const code = parseInt(match[1]);
                 if (code === 1) {
                     this.options.format = { integer: 2, decimal: 3 };
@@ -275,21 +300,17 @@
                 return;
             }
 
-            const originalUnits = this.options.units;
-            // Diameter must be converted to 'mm' for internal use.
-            const displayDiameter = originalUnits === 'inch' ? diameter * 25.4 : diameter;
-
             const tool = {
                 number: number,
                 key: toolKey,
-                diameter: displayDiameter,
+                diameter: diameter,
                 originalDiameter: diameter,
-                originalUnits: originalUnits
+                originalUnits: this.options.units
             };
 
             this.tools.set(toolKey, tool);
             this.drillData.tools.push(tool);
-            this.debug(`Tool ${toolKey}: ⌀${displayDiameter.toFixed(3)}mm`);
+            this.debug(`Tool ${toolKey}: ⌀${diameter.toFixed(3)} (native units)`);
         }
 
         selectTool(line, lineNumber) {
@@ -374,12 +395,12 @@
             if (slotMatch) {
                 try {
                     const startCoords = {
-                        x: this.parseCoordinateValue(slotMatch[1], this.options.format, this.options.units),
-                        y: this.parseCoordinateValue(slotMatch[2], this.options.format, this.options.units)
+                        x: this.parseCoordinateValue(slotMatch[1], this.options.format),
+                        y: this.parseCoordinateValue(slotMatch[2], this.options.format)
                     };
                     const endCoords = {
-                        x: this.parseCoordinateValue(slotMatch[3], this.options.format, this.options.units),
-                        y: this.parseCoordinateValue(slotMatch[4], this.options.format, this.options.units)
+                        x: this.parseCoordinateValue(slotMatch[3], this.options.format),
+                        y: this.parseCoordinateValue(slotMatch[4], this.options.format)
                     };
 
                     if (!this.validateCoordinates(startCoords, lineNumber) || !this.validateCoordinates(endCoords, lineNumber)) {
@@ -466,12 +487,12 @@
                 const coordinates = { ...this.state.position };
 
                 if (xMatch) {
-                    coordinates.x = this.parseCoordinateValue(xMatch[1], this.options.format, this.options.units);
+                    coordinates.x = this.parseCoordinateValue(xMatch[1], this.options.format);
                     this.stats.coordinatesParsed++;
                 }
 
                 if (yMatch) {
-                    coordinates.y = this.parseCoordinateValue(yMatch[1], this.options.format, this.options.units);
+                    coordinates.y = this.parseCoordinateValue(yMatch[1], this.options.format);
                     this.stats.coordinatesParsed++;
                 }
 
@@ -502,7 +523,7 @@
             this.validateCoordinateConsistency();
             this.generateDrillStats();
 
-            this.drillData.units = 'mm';
+            this.drillData.units = this.options.units;
         }
 
         calculateDrillBounds() {

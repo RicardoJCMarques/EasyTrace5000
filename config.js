@@ -62,7 +62,7 @@ window.PCBCAMConfig = {
             coordinate: 0.001,          // Coordinate quantization grid. All coordinates snap to this resolution.
             pointMatch: 0.01,           // "Same location" tolerance. 10× coordinate to absorb accumulated FP drift across multi-step pipelines (parse → offset → transform → toolpath).
             zeroLength: 0.001,          // Degenerate geometry detection. Segments shorter than this are collapsed.
-            rdpSimplification: 0.005,   // Douglas-Peucker polygon simplification. Tames KiCad pour noise without affecting intentional geometry.
+            rdpSimplification: 0.0005,   // Douglas-Peucker polygon simplification. Tames KiCad pour noise without affecting intentional geometry.
 
             // Output formatting // REVIEW - Not Connected? Should it be?
             display: 3                  // Decimal places for UI readouts and export coordinate formatting.
@@ -315,7 +315,8 @@ window.PCBCAMConfig = {
                 laserIsolationWidth: { min: 0.05, max: 2.5, step: 0.01 },
                 laserStepOver: { min: 10, max: 99, step: 5 },
                 laserHatchAngle: { min: 0, max: 180, step: 5 },
-                laserExportPadding: { min: 0, max: 10, step: 0.5 }
+                laserExportPadding: { min: 0, max: 10, step: 0.5 },
+                maxAutoPasses: 500 // Arbitrary limit - can/should be changed after testing // Could this affect laser offsets?
             },
 
             parameterOptions: {

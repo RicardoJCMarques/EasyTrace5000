@@ -108,6 +108,9 @@
                     for (const contour of primitive.contours) {
                         if (!contour.points || contour.points.length < 3) continue;
 
+                        // Recover Z-metadata stripped by Clipper2 at shape intersections
+                        this.recoverLostMetadata(contour.points, true);
+
                         // Process this contour's points for curve reconstruction
                         const groups = this.groupPointsWithGaps(contour.points, true);
                         const enhancedContour = this.reconstructContour(contour, groups);
@@ -284,6 +287,9 @@
             }
 
             this.stats.pathsWithCurves++;
+
+            // Recover Z-metadata stripped by Clipper2 at shape intersections
+            this.recoverLostMetadata(contour.points, primitive.closed !== false);
 
             // Pass the contour's points to the grouper
             const groups = this.groupPointsWithGaps(contour.points, primitive.closed);
@@ -483,6 +489,9 @@
             this.stats.pathsWithCurves++;
             const originalPointCount = contour.points.length;
 
+            // Recover Z-metadata stripped by Clipper2 at shape intersections
+            this.recoverLostMetadata(contour.points, true);
+
             // Build the new points array and detect arc segments
             const detectedArcSegments = [];
             const newPoints = [];
@@ -618,7 +627,7 @@
             const minSweepDeg = 2.0;
             const minChordLen = 0.01;
 
-            const maxFlatnessRatio = 1.0001; // REVIEW - Double check relationship to tolerance? 1+EPSILON?
+            const maxFlatnessRatio = 1 + C.precision.coordinate;
 
             const absSweep = Math.abs(arcParams.sweepAngle);
 
@@ -690,7 +699,7 @@
                     // Check if going CW or CCW between these points
                     let angleDelta = angle2 - angle1;
 
-                    // Normalize to [-π, π] // Can this derect 0 crossings?
+                    // Normalize to [-π, π]
                     while (angleDelta > Math.PI) angleDelta -= 2 * Math.PI;
                     while (angleDelta < -Math.PI) angleDelta += 2 * Math.PI;
 
@@ -737,6 +746,116 @@
                 sweepAngle: sweepAngle,
                 clockwise: actuallyClockwise
             };
+        }
+
+        /**
+         * Checks if a point geometrically belongs to a registered curve.
+         * Performs a radius check and, if angle data is available, a sweep check to prevent false positives on arcs that share the same center/radius.
+         */
+        _pointBelongsToCurve(point, curveData, tolerance) {
+            if (!curveData || !curveData.center || !curveData.radius) return false;
+
+            // Radius Check
+            const dist = Math.hypot(point.x - curveData.center.x, point.y - curveData.center.y);
+            if (Math.abs(dist - curveData.radius) > tolerance) return false;
+
+            if (curveData.type === 'circle') return true;
+
+            // Sweep Check
+            if (curveData.startAngle !== undefined && curveData.endAngle !== undefined) {
+                const pointAngle = Math.atan2(point.y - curveData.center.y, point.x - curveData.center.x);
+
+                // Utility to strictly normalize any angular difference to a positive 0-2PI range.
+                const normalizeDiff = (angle) => ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+                // Calculate the positive angular distances from the start angle
+                let totalSweep = normalizeDiff(curveData.endAngle - curveData.startAngle);
+                let pointSweep = normalizeDiff(pointAngle - curveData.startAngle);
+
+                // If the arc is Clockwise, the logical sweep goes in the negative direction.
+                // Subtract 2PI to get the correct negative sweep value.
+                if (curveData.clockwise) {
+                    if (totalSweep > 0) totalSweep -= 2 * Math.PI;
+                    if (pointSweep > 0) pointSweep -= 2 * Math.PI;
+                }
+
+                const angularTolerance = tolerance / curveData.radius; // Convert linear tolerance to radians
+
+                // Compare the signed point sweep against the signed total sweep
+                if (curveData.clockwise) {
+                    // CW: sweeps are negative. pointSweep must be >= totalSweep (more negative) and <= 0
+                    return pointSweep >= (totalSweep - angularTolerance) && pointSweep <= angularTolerance;
+                } else {
+                    // CCW: sweeps are positive. pointSweep must be >= 0 and <= totalSweep
+                    return pointSweep >= -angularTolerance && pointSweep <= (totalSweep + angularTolerance);
+                }
+            }
+
+            return true;
+        }
+
+        /**
+         * Pre-grouping metadata recovery pass.
+         * Scans contour points for untagged vertices adjacent to tagged ones.
+         * If the untagged vertex geometrically belongs to the neighbor's curve, it reclaims it by assigning the curveId. This repairs Z-metadata lost at Clipper2 intersection vertices where different shapes meet.
+         * Uses forward + backward passes so both arc boundaries are recovered regardless of which direction the loss occurred.
+         */
+        recoverLostMetadata(contourPoints, isClosed) {
+            if (!contourPoints || contourPoints.length < 3) return contourPoints;
+
+            const len = contourPoints.length;
+            let recovered = 0;
+
+            // Snapshot original curve IDs to prevent cascading/flood-fill recovery
+            // Only points adjacent to *originally* valid arc points should be recovered
+            const originalIds = new Array(len);
+            for (let i = 0; i < len; i++) {
+                originalIds[i] = contourPoints[i].curveId || 0;
+            }
+
+            // Forward pass: let originally tagged points claim the next untagged neighbor
+            for (let i = 0; i < len; i++) {
+                const current = contourPoints[i];
+                if (current.curveId > 0) continue; // Already tagged
+
+                const prevIdx = (i - 1 + len) % len;
+                if (!isClosed && i === 0) continue; // Don't wrap on open paths
+
+                // Use originalIds to prevent the cascade
+                const prevId = originalIds[prevIdx];
+                if (!prevId || prevId <= 0) continue;
+
+                const curveData = this.getCurve(prevId);
+                if (curveData && this._pointBelongsToCurve(current, curveData, C.precision.coordinate)) {
+                    current.curveId = prevId;
+                    recovered++;
+                }
+            }
+
+            // Backward pass: let originally tagged points claim the previous untagged neighbor
+            for (let i = len - 1; i >= 0; i--) {
+                const current = contourPoints[i];
+                if (current.curveId > 0) continue; // Already tagged
+
+                const nextIdx = (i + 1) % len;
+                if (!isClosed && i === len - 1) continue;
+
+                // Use originalIds to prevent the cascade
+                const nextId = originalIds[nextIdx];
+                if (!nextId || nextId <= 0) continue;
+
+                const curveData = this.getCurve(nextId);
+                if (curveData && this._pointBelongsToCurve(current, curveData, C.precision.coordinate)) {
+                    current.curveId = nextId;
+                    recovered++;
+                }
+            }
+
+            if (recovered > 0) {
+                this.debug(`Metadata recovery: reclaimed ${recovered} point(s)`);
+            }
+
+            return contourPoints;
         }
 
         debug(message, data = null) {

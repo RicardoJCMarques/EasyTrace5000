@@ -91,7 +91,7 @@
                     ...validationRules.stepOver,
                     stage: 'geometry',
                     category: 'offset',
-                    operationTypes: 'isolation'
+                    operationTypes: ['isolation', 'clearing']
                 },
                 combineOffsets: {
                     type: 'checkbox',

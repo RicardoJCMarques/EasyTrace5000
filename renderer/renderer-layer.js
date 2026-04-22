@@ -141,6 +141,24 @@
                 this._renderDebugOverlayWorld();
             }
 
+            if (this.options.showPreprocessed && this.pcbCore?.operations) {
+                this.ctx.save();
+                this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+                const fc = this.core.frameCache;
+                const uiScale = this.core.devicePixelRatio || 1;
+                this.ctx.lineWidth = Math.max(1.0 * fc.invScale, fc.minWorldWidth) * uiScale;
+
+                for (const op of this.pcbCore.operations) {
+                    if (op._debugStrokes) {
+                        for (const stroke of op._debugStrokes) {
+                            this.primitiveRenderer._drawPrimitivePath(stroke);
+                            this.ctx.stroke();
+                        }
+                    }
+                }
+                this.ctx.restore();
+            }
+
             this.ctx.restore();
 
             // World-space overlays
@@ -362,6 +380,36 @@
             for (const prim of peckMarks) {
                 this.primitiveRenderer.renderPeckMark(prim, { layer });
                 this.core.renderStats.drawCalls++;
+            }
+
+            // Hijack the "showPreprocessed" toggle to render the smuggled strokes
+            if (this.core.options.showPreprocessed) {
+                this.ctx.save();
+                // Use a bright cyan wireframe to stand out against standard geometry
+                this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)'; 
+                this.ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';   
+
+                const fc = this.core.frameCache;
+                this.ctx.lineWidth = Math.max(1.0 * fc.invScale, fc.minWorldWidth);
+
+                // Use a Set to avoid drawing the same strokes thousands of times
+                const drawnStrokes = new Set();
+
+                for (const entry of entries) {
+                    const debugStrokes = entry.primitive.properties?._preprocessedStrokes;
+                    if (debugStrokes) {
+                        for (const stroke of debugStrokes) {
+                            if (!drawnStrokes.has(stroke)) {
+                                drawnStrokes.add(stroke);
+                                // Bypass normal rendering to force wireframe-style drawing
+                                this.primitiveRenderer._drawPrimitivePath(stroke);
+                                this.ctx.fill('evenodd');
+                                this.ctx.stroke();
+                            }
+                        }
+                    }
+                }
+                this.ctx.restore();
             }
         }
 

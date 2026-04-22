@@ -617,19 +617,19 @@
             this.renderer.render();
         }
 
-        updateStatus(message, type) {
+        updateStatus(message, type, skipLog = false) {
             if (!type) type = 'normal';
-            
+
             if (this.statusManager) {
-                this.statusManager.updateStatus(message, type);
+                this.statusManager.updateStatus(message, type, skipLog);
             } else {
                 console.error("StatusManager not initialized, cannot show status!");
             }
         }
 
-        showStatus(message, type) {
+        showStatus(message, type, skipLog = false) {
             if (this.statusManager) {
-                this.statusManager.showStatus(message, type);
+                this.statusManager.showStatus(message, type, skipLog);
             }
         }
 

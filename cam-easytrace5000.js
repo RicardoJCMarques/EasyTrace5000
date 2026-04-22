@@ -863,9 +863,23 @@
          */
 
         async processUploadedFiles() {
+            let totalWarnings = 0;
+            let formatGuessed = false;
+            let fileCount = 0;
+
             for (const [type, file] of Object.entries(this.uploadedFiles)) {
                 if (file) {
                     await this.processFile(file, type);
+                    fileCount++;
+
+                    // Track warnings generated during this batch
+                    const lastOp = this.core.operations[this.core.operations.length - 1];
+                    if (lastOp && lastOp.warnings && lastOp.warnings.length > 0) {
+                        totalWarnings += lastOp.warnings.length;
+                        if (lastOp.warnings.some(w => (typeof w === 'string' ? w : w.message).includes('No explicit format found'))) {
+                            formatGuessed = true;
+                        }
+                    }
                 }
             }
 
@@ -891,6 +905,17 @@
                 setTimeout(() => {
                     this.ui.renderer.core.zoomFit();
                 }, 100); // Small delay to ensure rendering is complete
+            }
+
+            // Issue final batch status toast
+            if (fileCount > 1) {
+                if (formatGuessed) {
+                    this.ui?.updateStatus(`Loaded ${fileCount} files. Warning: Excellon format guessed! See log.`, 'warning');
+                } else if (totalWarnings > 0) {
+                    this.ui?.updateStatus(`Loaded ${fileCount} files with ${totalWarnings} warning(s). See log.`, 'warning');
+                } else {
+                    this.ui?.updateStatus(`Successfully loaded ${fileCount} files.`, 'success', true);
+                }
             }
         }
 
@@ -984,7 +1009,7 @@
             }
 
             // Show loading status
-            this.ui?.updateStatus(`${textConfig.statusLoading} ${file.name}...`);
+            this.ui?.updateStatus(`${textConfig.statusLoading} ${file.name}...`, 'info', true);
 
             // Read and parse file
             const reader = new FileReader();
@@ -1278,22 +1303,32 @@
                             }, 250);
                         }
 
-                        this.ui?.showOperationMessage?.(type, `Successfully loaded ${count} primitives`, 'success');
-                        this.ui?.updateStatus(`Loaded ${operation.file.name}: ${count} primitives`, 'success');
+                        // Intercept format warnings to elevate the final status toast
+                        let finalStatusMsg = `Loaded ${operation.file.name}: ${count} primitives`;
+                        let finalStatusType = 'success';
 
                         // Surface any classification warnings to the status log
                         if (operation.warnings && operation.warnings.length > 0) {
                             for (const w of operation.warnings) {
                                 const msg = typeof w === 'string' ? w : w.message;
                                 const severity = (typeof w === 'object' && w.severity) || 'warning';
+
+                                // Push the specific warning directly into the log history
                                 this.ui?.updateStatus(`${operation.file.name}: ${msg}`, severity);
+
+                                // If it's the Excellon format warning, upgrade the final toast message
+                                if (msg.includes('No explicit format found')) {
+                                    finalStatusMsg = `Loaded ${operation.file.name}: ${count} drills (Guessed Format!)`;
+                                    finalStatusType = 'warning';
+                                }
                             }
                         }
 
-                        // Update coordinate system after successful parse
-                        if (this.core?.coordinateSystem) {
-                            this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
-                        }
+                        // Display the final summary toast
+                        this.ui?.showOperationMessage?.(type, finalStatusMsg, finalStatusType);
+                        this.ui?.updateStatus(finalStatusMsg, finalStatusType);
+
+                        this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
                     } else {
                         this.ui?.showOperationMessage?.(type, `Error: ${operation.error}`, 'error');
                         this.ui?.updateStatus(`Error processing ${operation.file.name}: ${operation.error}`, 'error');
@@ -1326,7 +1361,7 @@
                     }
 
                     // Update statistics
-                    this.ui?.updateStatistics?.();
+                    this.ui.updateStatistics();
 
                     resolve();
                 };
@@ -1344,6 +1379,9 @@
 
         async handleGlobalFileDrop(files) {
             if (!this.ui) return;
+            let totalWarnings = 0;
+            let formatGuessed = false;
+            let fileCount = 0;
 
             // Process files serially to avoid race conditions
             for (let file of files) {
@@ -1353,6 +1391,16 @@
                 if (opType) {
                     if (this.initState.fullyReady) {
                         await this.processFile(file, opType);
+                        fileCount++;
+
+                        // Track warnings generated during this batch
+                        const lastOp = this.core.operations[this.core.operations.length - 1];
+                        if (lastOp && lastOp.warnings && lastOp.warnings.length > 0) {
+                            totalWarnings += lastOp.warnings.length;
+                            if (lastOp.warnings.some(w => (typeof w === 'string' ? w : w.message).includes('No explicit format found'))) {
+                                formatGuessed = true;
+                            }
+                        }
                     } else {
                         this.pendingOperations.push({ file, opType });
                     }
@@ -1369,6 +1417,17 @@
                 await this.ui.updateRendererAsync();
                 this.ui.renderer.core.zoomFit(true);
                 this.ui.renderer.render();
+
+                // Issue final batch status toast
+                if (fileCount > 1) {
+                    if (formatGuessed) {
+                        this.ui.updateStatus(`Loaded ${fileCount} files. Warning: Excellon format guessed! See log.`, 'warning');
+                    } else if (totalWarnings > 0) {
+                        this.ui.updateStatus(`Loaded ${fileCount} files with ${totalWarnings} warning(s). See log.`, 'warning');
+                    } else {
+                        this.ui.updateStatus(`Successfully loaded ${fileCount} files.`, 'success', true);
+                    }
+                }
             }
 
             if (this.pendingOperations.length > 0 && !this.initState.fullyReady) {

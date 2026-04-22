@@ -73,10 +73,8 @@
                             primitiveOrPrimitives : [primitiveOrPrimitives];
                         primArray.forEach(prim => {
                             if (this.validatePrimitive(prim)) {
-                                // Safety check: all parsers must output mm-normalized data.
-                                // If this fires, the source parser has a bug.
                                 if (gerberData.layers.units === 'inch') {
-                                    console.warn('[Plotter] Received inch-unit data — parser should have converted to mm. Applying fallback conversion.');
+                                    // Late scaling: apply metric conversion just before finalizing the primitive
                                     this._convertToMetric(prim); 
                                 }
                                 this.primitives.push(prim);
@@ -96,7 +94,7 @@
                 success: true,
                 primitives: this.primitives,
                 bounds: this.bounds,
-                units: gerberData.layers.units,
+                units: 'mm',
                 creationStats: this.creationStats
             };
         }
@@ -160,6 +158,10 @@
                     }
 
                     if (primitive) {
+                        // Late scaling: apply metric conversion just before finalizing the primitive
+                        if (drillData.units === 'inch') {
+                            this._convertToMetric(primitive);
+                        }
                         this.primitives.push(primitive);
                         this.creationStats.primitivesCreated++;
                         this.creationStats.drillsCreated++;
@@ -172,7 +174,7 @@
                 success: true,
                 primitives: this.primitives,
                 bounds: this.bounds,
-                units: drillData.units,
+                units: 'mm', // Units have by now been successfully converted
                 creationStats: { drillHolesCreated: this.primitives.length }
             };
         }
@@ -340,7 +342,9 @@
                                 const arcStartIndex = points.length - 1;
 
                                 // Add the endpoint
-                                points.push(seg.p1);
+                                const taggedEndpoint = { ...seg.p1 };
+                                if (curveId) taggedEndpoint.curveId = curveId;
+                                points.push(taggedEndpoint);
 
                                 // Capture end index after adding endpoint
                                 const arcEndIndex = points.length - 1;
@@ -353,6 +357,7 @@
                                     radius: seg.rx,
                                     startAngle: seg.startAngle, 
                                     endAngle: seg.endAngle,
+                                    sweepAngle: seg.sweepAngle,
                                     clockwise: seg.clockwise,
                                     curveId: curveId
                                 });
@@ -407,28 +412,28 @@
                         isHole = false;
                     }
 
-                    // Enforce: outer=CCW, hole=CW
-                    if (!isHole && isCW) {
-                        points.reverse();
-                        isCW = false;
-                        this.debug(`Normalized outer contour to CCW.`);
-                    } else if (isHole && !isCW) {
-                        points.reverse();
-                        isCW = true;
-                        this.debug(`Normalized hole contour to CW.`);
-                    }
-
-                    this.debug(`Processed subpath #${subpathIndex} (of ${analyticSubpaths.length}): ${points.length} pts. Winding: ${isCW ? 'CW' : 'CCW'}. isHole: ${isHole}.`);
-
-                    // Add finished subpath as a contour
-                    contours.push({
+                    const contourObj = {
                         points: points,
                         isHole: isHole,
                         nestingLevel: isHole ? 1 : 0,
                         parentId: isHole ? 0 : null,
                         arcSegments: arcSegments,
                         curveIds: arcSegments.map(a => a.curveId).filter(Boolean)
-                    });
+                    };
+
+                    // Enforce: outer=CCW, hole=CW
+                    if (!isHole && isCW) {
+                        GeometryUtils._reverseContourWinding(contourObj);
+                        isCW = false;
+                        this.debug(`Normalized outer contour to CCW.`);
+                    } else if (isHole && !isCW) {
+                        GeometryUtils._reverseContourWinding(contourObj);
+                        isCW = true;
+                        this.debug(`Normalized hole contour to CW.`);
+                    }
+
+                    this.debug(`Processed subpath #${subpathIndex} (of ${analyticSubpaths.length}): ${contourObj.points.length} pts. Winding: ${isCW ? 'CW' : 'CCW'}. isHole: ${isHole}.`);
+                    contours.push(contourObj);
                 }
             }); 
 
@@ -459,7 +464,8 @@
          * Creates analytic primitives for traces
          */
         plotTrace(trace) {
-            const width = trace.width || C.formats.gerber.defaultAperture;
+            // Use strict undefined check instead of logical OR to allow 0-width traces
+            const width = trace.width !== undefined ? trace.width : C.formats.gerber.defaultAperture;
             const properties = {
                 isTrace: true,
                 fill: false,
@@ -648,6 +654,8 @@
 
         _convertToMetric(prim) {
             const scale = 25.4;
+
+            // Scale core geometric properties
             if (prim.type === 'circle') {
                 prim.center.x *= scale;
                 prim.center.y *= scale;
@@ -660,7 +668,17 @@
                 prim.startPoint.y *= scale;
                 prim.endPoint.x *= scale;
                 prim.endPoint.y *= scale;
-            } else if (prim.contours) {
+            } else if (prim.type === 'rectangle' || prim.type === 'obround') {
+                if (prim.position) {
+                    prim.position.x *= scale;
+                    prim.position.y *= scale;
+                }
+                if (prim.width !== undefined) prim.width *= scale;
+                if (prim.height !== undefined) prim.height *= scale;
+            } 
+
+            // Scale path contour arrays
+            if (prim.contours) {
                 prim.contours.forEach(c => {
                     c.points.forEach(p => { p.x *= scale; p.y *= scale; });
                     if (c.arcSegments) {
@@ -670,6 +688,20 @@
                     }
                 });
             }
+
+            // Scale attached physical properties (This fixes the hatch gap bug!)
+            if (prim.properties) {
+                if (prim.properties.strokeWidth !== undefined) {
+                    prim.properties.strokeWidth *= scale;
+                }
+                if (prim.properties.diameter !== undefined) {
+                    prim.properties.diameter *= scale;
+                }
+                if (prim.properties.originalDiameter !== undefined) {
+                    prim.properties.originalDiameter *= scale;
+                }
+            }
+
             // Update bounds after scaling
             prim.calculateBounds();
         }

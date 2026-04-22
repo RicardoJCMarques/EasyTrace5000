@@ -170,7 +170,7 @@
             return p;
         }
 
-        updateStatus(message = null, type = 'normal') {
+        updateStatus(message = null, type = 'normal', skipLog = false) {
             if (!this.statusTextEl) return;
 
             // Set appropriate aria-live based on message type
@@ -190,7 +190,10 @@
                 this.statusTextEl.className = `status-text ${type}`;
                 this.currentStatus = { message, type };
 
-                this.addLogEntry(message, type);
+                // Only add to permanent history if skipLog is false
+                if (!skipLog) {
+                    this.addLogEntry(message, type);
+                }
 
                 if (type === 'success' || type === 'info') {
                     const duration = timingConfig.statusMessageDuration;
@@ -221,8 +224,8 @@
             }
         }
 
-        showStatus(message, type = 'normal') {
-            this.updateStatus(message, type);
+        showStatus(message, type = 'normal', skipLog = false) {
+            this.updateStatus(message, type, skipLog);
         }
 
         debugLog(message) {

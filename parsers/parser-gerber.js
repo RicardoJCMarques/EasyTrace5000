@@ -474,6 +474,9 @@
 
             let expr = String(param);
 
+            // Sanitize 'X' or 'x' into standard multiplication operators
+            expr = expr.replace(/[xX]/g, '*');
+
             // Substitute $N variables
             expr = expr.replace(/\$(\d+)/g, (match, num) => {
                 const idx = parseInt(num) - 1;
@@ -499,7 +502,6 @@
         executeMacro(macro, variables, position) {
             const primitives = this.parseMacroContent(macro.content);
             const shapes = [];
-            const scale = this.state.units === 'inch' ? 25.4 : 1;
 
             if (primitives.length === 0) {
                 this.warnings.push(`Macro ${macro.name} has no valid primitives`);
@@ -512,9 +514,9 @@
                 switch (prim.code) {
                     case 1: // Circle: exposure, diameter, centerX, centerY [, rotation]
                         if (params[0] === 1) {
-                            const diameter = params[1] * scale;
-                            const cx = (params[2] || 0) * scale;
-                            const cy = (params[3] || 0) * scale;
+                            const diameter = params[1];
+                            const cx = (params[2] || 0);
+                            const cy = (params[3] || 0);
                             shapes.push({
                                 type: 'circle',
                                 x: position.x + cx,
@@ -533,16 +535,15 @@
                                 const py = params[3 + i * 2];
                                 if (px !== undefined && py !== undefined) {
                                     points.push({
-                                        x: position.x + (px * scale),
-                                        y: position.y + (py * scale)
+                                        x: position.x + px,
+                                        y: position.y + py
                                     });
                                 }
                             }
                             if (points.length >= 3) {
-                                // Close the polygon if not already closed
                                 const first = points[0];
                                 const last = points[points.length - 1];
-                                if (Math.abs(first.x - last.x) > 0.0001 || Math.abs(first.y - last.y) > 0.0001) { // REVIEW - double check epsilons in the config, lower to coordinate precision?
+                                if (Math.abs(first.x - last.x) > 0.0001 || Math.abs(first.y - last.y) > 0.0001) {
                                     points.push({ ...first });
                                 }
                                 shapes.push({ type: 'polygon', points: points });
@@ -553,13 +554,13 @@
                     case 5: // Polygon: exposure, numVertices, centerX, centerY, diameter, rotation
                         if (params[0] === 1) {
                             const numVertices = Math.floor(params[1]);
-                            const cx = position.x + ((params[2] || 0) * scale);
-                            const cy = position.y + ((params[3] || 0) * scale);
-                            const diameter = (params[4] || 0) * scale;
+                            const cx = position.x + (params[2] || 0);
+                            const cy = position.y + (params[3] || 0);
+                            const diameter = (params[4] || 0);
                             const rotation = (params[5] || 0) * Math.PI / 180;
                             const radius = diameter / 2;
                             const points = [];
-                            
+
                             for (let i = 0; i < numVertices; i++) {
                                 const angle = rotation + (2 * Math.PI * i / numVertices);
                                 points.push({
@@ -574,11 +575,11 @@
 
                     case 20: // Vector Line: exposure, width, startX, startY, endX, endY, rotation
                         if (params[0] === 1) {
-                            const width = params[1] * scale;
-                            const x1 = position.x + ((params[2] || 0) * scale);
-                            const y1 = position.y + ((params[3] || 0) * scale);
-                            const x2 = position.x + ((params[4] || 0) * scale);
-                            const y2 = position.y + ((params[5] || 0) * scale);
+                            const width = params[1];
+                            const x1 = position.x + (params[2] || 0);
+                            const y1 = position.y + (params[3] || 0);
+                            const x2 = position.x + (params[4] || 0);
+                            const y2 = position.y + (params[5] || 0);
                             shapes.push({
                                 type: 'line',
                                 start: { x: x1, y: y1 },
@@ -590,10 +591,10 @@
 
                     case 21: // Center Line (rectangle): exposure, width, height, centerX, centerY, rotation
                         if (params[0] === 1) {
-                            const w = (params[1] || 0) * scale;
-                            const h = (params[2] || 0) * scale;
-                            const cx = position.x + ((params[3] || 0) * scale);
-                            const cy = position.y + ((params[4] || 0) * scale);
+                            const w = (params[1] || 0);
+                            const h = (params[2] || 0);
+                            const cx = position.x + (params[3] || 0);
+                            const cy = position.y + (params[4] || 0);
                             const rotation = params[5] || 0;
 
                             if (rotation !== 0) {
@@ -628,10 +629,10 @@
 
                     case 22: // Lower-Left Line (rectangle): exposure, width, height, lowerLeftX, lowerLeftY, rotation
                         if (params[0] === 1) {
-                            const w = (params[1] || 0) * scale;
-                            const h = (params[2] || 0) * scale;
-                            const llx = position.x + ((params[3] || 0) * scale);
-                            const lly = position.y + ((params[4] || 0) * scale);
+                            const w = (params[1] || 0);
+                            const h = (params[2] || 0);
+                            const llx = position.x + (params[3] || 0);
+                            const lly = position.y + (params[4] || 0);
                             shapes.push({
                                 type: 'rectangle',
                                 x: llx,
@@ -845,12 +846,13 @@
                     } 
                     else if (opMode === 'DRAW') {
                         if (!this.state.inRegion) {
-                            const precision = C.precision.zeroLength;
-                            const isZeroLengthDraw = Math.abs(this.state.position.x - pos.x) < precision &&
-                                                     Math.abs(this.state.position.y - pos.y) < precision;
+                            // Check for Old zero-length trace segments there used were considered Flashes
+                            const strictEpsilon = C.precision.epsilon; 
+                            const isZeroLengthDraw = Math.abs(this.state.position.x - pos.x) <= strictEpsilon &&
+                                                    Math.abs(this.state.position.y - pos.y) <= strictEpsilon;
 
                             if (isZeroLengthDraw) {
-                                this.debug(`Detected zero-length draw at (${pos.x}, ${pos.y}). Treating as a flash.`);
+                                this.debug(`Detected strict zero-length draw at (${pos.x}, ${pos.y}). Treating as a flash.`);
                                 this.createFlash(pos);
                                 this.state.position = pos;
                                 break;
@@ -861,11 +863,11 @@
                             if (command.params.i !== undefined || command.params.j !== undefined) {
                                 arcData = {};
                                 if (command.params.i !== undefined) {
-                                    arcData.i = this.parseCoordinateValue(command.params.i, this.state.format, this.state.units);
+                                    arcData.i = this.parseCoordinateValue(command.params.i, this.state.format);
                                     this.stats.coordinatesParsed++;
                                 }
                                 if (command.params.j !== undefined) {
-                                    arcData.j = this.parseCoordinateValue(command.params.j, this.state.format, this.state.units);
+                                    arcData.j = this.parseCoordinateValue(command.params.j, this.state.format);
                                     this.stats.coordinatesParsed++;
                                 }
                             }
@@ -881,9 +883,9 @@
                             // Extract arc data for region vertices (same logic as the non-region branch)
                             if (command.params.i !== undefined || command.params.j !== undefined) {
                                 const arcI = command.params.i !== undefined
-                                    ? this.parseCoordinateValue(command.params.i, this.state.format, this.state.units) : 0;
+                                    ? this.parseCoordinateValue(command.params.i, this.state.format) : 0;
                                 const arcJ = command.params.j !== undefined
-                                    ? this.parseCoordinateValue(command.params.j, this.state.format, this.state.units) : 0;
+                                    ? this.parseCoordinateValue(command.params.j, this.state.format) : 0;
                                 this.stats.coordinatesParsed += (command.params.i !== undefined ? 1 : 0)
                                                             + (command.params.j !== undefined ? 1 : 0);
 
@@ -935,12 +937,12 @@
             const newPos = { ...this.state.position };
 
             if (params.x !== undefined) {
-                newPos.x = this.parseCoordinateValue(params.x, this.state.format, this.state.units);
+                newPos.x = this.parseCoordinateValue(params.x, this.state.format);
                 this.stats.coordinatesParsed++;
             }
 
             if (params.y !== undefined) {
-                newPos.y = this.parseCoordinateValue(params.y, this.state.format, this.state.units);
+                newPos.y = this.parseCoordinateValue(params.y, this.state.format);
                 this.stats.coordinatesParsed++;
             }
 
@@ -1259,10 +1261,9 @@
                 return;
             }
 
-            const scale = this.state.units === 'inch' ? 25.4 : 1;
             let traceWidth = formatConfig.defaultAperture;
             if (aperture.parameters && aperture.parameters.length > 0) {
-                traceWidth = aperture.parameters[0] * scale;
+                traceWidth = aperture.parameters[0];
             }
 
             const trace = {
@@ -1299,8 +1300,6 @@
                 return;
             }
 
-            const scale = this.state.units === 'inch' ? 25.4 : 1;
-
             const flash = {
                 type: 'flash',
                 position: { ...position },
@@ -1312,15 +1311,15 @@
 
             switch (aperture.shape) {
                 case 'circle':
-                    flash.radius = ((aperture.parameters[0] || 0) / 2) * scale;
-                    flash.parameters = aperture.parameters.map(p => p * scale);
+                    flash.radius = ((aperture.parameters[0] || 0) / 2);
+                    flash.parameters = aperture.parameters.map(p => p);
                     break;
 
                 case 'rectangle':
                 case 'obround':
-                    flash.width = (aperture.parameters[0] || 0) * scale;
-                    flash.height = (aperture.parameters[1] !== undefined ? aperture.parameters[1] : aperture.parameters[0] || 0) * scale;
-                    flash.parameters = aperture.parameters.map(p => p * scale);
+                    flash.width = (aperture.parameters[0] || 0);
+                    flash.height = (aperture.parameters[1] !== undefined ? aperture.parameters[1] : aperture.parameters[0] || 0);
+                    flash.parameters = aperture.parameters.map(p => p);
                     break;
 
                 case 'macro':
@@ -1388,9 +1387,8 @@
             // Calculate bounds
             this.layers.bounds = this.calculateBounds(this.layers.objects);
 
-            // All coordinates and dimensions were converted to mm during parsing.
-            // Mark the output as mm so downstream code doesn't double-convert.
-            this.layers.units = 'mm';
+            // Mark the output with the parsed unit so it can be handled by the plotter
+            this.layers.units = this.state.units;
         }
 
         getApertureShape(char) {

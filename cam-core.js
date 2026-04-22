@@ -436,6 +436,12 @@
 
                 this.debug(`Plotter returned ${primitives.length} primitives. Polarities:`, polarityCounts);
 
+                // Transfer parser warnings to the main operation object so the UI can see them
+                if (!operation.warnings) operation.warnings = [];
+                if (parseResult.warnings && parseResult.warnings.length > 0) {
+                    operation.warnings.push(...parseResult.warnings);
+                }
+
                 // Handler pre-validation classification
                 const handler = this.getHandler(operation.type);
                 const classification = handler.classifyPrimitives(operation, primitives);

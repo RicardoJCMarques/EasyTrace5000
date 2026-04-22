@@ -176,11 +176,12 @@
                 return pathPrimitive;
 
             // Handle path strokes (linear polylines)
-            } else if (primitive.type === 'path' && primitive.contours?.[0]?.points) {
-                const points = primitive.contours[0].points;
-
-                // Generates overlapping circles and rectangles representing the expanded trace
-                const strokes = GeometryUtils.traceToPolygon(points, totalWidth, props);
+            } else if (primitive.type === 'path' && primitive.contours?.[0]) {
+                
+                // Pass the entire contour to traceToPolygon so arcSegments are preserved, instead of passing just primitive.contours[0].points.
+                const contour = primitive.contours[0];
+                const strokes = GeometryUtils.traceToPolygon(contour, totalWidth, props);
+                
                 if (!strokes || strokes.length === 0) return null;
 
                 // Scrub the properties so the renderer treats them as pure filled areas
@@ -208,6 +209,18 @@
         }
 
         /**
+         * Checks if a path primitive contains any analytic arc segments.
+         */
+        _hasAnalyticArcs(pathPrimitive) {
+            if (!pathPrimitive.contours || pathPrimitive.contours.length === 0) {
+                return false;
+            }
+            return pathPrimitive.contours.some(contour => 
+                contour.arcSegments && contour.arcSegments.length > 0
+            );
+        }
+
+        /**
          * Offsets a PathPrimitive. Routes to boolean pipeline or legacy fallback.
          */
         async offsetPath(path, distance) {
@@ -216,7 +229,7 @@
                 return null;
             }
 
-            // Handle centerline paths (open paths, e.g. drill slot center)
+            // Centerline paths bypass standard offsetting
             if (path.properties?.isCenterlinePath) {
                 return new PathPrimitive(path.contours, {
                     ...path.properties,
@@ -227,13 +240,23 @@
                 });
             }
 
-            // --- BOOLEAN PIPELINE CROSSROADS ---
-            if (this.USE_BOOLEAN_OFFSETTING) {
+            // The Safeguard: Check for complex arc geometry
+            const containsArcs = this._hasAnalyticArcs(path);
+
+            // Route to Boolean Inflating if: It has arcs, globally force boolean, or the analytic offset module is missing
+            if (containsArcs || this.USE_BOOLEAN_OFFSETTING || !this.analyticOffsetter) {
+                this.debug(`Routing path ${path.id} to Boolean Inflated Offsetter (containsArcs: ${containsArcs})`);
                 return await this._offsetPathViaBoolean(path, distance);
             }
-            // -----------------------------------
 
             /**
+            // Fall-through to Analytic Offsetter (For pure straight-segment polygons)
+            this.debug(`Routing path ${path.id} to Analytic Offsetter (Straight segments only)`);
+
+            if (this.analyticOffsetter) {
+                return await this.analyticOffsetter.offsetPath(path, distance);
+            }
+
             // Multi-contour decomposition
             if (path.contours.length > 1) {
                 this.debug(`Decomposing compound path with ${path.contours.length} contours for offset`);
@@ -280,6 +303,7 @@
             const boundaryStrokes = [];
 
             for (const contour of path.contours) {
+                // Pass the raw contour directly to the stroke generator.
                 const strokes = GeometryUtils.closedContourToStrokePolygons(contour, strokeWidth);
                 if (strokes && strokes.length > 0) {
                     boundaryStrokes.push(...strokes);
@@ -288,7 +312,16 @@
 
             if (boundaryStrokes.length === 0) return null;
 
-            // Union all strokes into a ring
+            const opId = path.properties?.operationId;
+            if (opId && window.pcbcam?.core) {
+                const op = window.pcbcam.core.operations.find(o => o.id === opId);
+                if (op) {
+                    if (!op._debugStrokes) op._debugStrokes = [];
+                    op._debugStrokes.push(...boundaryStrokes);
+                }
+            }
+
+            // Union all strokes into a thick offset ring
             const ring = await this.geometryProcessor.unionGeometry(boundaryStrokes);
             if (!ring || ring.length === 0) return null;
 
@@ -298,8 +331,16 @@
             // Tessellate arc segments for Clipper2 (works with polygons only).
             const maskContours = path.contours.map(c => {
                 const tessellated = GeometryUtils.contourArcsToPath(c);
+                let points = tessellated.points;
+
+                // Normalize to CCW — Clipper2 needs positive winding for subject polygons.
+                // The isHole flag is already stripped, but CW-wound hole contours that were extracted into standalone primitives retain their original point order, causing winding cancellation during union.
+                if (GeometryUtils.isClockwise(points)) {
+                    points = points.slice().reverse();
+                }
+
                 return {
-                    points: tessellated.points,
+                    points: points,
                     isHole: false,
                     nestingLevel: 0,
                     parentId: null,
@@ -337,6 +378,8 @@
                 p.properties.isOffset = true;
                 p.properties.offsetDistance = distance;
                 p.properties.offsetType = isInternal ? 'internal' : 'external';
+                // Smuggle the raw polygonized strokes out for the renderer for visual debugging
+                p.properties._preprocessedStrokes = boundaryStrokes;
             });
 
             this.debug(`Boolean offset result: ${resultPrimitives.length} primitive(s) (${isInternal ? 'internal' : 'external'})`);

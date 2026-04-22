@@ -142,9 +142,9 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │
 ├── config.js                             # Configuration and defaults
 │
-├── cam-core.js                           # Core application logic
+├── cam-core.js                           # Foundation logic
 ├── cam-ui.js                             # UI controller
-├── cam-controller.js                     # Initialization and connection
+├── cam-easytrace5000.js                  # Application orchestration
 │
 ├── css/
 │   ├── base.css                          # Foundation styles (reset, variables, etc)
@@ -182,9 +182,14 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   ├── ui-modal-manager.js               # Modal boxes
 │   └── tool-library.js                   # Tool definitions
 │
-├── language/
-│   ├── language-manager.js               # Rudimentary multi-language system
-│   └── en.json                           # English text strings
+├── operations/
+│   ├── base-operation-handler.js         # Base class for operation handlers
+│   ├── offset-operation-handler.js       # Core offset generation logic
+│   ├── isolation-operation-handler.js    # Isolation routing handler
+│   ├── clearing-operation-handler.js     # Copper clearing handler
+│   ├── cutout-operation-handler.js       # Board cutout handler
+│   ├── drill-operation-handler.js        # Peck/mill drill handler
+│   └── stencil-operation-handler.js      # Solderpaste stencil handler
 │
 ├── geometry/
 │   ├── clipper2z.js                      # Clipper2 WASM factory
@@ -222,7 +227,7 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   └── toolpath-tab-planner.js           # Cutout tab placement
 │
 ├── export/
-│   ├── laser-image-exporter.js           # Image generation
+│   ├── graphics-exporter.js              # Image generation
 │   ├── gcode-generator.js                # G-code generation
 │   └── processors/                       # Post-processor modules
 │       ├── base-processor.js
@@ -234,6 +239,10 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │       ├── mach3-processor.js
 │       ├── marlin-processor.js
 │       └── roland-processor.js           # Independent RML module
+│
+├── language/
+│   ├── language-manager.js               # Rudimentary multi-language system
+│   └── en.json                           # English text strings
 │
 ├── examples/
 │   ├── exampleSMD1/                      # Sample SMD board files
@@ -249,7 +258,7 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 
 ## Running Locally
 
-> **Note:** The source files run directly in the browser; no build required. Production deployment uses `.github/scripts/build.js` to bundle assets, but this is handled automatically by CI and doesn't affect local usage/development.
+> **Note:** Because the application dynamically fetches internal modules and JSON files, **modern browsers will block these requests if you try to open `index.html` directly from your file system** due to CORS security policies. You *must* run a local web server. Production deployment uses `.github/scripts/build.js` to bundle assets, but this is handled automatically by CI and doesn't affect local usage/development.
 
 1. Clone the repository:
 ```bash
@@ -312,7 +321,7 @@ The repository includes a standalone test page used during initial development t
 
 * **Live website:** [cam.eltryus.design/clipper2/](https://cam.eltryus.design/clipper2/)
 * **Purpose:** Interactive sandbox for Boolean operations, Offsetting, Minkowski Sums, and Arc Reconstruction.
-* **Self-served:** Navigate to `http://localhost:YOUR_PORT/clipper2/` while serving the project.
+* **Local:** Navigate to `http://localhost:YOUR_PORT/clipper2/` while serving the project.
 
 ## Support & Sponsorship
 
@@ -396,4 +405,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.2.0 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.3.1 | **Platform**: Client-side Web

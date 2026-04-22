@@ -66,9 +66,9 @@
         }
 
         // Common parsing utilities
-        parseCoordinateValue(value, format, units) {
+        parseCoordinateValue(value, format) {
             if (typeof value === 'number') {
-                return units === 'inch' ? value * 25.4 : value;
+                return value;
             }
 
             const valueStr = String(value);
@@ -79,7 +79,6 @@
                 if (!Number.isFinite(coord)) {
                     throw new Error(`Invalid decimal coordinate: ${value}`);
                 }
-                if (units === 'inch') coord *= 25.4;
                 return coord;
             }
 
@@ -87,19 +86,14 @@
             const negative = valueStr.startsWith('-');
             const absValue = valueStr.replace(/^[+-]/, '');
 
-            const totalDigits = format.integer + format.decimal;
-
-            // Divide by 10 to the power of the decimal places
+            // Calculate the true float based on the decimal places defined in the format
             let coord = parseInt(absValue, 10) / Math.pow(10, format.decimal);
 
             if (!Number.isFinite(coord)) {
                 throw new Error(`Invalid formatted coordinate: ${value}`);
             }
 
-            if (negative) coord = -coord;
-            if (units === 'inch') coord *= 25.4;
-
-            return coord;
+            return negative ? -coord : coord;
         }
 
         validateCoordinates(coordinates, lineNumber = 0) {
@@ -126,7 +120,7 @@
             const xRounded = Math.round(coordinates.x / PRECISION) * PRECISION;
             const yRounded = Math.round(coordinates.y / PRECISION) * PRECISION;
 
-            if (Math.abs(coordinates.x - xRounded) > PRECISION * 0.1 || // REVIEW - double check config epsilons. Is the *0.1 necessary? Why not use an existing or smaller epsilon?
+            if (Math.abs(coordinates.x - xRounded) > PRECISION * 0.1 || 
                 Math.abs(coordinates.y - yRounded) > PRECISION * 0.1) {
                 this.debug(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
             }

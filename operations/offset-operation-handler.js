@@ -88,6 +88,8 @@
             // Clone to prevent mutating shared state
             settings = { ...settings };
 
+            operation._debugStrokes = [];
+
             this.debug('=== OFFSET PIPELINE START ===');
             this.debug(`Operation: ${operation.id} (${operation.type})`);
 
@@ -159,7 +161,20 @@
 
                     if (isRegion) {
                         try {
-                            const resolved = await this.core.geometryProcessor.unionGeometry([prim]);
+                            const hasArcs = prim.contours?.some(c => c.arcSegments?.length > 0);
+                            let primForClipper = prim;
+                            if (hasArcs) {
+                                const tessContours = prim.contours.map(c => GeometryUtils.contourArcsToPath(c));
+                                primForClipper = new PathPrimitive(tessContours, { ...prim.properties });
+                                if (prim.curveIds) primForClipper.curveIds = prim.curveIds;
+                            }
+
+                            let resolved = await this.core.geometryProcessor.unionGeometry([primForClipper]);
+
+                            if (hasArcs && resolved && resolved.length > 0 && this.core.geometryProcessor?.arcReconstructor) {
+                                resolved = this.core.geometryProcessor.arcReconstructor.processForReconstruction(resolved);
+                            }
+
                             if (resolved && resolved.length > 0) {
                                 resolved.forEach(r => Object.assign(r.properties || (r.properties = {}), prim.properties));
                                 resolvedPrimitives.push(...resolved);

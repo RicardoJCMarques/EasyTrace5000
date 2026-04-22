@@ -908,35 +908,36 @@
                 }
             }
 
-            // Reconstructed full circle: single arc spanning 360° // REVIEW - it feels like a band-aid for a problem before toolpath planning.
-            if (arcSegments.length === 1 && points.length <= 3) {
+            // Reconstructed full circles
+            if (arcSegments.length === 1) {
                 const arc = arcSegments[0];
-                if (arc.center && arc.radius > 0) {
-                    // REVIEW - this enforcement isn't necessary, review this whole logic
-                    // let sweep = arc.sweepAngle;
-                    // if (sweep === undefined) {
-                    //     sweep = arc.endAngle - arc.startAngle;
-                    //     if (arc.clockwise && sweep > 0) sweep -= 2 * Math.PI;
-                    //     if (!arc.clockwise && sweep < 0) sweep += 2 * Math.PI;
-                    // }
-                    const transformedCenter = this.applyTransforms(arc.center, transforms);
-                    // Canonical 3 o'clock entry — matches circleToPath / translateCircle
-                    const rawEntry = { x: arc.center.x + arc.radius, y: arc.center.y };
-                    const canonicalEntry = this.applyTransforms(rawEntry, transforms);
-                    const i_val = transformedCenter.x - canonicalEntry.x;
-                    const j_val = transformedCenter.y - canonicalEntry.y;
 
-                    plan.addArc(canonicalEntry.x, canonicalEntry.y, depth, i_val, j_val, true, feedRate);
-
-                    // Update metadata so optimizer sees consistent entry/exit and can cluster this with other passes of the same hole
-                    plan.metadata.entryPoint = { x: canonicalEntry.x, y: canonicalEntry.y, z: depth };
-                    plan.metadata.exitPoint = { ...plan.metadata.entryPoint };
-                    plan.metadata.isSimpleCircle = true;
-                    plan.metadata.isClosedLoop = true;
-                    plan.metadata.center = { x: transformedCenter.x, y: transformedCenter.y };
-                    plan.metadata.radius = arc.radius;
-                    return;
+                // Grab the upstream sweepAngle
+                let sweep = arc.sweepAngle;
+                // Fallback if sweepAngle is missing REVIEW - is this still necessary? It must be set upstream?
+                if (sweep === undefined) {
+                    sweep = arc.endAngle - arc.startAngle;
+                    if (arc.clockwise && sweep > 0) sweep -= 2 * Math.PI;
+                    if (!arc.clockwise && sweep < 0) sweep += 2 * Math.PI;
                 }
+
+                const transformedCenter = this.applyTransforms(arc.center, transforms);
+                // Canonical 3 o'clock entry — matches circleToPath / translateCircle
+                const rawEntry = { x: arc.center.x + arc.radius, y: arc.center.y };
+                const canonicalEntry = this.applyTransforms(rawEntry, transforms);
+                const i_val = transformedCenter.x - canonicalEntry.x;
+                const j_val = transformedCenter.y - canonicalEntry.y;
+
+                plan.addArc(canonicalEntry.x, canonicalEntry.y, depth, i_val, j_val, true, feedRate);
+
+                // Update metadata so optimizer sees consistent entry/exit and can cluster this with other passes of the same hole
+                plan.metadata.entryPoint = { x: canonicalEntry.x, y: canonicalEntry.y, z: depth };
+                plan.metadata.exitPoint = { ...plan.metadata.entryPoint };
+                plan.metadata.isSimpleCircle = true;
+                plan.metadata.isClosedLoop = true;
+                plan.metadata.center = { x: transformedCenter.x, y: transformedCenter.y };
+                plan.metadata.radius = arc.radius;
+                return;
             }
 
             // Standard segment-by-segment processing
