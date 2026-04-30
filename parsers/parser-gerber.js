@@ -517,10 +517,21 @@
                             const diameter = params[1];
                             const cx = (params[2] || 0);
                             const cy = (params[3] || 0);
+                            const rotation = params[4] || 0;
+
+                            let rx = cx, ry = cy;
+                            if (rotation !== 0) {
+                                const rad = rotation * Math.PI / 180;
+                                const cos = Math.cos(rad);
+                                const sin = Math.sin(rad);
+                                rx = cx * cos - cy * sin;
+                                ry = cx * sin + cy * cos;
+                            }
+
                             shapes.push({
                                 type: 'circle',
-                                x: position.x + cx,
-                                y: position.y + cy,
+                                x: position.x + rx,
+                                y: position.y + ry,
                                 radius: diameter / 2
                             });
                         }
@@ -529,14 +540,24 @@
                     case 4: // Outline: exposure, numVertices, x0,y0, x1,y1, ..., rotation
                         if (params[0] === 1) {
                             const numVertices = Math.floor(params[1]);
+                            const rotation = params[4 + numVertices * 2] || 0;
                             const points = [];
+
                             for (let i = 0; i <= numVertices; i++) {
                                 const px = params[2 + i * 2];
                                 const py = params[3 + i * 2];
                                 if (px !== undefined && py !== undefined) {
+                                    let rx = px, ry = py;
+                                    if (rotation !== 0) {
+                                        const rad = rotation * Math.PI / 180;
+                                        const cos = Math.cos(rad);
+                                        const sin = Math.sin(rad);
+                                        rx = px * cos - py * sin;
+                                        ry = px * sin + py * cos;
+                                    }
                                     points.push({
-                                        x: position.x + px,
-                                        y: position.y + py
+                                        x: position.x + rx,
+                                        y: position.y + ry
                                     });
                                 }
                             }
@@ -554,15 +575,28 @@
                     case 5: // Polygon: exposure, numVertices, centerX, centerY, diameter, rotation
                         if (params[0] === 1) {
                             const numVertices = Math.floor(params[1]);
-                            const cx = position.x + (params[2] || 0);
-                            const cy = position.y + (params[3] || 0);
+                            const px = (params[2] || 0);
+                            const py = (params[3] || 0);
                             const diameter = (params[4] || 0);
-                            const rotation = (params[5] || 0) * Math.PI / 180;
+                            const rotation = params[5] || 0;
+
+                            let cx = px, cy = py;
+                            if (rotation !== 0) {
+                                const rad = rotation * Math.PI / 180;
+                                const cos = Math.cos(rad);
+                                const sin = Math.sin(rad);
+                                cx = px * cos - py * sin;
+                                cy = px * sin + py * cos;
+                            }
+
+                            cx += position.x;
+                            cy += position.y;
                             const radius = diameter / 2;
                             const points = [];
+                            const rotRad = rotation * Math.PI / 180;
 
                             for (let i = 0; i < numVertices; i++) {
-                                const angle = rotation + (2 * Math.PI * i / numVertices);
+                                const angle = rotRad + (2 * Math.PI * i / numVertices);
                                 points.push({
                                     x: cx + radius * Math.cos(angle),
                                     y: cy + radius * Math.sin(angle)
@@ -576,14 +610,27 @@
                     case 20: // Vector Line: exposure, width, startX, startY, endX, endY, rotation
                         if (params[0] === 1) {
                             const width = params[1];
-                            const x1 = position.x + (params[2] || 0);
-                            const y1 = position.y + (params[3] || 0);
-                            const x2 = position.x + (params[4] || 0);
-                            const y2 = position.y + (params[5] || 0);
+                            const px1 = params[2] || 0;
+                            const py1 = params[3] || 0;
+                            const px2 = params[4] || 0;
+                            const py2 = params[5] || 0;
+                            const rotation = params[6] || 0;
+
+                            let rx1 = px1, ry1 = py1, rx2 = px2, ry2 = py2;
+                            if (rotation !== 0) {
+                                const rad = rotation * Math.PI / 180;
+                                const cos = Math.cos(rad);
+                                const sin = Math.sin(rad);
+                                rx1 = px1 * cos - py1 * sin;
+                                ry1 = px1 * sin + py1 * cos;
+                                rx2 = px2 * cos - py2 * sin;
+                                ry2 = px2 * sin + py2 * cos;
+                            }
+
                             shapes.push({
                                 type: 'line',
-                                start: { x: x1, y: y1 },
-                                end: { x: x2, y: y2 },
+                                start: { x: position.x + rx1, y: position.y + ry1 },
+                                end: { x: position.x + rx2, y: position.y + ry2 },
                                 width: width
                             });
                         }
@@ -593,12 +640,23 @@
                         if (params[0] === 1) {
                             const w = (params[1] || 0);
                             const h = (params[2] || 0);
-                            const cx = position.x + (params[3] || 0);
-                            const cy = position.y + (params[4] || 0);
+                            const px = (params[3] || 0);
+                            const py = (params[4] || 0);
                             const rotation = params[5] || 0;
 
+                            let cx = px, cy = py;
                             if (rotation !== 0) {
-                                // Create rotated rectangle as polygon
+                                const rad = rotation * Math.PI / 180;
+                                const cos = Math.cos(rad);
+                                const sin = Math.sin(rad);
+                                cx = px * cos - py * sin;
+                                cy = px * sin + py * cos;
+                            }
+
+                            cx += position.x;
+                            cy += position.y;
+
+                            if (rotation !== 0) {
                                 const rad = rotation * Math.PI / 180;
                                 const cos = Math.cos(rad);
                                 const sin = Math.sin(rad);
@@ -631,15 +689,37 @@
                         if (params[0] === 1) {
                             const w = (params[1] || 0);
                             const h = (params[2] || 0);
-                            const llx = position.x + (params[3] || 0);
-                            const lly = position.y + (params[4] || 0);
-                            shapes.push({
-                                type: 'rectangle',
-                                x: llx,
-                                y: lly,
-                                width: w,
-                                height: h
-                            });
+                            const llx = (params[3] || 0);
+                            const lly = (params[4] || 0);
+                            const rotation = params[5] || 0;
+
+                            if (rotation !== 0) {
+                                const rad = rotation * Math.PI / 180;
+                                const cos = Math.cos(rad);
+                                const sin = Math.sin(rad);
+
+                                const corners = [
+                                    { x: llx, y: lly },
+                                    { x: llx + w, y: lly },
+                                    { x: llx + w, y: lly + h },
+                                    { x: llx, y: lly + h }
+                                ];
+
+                                const points = corners.map(c => ({
+                                    x: position.x + (c.x * cos - c.y * sin),
+                                    y: position.y + (c.x * sin + c.y * cos)
+                                }));
+                                points.push({ ...points[0] });
+                                shapes.push({ type: 'polygon', points: points });
+                            } else {
+                                shapes.push({
+                                    type: 'rectangle',
+                                    x: position.x + llx,
+                                    y: position.y + lly,
+                                    width: w,
+                                    height: h
+                                });
+                            }
                         }
                         break;
 
@@ -663,26 +743,65 @@
             const lines = shapes.filter(s => s.type === 'line');
             const polygons = shapes.filter(s => s.type === 'polygon');
 
-            // RoundRect pattern: 4 circles + 4 lines (or polygon outline)
+            // Obround Macro Pattern (2 Circles + 1 Line)
+            if (circles.length === 2 && lines.length === 1) {
+                const c1 = circles[0];
+                const c2 = circles[1];
+                const dx = c2.x - c1.x;
+                const dy = c2.y - c1.y;
+                const angle = Math.atan2(dy, dx);
+                const radius = Math.max(c1.radius, c2.radius);
+
+                let arc1Id = null;
+                let arc2Id = null;
+                if (window.globalCurveRegistry) {
+                    arc1Id = window.globalCurveRegistry.register({
+                        type: 'arc', center: { x: c2.x, y: c2.y }, radius: radius,
+                        startAngle: angle - Math.PI / 2, endAngle: angle + Math.PI / 2,
+                        clockwise: false, source: 'macro_obround_cap2'
+                    });
+                    arc2Id = window.globalCurveRegistry.register({
+                        type: 'arc', center: { x: c1.x, y: c1.y }, radius: radius,
+                        startAngle: angle + Math.PI / 2, endAngle: angle + 3 * Math.PI / 2,
+                        clockwise: false, source: 'macro_obround_cap1'
+                    });
+                }
+
+                // Exactly 4 boundary points; the arcs connect them.
+                const p1 = { x: c2.x + radius * Math.cos(angle - Math.PI/2), y: c2.y + radius * Math.sin(angle - Math.PI/2), curveId: arc1Id };
+                const p2 = { x: c2.x + radius * Math.cos(angle + Math.PI/2), y: c2.y + radius * Math.sin(angle + Math.PI/2), curveId: arc1Id };
+                const p3 = { x: c1.x + radius * Math.cos(angle + Math.PI/2), y: c1.y + radius * Math.sin(angle + Math.PI/2), curveId: arc2Id };
+                const p4 = { x: c1.x + radius * Math.cos(angle - Math.PI/2), y: c1.y + radius * Math.sin(angle - Math.PI/2), curveId: arc2Id };
+
+                const points = [p1, p2, p3, p4];
+                const arcSegments = [
+                    { startIndex: 0, endIndex: 1, center: { x: c2.x, y: c2.y }, radius: radius, startAngle: angle - Math.PI/2, endAngle: angle + Math.PI/2, clockwise: false, curveId: arc1Id },
+                    { startIndex: 2, endIndex: 3, center: { x: c1.x, y: c1.y }, radius: radius, startAngle: angle + Math.PI/2, endAngle: angle + 3 * Math.PI/2, clockwise: false, curveId: arc2Id }
+                ];
+
+                return { shape: 'polygon', points, arcSegments };
+            }
+
+            // Rounded Rectangle Macro Pattern (4 Circles + 4 Lines or 1 Poly)
             if (circles.length === 4 && (lines.length === 4 || polygons.length === 1)) {
                 // Sort circles by angle from center to get corner order
                 const cx = circles.reduce((sum, c) => sum + c.x, 0) / 4;
                 const cy = circles.reduce((sum, c) => sum + c.y, 0) / 4;
 
-                const sortedCircles = circles.slice().sort((a, b) => {
-                    const angleA = Math.atan2(a.y - cy, a.x - cx);
-                    const angleB = Math.atan2(b.y - cy, b.x - cx);
-                    return angleA - angleB;
-                });
+                const getAngle = (c) => {
+                    let a = Math.atan2(c.y - cy, c.x - cx);
+                    if (a < 0) a += 2 * Math.PI;
+                    return a;
+                };
+                const sortedCircles = circles.slice().sort((a, b) => getAngle(a) - getAngle(b));
 
                 const radius = circles[0].radius;
-                const segments = 8; // Per quarter circle
                 const points = [];
+                const arcSegments = [];
 
                 // Build rounded rectangle by going around corners
                 for (let cornerIdx = 0; cornerIdx < 4; cornerIdx++) {
                     const circle = sortedCircles[cornerIdx];
-                    const nextCircle = sortedCircles[(cornerIdx + 1) % 4];
 
                     // Determine which quadrant arc to draw
                     const dx = circle.x - cx;
@@ -704,26 +823,34 @@
                         endAngle = 2 * Math.PI;
                     }
 
-                    // Add arc points
-                    for (let i = 0; i <= segments; i++) {
-                        const t = i / segments;
-                        const angle = startAngle + t * (endAngle - startAngle);
-                        points.push({
-                            x: circle.x + radius * Math.cos(angle),
-                            y: circle.y + radius * Math.sin(angle)
+                    // Register corner arcs
+                    let arcId = null;
+                    if (window.globalCurveRegistry) {
+                        arcId = window.globalCurveRegistry.register({
+                            type: 'arc', center: { x: circle.x, y: circle.y }, radius: radius,
+                            startAngle: startAngle, endAngle: endAngle, clockwise: false, source: 'macro_roundrect_corner'
                         });
                     }
+
+                    const pStart = { x: circle.x + radius * Math.cos(startAngle), y: circle.y + radius * Math.sin(startAngle), curveId: arcId };
+                    const pEnd = { x: circle.x + radius * Math.cos(endAngle), y: circle.y + radius * Math.sin(endAngle), curveId: arcId };
+
+                    const startIndex = points.length;
+                    points.push(pStart, pEnd);
+                    const endIndex = points.length - 1;
+
+                    arcSegments.push({ startIndex, endIndex, center: {x: circle.x, y: circle.y}, radius, startAngle, endAngle, clockwise: false, curveId: arcId });
                 }
 
-                return points;
+                return { shape: 'polygon', points, arcSegments };
             }
 
-            // Fallback: just use polygon outline if available
+            // Raw Polygon Fallback
             if (polygons.length > 0) {
                 return polygons[0].points;
             }
 
-            // Ultimate fallback: create bounding box
+            // Create bounding box
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const shape of shapes) {
                 if (shape.type === 'circle') {
@@ -750,16 +877,16 @@
             const coords = {};
 
             // Allow optional decimal values
-            const xMatch = text.match(/X([+-]?\d+(?:\.\d+)?)/);
+            const xMatch = text.match(/X([+-]?(?:\d+\.?\d*|\.\d+))/i);
             if (xMatch) coords.x = xMatch[1];
 
-            const yMatch = text.match(/Y([+-]?\d+(?:\.\d+)?)/);
+            const yMatch = text.match(/Y([+-]?(?:\d+\.?\d*|\.\d+))/i);
             if (yMatch) coords.y = yMatch[1];
 
-            const iMatch = text.match(/I([+-]?\d+(?:\.\d+)?)/);
+            const iMatch = text.match(/I([+-]?(?:\d+\.?\d*|\.\d+))/i);
             if (iMatch) coords.i = iMatch[1];
 
-            const jMatch = text.match(/J([+-]?\d+(?:\.\d+)?)/);
+            const jMatch = text.match(/J([+-]?(?:\d+\.?\d*|\.\d+))/i);
             if (jMatch) coords.j = jMatch[1];
 
             return Object.keys(coords).length > 0 ? coords : null;
@@ -783,6 +910,10 @@
                 case 'SET_FORMAT':
                     this.state.format.integer = command.params.xInteger;
                     this.state.format.decimal = command.params.xDecimal;
+
+                    // 'keep' leading zeros = 'trailing' zero suppression
+                    this.state.format.zeroSuppression = command.params.leadingZeros === 'keep' ? 'trailing' : 'leading';
+
                     this.debug(`Format set to ${this.state.format.integer}.${this.state.format.decimal}`);
                     break;
 
@@ -1337,12 +1468,19 @@
                         return;
                     }
 
-                    // Convert to polygon points
-                    const polyPoints = this.macroShapesToPolygon(macroShapes, position);
+                    const polyData = this.macroShapesToPolygon(macroShapes, position);
 
-                    if (polyPoints && polyPoints.length >= 3) {
-                        flash.shape = 'polygon';
-                        flash.points = polyPoints;
+                    if (polyData) {
+                        if (Array.isArray(polyData)) {
+                             if (polyData.length >= 3) {
+                                 flash.shape = 'polygon';
+                                 flash.points = polyData;
+                             }
+                        } else {
+                             flash.shape = polyData.shape || 'polygon';
+                             flash.points = polyData.points;
+                             flash.arcSegments = polyData.arcSegments;
+                        }
                     } else {
                         // Fallback to circles if polygon conversion failed
                         const circles = macroShapes.filter(s => s.type === 'circle');

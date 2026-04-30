@@ -71,7 +71,7 @@
                 return value;
             }
 
-            const valueStr = String(value);
+            let valueStr = String(value).trim();
 
             // Handle decimal notation
             if (valueStr.includes('.')) {
@@ -82,11 +82,26 @@
                 return coord;
             }
 
-            // Handle integer notation
             const negative = valueStr.startsWith('-');
-            const absValue = valueStr.replace(/^[+-]/, '');
+            let absValue = valueStr.replace(/^[+-]/, '');
 
-            // Calculate the true float based on the decimal places defined in the format
+            const expectedLength = format.integer + format.decimal;
+            const zeroSuppression = this.options.zeroSuppression || this.state?.format?.zeroSuppression || 'leading';
+
+            if (zeroSuppression === 'trailing') {
+                // Trailing zero suppression means the number MUST be padded to the right
+                // e.g. "0221" -> "0221000" in 2.5 format
+                while (absValue.length < expectedLength) {
+                    absValue += '0';
+                }
+            } else {
+                // Leading zero suppression means the number MUST be padded to the left
+                // e.g. "221" -> "0000221" in 2.5 format
+                while (absValue.length < expectedLength) {
+                    absValue = '0' + absValue;
+                }
+            }
+
             let coord = parseInt(absValue, 10) / Math.pow(10, format.decimal);
 
             if (!Number.isFinite(coord)) {

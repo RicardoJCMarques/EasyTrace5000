@@ -337,6 +337,13 @@ input[type="radio"] {
     gap: var(--spacing-sm);
 }
 
+/* Other Utils*/
+
+.override-guardrail-toggle {
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border-secondary);
+}
+
 /* ============================================================================
    TOOLTIPS
    ============================================================================ */
@@ -801,6 +808,11 @@ input[type="checkbox"]:focus:not(:focus-visible) {
     border-radius: var(--radius);
 }
 
+.checkbox-label:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* ============================================================================
    CALLOUTS
    ============================================================================ */
@@ -860,7 +872,7 @@ input[type="checkbox"]:focus:not(:focus-visible) {
     border: 1px solid var(--color-error, #ff4444);
     margin-bottom: var(--spacing-md, 1rem);
     padding: var(--spacing-md, 1rem);
-    border-radius: var(--border-radius, 4px);
+    border-radius: var(--radius);
 }
 
 .invalidation-panel .warning-header {

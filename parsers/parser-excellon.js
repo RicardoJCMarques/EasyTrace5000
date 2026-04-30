@@ -184,9 +184,13 @@
             } else if (line === 'M30' || line === 'M00') {
                 this.debug('End of file');
                 return;
-            } else if (line === 'METRIC' || line === 'M71') {
+            } else if (line.startsWith('METRIC') || line === 'M71') {
                 this.options.units = 'mm';
                 this.drillData.units = 'mm';
+
+                // Catch suppression mode
+                if (line.includes('LZ')) this.options.zeroSuppression = 'trailing';
+                else if (line.includes('TZ')) this.options.zeroSuppression = 'leading';
 
                 if (!this.formatExplicitlySet) {
                     this.options.format = { integer: 3, decimal: 3 };
@@ -198,9 +202,13 @@
 
                 this.debug('Units: mm');
                 return;
-            } else if (line === 'INCH' || line === 'M72') {
+            } else if (line.startsWith('INCH') || line === 'M72') {
                 this.options.units = 'inch';
                 this.drillData.units = 'inch';
+
+                // Catch suppression mode
+                if (line.includes('LZ')) this.options.zeroSuppression = 'trailing';
+                else if (line.includes('TZ')) this.options.zeroSuppression = 'leading';
 
                 if (!this.formatExplicitlySet) {
                     this.options.format = { integer: 2, decimal: 5 };
@@ -215,7 +223,7 @@
             } else if (line.startsWith('FMAT')) {
                 this.parseFormat(line, lineNumber);
                 return;
-            } else if (line.match(/^T\d+C/)) {
+            } else if (line.match(/^T\d+.*C/i)) {
                 this.parseToolDefinition(line, lineNumber);
                 return;
             }
@@ -284,7 +292,7 @@
         }
 
         parseToolDefinition(line, lineNumber) {
-            const match = line.match(/^T(\d+)C([0-9.]+)/);
+            const match = line.match(/^T(\d+).*?C([0-9.]+)/i);
             if (!match) {
                 this.errors.push(`Line ${lineNumber}: Invalid tool syntax "${line}"`);
                 return;
@@ -390,7 +398,7 @@
         parseG85Slot(line, lineNumber) {
             const tool = this.tools.get(this.currentTool);
             // G85 format: Xstart Ystart G85 Xend Yend
-            const slotMatch = line.match(/X([+-]?\d+\.?\d*)\s*Y([+-]?\d+\.?\d*)\s*G85\s*X([+-]?\d+\.?\d*)\s*Y([+-]?\d+\.?\d*)/);
+            const slotMatch = line.match(/X([+-]?(?:\d+\.?\d*|\.\d+))\s*Y([+-]?(?:\d+\.?\d*|\.\d+))\s*G85\s*X([+-]?(?:\d+\.?\d*|\.\d+))\s*Y([+-]?(?:\d+\.?\d*|\.\d+))/i);
 
             if (slotMatch) {
                 try {
@@ -475,8 +483,8 @@
         // Coordinate Parsing
 
         extractCoordinatesFromLine(line, lineNumber) {
-            const xMatch = line.match(/X([+-]?\d+\.?\d*)/);
-            const yMatch = line.match(/Y([+-]?\d+\.?\d*)/);
+            const xMatch = line.match(/X([+-]?(?:\d+\.?\d*|\.\d+))/i);
+            const yMatch = line.match(/Y([+-]?(?:\d+\.?\d*|\.\d+))/i);
 
             if (!xMatch && !yMatch) {
                 return null;

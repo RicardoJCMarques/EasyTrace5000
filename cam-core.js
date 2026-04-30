@@ -338,7 +338,8 @@
                     hasStrokes: false,
                     strokeCount: 0
                 },
-                offsets: []
+                offsets: [],
+                layerVisibility: {}
             };
 
             this.operations.push(operation);

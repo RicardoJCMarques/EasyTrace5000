@@ -1173,7 +1173,6 @@
 
             // WebKit (Safari, DuckDuckGo on Apple) blocks rapid programmatic downloads.
             // Other engines handle simultaneous downloads fine.
-            const isWebKit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
             const downloadDelay = () => isWebKit
                 ? new Promise(res => setTimeout(res, 500))
                 : Promise.resolve();

@@ -384,6 +384,9 @@
                 return;
             }
 
+            const arcCW = this._determineWinding(plan.metadata.context);
+            const angleDir = arcCW ? -1 : 1;
+
             const toolDiameter = this.context.tool.diameter;
             const helixRadius = toolDiameter * helixConfig.radiusFactor;
             const helixPitch = helixConfig.pitch;
@@ -394,7 +397,7 @@
             plan.addLinear(null, null, 0, plungeRate);
 
             for (let i = 1; i <= steps; i++) {
-                const angle = (i / steps) * revolutions * 2 * Math.PI;
+                const angle = (i / steps) * revolutions * 2 * Math.PI * angleDir;
                 const z = (i / steps) * targetDepth;
                 const x = entryPoint.x + helixRadius * Math.cos(angle);
                 const y = entryPoint.y + helixRadius * Math.sin(angle);
@@ -536,16 +539,18 @@
             // Feed Height
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
 
+            const arcCW = this._determineWinding(purePlan.metadata.context);
+
             if (primitiveType === 'obround') {
-                this.generateSlotHelix(machinePlan, purePlan);
+                this.generateSlotHelix(machinePlan, purePlan, arcCW);
             } else if (primitiveType === 'circle') {
-                this.generateCircleHelix(machinePlan, purePlan);
+                this.generateCircleHelix(machinePlan, purePlan, arcCW);
             }
 
             return machinePlan;
         }
 
-        generateCircleHelix(machinePlan, purePlan) {
+        generateCircleHelix(machinePlan, purePlan, arcCW) {
             const center = purePlan.metadata.center;
             const radius = purePlan.metadata.radius;
 
@@ -586,9 +591,6 @@
 
             machinePlan.addRapid(startX, startY, null);
             machinePlan.addLinear(startX, startY, 0, plungeRate);
-
-            // Always CW for climb milling (coordinates already transformed)
-            const arcCW = true;
 
             // Negative angleSpan = CW traversal, Positive = CCW
             const angleSpan = revolutions * 2 * Math.PI * (arcCW ? -1 : 1);
@@ -646,7 +648,7 @@
             const entryPoint = purePlan.metadata.optimization?.optimizedEntryPoint
                 || purePlan.metadata.entryPoint;
 
-            // Track the angle dynamically!
+            // Track the angle dynamically
             let currentAngle = Math.atan2(
                 entryPoint.y - center.y,
                 entryPoint.x - center.x
@@ -657,6 +659,8 @@
             const minHelixDia = this.context.config.entry?.drilling?.minHelixDiameter || 0;
             const useHelix = entryType === 'helix' && (innerRing.radius * 2) >= minHelixDia;
 
+            const arcCW = this._determineWinding(purePlan.metadata.context);
+
             machinePlan.addRapid(initialEntryX, initialEntryY, this.context.machine.travelZ);
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
             machinePlan.addLinear(initialEntryX, initialEntryY, 0, plungeRate);
@@ -665,15 +669,15 @@
             const finalDepth = depthLevels[depthLevels.length - 1];
             if (rings.length === 1 && useHelix) {
                 // Update currentAngle with wherever the helix stops
-                currentAngle = this._helixDownRing(machinePlan, innerRing, currentAngle, 0, finalDepth, feedRate, toolDiameter);
-                this._fullCircleAtDepth(machinePlan, innerRing, currentAngle, finalDepth, feedRate);
+                currentAngle = this._helixDownRing(machinePlan, innerRing, currentAngle, 0, finalDepth, feedRate, toolDiameter, arcCW);
+                this._fullCircleAtDepth(machinePlan, innerRing, currentAngle, finalDepth, feedRate, arcCW);
 
             } else {
                 for (let d = 0; d < depthLevels.length; d++) {
                     const targetZ = depthLevels[d];
                     if (useHelix) {
                         // Update currentAngle with wherever the helix stops
-                        currentAngle = this._helixDownRing(machinePlan, innerRing, currentAngle, currentZ, targetZ, feedRate, toolDiameter);
+                        currentAngle = this._helixDownRing(machinePlan, innerRing, currentAngle, currentZ, targetZ, feedRate, toolDiameter, arcCW);
                     } else {
                         // Dynamically calculate the plunge point based on current angle
                         const plungeX = center.x + innerRing.radius * Math.cos(currentAngle);
@@ -716,7 +720,7 @@
          * Helical descent along a single ring between two Z levels.
          * Called once per depth stage, NOT once for the full hole depth.
          */
-        _helixDownRing(machinePlan, ring, startAngle, fromZ, toZ, feedRate, toolDiameter) {
+        _helixDownRing(machinePlan, ring, startAngle, fromZ, toZ, feedRate, toolDiameter, arcCW) {
             const center = ring.center;
             const radius = ring.radius;
 
@@ -731,8 +735,8 @@
             const revolutions = Math.max(1, deltaZ / helixPitch); 
             const segmentsPerRev = 16;
             const totalSegments = Math.ceil(revolutions * segmentsPerRev);
-            const arcCW = true;
-            const angleSpan = revolutions * 2 * Math.PI * -1; // -1 for CW
+
+            const angleSpan = revolutions * 2 * Math.PI * (arcCW ? -1 : 1);
 
             let lastX = center.x + radius * Math.cos(startAngle);
             let lastY = center.y + radius * Math.sin(startAngle);
@@ -759,10 +763,9 @@
         /**
          * Single full-circle cleanup pass on a ring at a given depth.
          */
-        _fullCircleAtDepth(machinePlan, ring, startAngle, depth, feedRate) {
+        _fullCircleAtDepth(machinePlan, ring, startAngle, depth, feedRate, arcCW) {
             const center = ring.center;
             const radius = ring.radius;
-            const arcCW = true;
 
             const startX = center.x + radius * Math.cos(startAngle);
             const startY = center.y + radius * Math.sin(startAngle);
@@ -790,7 +793,10 @@
             const toolDiameter = purePlan.metadata.toolDiameter;
 
             const innerRing = rings[0];
-            const innerEntry = innerRing.pA;
+            const arcCW = this._determineWinding(purePlan.metadata.context);
+
+            // Plunge exactly where the toolpath begins to avoid flat travel cuts
+            const innerEntry = arcCW ? innerRing.pB : innerRing.pC;
 
             // Helix feasibility: inner ring slot radius must be large enough
             const minHelixDia = this.context.config.entry?.drilling?.minHelixDiameter || 0;
@@ -808,45 +814,38 @@
 
             // Single-ring shortcut
             if (rings.length === 1 && useHelix) {
-                this._helixDownObround(machinePlan, innerRing, 0, finalDepth, plungeRate, feedRate, toolDiameter);
-                this._obroundLoopAtDepth(machinePlan, innerRing, finalDepth, feedRate);
-
+                this._helixDownObround(machinePlan, innerRing, 0, finalDepth, plungeRate, feedRate, toolDiameter, arcCW);
+                this._obroundLoopAtDepth(machinePlan, innerRing, finalDepth, feedRate, arcCW);
             } else {
                 // Multi-ring depth-staged loop
                 for (let d = 0; d < depthLevels.length; d++) {
                     const targetZ = depthLevels[d];
-
                     if (useHelix) {
-                        this._helixDownObround(machinePlan, innerRing, currentZ, targetZ, plungeRate, feedRate, toolDiameter);
+                        this._helixDownObround(machinePlan, innerRing, currentZ, targetZ, plungeRate, feedRate, toolDiameter, arcCW);
                     } else {
                         machinePlan.addLinear(innerEntry.x, innerEntry.y, targetZ, plungeRate);
                     }
 
                     for (let r = 0; r < rings.length; r++) {
                         const ring = rings[r];
-
                         if (r > 0) {
-                            machinePlan.addLinear(ring.pA.x, ring.pA.y, targetZ, feedRate);
+                            // Transition to the exit-side point of the next ring to avoid diagonal traverses. CW loops end at pC, CCW loops end at pB.
+                            const ringTransition = arcCW ? ring.pC : ring.pB;
+                            machinePlan.addLinear(ringTransition.x, ringTransition.y, targetZ, feedRate);
                         }
-
-                        this._obroundLoopAtDepth(machinePlan, ring, targetZ, feedRate);
+                        this._obroundLoopAtDepth(machinePlan, ring, targetZ, feedRate, arcCW);
                     }
 
                     if (rings.length > 1 && d < depthLevels.length - 1) {
+                        // All concentric rings have been cut at this depth, so the entire slot interior is clear. Go directly to the next helix/plunge entry point.
                         machinePlan.addLinear(innerEntry.x, innerEntry.y, targetZ, feedRate);
                     }
-
                     currentZ = targetZ;
                 }
             }
 
-            // ── Retract ──
+            // Retract
             machinePlan.addRetract(this.context.machine.travelZ);
-
-            this.debug(`Slot Mill Macro: ${machinePlan.commands.length} cmds, ` +
-                       `${rings.length} ring(s), ${depthLevels.length} depth(s), ` +
-                       `entry=${useHelix ? 'helix' : 'plunge'}`);
-
             return machinePlan;
         }
 
@@ -854,41 +853,48 @@
          * Helical descent along an obround ring between two Z levels.
          * Z change is distributed across the two cap arcs; linear segments stay flat.
          */
-        _helixDownObround(machinePlan, ring, fromZ, toZ, plungeRate, feedRate, toolDiameter) {
+        _helixDownObround(machinePlan, ring, fromZ, toZ, plungeRate, feedRate, toolDiameter, arcCW) {
             const deltaZ = Math.abs(toZ - fromZ);
             if (deltaZ < 1e-6) return;
 
             const pA = ring.pA, pB = ring.pB, pC = ring.pC, pD = ring.pD;
-            const startCapCenter = ring.startCapCenter;
-            const endCapCenter = ring.endCapCenter;
-            const arcCW = true;
+            const cStart = ring.startCapCenter, cEnd = ring.endCapCenter;
 
             const requestedPitch = Math.abs(this.context.strategy.depthPerPass);
             const helixPitch = Math.min(requestedPitch, toolDiameter * 0.5);
             const depthPerHalfLoop = helixPitch * 0.5;
 
             let currentZ = fromZ;
-
             while (currentZ > toZ + 1e-9) {
-                // A → D (flat linear at currentZ)
-                machinePlan.addLinear(pD.x, pD.y, currentZ, feedRate);
+                if (!arcCW) { // CCW Logic
+                    // Assume pC because of the entry logic
+                    let targetZ = Math.max(currentZ - depthPerHalfLoop, toZ);
+                    machinePlan.addArc(pD.x, pD.y, targetZ, cEnd.x - pC.x, cEnd.y - pC.y, false, feedRate);
+                    currentZ = targetZ;
 
-                // D → C (end cap arc, descending)
-                let targetZ = Math.max(currentZ - depthPerHalfLoop, toZ);
-                const i1 = endCapCenter.x - pD.x;
-                const j1 = endCapCenter.y - pD.y;
-                machinePlan.addArc(pC.x, pC.y, targetZ, i1, j1, arcCW, feedRate);
-                currentZ = targetZ;
+                    machinePlan.addLinear(pA.x, pA.y, currentZ, feedRate);
+                    targetZ = Math.max(currentZ - depthPerHalfLoop, toZ);
+                    machinePlan.addArc(pB.x, pB.y, targetZ, cStart.x - pA.x, cStart.y - pA.y, false, feedRate);
+                    currentZ = targetZ;
 
-                // C → B (flat linear at new currentZ)
-                machinePlan.addLinear(pB.x, pB.y, currentZ, feedRate);
+                    if (currentZ > toZ + 1e-9) {
+                        machinePlan.addLinear(pC.x, pC.y, currentZ, feedRate);
+                    }
+                } else { // CW Logic
+                    // Assume pB because of the entry logic
+                    let targetZ = Math.max(currentZ - depthPerHalfLoop, toZ);
+                    machinePlan.addArc(pA.x, pA.y, targetZ, cStart.x - pB.x, cStart.y - pB.y, true, feedRate);
+                    currentZ = targetZ;
 
-                // B → A (start cap arc, descending)
-                targetZ = Math.max(currentZ - depthPerHalfLoop, toZ);
-                const i2 = startCapCenter.x - pB.x;
-                const j2 = startCapCenter.y - pB.y;
-                machinePlan.addArc(pA.x, pA.y, targetZ, i2, j2, arcCW, feedRate);
-                currentZ = targetZ;
+                    machinePlan.addLinear(pD.x, pD.y, currentZ, feedRate); 
+                    targetZ = Math.max(currentZ - depthPerHalfLoop, toZ);
+                    machinePlan.addArc(pC.x, pC.y, targetZ, cEnd.x - pD.x, cEnd.y - pD.y, true, feedRate);
+                    currentZ = targetZ;
+
+                    if (currentZ > toZ + 1e-9) {
+                        machinePlan.addLinear(pB.x, pB.y, currentZ, feedRate);
+                    }
+                }
             }
         }
 
@@ -896,99 +902,87 @@
          * Single full obround cleanup loop at constant depth.
          * CW order: A → D → C(arc) → B → A(arc)
          */
-        _obroundLoopAtDepth(machinePlan, ring, depth, feedRate) {
+        _obroundLoopAtDepth(machinePlan, ring, depth, feedRate, arcCW) {
             const pA = ring.pA, pB = ring.pB, pC = ring.pC, pD = ring.pD;
-            const startCapCenter = ring.startCapCenter;
-            const endCapCenter = ring.endCapCenter;
-            const arcCW = true;
+            const cStart = ring.startCapCenter, cEnd = ring.endCapCenter;
 
-            // A → D (straight side)
-            machinePlan.addLinear(pD.x, pD.y, depth, feedRate);
-
-            // D → C (end cap arc)
-            const i1 = endCapCenter.x - pD.x;
-            const j1 = endCapCenter.y - pD.y;
-            machinePlan.addArc(pC.x, pC.y, depth, i1, j1, arcCW, feedRate);
-
-            // C → B (straight side)
-            machinePlan.addLinear(pB.x, pB.y, depth, feedRate);
-
-            // B → A (start cap arc)
-            const i2 = startCapCenter.x - pB.x;
-            const j2 = startCapCenter.y - pB.y;
-            machinePlan.addArc(pA.x, pA.y, depth, i2, j2, arcCW, feedRate);
+            if (!arcCW) { // CCW
+                // Because helix ended at pB, linear traverse to pC to start the loop
+                machinePlan.addLinear(pC.x, pC.y, depth, feedRate);
+                machinePlan.addArc(pD.x, pD.y, depth, cEnd.x - pC.x, cEnd.y - pC.y, false, feedRate);
+                machinePlan.addLinear(pA.x, pA.y, depth, feedRate);
+                machinePlan.addArc(pB.x, pB.y, depth, cStart.x - pA.x, cStart.y - pA.y, false, feedRate);
+            } else { // CW
+                // Because helix ended at pC, linear traverse to pB to start the loop
+                machinePlan.addLinear(pB.x, pB.y, depth, feedRate);
+                machinePlan.addArc(pA.x, pA.y, depth, cStart.x - pB.x, cStart.y - pB.y, true, feedRate);
+                machinePlan.addLinear(pD.x, pD.y, depth, feedRate);
+                machinePlan.addArc(pC.x, pC.y, depth, cEnd.x - pD.x, cEnd.y - pD.y, true, feedRate);
+            }
         }
 
-        generateSlotHelix(machinePlan, purePlan) {
-            const obroundData = purePlan.metadata.obroundData;
-
-            const pA = obroundData.pA;
-            const pB = obroundData.pB;
-            const pC = obroundData.pC;
-            const pD = obroundData.pD;
-
-            // Use transformed centers (these are just for I/J calculation)
-            const startCapCenter = obroundData.startCapCenter;
-            const endCapCenter = obroundData.endCapCenter;
-
+        generateSlotHelix(machinePlan, purePlan, arcCW) {
+            const od = purePlan.metadata.obroundData;
             const finalDepth = purePlan.metadata.cutDepth;
             const toolDiameter = purePlan.metadata.toolDiameter;
             const feedRate = purePlan.metadata.feedRate;
             const plungeRate = purePlan.metadata.plungeRate;
 
-            // Always CW for climb milling (coordinates already transformed)
-            const arcCW = true;
+            const entryPt = arcCW ? od.pB : od.pC;
 
-            // Move to Start of Helix Loop (pA)
-            machinePlan.addRapid(pA.x, pA.y, null);
+            // Move to Start of Helix Loop
+            machinePlan.addRapid(entryPt.x, entryPt.y, null);
 
             // Feed to Z0
-            machinePlan.addLinear(pA.x, pA.y, 0, plungeRate);
+            machinePlan.addLinear(entryPt.x, entryPt.y, 0, plungeRate);
 
             const requestedPitch = Math.abs(purePlan.metadata.depthPerPass);
             const helixPitch = Math.min(requestedPitch, toolDiameter * 0.5);
             const depthPerHalfLoop = helixPitch * 0.5;
 
             let currentZ = 0;
-            let targetZ = 0;
 
             while (currentZ > finalDepth) {
-                // Linear cut along side
-                machinePlan.addLinear(pD.x, pD.y, currentZ, feedRate);
-
-                // Cap Arc 1 (End Cap)
-                targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
-                const i1 = endCapCenter.x - pD.x;
-                const j1 = endCapCenter.y - pD.y;
-                // Use dynamic arcCW
-                machinePlan.addArc(pC.x, pC.y, targetZ, i1, j1, arcCW, feedRate); 
-                currentZ = targetZ;
-
-                // Linear cut along other side
-                machinePlan.addLinear(pB.x, pB.y, currentZ, feedRate);
-
-                // Cap Arc 2 (Start Cap)
-                targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
-                const i2 = startCapCenter.x - pB.x;
-                const j2 = startCapCenter.y - pB.y;
-
-                // Use dynamic arcCW
-                machinePlan.addArc(pA.x, pA.y, targetZ, i2, j2, arcCW, feedRate); 
-                currentZ = targetZ;
+                let targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
+                if (!arcCW) { // CCW
+                    machinePlan.addArc(od.pD.x, od.pD.y, targetZ, od.endCapCenter.x - od.pC.x, od.endCapCenter.y - od.pC.y, false, feedRate);
+                    currentZ = targetZ;
+                    machinePlan.addLinear(od.pA.x, od.pA.y, currentZ, feedRate);
+                    targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
+                    machinePlan.addArc(od.pB.x, od.pB.y, targetZ, od.startCapCenter.x - od.pA.x, od.startCapCenter.y - od.pA.y, false, feedRate);
+                    currentZ = targetZ;
+                    machinePlan.addLinear(od.pC.x, od.pC.y, currentZ, feedRate);
+                } else { // CW
+                    machinePlan.addArc(od.pA.x, od.pA.y, targetZ, od.startCapCenter.x - od.pB.x, od.startCapCenter.y - od.pB.y, true, feedRate);
+                    currentZ = targetZ;
+                    machinePlan.addLinear(od.pD.x, od.pD.y, currentZ, feedRate);
+                    targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
+                    machinePlan.addArc(od.pC.x, od.pC.y, targetZ, od.endCapCenter.x - od.pD.x, od.endCapCenter.y - od.pD.y, true, feedRate);
+                    currentZ = targetZ;
+                    machinePlan.addLinear(od.pB.x, od.pB.y, currentZ, feedRate);
+                }
             }
 
-            // Bottom cleanup pass (Final Depth)
-            const i_end = endCapCenter.x - pD.x;
-            const j_end = endCapCenter.y - pD.y;
-            const i_start = startCapCenter.x - pB.x;
-            const j_start = startCapCenter.y - pB.y;
-
-            machinePlan.addLinear(pD.x, pD.y, finalDepth, feedRate);
-            machinePlan.addArc(pC.x, pC.y, finalDepth, i_end, j_end, arcCW, feedRate);
-            machinePlan.addLinear(pB.x, pB.y, finalDepth, feedRate);
-            machinePlan.addArc(pA.x, pA.y, finalDepth, i_start, j_start, arcCW, feedRate);
+            // Final flat loop at the bottom
+            if (!arcCW) { // CCW
+                machinePlan.addArc(od.pD.x, od.pD.y, finalDepth, od.endCapCenter.x - od.pC.x, od.endCapCenter.y - od.pC.y, false, feedRate);
+                machinePlan.addLinear(od.pA.x, od.pA.y, finalDepth, feedRate);
+                machinePlan.addArc(od.pB.x, od.pB.y, finalDepth, od.startCapCenter.x - od.pA.x, od.startCapCenter.y - od.pA.y, false, feedRate);
+                machinePlan.addLinear(od.pC.x, od.pC.y, finalDepth, feedRate);
+            } else { // CW
+                machinePlan.addArc(od.pA.x, od.pA.y, finalDepth, od.startCapCenter.x - od.pB.x, od.startCapCenter.y - od.pB.y, true, feedRate);
+                machinePlan.addLinear(od.pD.x, od.pD.y, finalDepth, feedRate);
+                machinePlan.addArc(od.pC.x, od.pC.y, finalDepth, od.endCapCenter.x - od.pD.x, od.endCapCenter.y - od.pD.y, true, feedRate);
+                machinePlan.addLinear(od.pB.x, od.pB.y, finalDepth, feedRate);
+            }
 
             machinePlan.addRetract(this.context.machine.travelZ);
+        }
+
+        _determineWinding(ctx) {
+            // Drill macros are mirror-agnostic since the geometry translator naturally handles point swapping during mirroring.
+            const isClimb = true; // Enforced until UI supports conventional routing
+            return isClimb; // Climb milling an internal pocket translates to CW (true)
         }
 
         calculatePathMetrics(plans, context) {

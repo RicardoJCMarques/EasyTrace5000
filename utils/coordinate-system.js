@@ -328,7 +328,7 @@
             const isMirrored = (this.mirrorX ? 1 : 0) ^ (this.mirrorY ? 1 : 0);
             const effectiveAngle = isMirrored ? -this.currentRotation : this.currentRotation;
 
-            const angle = (effectiveAngle * Math.PI) / 180;
+            const angle = (-effectiveAngle * Math.PI) / 180;
             const cos = Math.cos(angle);
             const sin = Math.sin(angle);
 

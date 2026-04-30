@@ -301,7 +301,8 @@ window.getReconstructionRegistry()      // Inspect arc metadata from curve regis
 * **Tool Changes:** The application does not currently generate tool change commands (M6). Operations using different tools must be exported as separate G-code files.
 
 **Known Bugs:**
-* **Only the ones active in the Issue Tracker**
+* **Arc-Reconstruction:** Arc-Arc interactions have overlapping edge points fighting to be attached to arcs and 1 always loses.
+* **And the ones active in the Issue Tracker**
 
 ## Roadmap
 
@@ -405,4 +406,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.3.1 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.3.2 | **Platform**: Client-side Web

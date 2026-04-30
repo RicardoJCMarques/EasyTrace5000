@@ -373,13 +373,16 @@
                     this.toggleLayerVisibility(visBtn, layerName);
                 });
 
-                // Set initial button state by checking the layer property
-                let isVisible = false; // Default to hidden
-                if (layerName && this.ui.renderer) {
-                    if (geometryType.startsWith('offset')) {
-                        // Check if the operation *has* a preview.
-                        const hasPreview = fileData.operation.preview && fileData.operation.preview.ready;
-                        // Be visible only if there is no preview and the global toggle is on.
+                // Set initial button state from persisted override or computed default
+                let isVisible = false;
+                const operation = fileData.operation;
+
+                if (operation.layerVisibility && layerName && operation.layerVisibility[layerName] !== undefined) {
+                    // User has explicitly toggled this layer before — respect their choice
+                    isVisible = operation.layerVisibility[layerName];
+                } else if (layerName && this.ui.renderer) {
+                    if (geometryType.startsWith('offset') || geometryType === 'offsets_combined') {
+                        const hasPreview = operation.preview && operation.preview.ready;
                         isVisible = !hasPreview && this.ui.renderer.options.showOffsets;
                     } else if (geometryType === 'preview') {
                         // Preview visibility is just the global toggle.
@@ -389,9 +392,6 @@
                         const layer = this.ui.renderer.layers.get(layerName);
                         if (layer) {
                             isVisible = layer.visible;
-                        } else {
-                            // Layer might not be created yet, check default
-                            isVisible = this.ui.renderer.options.showToolpaths; // Assuming a 'showToolpaths' option
                         }
                     }
                 }
@@ -561,6 +561,19 @@
 
                 // Update the button's appearance
                 button.classList.toggle('is-hidden', !layer.visible);
+
+                // Persist visibility override on the operation object
+                const fileNode = button.closest('.file-node');
+                if (fileNode) {
+                    const fileId = fileNode.dataset.fileId;
+                    const nodeData = this.nodes.get(fileId);
+                    if (nodeData?.operation) {
+                        if (!nodeData.operation.layerVisibility) {
+                            nodeData.operation.layerVisibility = {};
+                        }
+                        nodeData.operation.layerVisibility[layerName] = layer.visible;
+                    }
+                }
             } else {
                 console.warn(`[NavTreePanel] Could not find layer to toggle: ${layerName}`);
             }

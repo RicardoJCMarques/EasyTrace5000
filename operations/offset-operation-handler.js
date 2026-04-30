@@ -344,7 +344,7 @@
                         p.properties.offsetDistance = distance;
                         p.properties.offsetType = offsetType;
                         p.properties.thermalGroup = thermalGroup;
-                        p.properties.hasAnalyticArcs = (p.type === 'circle') || (p.arcSegments && p.arcSegments.length > 0);
+                        p.properties.hasAnalyticArcs = (p.type === 'circle') || (p.contours?.some(c => c.arcSegments?.length > 0));
                         return p;
                     });
 

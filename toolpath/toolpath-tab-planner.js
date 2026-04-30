@@ -36,8 +36,8 @@
      * Calculates and returns tab positions (start/end distances) along a closed contour.
      */
     class ToolpathTabPlanner {
-        constructor() {
-            // REVIEW - Should this be empty?
+        constructor(translator) {
+            this.translator = translator;
         }
 
         /**
@@ -47,8 +47,8 @@
          * @returns {Array<MotionCommand>} Array of motion commands, tagged with isTab: boolean // Review -  description is outdated?
          */
         calculateTabPositions(geometrySource, context) {
-            const tabWidth = context.strategy.cutout.tabWidth || 1.0;
-            const tabCount = context.strategy.cutout.tabs || 0;
+            const tabWidth = context.strategy.cutout.tabWidth;
+            const tabCount = context.strategy.cutout.tabs;
 
             if (tabCount <= 0 || !geometrySource.points) return [];
 
@@ -60,14 +60,14 @@
             // Calculate Tab Distance Ranges {start, end}
             const tabRanges = this._calculateTabRanges(geometrySource, tabCount, tabWidth, totalLength);
 
-            // Split Geometry using Tab Ranges
-            const motionCommands = this._splitGeometryByRanges(geometrySource, tabRanges, context.cutting.feedRate);
+            // Split Geometry using Tab Ranges (with transforms for correct G-code output)
+            const motionCommands = this._splitGeometryByRanges(geometrySource, tabRanges, context.cutting.feedRate, context.transforms);
 
             return motionCommands;
         }
 
         /**
-         * Step 1: Determines tab locations along the path perimeter.
+         * Determine tab locations along the path perimeter.
          */
         _calculateTabRanges(geometrySource, tabCount, tabWidth, totalLength) {
             const tabHalfWidth = tabWidth / 2;
@@ -126,9 +126,9 @@
         }
 
         /**
-         * Step 2: Creates new MotionCommand segments, splitting existing ones where a tab starts or ends.
+         * Create new MotionCommand segments, splitting existing ones where a tab starts or ends.
          */
-        _splitGeometryByRanges(geometrySource, tabRanges, feedRate) {
+        _splitGeometryByRanges(geometrySource, tabRanges, feedRate, transforms) {
             const points = geometrySource.points;
             const arcMap = new Map();
             if (geometrySource.arcSegments) {
@@ -139,13 +139,15 @@
 
             const motionCommands = [];
             const numPoints = points.length;
+            const isPhysicallyClosed = this._isClosedPoints(points);
+            const segmentsToProcess = isPhysicallyClosed ? numPoints - 1 : numPoints;
 
             let currentPos = { ...points[0] };
             let currentDistance = 0;
 
             // Assume tabRanges are sorted by distance.
 
-            for (let i = 0; i < numPoints; i++) {
+            for (let i = 0; i < segmentsToProcess; i++) {
                 const nextI = (i + 1) % numPoints;
                 const arc = arcMap.get(i);
 
@@ -195,7 +197,7 @@
 
                     // Add the segment piece (from last split to current split)
                     if (splitDistance > lastSplitDistance + PRECISION) {
-                         const newCmd = this._createSegmentCommand(lastSplitPos, splitPos, arc, segData, feedRate, isInTab);
+                         const newCmd = this._createSegmentCommand(lastSplitPos, splitPos, arc, segData, feedRate, isInTab, transforms);
                          motionCommands.push(newCmd);
                     }
 
@@ -203,12 +205,14 @@
                     lastSplitPos = splitPos;
                 }
 
-                // Add the remaining segment (from the last split point to the end of the segment)
+                // Define the remaining length before checking it
                 const remainingLength = segmentEndDistance - lastSplitDistance;
+
+                // Add the remaining segment (from the last split point to the end of the segment)
                 if (remainingLength > PRECISION) {
                     const isInTab = tabRanges.some(t => t.start <= lastSplitDistance + PRECISION && t.end >= segmentEndDistance - PRECISION);
 
-                    const finalCmd = this._createSegmentCommand(lastSplitPos, segmentEndPos, arc, segData, feedRate, isInTab);
+                    const finalCmd = this._createSegmentCommand(lastSplitPos, segmentEndPos, arc, segData, feedRate, isInTab, transforms);
                     motionCommands.push(finalCmd);
                 }
 
@@ -223,19 +227,25 @@
 
         _getArcData(startPoint, endPoint, arc) {
              const center = { x: arc.center.x, y: arc.center.y };
-
              const radius = Math.hypot(startPoint.x - center.x, startPoint.y - center.y);
-
              const startAngle = Math.atan2(startPoint.y - center.y, startPoint.x - center.x);
-             const endX = endPoint.x;
-             const endY = endPoint.y;
-             const endAngle = Math.atan2(endY - center.y, endX - center.x);
+             const endAngle = Math.atan2(endPoint.y - center.y, endPoint.x - center.x);
 
-             let sweep = endAngle - startAngle;
-             if (arc.clockwise) {
-                 if (sweep > PRECISION) sweep -= 2 * Math.PI;
-             } else {
-                 if (sweep < -PRECISION) sweep += 2 * Math.PI;
+             // Prefer pre-computed sweep from arc reconstruction if available
+             let sweep = arc.sweepAngle;
+
+             if (sweep === undefined || sweep === null) {
+                 sweep = endAngle - startAngle;
+                 if (arc.clockwise) {
+                     if (sweep > PRECISION) sweep -= 2 * Math.PI;
+                 } else {
+                     if (sweep < -PRECISION) sweep += 2 * Math.PI;
+                 }
+
+                 // Full circle: start ≈ end produces sweep ≈ 0, force full revolution
+                 if (Math.abs(sweep) < PRECISION) {
+                     sweep = arc.clockwise ? -2 * Math.PI : 2 * Math.PI;
+                 }
              }
 
              return {
@@ -276,19 +286,38 @@
             }
         }
 
-        _createSegmentCommand(startPos, endPos, arc, segData, feedRate, isTab) {
-            // Standard G-Code: I/J are relative distance from START point to CENTER
-            const i_val = arc ? segData.center.x - startPos.x : null;
-            const j_val = arc ? segData.center.y - startPos.y : null;
+        _createSegmentCommand(startPos, endPos, arc, segData, feedRate, isTab, transforms) {
+            let finalStart = startPos;
+            let finalEnd = endPos;
+            let finalCenter = arc ? segData.center : null;
+            let isClockwise = arc ? segData.clockwise : false;
 
-            // Logic inversion to match GeometryTranslator
-            // !segData.clockwise -> true = CW = G2 = ARC_CW
-            const type = arc ? (!segData.clockwise ? 'ARC_CW' : 'ARC_CCW') : 'LINEAR';
+            // Apply transformations via the translator (mirrors, rotation)
+            if (transforms && this.translator) {
+                finalStart = this.translator.applyTransforms(startPos, transforms);
+                finalEnd = this.translator.applyTransforms(endPos, transforms);
+
+                if (arc) {
+                    finalCenter = this.translator.applyTransforms(segData.center, transforms);
+
+                    // Handle winding flips caused by mirroring
+                    const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                    if (flipped) {
+                        isClockwise = !isClockwise;
+                    }
+                }
+            }
+
+            // Calculate I/J using the transformed coordinates
+            const i_val = arc ? finalCenter.x - finalStart.x : null;
+            const j_val = arc ? finalCenter.y - finalStart.y : null;
+            const type = arc ? (isClockwise ? 'ARC_CW' : 'ARC_CCW') : 'LINEAR';
 
             const cmd = new MotionCommand(type, 
-                { x: endPos.x, y: endPos.y, z: null }, 
+                { x: finalEnd.x, y: finalEnd.y, z: null }, 
                 { i: i_val, j: j_val, feed: feedRate }
             );
+
             cmd.metadata = cmd.metadata || {}; 
             cmd.metadata.isTab = isTab; 
             return cmd;
@@ -313,6 +342,13 @@
             return newTabs.filter(t => (t.end - t.start) > PRECISION);
         }
 
+        _isClosedPoints(points) {
+            if (!points || points.length < 2) return false;
+            const first = points[0];
+            const last = points[points.length - 1];
+            return Math.hypot(first.x - last.x, first.y - last.y) < PRECISION;
+        }
+
         _mapSegmentsToDistance(geometry) {
             const segments = [];
             const points = geometry.points;
@@ -324,9 +360,11 @@
             }
 
             const numPoints = points.length;
+            const isPhysicallyClosed = this._isClosedPoints(points);
+            const segmentsToProcess = isPhysicallyClosed ? numPoints - 1 : numPoints;
             let currentDistance = 0;
 
-            for (let i = 0; i < numPoints; i++) {
+            for (let i = 0; i < segmentsToProcess; i++) {
                 const nextI = (i + 1) % numPoints;
                 const arc = arcMap.get(i);
                 const startPoint = points[i];
@@ -370,8 +408,10 @@
             }
 
             const numPoints = points.length;
+            const isPhysicallyClosed = this._isClosedPoints(points);
+            const segmentsToProcess = isPhysicallyClosed ? numPoints - 1 : numPoints;
 
-            for (let i = 0; i < numPoints; i++) {
+            for (let i = 0; i < segmentsToProcess; i++) {
                 const nextI = (i + 1) % numPoints;
                 const arc = arcMap.get(i);
 

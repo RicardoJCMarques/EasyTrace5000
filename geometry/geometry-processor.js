@@ -316,27 +316,26 @@
         verifyReconstructionResults(primitives) {
             let reconstructedCircles = 0;
             let reconstructedPaths = 0;
-            let pathsWithArcs = 0;
             let totalArcSegments = 0;
 
             primitives.forEach(prim => {
-                if (prim.properties?.reconstructed) {
-                    if (prim.type === 'circle') {
-                        reconstructedCircles++;
-                        this.debug(`  Reconstructed circle: r=${prim.radius.toFixed(3)}, coverage=${(prim.properties.coverage * 100).toFixed(1)}%`);
-                    } else if (prim.type === 'path') {
-                        reconstructedPaths++;
-                        if (prim.arcSegments && prim.arcSegments.length > 0) {
-                            pathsWithArcs++;
-                            totalArcSegments += prim.arcSegments.length;
+                if (prim.type === 'circle' && prim.properties?.reconstructed) {
+                    reconstructedCircles++;
+                    // Circles no longer carry a coverage property in the unified pipeline, so just log the radius
+                    this.debug(`  Reconstructed circle: r=${prim.radius.toFixed(3)}`);
+                } else if (prim.type === 'path' && prim.properties?.hasDetectedArcs) {
+                    reconstructedPaths++;
+                    prim.contours.forEach(c => {
+                        if (c.arcSegments && c.arcSegments.length > 0) {
+                            totalArcSegments += c.arcSegments.length;
                         }
-                    }
+                    });
                 }
             });
 
             this.debug(`Reconstruction verification:`);
             this.debug(`  Circles reconstructed: ${reconstructedCircles}`);
-            this.debug(`  Paths with arc segments: ${pathsWithArcs}`);
+            this.debug(`  Paths with arc segments: ${reconstructedPaths}`);
             this.debug(`  Total arc segments: ${totalArcSegments}`);
         }
 
@@ -403,7 +402,21 @@
                     console.error(`[GeometryProcessor] Path primitive ${primitive.id} has no contours!`);
                     return null;
                 }
-                return primitive; // Already valid
+
+                // Tessellate analytic arc segments into dense polylines.
+                const hasArcs = primitive.contours.some(
+                    c => c.arcSegments && c.arcSegments.length > 0
+                );
+                if (hasArcs) {
+                    const tessellatedContours = primitive.contours.map(c =>
+                        (c.arcSegments && c.arcSegments.length > 0)
+                            ? GeometryUtils.contourArcsToPath(c)
+                            : c
+                    );
+                    return new PathPrimitive(tessellatedContours, primitive.properties);
+                }
+
+                return primitive; // Already valid, no arcs to expand
             }
 
             const localCurveIds = curveIds || [];

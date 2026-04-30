@@ -80,12 +80,13 @@
          */
         _buildUserTransformMatrix(transforms) {
             let m = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-
             if (!transforms) return m;
 
-            // Rotation around rotation center
+            // Rotate
             if (transforms.rotation && transforms.rotation !== 0) {
-                const rad = transforms.rotation * Math.PI / 180;
+                const isMirrored = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                const effectiveAngle = isMirrored ? -transforms.rotation : transforms.rotation;
+                const rad = (-effectiveAngle * Math.PI) / 180;
                 const cos = Math.cos(rad);
                 const sin = Math.sin(rad);
                 const cx = transforms.rotationCenter?.x || 0;
@@ -97,7 +98,7 @@
                 });
             }
 
-            // Mirror around board center
+            // Mirror
             if (transforms.mirrorX || transforms.mirrorY) {
                 const cx = transforms.mirrorCenter?.x || 0;
                 const cy = transforms.mirrorCenter?.y || 0;
@@ -107,15 +108,6 @@
                     a: sx, b: 0, c: 0, d: sy,
                     e: cx * (1 - sx),
                     f: cy * (1 - sy)
-                });
-            }
-
-            // Origin offset
-            if (transforms.origin && (transforms.origin.x !== 0 || transforms.origin.y !== 0)) {
-                m = this._matMul(m, {
-                    a: 1, b: 0, c: 0, d: 1,
-                    e: transforms.origin.x,
-                    f: transforms.origin.y
                 });
             }
 
@@ -1026,7 +1018,7 @@
             }
 
             if (totalRemoved > 0) {
-                console.log(`[graphicsExporter] Hatch fusion: removed ${totalRemoved}, added ${totalAdded} (saved ${totalRemoved - totalAdded} elements)`);
+                this.debug(`[graphicsExporter] Hatch fusion: removed ${totalRemoved}, added ${totalAdded} (saved ${totalRemoved - totalAdded} elements)`);
             }
         }
 

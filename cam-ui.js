@@ -297,9 +297,11 @@
             byOperation.forEach((primitives, opId) => {
                 const operation = this.core.operations.find(op => op.id === opId);
                 if (operation) {
-                    this.renderer.addLayer(`fused_${opId}`, primitives, {
+                    const layerName = `fused_${opId}`;
+
+                    this.renderer.addLayer(layerName, primitives, {
                         type: operation.type,
-                        visible: true,
+                        visible: this._resolveLayerVisibility(operation, layerName, true),
                         isFused: true,
                         color: operation.color || (opsConfig[operation.type] && opsConfig[operation.type].color)
                     });
@@ -312,10 +314,12 @@
                 if (operation.type === 'drill' || operation.type === 'cutout' || operation.type === 'stencil') {
                     if (operation.primitives && operation.primitives.length > 0) {
                         const hasOffsets = operation.type === 'stencil' && operation.offsets && operation.offsets.length > 0;
+                        const layerName = 'source_' + operation.id;
+                        const defaultVisible = !hasOffsets;
 
-                        this.renderer.addLayer('source_' + operation.id, operation.primitives, {
+                        this.renderer.addLayer(layerName, operation.primitives, {
                             type: operation.type,
-                            visible: !hasOffsets, // Simplified boolean flip
+                            visible: this._resolveLayerVisibility(operation, layerName, defaultVisible),
                             color: operation.color || (opsConfig[operation.type] && opsConfig[operation.type].color)
                         });
                     }
@@ -328,14 +332,26 @@
                 if (operation.primitives && operation.primitives.length > 0) {
                     // Apply the same logic here so it works when Fusion Mode is OFF
                     const hasOffsets = operation.type === 'stencil' && operation.offsets && operation.offsets.length > 0;
+                    const layerName = 'source_' + operation.id;
+                    const defaultVisible = !hasOffsets;
 
-                    this.renderer.addLayer('source_' + operation.id, operation.primitives, {
+                    this.renderer.addLayer(layerName, operation.primitives, {
                         type: operation.type,
-                        visible: !hasOffsets,
+                        visible: this._resolveLayerVisibility(operation, layerName, defaultVisible),
                         color: operation.color || (opsConfig[operation.type] && opsConfig[operation.type].color)
                     });
                 }
             });
+        }
+
+        /**
+         * Resolves layer visibility: user override > explicit default > global toggle.
+         */
+        _resolveLayerVisibility(operation, layerName, defaultVisible) {
+            if (operation.layerVisibility && operation.layerVisibility[layerName] !== undefined) {
+                return operation.layerVisibility[layerName];
+            }
+            return defaultVisible;
         }
 
         addOffsetLayers() {
@@ -346,7 +362,6 @@
                     const hasPreview = !isLaser && operation.preview && operation.preview.primitives && operation.preview.primitives.length > 0;
 
                     if (isCombined) {
-                        // Flatten all passes into one canvas layer for combined visualization
                         const allPrimitives = operation.offsets.flatMap(o => o.primitives || []);
                         if (allPrimitives.length > 0) {
                             let offsetType = 'external';
@@ -354,10 +369,12 @@
                             else if (operation.offsets[0].distance === 0) offsetType = 'on';
 
                             const isHatch = operation.offsets[0].metadata?.isHatch === true;
+                            const layerName = `offset_${operation.id}_combined`;
+                            const defaultVisible = hasPreview ? false : this.renderer.options.showOffsets;
 
-                            this.renderer.addLayer(`offset_${operation.id}_combined`, allPrimitives, {
+                            this.renderer.addLayer(layerName, allPrimitives, {
                                 type: 'offset',
-                                visible: hasPreview ? false : this.renderer.options.showOffsets,
+                                visible: this._resolveLayerVisibility(operation, layerName, defaultVisible),
                                 operationId: operation.id,
                                 operationType: operation.type,
                                 offsetType: offsetType,
@@ -369,7 +386,6 @@
                             });
                         }
                     } else {
-                        // Individual pass layers
                         operation.offsets.forEach((offset, passIndex) => {
                             if (offset.primitives && offset.primitives.length > 0) {
                                 let offsetType;
@@ -378,23 +394,21 @@
                                 else offsetType = 'on';
 
                                 const isHatch = offset.metadata?.isHatch === true;
+                                const layerName = `offset_${operation.id}_pass_${passIndex + 1}`;
+                                const defaultVisible = hasPreview ? false : this.renderer.options.showOffsets;
 
-                                this.renderer.addLayer(
-                                    `offset_${operation.id}_pass_${passIndex + 1}`,
-                                    offset.primitives,
-                                    {
-                                        type: 'offset',
-                                        visible: hasPreview ? false : this.renderer.options.showOffsets,
-                                        operationId: operation.id,
-                                        operationType: operation.type,
-                                        offsetType: offsetType,
-                                        pass: offset.pass,
-                                        distance: offset.distance,
-                                        combined: false,
-                                        metadata: offset.metadata,
-                                        isHatch: isHatch
-                                    }
-                                );
+                                this.renderer.addLayer(layerName, offset.primitives, {
+                                    type: 'offset',
+                                    visible: this._resolveLayerVisibility(operation, layerName, defaultVisible),
+                                    operationId: operation.id,
+                                    operationType: operation.type,
+                                    offsetType: offsetType,
+                                    pass: offset.pass,
+                                    distance: offset.distance,
+                                    combined: false,
+                                    metadata: offset.metadata,
+                                    isHatch: isHatch
+                                });
                             }
                         });
                     }
@@ -402,18 +416,16 @@
 
                 // Preview layer
                 if (operation.preview && operation.preview.primitives && operation.preview.primitives.length > 0) {
-                    this.renderer.addLayer(
-                        `preview_${operation.id}`,
-                        operation.preview.primitives,
-                        {
-                            type: 'preview',
-                            visible: this.renderer.options.showPreviews,
-                            operationId: operation.id,
-                            operationType: operation.type,
-                            isPreview: true,
-                            metadata: operation.preview.metadata
-                        }
-                    );
+                    const layerName = `preview_${operation.id}`;
+
+                    this.renderer.addLayer(layerName, operation.preview.primitives, {
+                        type: 'preview',
+                        visible: this._resolveLayerVisibility(operation, layerName, this.renderer.options.showPreviews),
+                        operationId: operation.id,
+                        operationType: operation.type,
+                        isPreview: true,
+                        metadata: operation.preview.metadata
+                    });
                 }
             });
         }
@@ -596,6 +608,11 @@
                     const visBtn = fileNode?.element.querySelector('.file-node-content .visibility-btn');
                     if (visBtn) visBtn.classList.remove('is-hidden');
                 }
+            }
+
+            // Clear persisted visibility for deleted layer
+            if (layerName && operation.layerVisibility) {
+                delete operation.layerVisibility[layerName];
             }
 
             // Tell the renderer to delete the layer

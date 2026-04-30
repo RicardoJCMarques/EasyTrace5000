@@ -90,59 +90,16 @@
         // Main reconstruction method - process fused primitives
         processForReconstruction(primitives) {
             this.debug(`processForReconstruction() called with ${primitives ? primitives.length : 0} primitives.`);
-
             if (!primitives || primitives.length === 0) return primitives;
 
-            this.debug(`Processing ${primitives.length} fused primitives`);
-
             const reconstructed = [];
-
             for (const primitive of primitives) {
-                // Check if this is a composite primitive with contours
-                if (primitive.type === 'path' && primitive.contours && primitive.contours.length > 1) {
-                    // Compound path - process each contour but maintain structure
-                    this.debug(`Processing compound primitive with ${primitive.contours.length} contours`);
-
-                    const reconstructedContours = [];
-
-                    for (const contour of primitive.contours) {
-                        if (!contour.points || contour.points.length < 3) continue;
-
-                        // Recover Z-metadata stripped by Clipper2 at shape intersections
-                        this.recoverLostMetadata(contour.points, true);
-
-                        // Process this contour's points for curve reconstruction
-                        const groups = this.groupPointsWithGaps(contour.points, true);
-                        const enhancedContour = this.reconstructContour(contour, groups);
-                        reconstructedContours.push(enhancedContour);
-                    }
-
-                    if (reconstructedContours.length === 0) continue;
-
-                    // Return compound primitive with all contours
-                    const compoundResult = new PathPrimitive(reconstructedContours, {
-                        ...primitive.properties,
-                        hasDetectedArcs: reconstructedContours.some(c => c.arcSegments && c.arcSegments.length > 0)
-                    });
-
-                    reconstructed.push(compoundResult);
-                    continue;
-                    } else if (primitive.type === 'path') {
-                    const contour = (primitive.contours && primitive.contours.length > 0) ? primitive.contours[0] : null;
-
-                    const hasCurveIds = contour && (
-                                        (contour.curveIds && contour.curveIds.length > 0) ||
-                                        (contour.arcSegments && contour.arcSegments.length > 0) ||
-                                        (contour.points && contour.points.some(p => p.curveId > 0))
-                    );
-
-                    if (hasCurveIds) {
-                        const result = this.reconstructPrimitive(primitive);
-                        reconstructed.push(...result);
-                    } else {
-                        reconstructed.push(primitive);
-                    }
-                }  
+                // Check if this is a composite primitive with arcs
+                if (primitive.type === 'path' && this._hasAnyCurveData(primitive)) {
+                    reconstructed.push(...this.reconstructPrimitive(primitive));
+                } else {
+                    reconstructed.push(primitive);
+                }
             }
 
             if (debugState.enabled) {
@@ -154,7 +111,56 @@
             return reconstructed;
         }
 
-        reconstructContour(originalContour, groups) {
+        _hasAnyCurveData(primitive) {
+            if (!primitive.contours) return false;
+            return primitive.contours.some(c =>
+                (c.curveIds && c.curveIds.length > 0) ||
+                (c.arcSegments && c.arcSegments.length > 0) ||
+                (c.points && c.points.some(p => p.curveId > 0))
+            );
+        }
+
+        reconstructPrimitive(primitive) {
+            if (!primitive.contours || primitive.contours.length === 0) return [primitive];
+
+            this.stats.pathsWithCurves++;
+            const isClosed = primitive.closed !== false;
+
+            // Handle single-group full circle special case
+            if (primitive.contours.length === 1) {
+                const contour = primitive.contours[0];
+                if (contour.points && contour.points.length >= 3) {
+                    this.recoverLostMetadata(contour.points, isClosed);
+                    const groups = this.groupPointsWithGaps(contour.points, isClosed);
+
+                    if (groups.length === 1 && groups[0].type === 'curve') {
+                        const circleResult = this.attemptFullCircleReconstruction(groups[0], primitive);
+                        if (circleResult) return [circleResult];
+                    }
+                }
+            }
+
+            const reconstructedContours = [];
+            for (const contour of primitive.contours) {
+                const reconstructed = this._reconstructSingleContour(contour, isClosed);
+                if (reconstructed) reconstructedContours.push(reconstructed);
+            }
+
+            if (reconstructedContours.length === 0) return [primitive];
+
+            return [new PathPrimitive(reconstructedContours, {
+                ...primitive.properties,
+                hasDetectedArcs: reconstructedContours.some(c => c.arcSegments && c.arcSegments.length > 0)
+            })];
+        }
+
+        _reconstructSingleContour(contour, isClosed) {
+            if (!contour.points || contour.points.length < 3) return contour;
+
+            const originalPointCount = contour.points.length;
+            this.recoverLostMetadata(contour.points, isClosed);
+            const groups = this.groupPointsWithGaps(contour.points, isClosed);
+
             const newPoints = [];
             const detectedArcSegments = [];
 
@@ -176,8 +182,10 @@
 
                         // Bypass worthiness checks if it's known it's a full circle
                         if (arcFromPoints && (isFullCircle || this._isArcWorthReconstruction(arcFromPoints, group.points))) {
+                            // Extract exact endpoints from the group body (legacy behavior)
                             const startPoint = group.points[0];
                             const endPoint = group.points[group.points.length - 1];
+
                             newPoints.push(startPoint);
                             const arcStartIdx = newPoints.length - 1;
 
@@ -198,7 +206,7 @@
                                 radius: arcFromPoints.radius,
                                 startAngle: arcFromPoints.startAngle,
                                 endAngle: arcFromPoints.endAngle,
-                                sweepAngle: arcFromPoints.sweepAngle, // Uses the corrected sweep
+                                sweepAngle: arcFromPoints.sweepAngle,
                                 clockwise: arcFromPoints.clockwise,
                                 curveId: group.curveId
                             });
@@ -222,7 +230,7 @@
                         const dx = last.x - first.x;
                         const dy = last.y - first.y;
                         if ((dx * dx + dy * dy) <= 1e-9) {
-                            startIdx = 1; // skip duplicate
+                            startIdx = 1; // skip duplicate point
                         }
                     }
                     for (let i = startIdx; i < groupPts.length; i++) {
@@ -242,12 +250,14 @@
                 protectedIndices.add(arc.endIndex);
             });
 
+            // Preserve protected indices
             for (let j = 1; j < newPoints.length; j++) {
                 const prev = dedupedPoints[dedupedPoints.length - 1];
                 const curr = newPoints[j];
                 const dx = prev.x - curr.x;
                 const dy = prev.y - curr.y;
 
+                // REVIEW - Connect to config 1e-9 epsilon?
                 if ((dx * dx + dy * dy) > 1e-9 || protectedIndices.has(j)) {
                     indexRemap.push(dedupedPoints.length);
                     dedupedPoints.push(curr);
@@ -265,44 +275,27 @@
                 return null;
             }).filter(Boolean);
 
-            // Return reconstructed contour
-            return {
-                points: dedupedPoints,
-                isHole: originalContour.isHole,
-                nestingLevel: originalContour.nestingLevel,
-                parentId: originalContour.parentId,
-                arcSegments: remappedArcs,
-                curveIds: Array.from(new Set(remappedArcs.map(s => s.curveId)))
-            };
-        }
-
-        reconstructPrimitive(primitive) {
-            if (!primitive.contours || primitive.contours.length === 0) {
-                return [primitive];
-            }
-
-            const contour = primitive.contours[0];
-            if (!contour.points || contour.points.length < 3) {
-                return [primitive];
-            }
-
-            this.stats.pathsWithCurves++;
-
-            // Recover Z-metadata stripped by Clipper2 at shape intersections
-            this.recoverLostMetadata(contour.points, primitive.closed !== false);
-
-            // Pass the contour's points to the grouper
-            const groups = this.groupPointsWithGaps(contour.points, primitive.closed);
-            if (groups.length === 1 && groups[0].type === 'curve') {
-                const circleResult = this.attemptFullCircleReconstruction(groups[0], primitive);
-                if (circleResult) {
-                    return [circleResult];
+            if (debugState.enabled && remappedArcs.length > 0) {
+                if (dedupedPoints.length >= originalPointCount) {
+                    console.warn(`[ArcReconstructor] Point count not reduced: ${originalPointCount} -> ${dedupedPoints.length}. Acceptable if arcs had few segments.`);
+                } else {
+                    this.debug(`Point count reduced: ${originalPointCount} -> ${dedupedPoints.length}`);
                 }
             }
 
-            // Pass the original primitive and the groups from its contour
-            const enhancedPath = this.reconstructPathWithArcs(primitive, groups);
-            return [enhancedPath];
+            if (remappedArcs.length > 0) {
+                this.stats.reconstructed += remappedArcs.length;
+            }
+
+            // Return reconstructed contour
+            return {
+                points: dedupedPoints,
+                isHole: contour.isHole || false,
+                nestingLevel: contour.nestingLevel || 0,
+                parentId: contour.parentId || null,
+                arcSegments: remappedArcs,
+                curveIds: Array.from(new Set(remappedArcs.map(s => s.curveId)))
+            };
         }
 
         // Group points with strict 1-point gap tolerance for intersection artifacts
@@ -476,149 +469,6 @@
             return null;
         }
 
-        reconstructPathWithArcs(primitive, groups) {
-            if (!primitive.contours || primitive.contours.length === 0) {
-                return [primitive];
-            }
-
-            const contour = primitive.contours[0];
-            if (!contour.points || contour.points.length < 3) {
-                return [primitive];
-            }
-
-            this.stats.pathsWithCurves++;
-            const originalPointCount = contour.points.length;
-
-            // Recover Z-metadata stripped by Clipper2 at shape intersections
-            this.recoverLostMetadata(contour.points, true);
-
-            // Build the new points array and detect arc segments
-            const detectedArcSegments = [];
-            const newPoints = [];
-
-            for (const group of groups) {
-                if (group.type === 'curve' && group.points.length >= this.minArcPoints) {
-                    const curveData = this.getCurve(group.curveId);
-
-                    if (curveData) {
-                        const arcFromPoints = this.calculateArcFromPoints(group.points, curveData);
-
-                        // Pre-determine if this should be a full circle
-                        const expectedSegments = GeometryUtils.getOptimalSegments(curveData.radius, curveData.type === 'circle' ? 'circle' : 'arc');
-                        const isFullCircle = curveData.type === 'circle' && group.points.length >= expectedSegments;
-
-                        // Correct the sweep angle before validation
-                        if (arcFromPoints && isFullCircle) {
-                            arcFromPoints.sweepAngle = this.calculateAngularSweep(group.points, curveData.center, true);
-                        }
-
-                        // Bypass worthiness checks if it's a full circle
-                        if (arcFromPoints && (isFullCircle || this._isArcWorthReconstruction(arcFromPoints, group.points))) {
-                            const startPoint = group.points[0];
-                            const endPoint = group.points[group.points.length - 1];
-
-                            newPoints.push(startPoint);
-                            const arcStartIdx = newPoints.length - 1;
-
-                            if (isFullCircle) {
-                                this.stats.fullCircles++;
-                                newPoints.push({ x: startPoint.x, y: startPoint.y });
-                            } else {
-                                this.stats.partialArcs++;
-                                newPoints.push(endPoint);
-                            }
-
-                            const arcEndIdx = newPoints.length - 1;
-
-                            detectedArcSegments.push({
-                                startIndex: arcStartIdx,
-                                endIndex: arcEndIdx,
-                                center: arcFromPoints.center,
-                                radius: arcFromPoints.radius,
-                                startAngle: arcFromPoints.startAngle,
-                                endAngle: arcFromPoints.endAngle,
-                                sweepAngle: arcFromPoints.sweepAngle,
-                                clockwise: arcFromPoints.clockwise,
-                                curveId: group.curveId
-                            });
-                        } else {
-                            // Arc rejected — strip curveId so DP can simplify these points
-                            for (const p of group.points) {
-                                newPoints.push({ x: p.x, y: p.y });
-                            }
-                        }
-                    } else {
-                        for (const p of group.points) {
-                            newPoints.push({ x: p.x, y: p.y });
-                        }
-                    }
-                } else {
-                    // This is a group of straight line segments, so add all its points.
-                    newPoints.push(...group.points);
-                }
-            }
-
-            const dedupedPoints = [newPoints[0]];
-            const indexRemap = [0];
-
-            const protectedIndices = new Set();
-            detectedArcSegments.forEach(arc => {
-                protectedIndices.add(arc.startIndex);
-                protectedIndices.add(arc.endIndex);
-            });
-
-            for (let j = 1; j < newPoints.length; j++) {
-                const prev = dedupedPoints[dedupedPoints.length - 1];
-                const curr = newPoints[j];
-                const dx = prev.x - curr.x;
-                const dy = prev.y - curr.y;
-
-                if ((dx * dx + dy * dy) > 1e-9 || protectedIndices.has(j)) {
-                    indexRemap.push(dedupedPoints.length);
-                    dedupedPoints.push(curr);
-                } else {
-                    indexRemap.push(dedupedPoints.length - 1);
-                }
-            }
-
-            const remappedArcs = detectedArcSegments.map(arc => {
-                const newStart = indexRemap[arc.startIndex];
-                const newEnd = indexRemap[arc.endIndex];
-                if (newStart >= 0 && newEnd >= 0) {
-                    return { ...arc, startIndex: newStart, endIndex: newEnd };
-                }
-                return null;
-            }).filter(Boolean);
-
-            if (debugState.enabled && remappedArcs.length > 0) {
-                if (dedupedPoints.length >= originalPointCount) {
-                    console.warn(`[ArcReconstructor] Point count not reduced: ${originalPointCount} -> ${dedupedPoints.length}. Acceptable if arcs had few segments.`, {
-                        primitiveId: primitive.id
-                    });
-                } else {
-                    this.debug(`Point count reduced: ${originalPointCount} -> ${dedupedPoints.length}`);
-                }
-            }
-
-            if (remappedArcs.length > 0) {
-                this.stats.reconstructed += remappedArcs.length;
-            }
-
-            const newContour = {
-                points: dedupedPoints,
-                isHole: primitive.properties.isHole || false,
-                nestingLevel: primitive.properties.nestingLevel || 0,
-                parentId: primitive.properties.parentId || null,
-                arcSegments: remappedArcs,
-                curveIds: Array.from(new Set(remappedArcs.map(s => s.curveId)))
-            };
-
-            return new PathPrimitive([newContour], {
-                ...primitive.properties,
-                hasDetectedArcs: remappedArcs.length > 0
-            });
-        }
-
         /**
          * Determines if a detected arc is worth reconstructing.
          * Tiny, nearly-flat arcs are left as linear segments so downstream simplification (DP) can handle them if need be.
@@ -751,6 +601,7 @@
         /**
          * Checks if a point geometrically belongs to a registered curve.
          * Performs a radius check and, if angle data is available, a sweep check to prevent false positives on arcs that share the same center/radius.
+         * NOTICE: There's a risk this can cause arc-arc edge point collision metadata recovery checks to become greedy when arc points overlap the next linear segment points and they mathematically are within the tolerance assigned.
          */
         _pointBelongsToCurve(point, curveData, tolerance) {
             if (!curveData || !curveData.center || !curveData.radius) return false;

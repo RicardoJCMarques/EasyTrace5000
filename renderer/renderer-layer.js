@@ -141,7 +141,7 @@
                 this._renderDebugOverlayWorld();
             }
 
-            if (this.options.showPreprocessed && this.pcbCore?.operations) {
+            if (this.options.showPreprocessedOffsets && this.pcbCore?.operations) {
                 this.ctx.save();
                 this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
                 const fc = this.core.frameCache;
@@ -382,8 +382,8 @@
                 this.core.renderStats.drawCalls++;
             }
 
-            // Hijack the "showPreprocessed" toggle to render the smuggled strokes
-            if (this.core.options.showPreprocessed) {
+            // Pre-processed Offset Polygons
+            if (this.core.options.showPreprocessedOffsets) {
                 this.ctx.save();
                 // Use a bright cyan wireframe to stand out against standard geometry
                 this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)'; 

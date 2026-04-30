@@ -135,8 +135,13 @@
                 for (const contour of processable.contours) {
                     const isHole = contour.isHole || false;
 
-                    if (props.tabConfig && this.tabPlanner) {
-                        plans.push(...this._processTabbedContour(contour, props, ctx, depthLevels, isHole));
+                    // Use the live context as the absolute source of truth
+                    const tabCount = ctx.strategy?.cutout?.tabs || 0;
+                    const isTabbedCutout = ctx.operationType === 'cutout' && tabCount > 0;
+
+                    if (isTabbedCutout && this.tabPlanner) {
+                        // Remove 'props' argument, pass 'ctx' directly
+                        plans.push(...this._processTabbedContour(contour, ctx, depthLevels, isHole));
                     } else {
                         plans.push(...this._processStandardContour(contour, processable, ctx, depthLevels, isHole));
                     }
@@ -240,11 +245,22 @@
                     oData.pB = this.applyTransforms(oData.pB, transforms);
                     oData.pC = this.applyTransforms(oData.pC, transforms);
                     oData.pD = this.applyTransforms(oData.pD, transforms);
+
+                    // Normalize the sequence so the macro can remain transform agnostic
+                    let isFlipped = false;
+                    if (transforms) {
+                        isFlipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                    }
+                    if (isFlipped) {
+                        const tempB = oData.pB; oData.pB = oData.pC; oData.pC = tempB;
+                        const tempA = oData.pA; oData.pA = oData.pD; oData.pD = tempA;
+                        const tempStart = oData.startCapCenter; oData.startCapCenter = oData.endCapCenter; oData.endCapCenter = tempStart;
+                    }
                     return { ...oData, pass: idx + 1 };
                 });
 
                 const innerRing = rings[0];
-                const entryPoint = innerRing.pA;
+                const entryPoint = innerRing.pB; // Always use pB. It is guaranteed correct.
 
                 const plan = new ToolpathPlan(operationId);
                 plan.metadata.context = ctx;
@@ -464,12 +480,13 @@
          *
          * The tab planner receives the full context (ctx) for backward compatibility. The tabConfig on the primitive acts as the signal and provides the height for Z-lift calculation.
          */
-        _processTabbedContour(contour, props, ctx, depthLevels, isHole) {
+        _processTabbedContour(contour, ctx, depthLevels, isHole) {
             const plans = [];
-            const tabConfig = props.tabConfig;
+            const tabConfig = ctx.strategy.cutout; // Direct context access
 
             // Generate the base 2D path
             const tempPlan = new ToolpathPlan(ctx.operationId);
+            tempPlan.metadata.context = ctx;
             tempPlan.metadata.isClosed = true;
             this.translatePrimitiveToCutting(tempPlan, contour, 0, ctx.cutting.feedRate);
 
@@ -483,18 +500,15 @@
 
             // Delegate to Tab Planner to split the geometry
             let segmentedCommands = [];
-            if (tabConfig.count > 0 && this.tabPlanner) {
-                // Pass full ctx — tab planner reads tab width/count/height from ctx.strategy.cutout
+
+            // Check tabConfig.tabs from the live UI state
+            if (tabConfig.tabs > 0 && this.tabPlanner) {
                 segmentedCommands = this.tabPlanner.calculateTabPositions(contour, ctx);
-                if (debugState.enabled) {
-                    const tabCount = segmentedCommands.filter(c => c.metadata?.isTab).length;
-                    console.log(`[GeometryTranslator] Tab Planner: ${segmentedCommands.length} segments, ${tabCount} tabs`);
-                }
             }
 
             // Iterate Z-depths, lifting when passing through a tab region
             const finalDepth = ctx.strategy.cutDepth;
-            const tabLiftAmount = tabConfig.height || 0;
+            const tabLiftAmount = tabConfig.tabHeight || 0; // Read height from live context
             const Z_top = finalDepth + tabLiftAmount;
 
             for (const depth of depthLevels) {
@@ -908,38 +922,6 @@
                 }
             }
 
-            // Reconstructed full circles
-            if (arcSegments.length === 1) {
-                const arc = arcSegments[0];
-
-                // Grab the upstream sweepAngle
-                let sweep = arc.sweepAngle;
-                // Fallback if sweepAngle is missing REVIEW - is this still necessary? It must be set upstream?
-                if (sweep === undefined) {
-                    sweep = arc.endAngle - arc.startAngle;
-                    if (arc.clockwise && sweep > 0) sweep -= 2 * Math.PI;
-                    if (!arc.clockwise && sweep < 0) sweep += 2 * Math.PI;
-                }
-
-                const transformedCenter = this.applyTransforms(arc.center, transforms);
-                // Canonical 3 o'clock entry — matches circleToPath / translateCircle
-                const rawEntry = { x: arc.center.x + arc.radius, y: arc.center.y };
-                const canonicalEntry = this.applyTransforms(rawEntry, transforms);
-                const i_val = transformedCenter.x - canonicalEntry.x;
-                const j_val = transformedCenter.y - canonicalEntry.y;
-
-                plan.addArc(canonicalEntry.x, canonicalEntry.y, depth, i_val, j_val, true, feedRate);
-
-                // Update metadata so optimizer sees consistent entry/exit and can cluster this with other passes of the same hole
-                plan.metadata.entryPoint = { x: canonicalEntry.x, y: canonicalEntry.y, z: depth };
-                plan.metadata.exitPoint = { ...plan.metadata.entryPoint };
-                plan.metadata.isSimpleCircle = true;
-                plan.metadata.isClosedLoop = true;
-                plan.metadata.center = { x: transformedCenter.x, y: transformedCenter.y };
-                plan.metadata.radius = arc.radius;
-                return;
-            }
-
             // Standard segment-by-segment processing
             const isPhysicallyClosed = this._isClosedPoints(points);
             const numPoints = points.length;
@@ -1194,33 +1176,32 @@
 
         applyTransforms(point, transforms) {
             if (!transforms) return point;
-
             let x = point.x;
             let y = point.y;
 
-            if (transforms.mirrorX || transforms.mirrorY) {
-                const cx = transforms.mirrorCenter?.x ?? transforms.origin?.x ?? 0;
-                const cy = transforms.mirrorCenter?.y ?? transforms.origin?.y ?? 0;
-                if (transforms.mirrorX) {
-                    x = 2 * cx - x;
-                }
-                if (transforms.mirrorY) {
-                    y = 2 * cy - y;
-                }
-            }
+            // Rotate
+            if (transforms.rotation && transforms.rotation !== 0) {
+                const rc = transforms.rotationCenter || { x: 0, y: 0 };
 
-            if (transforms.rotation && transforms.rotation !== 0 && transforms.rotationCenter) {
-                const rcx = transforms.rotationCenter.x;
-                const rcy = transforms.rotationCenter.y;
-                const rad = (transforms.rotation * Math.PI) / 180;
+                // To match Canvas visual rotation in Y-up, negate effective angle
+                const isMirrored = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
+                const effectiveAngle = isMirrored ? -transforms.rotation : transforms.rotation;
+                const rad = (effectiveAngle * Math.PI) / 180;
+
                 const cos = Math.cos(rad);
                 const sin = Math.sin(rad);
 
-                const dx = x - rcx;
-                const dy = y - rcy;
+                const dx = x - rc.x;
+                const dy = y - rc.y;
+                x = rc.x + (dx * cos - dy * sin);
+                y = rc.y + (dx * sin + dy * cos);
+            }
 
-                x = rcx + (dx * cos - dy * sin);
-                y = rcy + (dx * sin + dy * cos);
+            // Mirror
+            if (transforms.mirrorX || transforms.mirrorY) {
+                const mc = transforms.mirrorCenter || transforms.origin || { x: 0, y: 0 };
+                if (transforms.mirrorX) x = 2 * mc.x - x;
+                if (transforms.mirrorY) y = 2 * mc.y - y;
             }
 
             return { x, y };
@@ -1257,7 +1238,7 @@
 
             for (let i = 0; i < limit; i++) {
                 const nextI = (i + 1) % numPoints;
-                
+
                 // Stop if it's an open path and at the last point (safety check)
                 if (nextI === 0 && !contour.closed && !this._isClosedPoints(points)) {
                     break;

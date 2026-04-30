@@ -240,6 +240,10 @@
             attachTo('laser-spot-size', 'tooltips.machineSettings.laserSpotSize');
             attachTo('laser-export-format', 'tooltips.machineSettings.laserExportFormat');
             attachTo('laser-export-dpi', 'tooltips.machineSettings.laserExportDPI');
+            attachTo('laser-svg-grouping', 'tooltips.machineSettings.laserSvgGrouping');
+            attachTo('laser-reverse-cut', 'tooltips.machineSettings.laserReverseCutOrder');
+            attachTo('laser-heat-management', 'tooltips.machineSettings.laserHeatManagement');
+            attachTo('laser-color-per-pass', 'tooltips.machineSettings.laserColorPerPass');
 
             // Visualization Panel Toggles
             attachTo('show-grid', 'tooltips.vizPanel.grid');
@@ -250,6 +254,7 @@
             attachTo('show-previews', 'tooltips.vizPanel.previews');
             attachTo('fuse-geometry', 'tooltips.vizPanel.fusionMode');
             attachTo('show-preprocessed', 'tooltips.vizPanel.preprocessed');
+            attachTo('show-preprocessed-offsets', 'tooltips.vizPanel.preprocessedOffsets');
             attachTo('enable-arc-reconstruction', 'tooltips.vizPanel.arcReconstruction');
             attachTo('debug-points', 'tooltips.vizPanel.debugPoints');
             attachTo('debug-arcs', 'tooltips.vizPanel.debugArcs');
@@ -282,10 +287,21 @@
                 }
             });
 
+            // Set initial disabled state for dependent toggles
+            const fuseGeometryToggle = document.getElementById('fuse-geometry');
+            const preprocessedToggle = document.getElementById('show-preprocessed');
+            const arcToggle = document.getElementById('enable-arc-reconstruction');
+
+            if (fuseGeometryToggle) {
+                const isFused = fuseGeometryToggle.checked;
+                if (preprocessedToggle) preprocessedToggle.disabled = !isFused;
+                if (arcToggle) arcToggle.disabled = !isFused;
+            }
+
             // Special case: Debug log toggle
             const debugLogToggle = document.getElementById('debug-log-toggle');
             if (debugLogToggle) {
-                debugLogToggle.checked = debugState;
+                debugLogToggle.checked = debugState.enabled;
             }
 
             // Attach Single Event Listener
@@ -327,6 +343,13 @@
                         prepToggle.checked = false;
                         this.renderer.setOptions({ showPreprocessed: false });
                     }
+                }
+                if (option === 'fuseGeometry') {
+                    const prepToggle = document.getElementById('show-preprocessed');
+                    const arcToggle = document.getElementById('enable-arc-reconstruction');
+
+                    if (prepToggle) prepToggle.disabled = !isChecked;
+                    if (arcToggle) arcToggle.disabled = !isChecked;
                 }
 
                 // Perform Action
@@ -625,10 +648,24 @@
                     ((currentStats.curvesReconstructed / currentStats.curvesRegistered) * 100).toFixed(1) : 0;
 
                 statsContainer.innerHTML = `
-                    <div>Curves registered: ${currentStats.curvesRegistered}</div>
-                    <div>Curves reconstructed: ${currentStats.curvesReconstructed}</div>
-                    <div>Curves lost: ${currentStats.curvesLost}</div>
-                    <div>Success rate: ${successRate}%</div>
+                    <div class="stats-display">
+                        <div class="stat-item">
+                            <span class="stat-label">Registered:</span>
+                            <span class="stat-value">${currentStats.curvesRegistered}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Reconstructed:</span>
+                            <span class="stat-value">${currentStats.curvesReconstructed}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Lost:</span>
+                            <span class="stat-value">${currentStats.curvesLost}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Success Rate:</span>
+                            <span class="stat-value">${successRate}%</span>
+                        </div>
+                    </div>
                 `;
             } else {
                 statsContainer.classList.add('hidden');

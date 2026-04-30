@@ -666,7 +666,7 @@ window.PCBCAMConfig = {
                     }
                 },
                 lightburn: {
-                    label: 'LightBur (Very Experimental)n',
+                    label: 'LightBurn (Very Experimental)',
                     svgGrouping: 'none',           // LightBurn prefers flat geometry; it builds its own layer tree from colors
                     reverseCutOrder: true,         // LightBurn reads SVG bottom-to-top; reverse so first-in-file = first-cut
                     heatManagement: 'standard',    // Sort primitives smallest-first within each pass
@@ -870,6 +870,7 @@ window.PCBCAMConfig = {
                 showOffsets: true,
                 showPreviews: true,
                 showPreprocessed: false,
+                showPreprocessedOffsets: false,
                 enableArcReconstruction: false,
                 showDebugInLog: false
             },

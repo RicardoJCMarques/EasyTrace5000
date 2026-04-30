@@ -4,6 +4,25 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-05-01
+
+### Fixed
+- **Geometry Transforms:** Rotation and mirroring won't break arc winding any more.
+- **Drill Macros:** Hole and slot macros for drill operations are now mirroring agnosting and are hardcoded climb milling.
+- **Tab Generation:** Was reinforced to handle mirroring without breaking arc winding for toolpaths at tab depth.
+- **Visualization State:** Layer visibility is more persistant and won't reset/desync when geometry changes happen.
+- **File Parsing:** Leading and Trailing zeros are recognized and handled correctly now. Arcs that share a center, winding and touch will be merged too.
+- **Gerber Parsing:** Oval/Obround and other complex flashed pad macro shapes are properly processed.
+- **Excellon Parsing:** More encoding formats are now supported.
+- **Arc Rendering:** Small improvements during debug states.
+
+### Added
+- **Temp Offset Polygons:** A dedicated toggle was added to the advanced debug viz tools to see intermediary offset path polygons
+
+### Known Bugs
+- **Arc-Reconstruction:** Arc-Arc interactions, especially tangencial connections have 2-3x points fighting to keep z-height metadata in overlapping collisions. A small linear segment covers the gap that belongs to one of the arcs. When losing point remapping works, tangential circle joint should be removed.
+
+
 ## [1.3.1] - 2026-04-22
 
 ### Fixed
@@ -18,7 +37,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - **Skipped Warnings:** If all geometry is skipped in an operation (like through-hole stencils) a notice will inform that the operation ran as expected but created no geometry.
 - **More Pre-processed Debug Viz:** Extended temporary offset polygons to also show up during Pre-Processed geometry viewing. May warrant it's own toggle in the future.
-
 
 
 ## [1.3.0] - 2026-04-12
@@ -47,7 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 - **Laser SVG Export:** Previous attempts at managing heat build-up broke most functionality unrelated to concentric offset strategy.
-- **Reworked Config.js:** Preset values are not split into constants that are frozen and defaults that the tool can overwrite.
+- **Reworked Config.js:** Preset values are now split into constants that are frozen and defaults that the tool can overwrite.
 - **Canned Drill Cycles:** Updated UI and internal logic, needs further testing but G-codes are now exported "correctly".
 
 ### Changed

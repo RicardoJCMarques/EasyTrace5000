@@ -95,9 +95,7 @@
         }
 
         /**
-         * Runs the base offset pipeline, then attaches tab configuration
-         * to the resulting primitives so the toolpath translator can
-         * detect and process them without operation-type branching.
+         * Runs the base offset pipeline, then attaches tab configuration to the resulting primitives so the toolpath translator can detect and process them without operation-type branching.
          */
         async generateGeometry(operation, settings) {
             // Clone to prevent mutating shared state
@@ -105,29 +103,10 @@
 
             // Force single-pass routing for cutouts, ignoring any stale cached settings
             settings.passes = 1;
-            settings.stepOver = 100; 
+            settings.stepOver = 100; // Should this be 50?
             settings.combineOffsets = false;
 
-            const offsets = await super.generateGeometry(operation, settings);
-
-            // Attach tab configuration to offset primitives when tabs are requested
-            const tabCount = settings.tabs || 0;
-            if (tabCount > 0) {
-                const tabConfig = {
-                    count: tabCount,
-                    width: settings.tabWidth || 0,
-                    height: settings.tabHeight || 0
-                };
-                for (const offset of operation.offsets) {
-                    for (const prim of offset.primitives) {
-                        if (!prim.properties) prim.properties = {};
-                        prim.properties.tabConfig = tabConfig;
-                    }
-                }
-                this.debug(`Attached tabConfig (${tabCount} tabs) to ${operation.offsets.reduce((s, o) => s + o.primitives.length, 0)} primitive(s)`);
-            }
-
-            return offsets;
+            return await super.generateGeometry(operation, settings);
         }
     }
 

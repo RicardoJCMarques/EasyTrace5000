@@ -90,6 +90,7 @@
                 showOffsets: renderingOptions.showOffsets,
                 showPreviews: renderingOptions.showPreviews,
                 showPreprocessed: renderingOptions.showPreprocessed,
+                showPreprocessedOffsets: renderingOptions.showPreprocessedOffsets,
                 enableArcReconstruction: renderingOptions.enableArcReconstruction,
                 blackAndWhite: renderingOptions.blackAndWhite,
                 debugPoints: renderingOptions.debugPoints,
