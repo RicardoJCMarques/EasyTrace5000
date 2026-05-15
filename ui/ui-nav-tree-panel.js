@@ -127,7 +127,7 @@
 
             // Attach listener for the visibility button
             if (visBtn) {
-                const layerName = `source_${operation.id}`; // The layer name it controls
+                const layerName = window.LayerNaming.source(operation.id); // The layer name it controls
                 visBtn.dataset.layerName = layerName;
 
                 // Set initial state
@@ -358,12 +358,12 @@
                 let layerName;
 
                 if (geometryType === 'offsets_combined') {
-                    layerName = `offset_${operationId}_combined`;
+                    layerName = window.LayerNaming.offsetCombined(operationId);
                 } else if (geometryType.startsWith('offset_')) {
                     const passIndex = parseInt(geometryType.split('_')[1]);
-                    layerName = `offset_${operationId}_pass_${passIndex + 1}`;
+                    layerName = window.LayerNaming.offsetPass(operationId, passIndex + 1);
                 } else if (geometryType === 'preview') {
-                    layerName = `preview_${operationId}`;
+                    layerName = window.LayerNaming.preview(operationId);
                 }
 
                 visBtn.dataset.layerName = layerName || '';
@@ -413,6 +413,49 @@
 
                 // Update aria-setsize and aria-posinset for all geometry siblings
                 this.updateGeometrySetInfo(fileId);
+            }
+        }
+
+        /**
+         * Cycles selection through all nodes belonging to a given operation type.
+         * Order: for each file node → file itself, then its geometry children (offsets, previews).
+         * Wraps around to the first item after the last.
+         */
+        cycleOperationCategory(opType) {
+            const items = [];
+
+            this.nodes.forEach((data) => {
+                if (data.type !== 'file' || data.operation?.type !== opType) return;
+
+                items.push({
+                    kind: 'file',
+                    id: data.id,
+                    operation: data.operation
+                });
+
+                data.geometries.forEach((geo, geoId) => {
+                    items.push({
+                        kind: 'geometry',
+                        id: geoId,
+                        operation: data.operation,
+                        geometryType: geo.type
+                    });
+                });
+            });
+
+            if (items.length === 0) return;
+
+            // Find where the current selection sits in this category's item list.
+            // If selection is outside this category, findIndex returns -1 → next = 0.
+            const currentId = this.selectedNode?.id;
+            const currentIndex = items.findIndex(item => item.id === currentId);
+            const nextIndex = (currentIndex + 1) % items.length;
+            const next = items[nextIndex];
+
+            if (next.kind === 'file') {
+                this.selectFile(next.id, next.operation);
+            } else {
+                this.selectGeometry(next.id, next.operation, next.geometryType);
             }
         }
 
@@ -579,49 +622,6 @@
             }
         }
 
-        selectHighestStage(fileId) {
-            const fileData = this.nodes.get(fileId);
-            if (!fileData) return;
-
-            let bestGeo = null;
-
-            // Check for Preview (Highest CNC stage)
-            for (const [id, geo] of fileData.geometries) {
-                if (geo.type === 'preview') {
-                    bestGeo = geo;
-                    break;
-                }
-            }
-
-            // Check for Combined Offsets / Laser Paths / Stencils
-            if (!bestGeo) {
-                for (const [id, geo] of fileData.geometries) {
-                    if (geo.type === 'offsets_combined') {
-                        bestGeo = geo;
-                        break;
-                    }
-                }
-            }
-
-            // Check for Individual Passes
-            if (!bestGeo) {
-                for (const [id, geo] of fileData.geometries) {
-                    if (geo.type.startsWith('offset_')) {
-                        bestGeo = geo;
-                        break; // Grab the first pass
-                    }
-                }
-            }
-
-            // Execute the selection
-            if (bestGeo) {
-                this.selectGeometry(bestGeo.id, fileData.operation, bestGeo.type);
-            } else {
-                // Fallback to the source file if everything else was deleted
-                this.selectFile(fileId, fileData.operation);
-            }
-        }
-
         removeFileNode(operationId) {
             let nodeToRemove = null;
             let operationType = null;
@@ -684,14 +684,6 @@
             return this.selectedNode?.operation || null;
         }
 
-        updateNodeCounts() {
-            this.nodes.forEach(fileData => {
-                if (fileData.type === 'file' && fileData.operation) {
-                    this.updateFileGeometries(fileData.id, fileData.operation);
-                }
-            });
-        }
-
         setupKeyboardNavigation() {
             const treeView = document.getElementById('operations-tree');
             if (!treeView) return;
@@ -713,17 +705,27 @@
             categories.forEach((category, index) => {
                 const header = category.querySelector('.category-header');
                 const filesContainer = category.querySelector('.category-files');
-
-                if (header) {
-                    header.setAttribute('role', 'button');
-                    header.setAttribute('aria-label', `Add file to ${category.dataset.opType}`);
-                    header.setAttribute('tabindex', index === 0 ? '0' : '-1');
-                    header.setAttribute('aria-level', '1');
-                    header.removeAttribute('aria-expanded'); // No longer expandable REVIEW IF THIS IS NECESSARY
-                }
+                const opType = category.dataset.opType;
 
                 if (filesContainer) {
+                    const filesId = `category-files-${opType}`;
+                    filesContainer.id = filesId;
                     filesContainer.setAttribute('role', 'group');
+
+                    if (header) {
+                        header.setAttribute('role', 'button');
+                        header.setAttribute('aria-label', `Add file to ${opType}`);
+                        header.setAttribute('tabindex', index === 0 ? '0' : '-1');
+                        header.setAttribute('aria-level', '1');
+                        header.setAttribute('aria-controls', filesId);
+                        header.removeAttribute('aria-expanded'); // No longer operations are no longer expandable. REVIEW IF THIS IS NECESSARY
+                    }
+                } else if (header) {
+                    header.setAttribute('role', 'button');
+                    header.setAttribute('aria-label', `Add file to ${opType}`);
+                    header.setAttribute('tabindex', index === 0 ? '0' : '-1');
+                    header.setAttribute('aria-level', '1');
+                    header.removeAttribute('aria-expanded');
                 }
             });
         }

@@ -53,19 +53,13 @@ window.PCBCAMConfig = {
         //
         // ====================================================================
         precision: {
-            // Geometric comparisons (pure math — never change these)
             epsilon: 1e-9,              // Floating-point near-zero. Guard divisions, cross-product zero checks.
             collinear: 1e-12,           // Stricter near-zero for geometric collinearity where even tiny deviations matter.
             collinearDot: 0.995,        // Dot-product angle threshold. Unit vectors with dot > this are "parallel enough."
 
-            // Spatial thresholds (mm — scale-dependent, but fixed for PCB)
             coordinate: 0.001,          // Coordinate quantization grid. All coordinates snap to this resolution.
-            pointMatch: 0.01,           // "Same location" tolerance. 10× coordinate to absorb accumulated FP drift across multi-step pipelines (parse → offset → transform → toolpath).
-            zeroLength: 0.001,          // Degenerate geometry detection. Segments shorter than this are collapsed.
-            rdpSimplification: 0.0005,   // Douglas-Peucker polygon simplification. Tames KiCad pour noise without affecting intentional geometry.
 
-            // Output formatting // REVIEW - Not Connected? Should it be?
-            display: 3                  // Decimal places for UI readouts and export coordinate formatting.
+            rdpSimplification: 0.0005  // Douglas-Peucker polygon simplification.
         },
 
         // ====================================================================
@@ -120,9 +114,8 @@ window.PCBCAMConfig = {
                 hashPrecision: 1000
             },
 
-            edgeKeyPrecision: 3,
-            // REVIEW - Not Connected? Should it be?
-            fillRule: 'nonzero'
+            edgeKeyDecimals: 3,
+            fillRule: 'nonzero' // REVIEW - Dead code? Not Connected? Should it be?
         },
 
         // ====================================================================
@@ -314,6 +307,8 @@ window.PCBCAMConfig = {
                 laserSpotSize: { min: 0.01, max: 1.0, step: 0.01 },
                 laserIsolationWidth: { min: 0.05, max: 2.5, step: 0.01 },
                 laserStepOver: { min: 10, max: 99, step: 5 },
+                laserLinesPerCm: { min: 1, max: 1000, step: 1 },
+                laserLinesPerInch: { min: 5, max: 2540, step: 5 },
                 laserHatchAngle: { min: 0, max: 180, step: 5 },
                 laserExportPadding: { min: 0, max: 10, step: 0.5 },
                 maxAutoPasses: 500 // Arbitrary limit - can/should be changed after testing // Could this affect laser offsets?
@@ -538,6 +533,7 @@ window.PCBCAMConfig = {
                 safeZ: 5.0,
                 travelZ: 2.0,
                 feedHeight: 1.0,    // Clearance above Z0 where G0→G1 handoff occurs.
+                maxSafeDepth: -10.1, // Negative Z limit. Calculated values below this throw an error.
                 // REVIEW - probeZ and homeZ may be mislabeled? Or just useless?
                 probeZ: -5.0,
                 homeZ: 10.0

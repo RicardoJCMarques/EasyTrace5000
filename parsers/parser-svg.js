@@ -276,8 +276,8 @@
             if (D.debug && transformed.type === 'path') {
                 const sp = transformed.subpaths || [];
                 const pts = transformed.points || [];
-                console.log(`[ParserSVG fillShape] subpaths: ${sp.length}, points: ${pts.length}, first subpath length: ${sp[0]?.length || 0}`);
-                if (sp[0]?.[0]) console.log(`[ParserSVG fillShape] first element type: ${sp[0][0].type || 'point'}, sample:`, sp[0][0]);
+                this.debug(`[ParserSVG fillShape] subpaths: ${sp.length}, points: ${pts.length}, first subpath length: ${sp[0]?.length || 0}`);
+                if (sp[0]?.[0]) this.debug(`[ParserSVG fillShape] first element type: ${sp[0][0].type || 'point'}, sample:`, sp[0][0]);
             }
 
             if (transformed.type === 'circle' || transformed.type === 'rectangle' || 

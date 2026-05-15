@@ -276,11 +276,11 @@
 
         // Edge deduplication utilities
         createEdgeKey(p1, p2) {
-            const keyPrecision = C.geometry.edgeKeyPrecision || 3; // REVIEW - Are these just decimals? Leave "precision" labels for epsilons
-            const x1 = p1.x.toFixed(keyPrecision);
-            const y1 = p1.y.toFixed(keyPrecision);
-            const x2 = p2.x.toFixed(keyPrecision);
-            const y2 = p2.y.toFixed(keyPrecision);
+            const edgeKeyDecimals = C.geometry.edgeKeyDecimals;
+            const x1 = p1.x.toFixed(edgeKeyDecimals);
+            const y1 = p1.y.toFixed(edgeKeyDecimals);
+            const x2 = p2.x.toFixed(edgeKeyDecimals);
+            const y2 = p2.y.toFixed(edgeKeyDecimals);
             return `${x1},${y1}-${x2},${y2}`;
         }
 

@@ -34,6 +34,16 @@
     const canvasConfig = D.rendering.canvas;
     const debugState = D.debug;
 
+    // Centralized Layer Naming
+    window.LayerNaming = {
+        source: (opId) => `source_${opId}`,
+        fused: (opId) => `fused_${opId}`,
+        preprocessed: (opId) => `preprocessed_${opId}`,
+        offsetCombined: (opId) => `offset_${opId}_combined`,
+        offsetPass: (opId, passNumber) => `offset_${opId}_pass_${passNumber}`,
+        preview: (opId) => `preview_${opId}`
+    };
+
     class RendererCore {
         constructor(canvas) {
             this.canvas = canvas;

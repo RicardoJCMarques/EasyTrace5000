@@ -58,7 +58,7 @@
         }
 
         /**
-         * Phase 1 (cnc variant): Generate operation-specific geometry (offsets, drill strategy, stencil apertures).
+         * CNC variant: Generate operation-specific geometry (offsets, drill strategy, stencil apertures).
          * Writes to operation.offsets[].
          */
         async generateGeometry(operation, settings) {
@@ -66,27 +66,11 @@
         }
 
         /**
-         * Phase 1 (laser variant): Generate laser-specific geometry.
+         * Laser variant: Generate laser-specific geometry.
          * Default delegates to generateGeometry (offset strategy).
          */
-        async generateLaserGeometry(operation, settings) {
+        async generateLaserFills(operation, settings) {
             return this.generateGeometry(operation, settings);
-        }
-
-        /**
-         * Phase 2: Translate geometry into pure cutting plans.
-         * Override in future phases to move translation logic from GeometryTranslator.
-         * Returns null to indicate the translator should use its current logic.
-         */
-        async translateToPlans(operation, context) {
-            return null;
-        }
-
-        /**
-         * Build an export layer descriptor for laser/stencil SVG/PNG export.
-         */
-        buildExportLayer(operation, exportOptions) {
-            return null;
         }
 
         debug(message, data = null) {

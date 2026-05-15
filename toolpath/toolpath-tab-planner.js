@@ -346,7 +346,9 @@
             if (!points || points.length < 2) return false;
             const first = points[0];
             const last = points[points.length - 1];
-            return Math.hypot(first.x - last.x, first.y - last.y) < PRECISION;
+            const dx = first.x - last.x;
+            const dy = first.y - last.y;
+            return (dx * dx + dy * dy) < (PRECISION * PRECISION);
         }
 
         _mapSegmentsToDistance(geometry) {

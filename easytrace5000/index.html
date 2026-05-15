@@ -152,7 +152,7 @@
                 "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
                 "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
             ],
-            "softwareVersion": "1.3.2",
+            "softwareVersion": "1.3.3",
             "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
             "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
             "installUrl": "https://cam.eltryus.design/easytrace5000/",
@@ -827,7 +827,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.3.2</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.3.3</a> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View License (opens in a new tab)">AGPLv3 Licensed</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -1053,7 +1053,7 @@
                         <h3>Fiber Laser</h3>
                         <span class="pipeline-badge pipeline-badge--dev">Coming Soon</span>
                         <p class="pipeline-desc">Laser for isolation and clearing. CNC G-code for drilling and board cutout.</p>
-                        <span class="pipeline-action" aria-hidden="true">Use UV (Adjust Got Size)</span>
+                        <span class="pipeline-action" aria-hidden="true">Use UV (Adjust Dot Size)</span>
                     </a>
                 </div>
 
@@ -1105,9 +1105,7 @@
                     <!-- Example loader row -->
                     <div class="quickstart-example-row">
                         <label for="pcb-example-select">Load example:</label>
-                        <select id="pcb-example-select" class="example-select">
-                            <option value="example1">Example 1</option>
-                        </select>
+                        <select id="pcb-example-select" class="example-select"></select>
                         <button class="btn btn--secondary" id="load-example-btn" aria-label="Load selected example project">Load</button>
                     </div>
 
@@ -1190,7 +1188,7 @@
             </div>
             <div class="modal-body">
                 <div class="support-content">
-                    <p class="support-intro">This project is free and open-source. Your support helps cover development time, hosting costs, and the test hardware needed to build the upcoming Laser pipeline</p>
+                    <p class="support-intro">This project is free and open-source. Your support helps cover development time, (small) hosting costs, and any test hardware needed during development</p>
 
                     <div class="support-options">
                         <div class="support-card support-card--sponsorship">
@@ -1200,7 +1198,7 @@
                                 </svg>
                                 Become a Sponsor
                             </h3>
-                            <p>Gain visibility with your logo on the welcome screen, documentation, and repository. We are also actively seeking hardware partnerships for testing the upcoming Laser pipeline.</p>
+                            <p>Gain visibility with your logo on the welcome screen, documentation, and repository. I'm are also actively seeking hardware partnerships.</p>
                             <div class="support-email-container">
                                 <span class="support-email-hint" aria-hidden="true">Click to copy email</span>
                                 <button class="support-email-btn" id="support-email-copy" type="button" aria-label="Copy sponsor email address to clipboard">
@@ -1345,6 +1343,16 @@
                             </div>
                         </div>
                     </section>
+
+                    <div class="shortcut-group">
+                            <h4>Operations Selection</h4>
+                            <div class="shortcut-list">
+                                <div class="shortcut-item">
+                                    <span class="shortcut-keys"><kbd>1</kbd> - <kbd>5</kbd></span>
+                                    <span class="shortcut-desc">Cycle loaded operation objects (Isolation to Stencil)</span>
+                                </div>
+                            </div>
+                        </div>
 
                     <section class="help-section">
                         <h3>Accessibility Navigation</h3>
@@ -1513,7 +1521,21 @@
                         <span>Est. Time: <strong id="exporter-est-time">--:--</strong></span>
                         <span>Distance: <strong id="exporter-distance">0mm</strong></span>
                     </div>
-                    <textarea id="exporter-preview-text" readonly rows="15" placeholder="G-code preview will appear here..." aria-label="G-code output preview"></textarea>
+
+                    <div class="preview-text-container">
+                        <textarea id="exporter-preview-text" readonly rows="15" placeholder="G-code preview will appear here..." aria-label="G-code output preview"></textarea>
+
+                        <button id="exporter-copy-btn" class="btn btn--icon btn--compact btn-copy-floating" title="Copy to clipboard" aria-label="Copy to clipboard">
+                            <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+
                 </div>
             </div>
 
@@ -1615,7 +1637,7 @@
     <!-- Initialization -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('EasyTrace5000 Advanced Workspace v1.3.2');
+            console.log('EasyTrace5000 Advanced Workspace v1.3.3');
 
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');

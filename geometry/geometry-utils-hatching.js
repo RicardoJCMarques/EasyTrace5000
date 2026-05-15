@@ -304,14 +304,15 @@
                 }
             }
 
-            // Handle near-zero sweep that represents a full circle // REVIEW - Is this really still needed?
+            // Check if a near-zero sweep represents a full circle or a tiny arc
             if (Math.abs(sweepAngle) < PRECISION) {
                 // Check if start and end points are the same (full circle)
-                const dist = Math.hypot(startPoint.x - endPoint.x, startPoint.y - endPoint.y);
-                if (dist < PRECISION) {
+                const dx = startPoint.x - endPoint.x;
+                const dy = startPoint.y - endPoint.y;
+                if ((dx * dx + dy * dy) < PRECISION * PRECISION) {
                     sweepAngle = arc.clockwise ? -2 * Math.PI : 2 * Math.PI;
                 } else {
-                    // Not a full circle, just a tiny arc — return straight edge
+                    // Not a circle, just a small arc — return straight edge
                     return [startPoint, endPoint];
                 }
             }

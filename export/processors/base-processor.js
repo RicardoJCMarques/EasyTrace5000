@@ -28,6 +28,8 @@
 (function() {
     'use strict';
 
+    const PRECISION = window.PCBCAMConfig.constants.precision.coordinate;
+
     class BasePostProcessor {
         constructor(name, config = {}) {
             this.name = name;
@@ -43,7 +45,7 @@
                 coordinateDecimals: 3,
                 feedDecimals: 0,
                 spindleDecimals: 0,
-                lineNumbering: false,
+                lineNumbering: false, // To be implemented in the future
                 modalCommands: true,
                 safetyHeight: 5.0,
                 maxSpindleSpeed: 30000,
@@ -338,7 +340,7 @@
 
             // X coordinate
             if (cmd.x !== null && cmd.x !== undefined) {
-                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > 1e-6;
+                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > PRECISION;
                 // For full circles or mode changes, always output coordinates
                 if (xChanged || needsGCode || isFullCircle) {
                     coords.push(`X${this.formatCoordinate(cmd.x)}`);
@@ -349,7 +351,7 @@
 
             // Y coordinate  
             if (cmd.y !== null && cmd.y !== undefined) {
-                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > 1e-6;
+                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > PRECISION;
                 if (yChanged || needsGCode || isFullCircle) {
                     coords.push(`Y${this.formatCoordinate(cmd.y)}`);
                     hasMotion = true;
@@ -359,7 +361,7 @@
 
             // Z coordinate (helical arcs)
             if (cmd.z !== null && cmd.z !== undefined) {
-                const zChanged = Math.abs(cmd.z - this.currentPosition.z) > 1e-6;
+                const zChanged = Math.abs(cmd.z - this.currentPosition.z) > PRECISION;
                 // Always output Z if changed, or new commands, or full circles
                 if (zChanged || needsGCode || isFullCircle) {
                     coords.push(`Z${this.formatCoordinate(cmd.z)}`);
@@ -378,7 +380,7 @@
                 }
             } else if (this.config.arcFormat === 'R') {
                 const radius = Math.hypot(cmd.i ?? 0, cmd.j ?? 0);
-                if (radius > 1e-6) {
+                if (radius > PRECISION) {
                     coords.push(`R${this.formatCoordinate(radius)}`);
                 }
             }
@@ -386,7 +388,7 @@
             // Feed rate handling
             if (cmd.f !== undefined && cmd.f !== null) {
                 const feedChanged = this.currentFeed === null || 
-                                Math.abs(cmd.f - this.currentFeed) > 1e-6;
+                                Math.abs(cmd.f - this.currentFeed) > PRECISION;
                 if (feedChanged) {
                     coords.push(`F${this.formatFeed(cmd.f)}`);
                     this.currentFeed = cmd.f;
@@ -416,8 +418,8 @@
             const targetX = (cmd.x !== null && cmd.x !== undefined) ? cmd.x : this.currentPosition.x;
             const targetY = (cmd.y !== null && cmd.y !== undefined) ? cmd.y : this.currentPosition.y;
 
-            const xSame = Math.abs(targetX - this.currentPosition.x) < 1e-6;
-            const ySame = Math.abs(targetY - this.currentPosition.y) < 1e-6;
+            const xSame = Math.abs(targetX - this.currentPosition.x) < PRECISION;
+            const ySame = Math.abs(targetY - this.currentPosition.y) < PRECISION;
 
             return xSame && ySame;
         }
@@ -430,7 +432,7 @@
 
             // X coordinate
             if (cmd.x !== null && cmd.x !== undefined) {
-                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > 1e-6;
+                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > PRECISION;
                 if (xChanged || needsGCode) {
                     coords.push(`X${this.formatCoordinate(cmd.x)}`);
                     hasMotion = true;
@@ -440,7 +442,7 @@
 
             // Y coordinate
             if (cmd.y !== null && cmd.y !== undefined) {
-                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > 1e-6;
+                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > PRECISION;
                 if (yChanged || needsGCode) {
                     coords.push(`Y${this.formatCoordinate(cmd.y)}`);
                     hasMotion = true;
@@ -450,7 +452,7 @@
 
             // Z coordinate
             if (cmd.z !== null && cmd.z !== undefined) {
-                const zChanged = Math.abs(cmd.z - this.currentPosition.z) > 1e-6;
+                const zChanged = Math.abs(cmd.z - this.currentPosition.z) > PRECISION;
                 if (zChanged || needsGCode) {
                     coords.push(`Z${this.formatCoordinate(cmd.z)}`);
                     hasMotion = true;
@@ -483,7 +485,7 @@
 
             // X coordinate
             if (cmd.x !== null && cmd.x !== undefined) {
-                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > 1e-6; // Review - epsilon exists in config
+                const xChanged = Math.abs(cmd.x - this.currentPosition.x) > PRECISION;
                 if (xChanged || needsGCode) {
                     coords.push(`X${this.formatCoordinate(cmd.x)}`);
                     hasMotion = true;
@@ -493,7 +495,7 @@
 
             // Y coordinate
             if (cmd.y !== null && cmd.y !== undefined) {
-                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > 1e-6; // Review - epsilon exists in config
+                const yChanged = Math.abs(cmd.y - this.currentPosition.y) > PRECISION;
                 if (yChanged || needsGCode) {
                     coords.push(`Y${this.formatCoordinate(cmd.y)}`);
                     hasMotion = true;
@@ -503,7 +505,7 @@
 
             // Z coordinate
             if (cmd.z !== null && cmd.z !== undefined) {
-                const zChanged = Math.abs(cmd.z - this.currentPosition.z) > 1e-6; // Review - epsilon exists in config
+                const zChanged = Math.abs(cmd.z - this.currentPosition.z) > PRECISION;
                 if (zChanged || needsGCode) {
                     coords.push(`Z${this.formatCoordinate(cmd.z)}`);
                     hasMotion = true;
@@ -514,7 +516,7 @@
             // Feed rate
             if (cmd.f !== undefined && cmd.f !== null) {
                 const feedChanged = this.currentFeed === null || 
-                                Math.abs(cmd.f - this.currentFeed) > 1e-6; // Review - epsilon exists in config
+                                Math.abs(cmd.f - this.currentFeed) > PRECISION;
                 if (feedChanged) {
                     coords.push(`F${this.formatFeed(cmd.f)}`);
                     this.currentFeed = cmd.f;
@@ -570,7 +572,8 @@
                     } 
                     // Fallback to G83 if G73 isn't available, or if G83 was explicitly requested
                     else if (this.generatePeckDrill) {
-                        return this.generatePeckDrill({x: cmd.x, y: cmd.y}, cmd.z, cmd.retract, cmd.peckDepth, cmd.f);
+                        // Pass cmd.cycleType so it doesn't automatically default to G83
+                        return this.generatePeckDrill({x: cmd.x, y: cmd.y}, cmd.z, cmd.retract, cmd.peckDepth, cmd.f, cmd.cycleType);
                     }
                     return '';
                 default:
@@ -697,9 +700,9 @@
             const warnings = [];
             const errors = [];
 
-            // Grab limits from the options context passed by the generator
-            const maxFeed = options.maxFeed || this.config.maxFeedRate || 5000;
-            const maxSafeDepth = options.lowestZ || -25.0; // Negative Z limit // Arbitrary deep limit // REVIEW - Add to config constants
+             // Grab limits from the options context passed by the generator
+            const maxFeed = options.maxFeed || this.config.maxFeedRate;
+            const maxSafeDepth = options.maxSafeDepth;
 
             // Universal Feed Rate Check
             if (cmd.f !== undefined && cmd.f !== null) {

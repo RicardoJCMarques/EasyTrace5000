@@ -410,7 +410,7 @@
 
             // Handle full circle
             const dist = Math.hypot(start.x - end.x, start.y - end.y);
-            if (dist < 1e-6 && Math.abs(sweep) < 1e-6) {
+            if (dist < C.precision.coordinate && Math.abs(sweep) < C.precision.coordinate) {
                 sweep = (cmd.type === 'ARC_CW') ? -2 * Math.PI : 2 * Math.PI;
             }
 

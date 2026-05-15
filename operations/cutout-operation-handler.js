@@ -37,9 +37,7 @@
 
         /**
          * Classifies raw plotter primitives for cutout operations.
-         * Extracts closed loops from multi-segment geometry, detects topology
-         * (board outlines vs internal holes), and flags orphan segments for
-         * the closure prompt.
+         * Extracts closed loops from multi-segment geometry, detects topology (board outlines vs internal holes), and flags orphan segments for the closure prompt.
          */
         classifyPrimitives(operation, rawPrimitives) {
             const warnings = [];
@@ -94,19 +92,13 @@
             return { primitives, warnings };
         }
 
-        /**
-         * Runs the base offset pipeline, then attaches tab configuration to the resulting primitives so the toolpath translator can detect and process them without operation-type branching.
-         */
-        async generateGeometry(operation, settings) {
-            // Clone to prevent mutating shared state
-            settings = { ...settings };
-
-            // Force single-pass routing for cutouts, ignoring any stale cached settings
-            settings.passes = 1;
-            settings.stepOver = 100; // Should this be 50?
-            settings.combineOffsets = false;
-
-            return await super.generateGeometry(operation, settings);
+        async orchestrateGeneration(operation, params, core, options = {}) {
+            const result = await super.orchestrateGeneration(operation, params, core, options);
+            // Override CNC message for cutout
+            if (result.success && !options.isLaser) {
+                result.message = 'Cutout path generated';
+            }
+            return result;
         }
     }
 

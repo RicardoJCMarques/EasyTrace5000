@@ -49,9 +49,9 @@
 
             // Optional parameters
             if (params.dwell) this.dwell = params.dwell;
-            if (params.cycleType) this.cycleType = params.cycleType; // Review - why not !== undefined?
-            if (params.retract !== undefined) this.retract = params.retract; // Review - why !== undefined?
-            if (params.peckDepth !== undefined) this.peckDepth = params.peckDepth; // Review - why !== undefined?
+            if (params.cycleType) this.cycleType = params.cycleType;
+            if (params.retract !== undefined) this.retract = params.retract;
+            if (params.peckDepth !== undefined) this.peckDepth = params.peckDepth;
             if (params.comment) this.comment = params.comment;
         }
     }

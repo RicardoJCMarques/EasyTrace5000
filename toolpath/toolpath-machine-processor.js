@@ -37,9 +37,6 @@
             this.core = core;
             this.currentPosition = { x: 0, y: 0, z: 0 };
             this.context = null;
-            // Clearance above Z0 to switch from G0 to G1.
-            // This saves time compared to plunging from Travel Z.
-            this.FEED_HEIGHT = 1.0;  // Review - Add to config.js
         }
 
         processPlans(toolpathPlans, context, initialPos) {
@@ -53,13 +50,14 @@
             }
 
             this.context = context;
-            // Grab the feedHeight from config properly // Review this logic
-            this.FEED_HEIGHT = this.context.machine.feedHeight || 1.0;  // REVIEW - Add to config.js
+
+            // Clearance above Z0 to switch from G0 to G1.
+            // This saves time compared to plunging from Travel Z.
+            this.FEED_HEIGHT = this.context.machine.feedHeight;
             const machineReadyPlans = [];
 
             // Initialize current position.
-            // Use provided initialPos, or default to Safe Z if starting fresh
-            this.currentPosition = { ...(initialPos || { x: 0, y: 0, z: this.context.machine.safeZ }) };
+            this.currentPosition = { ...initialPos };
 
             this.debug(`Starting Batch. Initial Pos: Z${this.currentPosition.z.toFixed(3)}`, this.currentPosition);
 
@@ -209,7 +207,7 @@
 
                     const currentEntry = planMetadata.entryPoint || {x:0, y:0};
                     const prevExit = this.currentPosition;
-                    const isSameXY = Math.hypot(currentEntry.x - prevExit.x, currentEntry.y - prevExit.y) < 0.01; // REVIEW - precision value in config?
+                    const isSameXY = Math.hypot(currentEntry.x - prevExit.x, currentEntry.y - prevExit.y) < C.precision.coordinate;
 
                     if (isSameOp && isDeeper && !planMetadata.isPeckMark && !planMetadata.isDrillMilling && isSameXY) {
                          isMultiDepthPlunge = true;

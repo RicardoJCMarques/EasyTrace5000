@@ -266,7 +266,7 @@
 
                     if (tickIndex % stride === 0) {
                         const labelVal = wx - origin.x;
-                        const label = Math.abs(labelVal) < C.precision.zeroLength ? "0" : // REVIEW - check against config epsilon values
+                        const label = Math.abs(labelVal) < C.precision.coordinate ? "0" :
                                     (stepWorld < 1 ? labelVal.toFixed(3).replace(/0+$/, '') : 
                                     stepWorld < 10 ? labelVal.toFixed(1).replace(/\.0$/, '') : 
                                     labelVal.toFixed(0));

@@ -187,7 +187,7 @@
             for (const layer of orderedLayers) {
                 if (!layer.visible) continue;
                 const isSource = !layer.isOffset && !layer.isPreview && layer.type !== 'offset' && layer.type !== 'preview' && layer.type !== 'fused';
-                if (isSource && copperSourceCounts.hasOwnProperty(layer.type)) {
+                if (isSource && layer.type in copperSourceCounts) {
                     copperSourceCounts[layer.type]++;
                 }
             }
@@ -318,9 +318,7 @@
             const drillMillingPaths = [];
             const peckMarks = [];
 
-            // Use cache entries if available, otherwise use primitives directly
-            const entries = layer.renderCache?.entries || 
-                layer.primitives.map(p => ({ primitive: p, bounds: p.getBounds(), screenSize: 1 }));
+            const entries = layer.renderCache.entries;
 
             for (const entry of entries) {
                 this.core.renderStats.primitives++;
@@ -431,8 +429,7 @@
             const stencilColor = this.core.getLayerColorSettings(layer);
             this.ctx.fillStyle = stencilColor;
 
-            const entries = layer.renderCache?.entries || 
-                layer.primitives.map(p => ({ primitive: p, bounds: p.getBounds(), screenSize: 1 }));
+            const entries = layer.renderCache.entries;
 
             for (const entry of entries) {
                 this.core.renderStats.primitives++;
@@ -489,8 +486,7 @@
             this.ctx.lineJoin = 'round';
             this.ctx.setLineDash([]);
 
-            const entries = layer.renderCache?.entries ||
-                layer.primitives.map(p => ({ primitive: p, bounds: p.getBounds(), screenSize: 1 }));
+            const entries = layer.renderCache.entries;
 
             for (const entry of entries) {
                 this.core.renderStats.primitives++;
@@ -542,8 +538,7 @@
             const minWidth = this.core.frameCache.minWorldWidth;
             const outlineWidth = Math.max(1.0 * this.core.frameCache.invScale, minWidth);
 
-            const entries = layer.renderCache?.entries || 
-                layer.primitives.map(p => ({ primitive: p, bounds: p.getBounds(), screenSize: 1 }));
+            const entries = layer.renderCache.entries;
 
             for (const entry of entries) {
                 this.core.renderStats.primitives++;
@@ -641,8 +636,7 @@
             // Single batched path for all hatch lines
             this.ctx.beginPath();
 
-            const entries = layer.renderCache?.entries || 
-                layer.primitives.map(p => ({ primitive: p, bounds: p.getBounds(), screenSize: 1 }));
+            const entries = layer.renderCache.entries;
 
             let batchedCount = 0;
 
@@ -707,8 +701,7 @@
 
             let currentDiameter = -1;
 
-            const entries = layer.renderCache?.entries || 
-                layer.primitives.map(p => ({ primitive: p, bounds: p.getBounds(), screenSize: 1 }));
+            const entries = layer.renderCache.entries;
 
             for (const entry of entries) {
                 this.core.renderStats.primitives++;
@@ -810,9 +803,7 @@
             const minWidth = this.core.frameCache.minWorldWidth;
             let currentLineWidth = -1;
 
-            // Use cached entries if available to avoid re-mapping
-            const entries = layer.renderCache?.entries || 
-                layer.primitives.map(p => ({ primitive: p, bounds: p.getBounds(), screenSize: 1 }));
+            const entries = layer.renderCache.entries;
 
             for (const entry of entries) {
                 this.core.renderStats.primitives++;
@@ -914,8 +905,7 @@
                     return;
                 }
 
-                const entries = layer.renderCache?.entries || 
-                    layer.primitives.map(p => ({ primitive: p, bounds: p.getBounds(), screenSize: 1 }));
+                const entries = layer.renderCache.entries;
 
                 for (const entry of entries) {
                     this.core.renderStats.primitives++;

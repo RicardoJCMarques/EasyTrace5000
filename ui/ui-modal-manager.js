@@ -126,6 +126,10 @@
                     this.showModal('quickstart');
                 }
             } else {
+                if (modalName === 'warning' && this.activeWarningCallbacks?.onCancel) {
+                    this.activeWarningCallbacks.onCancel();
+                    this.activeWarningCallbacks = null;
+                }
                 this.closeModal();
             }
         }
@@ -142,6 +146,27 @@
 
                 // This removes #modifier from the URL bar without reloading
                 history.replaceState(null, null, window.location.pathname);
+            }
+        }
+
+        updateCopyButtonScrollbar() {
+            const previewText = document.getElementById('exporter-preview-text');
+            const copyBtn = document.getElementById('exporter-copy-btn');
+
+            if (previewText && copyBtn) {
+                // If the scroll height is greater than the visible height, a scrollbar is present
+                if (previewText.scrollHeight > previewText.clientHeight) {
+
+                    // Calculate the exact pixel width of the scrollbar rendered by the user's browser/OS offsetWidth includes borders and scrollbar. clientWidth excludes them.
+                    // Subtract 2 to account for the 1px left and 1px right borders on the textarea.
+                    const scrollbarWidth = previewText.offsetWidth - previewText.clientWidth - 2;
+
+                    // Pass the exact width to CSS
+                    copyBtn.style.setProperty('--dynamic-scrollbar-width', `${scrollbarWidth}px`);
+                    copyBtn.classList.add('has-scrollbar');
+                } else {
+                    copyBtn.classList.remove('has-scrollbar');
+                }
             }
         }
 
@@ -167,6 +192,8 @@
 
             const distance = document.getElementById('exporter-distance');
             if (distance) distance.textContent = `${result.totalDistance.toFixed(1)}mm`;
+
+            this.updateCopyButtonScrollbar();
         }
 
         updateSplitDrillVisibility() {
@@ -207,6 +234,25 @@
             }
         }
 
+        clearExportPreview() {
+            const previewText = document.getElementById('exporter-preview-text');
+            if (previewText) previewText.value = '';
+
+            const lineCount = document.getElementById('exporter-line-count');
+            if (lineCount) lineCount.textContent = '0';
+
+            const opCount = document.getElementById('exporter-op-count');
+            if (opCount) opCount.textContent = '0';
+
+            const estTime = document.getElementById('exporter-est-time');
+            if (estTime) estTime.textContent = '--:--';
+
+            const distance = document.getElementById('exporter-distance');
+            if (distance) distance.textContent = '0mm';
+
+            this.updateCopyButtonScrollbar();
+        }
+
         showPlaceholderPreview() {
             const previewText = document.getElementById('exporter-preview-text');
             if (previewText) {
@@ -219,6 +265,8 @@
             if(opCountEl) opCountEl.textContent = this.selectedOperations.length;
             document.getElementById('exporter-est-time').textContent = '--:--';
             document.getElementById('exporter-distance').textContent = '0mm';
+
+            this.updateCopyButtonScrollbar();
         }
 
         // Generic modal methods
@@ -362,6 +410,14 @@
 
                 case 'gcode':
                     // G-code modal -> just close
+                    this.closeModal();
+                    break;
+
+                case 'warning':
+                    if (this.activeWarningCallbacks?.onCancel) {
+                        this.activeWarningCallbacks.onCancel();
+                    }
+                    this.activeWarningCallbacks = null;
                     this.closeModal();
                     break;
 
@@ -1099,6 +1155,34 @@
                 previewSelect.onchange = (e) => this.showGcodeForOperation(e.target.value);
             }
 
+            // Copy to Clipboard
+            const copyBtn = document.getElementById('exporter-copy-btn');
+            if (copyBtn) {
+                copyBtn.onclick = async () => {
+                    const previewText = document.getElementById('exporter-preview-text');
+
+                    if (previewText && previewText.value && previewText.value !== textConfig.gcodePlaceholder) {
+                        try {
+                            await navigator.clipboard.writeText(previewText.value);
+                            this.ui.showStatus('G-code copied to clipboard!', 'success');
+
+                            // Visual feedback via class toggle
+                            copyBtn.classList.add('copy-success');
+
+                            setTimeout(() => { 
+                                copyBtn.classList.remove('copy-success');
+                            }, 2000);
+
+                        } catch (err) {
+                            console.error('[UI-ModalManager] Failed to copy text:', err);
+                            this.ui.showStatus('Clipboard copy failed. Check browser permissions.', 'error');
+                        }
+                    } else {
+                        this.ui.showStatus('No generated G-code to copy.', 'warning');
+                    }
+                };
+            }
+
             if (executeBtn) {
                 executeBtn.onclick = async () => {
                     await this.executeUnifiedExport();
@@ -1111,289 +1195,70 @@
             const loadingOverlay = document.getElementById('loading-overlay');
             const loadingText = document.getElementById('loading-text');
 
-            if (executeBtn) {
-                executeBtn.disabled = true;
-            }
+            if (executeBtn) executeBtn.disabled = true;
 
             // Trigger the global wait spinner (with webkit delay context)
             const isWebKit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
             if (loadingOverlay) {
-                if (loadingText) {
-                    loadingText.textContent = isWebKit
-                        ? 'Exporting Files — Pacing downloads in webkit...'
-                        : 'Exporting Files...';
-                }
+                loadingText.textContent = isWebKit ? 'Exporting Files — Pacing downloads in webkit...' : 'Exporting Files...';
                 loadingOverlay.style.display = 'flex';
                 loadingOverlay.style.opacity = '1';
                 loadingOverlay.focus();
             }
 
             try {
-            // Gather all checked operations
-            const list = document.getElementById('exporter-operation-order');
-            const activeOpIds = [];
-
-            if (list) {
-                list.querySelectorAll('.file-node-content').forEach(item => {
-                    const checkbox = item.querySelector('input[type="checkbox"]');
-                    if (checkbox && checkbox.checked) {
-                        activeOpIds.push(item.dataset.operationId);
-                    }
-                });
-            }
-
-            // Safeguard: Did users uncheck everything?
-            if (activeOpIds.length === 0) {
-                this.ui.showStatus('No operations selected for export.', 'warning');
-                return;
-            }
-
-            // Separate into pipelines & Get Shared Settings
-            const laserOps = [];
-            const cncOps = [];
-            const stencilOps = [];
-
-            activeOpIds.forEach(id => {
-                const op = this.selectedOperations.find(o => o.id === id);
-                if (op) {
-                    if (op.type === 'stencil') {
-                        stencilOps.push(op);
-                    } else if (this.controller.isLaserExportForOperation(op.type)) {
-                        laserOps.push(op);
-                    } else {
-                        cncOps.push(op);
-                    }
-                }
-            });
-
-            // Get shared settings
-            let rawBaseName = document.getElementById('exporter-filename')?.value || 'pcb-output';
-            const baseName = rawBaseName.replace(/\.[^/.]+$/, '');
-            const isSingleFile = document.getElementById('exporter-single-file')?.checked === true;
-
-            // WebKit (Safari, DuckDuckGo on Apple) blocks rapid programmatic downloads.
-            // Other engines handle simultaneous downloads fine.
-            const downloadDelay = () => isWebKit
-                ? new Promise(res => setTimeout(res, 500))
-                : Promise.resolve();
-
-            const downloadBlobRaw = (blob, filename) => {
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(url), 5000);
-            };
-
-            let cncSuccess = false;
-            let laserSuccess = false;
-            let stencilSuccess = false;
-
-            // ════════════════════════════════════════════
-            // CNC EXPORT (G-CODE / RML)
-            // ════════════════════════════════════════════
-            if (cncOps.length > 0) {
-                const postProcessor = this.controller.core.settings.gcode.postProcessor;
-                const processorInfo = window.pcbcam.gcodeGenerator.getProcessorInfo(postProcessor);
-                const cncExt = processorInfo.fileExtension;
-
-                const downloadBlob = (content, filename) => {
-                    const blob = new Blob([content], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    setTimeout(() => URL.revokeObjectURL(url), 5000);
-                }
-
-                if (isSingleFile) {
-                    let combinedResult = this.gcodeResults.get('__combined__');
-                    if (!combinedResult || !combinedResult.gcode) {
-                        this.ui.showStatus('Auto-calculating G-Code...', 'info');
-                        const calcBtn = document.getElementById('exporter-calculate-btn');
-                        await this.runToolpathOrchestration(calcBtn, cncOps);
-                        combinedResult = this.gcodeResults.get('__combined__');
-                    }
-
-                    if (combinedResult?.gcode && !combinedResult.gcode.startsWith('; Generation Failed')) {
-                        downloadBlob(combinedResult.gcode, `${baseName}${cncExt}`);
-                        cncSuccess = true;
-                    } else {
-                        this.ui.showStatus('G-code generation failed.', 'error');
-                    }
-                } else {
-                    if (this.gcodeResults.size === 0 || this.gcodeResults.has('__combined__')) {
-                        this.ui.showStatus('Calculating individual G-Code files...', 'info');
-                        const calcBtn = document.getElementById('exporter-calculate-btn');
-                        await this.runToolpathOrchestration(calcBtn, cncOps);
-                    }
-
-                    cncSuccess = true;
-                    for (const op of cncOps) {
-                        const splitKeys = Array.from(this.gcodeResults.keys())
-                            .filter(k => k.startsWith(`${op.id}_`));
-
-                        if (splitKeys.length > 0) {
-                            for (const key of splitKeys) {
-                                const result = this.gcodeResults.get(key);
-                                if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
-                                    const opCleanName = op.file.name.replace(/\.[^/.]+$/, '');
-                                    const suffix = key.substring(op.id.length + 1).replace(/_/g, '-');
-                                    downloadBlob(result.gcode, `${baseName}-${suffix}-${opCleanName}${cncExt}`);
-                                    await downloadDelay();
-                                } else {
-                                    cncSuccess = false;
-                                }
-                            }
-                        } else {
-                            const result = this.gcodeResults.get(op.id);
-                            if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
-                                const opCleanName = op.file.name.replace(/\.[^/.]+$/, '');
-                                downloadBlob(result.gcode, `${baseName}-${op.type}-${opCleanName}${cncExt}`);
-                                await downloadDelay();
-                            } else {
-                                cncSuccess = false;
-                                this.ui.showStatus(`Failed to generate G-code for ${op.type}: ${op.file.name}`, 'error');
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Export LASER (SVG / PNG)
-            if (laserOps.length > 0) {
-                const unreadyOps = laserOps.filter(op => !op.offsets || op.offsets.length === 0);
-                if (unreadyOps.length > 0) {
-                    const names = unreadyOps.map(o => o.file.name).join(', ');
-                    this.ui.showStatus(`Cannot export: Generate paths for ${names} first.`, 'error');
-                } else {
-                    // All structural settings now come from the persisted core state, populated by the active laser profile in Machine Settings.
-                    const laserSettings = this.controller.core.settings.laser;
-                    const exportFormat = laserSettings.exportFormat || 'svg';
-
-                    // Retrieve the active profile so it can pass its palette
-                    const activeProfileKey = laserSettings.activeProfile || 'generic';
-                    const activeProfile = laserSettings.profiles?.[activeProfileKey] || {};
-
-                    // Per-job settings: padding is the only laser-specific value still in the modal
-                    const paddingInput = document.getElementById('laser-exporter-padding');
-                    const exportPadding = paddingInput ? parseFloat(paddingInput.value) : laserSettings.exportPadding;
-
-                    // Persist padding for next session
-                    this.controller.core?.updateSettings('laser', {
-                        exportPadding: exportPadding
+                // Gather all checked operations
+                const activeOpIds = [];
+                const list = document.getElementById('exporter-operation-order');
+                if (list) {
+                    list.querySelectorAll('.file-node-content').forEach(item => {
+                        const cb = item.querySelector('input[type="checkbox"]');
+                        if (cb?.checked) activeOpIds.push(item.dataset.operationId);
                     });
-
-                    try {
-                        const result = await this.controller.orchestrateLaserExport(laserOps, {
-                            layerColors: laserSettings.layerColors,
-                            format: exportFormat,
-                            dpi: laserSettings.exportDPI,
-                            padding: exportPadding,
-                            singleFile: isSingleFile,
-                            baseName: baseName,
-                            // Profile-driven structural settings — read from persisted state
-                            heatManagement: (laserSettings.heatManagement !== 'off' && exportFormat !== 'png')
-                                ? laserSettings.heatManagement : 'off',
-                            reverseCutOrder: laserSettings.reverseCutOrder || false,
-                            svgGrouping: laserSettings.svgGrouping || 'layer',
-                            colorPerPass: laserSettings.colorPerPass || false,
-                            // Pass palette configurations
-                            palette: activeProfile.palette || null,
-                            paletteLumping: activeProfile.paletteLumping || false
-                        });
-
-                        if (result.success && result.files?.length > 0) {
-                            for (const file of result.files) {
-                                downloadBlobRaw(file.blob, file.filename);
-                                await downloadDelay();
-                            }
-                            laserSuccess = true;
-                            this.ui.showStatus(
-                                result.files.length > 1
-                                    ? `Exported ${result.files.length} laser files`
-                                    : `Laser ${exportFormat.toUpperCase()} exported`,
-                                'success'
-                            );
-                        } else {
-                            this.ui.showStatus('Laser export produced no output — check that paths are generated.', 'error');
-                        }
-                    } catch (error) {
-                        console.error('[ModalManager] Laser export failed:', error);
-                        this.ui.showStatus('Laser export failed: ' + error.message, 'error');
-                    }
                 }
-            }
 
-            // Stencil export (always SVG, hardcoded settings)
-            if (stencilOps.length > 0) {
-                const unreadyOps = stencilOps.filter(op => !op.offsets || op.offsets.length === 0);
-                if (unreadyOps.length > 0) {
-                    const names = unreadyOps.map(o => o.file.name).join(', ');
-                    this.ui.showStatus(`Cannot export: Generate stencil geometry for ${names} first.`, 'error');
+                // Safeguard: Did users uncheck everything?
+                if (activeOpIds.length === 0) {
+                    this.ui.showStatus('No operations selected for export.', 'warning');
+                    return;
+                }
+
+                const splitDrillsEl = document.getElementById('exporter-split-drills');
+                const laserPaddingInput = document.getElementById('laser-exporter-padding');
+                const stencilPaddingInput = document.getElementById('stencil-exporter-padding');
+
+                if (laserPaddingInput) {
+                    this.controller.core?.updateSettings('laser', { exportPadding: parseFloat(laserPaddingInput.value) });
+                }
+
+                const result = await this.controller.executeExports({
+                    operationIds: activeOpIds,
+                    singleFile: document.getElementById('exporter-single-file')?.checked === true,
+                    baseName: (document.getElementById('exporter-filename')?.value || 'pcb-output').replace(/\.[^/.]+$/, ''),
+                    splitDrills: splitDrillsEl?.checked && !splitDrillsEl?.disabled,
+                    optimize: document.getElementById('exporter-optimize-paths')?.checked ?? true,
+                    includeComments: document.getElementById('exporter-include-comments')?.checked,
+                    toolChanges: document.getElementById('exporter-tool-changes')?.checked,
+                    laserPadding: laserPaddingInput ? parseFloat(laserPaddingInput.value) : undefined,
+                    stencilPadding: stencilPaddingInput ? parseFloat(stencilPaddingInput.value) : undefined,
+                    gcodeResults: this.gcodeResults.size > 0 ? Object.fromEntries(this.gcodeResults) : null
+                });
+
+                if (result.success) {
+                    this.ui.showStatus(result.message, 'success');
+                    this.closeModal();
                 } else {
-                    const stencilPaddingInput = document.getElementById('stencil-exporter-padding');
-                    const exportPadding = stencilPaddingInput ? parseFloat(stencilPaddingInput.value) : 5.0;
-
-                    try {
-                        // Stencils reuse the LaserImageExporter backend with strict, hardcoded settings. No user-facing complexity needed.
-                        const result = await this.controller.orchestrateLaserExport(stencilOps, {
-                            layerColors: { stencil: '#000000' },
-                            format: 'svg',
-                            padding: exportPadding,
-                            singleFile: isSingleFile,
-                            baseName: baseName + '-stencil',
-                            heatManagement: 'off',
-                            reverseCutOrder: false,
-                            svgGrouping: 'layer',
-                            colorPerPass: false
-                        });
-
-                        if (result.success && result.files?.length > 0) {
-                            for (const file of result.files) {
-                                downloadBlobRaw(file.blob, file.filename);
-                                await downloadDelay();
-                            }
-                            stencilSuccess = true;
-                            this.ui.showStatus(`Stencil SVG exported`, 'success');
-                        } else {
-                            this.ui.showStatus('Stencil export produced no output — check that geometry is generated.', 'error');
-                        }
-                    } catch (error) {
-                        console.error('[ModalManager] Stencil export failed:', error);
-                        this.ui.showStatus('Stencil export failed: ' + error.message, 'error');
-                    }
+                    this.ui.showStatus(result.message || 'Export produced no output.', 'warning');
                 }
-            }
-
-            if (cncSuccess || laserSuccess || stencilSuccess) {
-                const parts = [];
-                if (cncSuccess) parts.push('G-code');
-                if (laserSuccess) parts.push('Laser');
-                if (stencilSuccess) parts.push('Stencil');
-                this.ui.showStatus(`${parts.join(' + ')} export completed successfully`, 'success');
-                this.closeModal();
-            } else if (cncOps.length === 0 && laserOps.length === 0 && stencilOps.length === 0) {
-                this.ui.showStatus('No operations to export.', 'warning');
-            }
-
+            } catch (error) {
+                console.error('[UI-ModalManager] Export failed:', error);
+                this.ui.showStatus('Export failed: ' + error.message, 'error');
             } finally {
-                if (executeBtn) {
-                    executeBtn.disabled = false;
-                }
-
+                if (executeBtn) executeBtn.disabled = false;
                 // Hide the global wait spinner gracefully
                 if (loadingOverlay) {
                     loadingOverlay.style.opacity = '0';
-                    setTimeout(() => {
-                        loadingOverlay.style.display = 'none';
-                    }, 300); // Wait for fade-out before removing from flow
+                    setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300); // Wait for fade-out before removing from flow
                 }
             }
         }
@@ -1653,20 +1518,21 @@
             btn.disabled = true;
 
             try {
-                // Determine which CNC ops to calculate
+                // Gather UI intent only — no machine settings, no business logic
                 let selectedItemIds = [];
                 if (explicitOps) {
                     selectedItemIds = explicitOps.map(o => o.id);
                 } else {
                     const list = document.getElementById('exporter-operation-order');
-                    list.querySelectorAll('.file-node-content').forEach(item => {
-                        const checkbox = item.querySelector('input[type="checkbox"]');
-                        const op = this.selectedOperations.find(o => o.id === item.dataset.operationId);
-                        // Only calculate G-code for CNC ops (exclude both laser and stencil)
-                    if (checkbox?.checked && !this.controller.isLaserExportForOperation(op.type) && op.type !== 'stencil') {
-                            selectedItemIds.push(item.dataset.operationId);
-                        }
-                    });
+                    if (list) {
+                        list.querySelectorAll('.file-node-content').forEach(item => {
+                            const checkbox = item.querySelector('input[type="checkbox"]');
+                            const op = this.selectedOperations.find(o => o.id === item.dataset.operationId);
+                            if (checkbox?.checked && !this.controller.isLaserExportForOperation(op.type) && op.type !== 'stencil') {
+                                selectedItemIds.push(item.dataset.operationId);
+                            }
+                        });
+                    }
                 }
 
                 if (selectedItemIds.length === 0) {
@@ -1675,150 +1541,54 @@
                 }
 
                 // Validate all have previews
-                const selectedOps = selectedItemIds
-                    .map(id => this.selectedOperations.find(o => o.id === id))
-                    .filter(Boolean);
-
+                const selectedOps = selectedItemIds.map(id => this.selectedOperations.find(o => o.id === id)).filter(Boolean);
                 const opsWithoutPreview = selectedOps.filter(op => !op.preview || !op.preview.ready);
                 if (opsWithoutPreview.length > 0) {
                     this.showPlaceholderPreview();
-                    const names = opsWithoutPreview.map(o => o.file.name).join(', ');
-                    this.ui.showStatus(
-                        `Operations missing Preview: ${names}. Please generate previews first.`,
-                        'warning'
-                    );
+                    this.ui.showStatus(`Operations missing Preview: ${opsWithoutPreview.map(o => o.file.name).join(', ')}. Please generate previews first.`, 'warning');
                     return;
                 }
 
-                // Shared options
-                const optimizeCheckbox = document.getElementById('exporter-optimize-paths');
-                const baseOptions = {
-                    safeZ: this.controller.core?.getSetting('machine', 'safeZ'),
-                    travelZ: this.controller.core?.getSetting('machine', 'travelZ'),
-                    rapidFeedRate: this.controller.core?.getSetting('machine', 'rapidFeed'),
-                    postProcessor: this.controller.core?.getSetting('gcode', 'postProcessor'),
-                    includeComments: document.getElementById('exporter-include-comments')?.checked,
-                    toolChanges: document.getElementById('exporter-tool-changes')?.checked,
-                    optimize: optimizeCheckbox ? optimizeCheckbox.checked : true
-                };
-
                 const isSingleFile = document.getElementById('exporter-single-file')?.checked === true;
+                const splitDrillsEl = document.getElementById('exporter-split-drills');
+
+                // Delegate to controller
+                const results = await this.controller.calculateToolpaths({
+                    operationIds: selectedItemIds,
+                    singleFile: isSingleFile,
+                    splitDrills: splitDrillsEl?.checked && !splitDrillsEl?.disabled,
+                    optimize: document.getElementById('exporter-optimize-paths')?.checked ?? true,
+                    includeComments: document.getElementById('exporter-include-comments')?.checked,
+                    toolChanges: document.getElementById('exporter-tool-changes')?.checked
+                });
+
+                // Display results in UI
+                this.gcodeResults.clear();
+                const previewSelect = document.getElementById('exporter-preview-select');
+                if (previewSelect) previewSelect.innerHTML = '';
 
                 if (isSingleFile) {
-                    // ── COMBINED: one orchestration call, one result ──
-                    const options = {
-                        ...baseOptions,
-                        operationIds: selectedItemIds,
-                        operations: this.selectedOperations,
-                        singleFile: true
-                    };
-
-                    const result = await this.controller.orchestrateToolpaths(options);
-
-                    if (!result || !result.gcode) {
+                    const combined = results['__combined__'];
+                    if (combined) {
+                        this.gcodeResults.set('__combined__', combined);
+                        this.showGcodeForOperation('__combined__');
+                        const el = document.getElementById('exporter-op-count');
+                        if (el) el.textContent = combined.planCount;
+                    } else {
                         this.showPlaceholderPreview();
                         this.ui.showStatus('Calculation returned no G-code', 'warning');
-                        return;
                     }
-
-                    // Store as a single combined result
-                    this.gcodeResults.clear();
-                    this.gcodeResults.set('__combined__', result);
-
-                    this.showGcodeForOperation('__combined__');
-
-                    const planCountEl = document.getElementById('exporter-op-count');
-                    if (planCountEl) planCountEl.textContent = result.planCount;
-
                 } else {
-                    // ── PER-OPERATION: one call per op, populate selector ──
-                    this.gcodeResults.clear();
-                    const previewSelect = document.getElementById('exporter-preview-select');
-                    if (previewSelect) previewSelect.innerHTML = '';
-
-                    for (const opId of selectedItemIds) {
-                        const op = this.selectedOperations.find(o => o.id === opId);
-                        if (!op) continue;
-
-                        // Check if this drill op should be split
-                        const isDrill = op.type === 'drill';
-                        const splitDrillsChecked = document.getElementById('exporter-split-drills')?.checked === true;
-                        const shouldSplitDrill = isDrill && splitDrillsChecked && !document.getElementById('exporter-split-drills')?.disabled;
-
-                        if (shouldSplitDrill) {
-                            const { milledPrimitives, peckGroups } = this.controller._groupDrillPrimitives(op);
-
-                            // Helper: swap preview, orchestrate, restore
-                            const orchestrateWithPrimitives = async (primitives, resultKey, label) => {
-                                const savedPreview = op.preview;
-                                const savedOffsets = op.offsets;
-                                op.preview = { ...savedPreview, primitives, ready: true };
-                                op.offsets = [{ ...savedOffsets[0], primitives }];
-                                try {
-                                    const result = await this.controller.orchestrateToolpaths({
-                                        ...baseOptions,
-                                        operationIds: [op.id],
-                                        operations: [op],
-                                        singleFile: false
-                                    });
-                                    if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
-                                        this.gcodeResults.set(resultKey, result);
-                                        if (previewSelect) {
-                                            const opt = document.createElement('option');
-                                            opt.value = resultKey;
-                                            opt.textContent = label;
-                                            previewSelect.appendChild(opt);
-                                        }
-                                    }
-                                } finally {
-                                    op.preview = savedPreview;
-                                    op.offsets = savedOffsets;
-                                }
-                            };
-
-                            // Milled paths as one group (if any)
-                            if (milledPrimitives.length > 0) {
-                                await orchestrateWithPrimitives(
-                                    milledPrimitives,
-                                    `${opId}_milled`,
-                                    `drill milled: ${op.file.name} (${milledPrimitives.length} paths)`
-                                );
-                            }
-
-                            // Peck groups split by diameter
-                            for (const group of peckGroups) {
-                                await orchestrateWithPrimitives(
-                                    group.primitives,
-                                    `${opId}_drill_${group.diameter}mm`,
-                                    `drill ${group.diameter}mm: ${op.file.name} (${group.primitives.length} holes)`
-                                );
-                            }
-
-                        } else {
-                            // Standard single-result processing
-                            const perOpOptions = {
-                                ...baseOptions,
-                                operationIds: [opId],
-                                operations: [op],
-                                singleFile: false
-                            };
-                            const result = await this.controller.orchestrateToolpaths(perOpOptions);
-                            if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
-                                this.gcodeResults.set(opId, result);
-                                if (previewSelect) {
-                                    const opt = document.createElement('option');
-                                    opt.value = opId;
-                                    opt.textContent = `${op.type}: ${op.file.name}`;
-                                    previewSelect.appendChild(opt);
-                                }
-                            } else {
-                                this.ui.showStatus(`Failed to calculate ${op.type}: ${op.file.name}`, 'error');
-                            }
+                    for (const [key, result] of Object.entries(results)) {
+                        this.gcodeResults.set(key, result);
+                        if (previewSelect) {
+                            const opt = document.createElement('option');
+                            opt.value = key;
+                            opt.textContent = result.label || key;
+                            previewSelect.appendChild(opt);
                         }
                     }
-
-                    // Show first operation's result
-                    if (previewSelect && previewSelect.options.length > 0) {
+                    if (previewSelect?.options.length > 0) {
                         previewSelect.value = previewSelect.options[0].value;
                         this.showGcodeForOperation(previewSelect.value);
                     } else {
@@ -1826,12 +1596,15 @@
                     }
                 }
 
+                // Show/hide the per-op selector
+                const selectorDiv = document.getElementById('exporter-operation-selector');
+                if (selectorDiv) selectorDiv.style.display = isSingleFile ? 'none' : '';
+
             } catch (error) {
                 console.error('[UI-ModalManager] Orchestration failed:', error);
                 this.showPlaceholderPreview();
                 this.ui.showStatus(`Failed: ${error.message}`, 'error');
             } finally {
-                // Restore button
                 btn.textContent = originalText;
                 btn.disabled = false;
             }
@@ -1928,6 +1701,9 @@
         showWarning(title, message, options = {}) {
             const { onConfirm, onCancel, confirmText = 'OK', cancelText = 'Cancel', bodyHTML = null } = options;
 
+            // Track active callbacks at the class level for keyboard/backdrop dismissal
+            this.activeWarningCallbacks = { onConfirm, onCancel };
+
             const modal = this.modals.warning;
             if (!modal) {
                 console.error('[ModalManager] Warning modal not found in DOM');
@@ -1953,7 +1729,8 @@
             confirmBtn.textContent = confirmText;
             confirmBtn.disabled = false;
             confirmBtn.onclick = () => {
-                if (onConfirm) onConfirm();
+                if (this.activeWarningCallbacks?.onConfirm) this.activeWarningCallbacks.onConfirm();
+                this.activeWarningCallbacks = null;
                 this.closeModal();
             };
 
@@ -1962,7 +1739,8 @@
                 cancelBtn.style.display = '';
                 cancelBtn.textContent = cancelText;
                 cancelBtn.onclick = () => {
-                    onCancel();
+                    if (this.activeWarningCallbacks?.onCancel) this.activeWarningCallbacks.onCancel();
+                    this.activeWarningCallbacks = null;
                     this.closeModal();
                 };
             } else {
@@ -1972,7 +1750,8 @@
             const closeBtn = modal.querySelector('.modal-close');
             if (closeBtn) {
                 closeBtn.onclick = () => {
-                    if (onCancel) onCancel();
+                    if (this.activeWarningCallbacks?.onCancel) this.activeWarningCallbacks.onCancel();
+                    this.activeWarningCallbacks = null;
                     this.closeModal();
                 };
             }

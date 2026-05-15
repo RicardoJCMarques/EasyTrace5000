@@ -217,7 +217,7 @@
                 
                 if (this._updateQueued) {
                     this._updateQueued = false;
-                    setTimeout(() => this.updateRendererAsync(), 50);
+                    requestAnimationFrame(() => this.updateRendererAsync()); // Let the browser pace it
                 }
             }
         }
@@ -272,7 +272,7 @@
             byOperation.forEach((primitives, opId) => {
                 const operation = this.core.operations.find(op => op.id === opId);
                 if (operation) {
-                    this.renderer.addLayer(`preprocessed_${opId}`, primitives, {
+                    this.renderer.addLayer(window.LayerNaming.preprocessed(opId), primitives, {
                         type: operation.type,
                         visible: true,
                         color: operation.color,
@@ -297,7 +297,7 @@
             byOperation.forEach((primitives, opId) => {
                 const operation = this.core.operations.find(op => op.id === opId);
                 if (operation) {
-                    const layerName = `fused_${opId}`;
+                    const layerName = window.LayerNaming.fused(opId);
 
                     this.renderer.addLayer(layerName, primitives, {
                         type: operation.type,
@@ -314,7 +314,7 @@
                 if (operation.type === 'drill' || operation.type === 'cutout' || operation.type === 'stencil') {
                     if (operation.primitives && operation.primitives.length > 0) {
                         const hasOffsets = operation.type === 'stencil' && operation.offsets && operation.offsets.length > 0;
-                        const layerName = 'source_' + operation.id;
+                        const layerName = window.LayerNaming.source(operation.id);
                         const defaultVisible = !hasOffsets;
 
                         this.renderer.addLayer(layerName, operation.primitives, {
@@ -332,7 +332,7 @@
                 if (operation.primitives && operation.primitives.length > 0) {
                     // Apply the same logic here so it works when Fusion Mode is OFF
                     const hasOffsets = operation.type === 'stencil' && operation.offsets && operation.offsets.length > 0;
-                    const layerName = 'source_' + operation.id;
+                    const layerName = window.LayerNaming.source(operation.id);
                     const defaultVisible = !hasOffsets;
 
                     this.renderer.addLayer(layerName, operation.primitives, {
@@ -369,7 +369,7 @@
                             else if (operation.offsets[0].distance === 0) offsetType = 'on';
 
                             const isHatch = operation.offsets[0].metadata?.isHatch === true;
-                            const layerName = `offset_${operation.id}_combined`;
+                            const layerName = window.LayerNaming.offsetCombined(operation.id);
                             const defaultVisible = hasPreview ? false : this.renderer.options.showOffsets;
 
                             this.renderer.addLayer(layerName, allPrimitives, {
@@ -394,7 +394,7 @@
                                 else offsetType = 'on';
 
                                 const isHatch = offset.metadata?.isHatch === true;
-                                const layerName = `offset_${operation.id}_pass_${passIndex + 1}`;
+                                const layerName = window.LayerNaming.offsetPass(operation.id, passIndex + 1);
                                 const defaultVisible = hasPreview ? false : this.renderer.options.showOffsets;
 
                                 this.renderer.addLayer(layerName, offset.primitives, {
@@ -416,7 +416,7 @@
 
                 // Preview layer
                 if (operation.preview && operation.preview.primitives && operation.preview.primitives.length > 0) {
-                    const layerName = `preview_${operation.id}`;
+                    const layerName = window.LayerNaming.preview(operation.id);
 
                     this.renderer.addLayer(layerName, operation.preview.primitives, {
                         type: 'preview',
@@ -462,24 +462,6 @@
             }
         }
 
-        toggleGrid() {
-            const currentState = this.renderer.core.options.showGrid;
-            this.renderer.core.setOptions({ showGrid: !currentState });
-            this.renderer.render();
-        }
-
-        async processFile(file, type) {
-            if (!file || !type) return;
-            // Pass through to the main controller
-            return window.pcbcam.processFile(file, type);
-        }
-
-        showFileModal() {
-            if (window.pcbcam && window.pcbcam.showFileModal) {
-                window.pcbcam.showFileModal();
-            }
-        }
-
         async exportCanvasSVG() {
             try {
                 this.canvasExporter.exportCanvasSVG(); 
@@ -488,10 +470,6 @@
                 console.error('Canvas export error:', error);
                 this.updateStatus('Canvas export failed: ' + error.message, 'error');
             }
-        }
-
-        async exportGCode() {
-            this.updateStatus('G-code export not yet implemented', 'warning');
         }
 
         removeOperation(operationId) {
@@ -544,54 +522,54 @@
             const operation = fileData.operation;
 
             if (geoData.type === 'offsets_combined') {
-                layerName = `offset_${operation.id}_combined`;
-                if (operation.offsets) {
-                    operation.offsets = []; // Clear all offsets
-                }
+                layerName = window.LayerNaming.offsetCombined(operation.id);
             } else if (geoData.type.startsWith('offset_')) {
-                const passIndex = parseInt(geoData.type.split('_')[1]); // e.g., "offset_0" -> 0
+                const passIndex = parseInt(geoData.type.split('_')[1]);
                 const passNumber = passIndex + 1;
-                layerName = `offset_${operation.id}_pass_${passNumber}`;
-                if (operation.offsets) {
-                    operation.offsets.splice(passIndex, 1);
-                }
+                layerName = window.LayerNaming.offsetPass(operation.id, passNumber);
+            } else if (geoData.type === 'preview') {
+                layerName = window.LayerNaming.preview(operation.id);
+            } else if (geoData.type === 'source') {
+                layerName = window.LayerNaming.source(operation.id);
             } else {
                 layerName = `${geoData.type}_${operation.id}`;
+            }
 
-                if (geoData.type === 'preview' && operation.preview) {
-                    operation.preview = null;
+            // Delegate data mutation to Core
+            this.core.deleteOperationGeometry(operation.id, geoData.type);
 
-                    // Auto-unhide offsets when CNC preview is deleted
-                    if (operation.offsets && operation.offsets.length > 0) {
-                        const isLaser = window.pcbcam?.isLaserPipeline?.() || false;
-                        const isCombined = operation.offsets[0]?.metadata?.offset?.combined || isLaser;
+            // Handle UI/renderer restoration after preview deletion
+            if (geoData.type === 'preview') {
+                // Auto-unhide offsets when CNC preview is deleted
+                if (operation.offsets && operation.offsets.length > 0) {
+                    const isLaser = window.pcbcam?.isLaserPipeline?.() || false;
+                    const isCombined = operation.offsets[0]?.metadata?.offset?.combined || isLaser;
 
-                        // Unhide the specific offset layer(s) in the Renderer
-                        if (isCombined) {
-                            const offsetLayerName = `offset_${operation.id}_combined`;
+                    // Unhide the specific offset layer(s) in the Renderer
+                    if (isCombined) {
+                        const offsetLayerName = window.LayerNaming.offsetCombined(operation.id);
+                        if (this.renderer.layers.has(offsetLayerName)) {
+                            this.renderer.layers.get(offsetLayerName).visible = true;
+                        }
+                    } else {
+                        operation.offsets.forEach((_, passIndex) => {
+                            const offsetLayerName = window.LayerNaming.offsetPass(operation.id, passIndex + 1);
                             if (this.renderer.layers.has(offsetLayerName)) {
                                 this.renderer.layers.get(offsetLayerName).visible = true;
                             }
-                        } else {
-                            operation.offsets.forEach((_, passIndex) => {
-                                const offsetLayerName = `offset_${operation.id}_pass_${passIndex + 1}`;
-                                if (this.renderer.layers.has(offsetLayerName)) {
-                                    this.renderer.layers.get(offsetLayerName).visible = true;
+                        });
+                    }
+
+                    // Update eye icons in the Nav Tree
+                    if (this.navTreePanel) {
+                        const fileNode = this.navTreePanel.nodes.get(fileId);
+                        if (fileNode) {
+                            fileNode.geometries.forEach((geo) => {
+                                if (geo.type.startsWith('offset')) {
+                                    const visBtn = geo.element.querySelector('.visibility-btn');
+                                    if (visBtn) visBtn.classList.remove('is-hidden');
                                 }
                             });
-                        }
-
-                        // Unhide the eye icons in the Nav Tree UI
-                        if (this.navTreePanel) {
-                            const fileNode = this.navTreePanel.nodes.get(fileId);
-                            if (fileNode) {
-                                fileNode.geometries.forEach((geo) => {
-                                    if (geo.type.startsWith('offset')) {
-                                        const visBtn = geo.element.querySelector('.visibility-btn');
-                                        if (visBtn) visBtn.classList.remove('is-hidden');
-                                    }
-                                });
-                            }
                         }
                     }
                 }
@@ -599,7 +577,7 @@
 
             // Restore stencil source visibility if all offsets are deleted
             if (operation.type === 'stencil' && (!operation.offsets || operation.offsets.length === 0)) {
-                const sourceLayerName = `source_${operation.id}`;
+                const sourceLayerName = window.LayerNaming.source(operation.id);
                 if (this.renderer.layers.has(sourceLayerName)) {
                     this.renderer.layers.get(sourceLayerName).visible = true;
                 }
@@ -615,19 +593,21 @@
                 delete operation.layerVisibility[layerName];
             }
 
-            // Tell the renderer to delete the layer
+            // Remove renderer layer
             if (layerName && this.renderer.layers.has(layerName)) {
                 this.renderer.layers.delete(layerName);
             } else {
                 console.warn(`[PCBCamUI] Could not find layer to delete: ${layerName}`);
             }
 
-            // Tell the NavTreePanel to remove the DOM node
+            // Remove DOM node and re-select parent
             if (this.navTreePanel) {
                 this.navTreePanel.removeGeometryNode(fileId, geometryId);
 
-                // Re-select the parent file node
-                this.navTreePanel.selectHighestStage(fileId);
+                const updatedFileData = this.navTreePanel.nodes.get(fileId);
+                if (updatedFileData) {
+                    this.navTreePanel.selectFile(fileId, updatedFileData.operation);
+                }
             }
 
             // Re-draw the canvas

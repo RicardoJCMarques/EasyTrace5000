@@ -129,7 +129,7 @@ The application guides the user through a clear, non-destructive process. Each s
 
 ## Accessibility
 
-EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Accessibility Documentation](doc/ACCESSIBILITY.md) for complete keyboard controls and WCAG 2.1 compliance details.
+EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Accessibility Documentation](doc/ACCESSIBILITY.md) for complete keyboard controls and shortcuts and WCAG 2.1 compliance details.
 
 ## Project Structure
 
@@ -406,4 +406,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.3.2 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.3.3 | **Platform**: Client-side Web

@@ -62,14 +62,17 @@
         /**
          * Main optimization entry - returns ordered metadata array
          */
-        optimize(pureGeometryPlans, startPos = { x: 0, y: 0, z: this.options.safeZ }) {
+        optimize(pureGeometryPlans, startPos) {
             const startTime = performance.now();
             this.resetStats();
-            this.stats.originalPathCount = pureGeometryPlans.length;
+            this.stats.originalPathCount = pureGeometryPlans?.length || 0;
 
             if (!pureGeometryPlans || pureGeometryPlans.length === 0) {
                 return [];
             }
+
+            // Contract guarantees contextual safeZ
+            this.currentRunSafeZ = pureGeometryPlans[0].metadata.context.machine.safeZ;
 
             // Group by tool diameter
             const plansByGroupKey = new Map();
@@ -163,7 +166,7 @@
                         finalOrderedPlans.push(...zGroup);
                         if (zGroup.length > 0) {
                              const lastPlan = zGroup[zGroup.length - 1];
-                             currentMachinePos = lastPlan.metadata.exitPoint || { x: 0, y: 0, z: this.options.safeZ };
+                             currentMachinePos = lastPlan.metadata.exitPoint;
                         }
                     }
                 }
@@ -368,10 +371,13 @@
 
             // Calculate original travel distance
             let pos = { ...startPos };
-            for (const plan of plans) {
-                const entry = (plan.entryPoint || plan.metadata?.entryPoint || { x: 0, y: 0, z: 0 });
-                totalOriginalTravel += Math.hypot(entry.x - pos.x, entry.y - pos.y);
-                pos = plan.exitPoint || plan.metadata?.exitPoint || entry;
+            for (const item of plans) {
+                // Support both ToolpathPlan (metadata.entryPoint) and Cluster (entryPoint) objects
+                const entry = item.entryPoint || item.metadata.entryPoint;
+                const dx = entry.x - pos.x;
+                const dy = entry.y - pos.y;
+                totalOriginalTravel += Math.sqrt(dx * dx + dy * dy);
+                pos = item.exitPoint || item.metadata.exitPoint;
             }
 
             // Nearest neighbor with link cost
@@ -449,7 +455,9 @@
             // Handle cluster objects (used when optimizing between clusters)
             if (toPlan.plans && toPlan.entryPoint) { // Check if it's a cluster object
                 const bestPoint = toPlan.entryPoint;
-                const closestXYDist = Math.hypot(bestPoint.x - fromPos.x, bestPoint.y - fromPos.y);
+                const dx = bestPoint.x - fromPos.x;
+                const dy = bestPoint.y - fromPos.y;
+                const closestXYDist = Math.sqrt(dx * dx + dy * dy);
                 // Clusters always use rapid moves between them
                 const rapidCost = this.calculateRapidCost(fromPos, bestPoint, closestXYDist);
                 return {
@@ -477,10 +485,9 @@
                                Math.abs(fromPos.z - planMetadata.entryPoint.z) < 0.01; // Must be at same Z
 
             if (canStaydown) {
-                const originalEntryDist = Math.hypot(
-                    planMetadata.entryPoint.x - fromPos.x,
-                    planMetadata.entryPoint.y - fromPos.y
-                );
+                const dxEntry = planMetadata.entryPoint.x - fromPos.x;
+                const dyEntry = planMetadata.entryPoint.y - fromPos.y;
+                const originalEntryDist = Math.sqrt(dxEntry * dxEntry + dyEntry * dyEntry);
 
                 // Use calculated stepDistance + tolerance
                 const toolDiameter = planMetadata.toolDiameter;
@@ -489,8 +496,8 @@
                 const stepOverRatio = stepOverPercent / 100.0;
                 const stepDistance = toolDiameter * (1.0 - stepOverRatio);
 
-                // Threshold is the expected step distance plus a small tolerance // REVIEW - use smaller epsilon?
-                const staydownThreshold = stepDistance + C.precision.coordinate;
+                // Threshold is the expected step distance plus a small tolerance
+                const staydownThreshold = stepDistance + EPSILON;
 
                 this.debug(`Plan ${planMetadata.operationId} (Pass ${planMetadata.pass || 1}): ToolD=${toolDiameter.toFixed(3)}, StepOver=${stepOverPercent}%, StepDist=${stepDistance.toFixed(3)}, Threshold=${staydownThreshold.toFixed(3)}`);
                 this.debug(`   Original Entry Dist: ${originalEntryDist.toFixed(3)}`);
@@ -564,13 +571,15 @@
             const zTravelThreshold = rapidConfig.zTravelThreshold;
             const zCostFactor = rapidConfig.zCostFactor;
             const baseCost = rapidConfig.baseCost;
+
+            const activeSafeZ = this.currentRunSafeZ ?? this.options.safeZ;
             let zCost;
 
             if (xyDist < zTravelThreshold) {
-                const travelZ = fromPos.z < 0 ? this.options.safeZ * 0.4 : fromPos.z;
+                const travelZ = fromPos.z < 0 ? activeSafeZ * 0.4 : fromPos.z;
                 zCost = Math.abs(travelZ - fromPos.z) + Math.abs(toPos.z - travelZ);
             } else {
-                zCost = Math.abs(this.options.safeZ - fromPos.z) + Math.abs(toPos.z - this.options.safeZ);
+                zCost = Math.abs(activeSafeZ - fromPos.z) + Math.abs(toPos.z - activeSafeZ);
             }
 
             return (xyDist + zCost * zCostFactor) + baseCost;
@@ -584,9 +593,9 @@
 
             // Do not optimize entry points for ANY drill operations
             if (meta.isPeckMark || meta.isDrillMilling || meta.isCenterlinePath) { // Review - circles can be rotated and centerline path start/end points are interchangeable.
-                const entry = meta.entryPoint || { x: 0, y: 0};
-                const dist = Math.hypot(entry.x - fromPos.x, entry.y - fromPos.y);
-                return { point: entry, distance: dist, commandIndex: 0 };
+                const dx = meta.entryPoint.x - fromPos.x;
+                const dy = meta.entryPoint.y - fromPos.y;
+                return { point: meta.entryPoint, distance: Math.sqrt(dx * dx + dy * dy), commandIndex: 0 };
             }
 
             // Circle-specific optimization
@@ -600,52 +609,56 @@
                     const radius = Math.hypot(arcCmd.i, arcCmd.j);
                     const vecX = fromPos.x - centerX;
                     const vecY = fromPos.y - centerY;
-                    const vecMag = Math.sqrt(vecX * vecX + vecY * vecY);
+                    const vecMagSq = vecX * vecX + vecY * vecY;
 
-                    if (vecMag > 1e-6) {
+                    // REVIEW - Why isn't this epsilon linked to config?
+                    if (vecMagSq > 1e-12) {
+                        const vecMag = Math.sqrt(vecMagSq);
                         const idealX = centerX + (vecX / vecMag) * radius;
                         const idealY = centerY + (vecY / vecMag) * radius;
-                        const idealPos = { x: idealX, y: idealY};
                         const dxIdeal = idealX - fromPos.x;
                         const dyIdeal = idealY - fromPos.y;
-                        const dist = Math.sqrt(dxIdeal * dxIdeal + dyIdeal * dyIdeal);
-                        return { point: idealPos, distance: dist, commandIndex: 0 };
+                        return { 
+                            point: { x: idealX, y: idealY }, 
+                            distance: Math.sqrt(dxIdeal * dxIdeal + dyIdeal * dyIdeal), 
+                            commandIndex: 0 
+                        };
                     }
                 }
             }
 
             // Path searching
             const canRotate = meta.isClosedLoop;
-
-            let bestPoint = meta.entryPoint || { x: 0, y: 0, z: 0 };
+            let bestPoint = meta.entryPoint;
             const dxEntry = bestPoint.x - fromPos.x;
             const dyEntry = bestPoint.y - fromPos.y;
-            let bestDist = Math.sqrt(dxEntry * dxEntry + dyEntry * dyEntry);
+            let bestDistSq = (dxEntry * dxEntry + dyEntry * dyEntry);
             let bestIndex = 0;
 
-            if (!plan.commands || plan.commands.length === 0) {
-                return { point: bestPoint, distance: bestDist, commandIndex: 0 };
-            }
+            if (plan.commands.length > 0) {
+                // Search for closest point
+                for (let i = 0; i < plan.commands.length; i++) {
+                    const cmd = plan.commands[i];
 
-            // Search for closest point
-            for (let i = 0; i < plan.commands.length; i++) {
-                const cmd = plan.commands[i];
-                if (cmd.x === null || cmd.y === null) continue;
+                    // MotionCommand guarantees null if missing, no undefined check needed
+                    if (cmd.x === null || cmd.y === null) continue;
 
-                const dx = cmd.x - fromPos.x;
-                const dy = cmd.y - fromPos.y;
-                const dist = Math.sqrt(dx * dx + dy * dy); // ~4x faster than Math.hypot
+                    const dx = cmd.x - fromPos.x;
+                    const dy = cmd.y - fromPos.y;
+                    const distSq = (dx * dx + dy * dy);
 
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    bestPoint = { x: cmd.x, y: cmd.y};
-                    if (canRotate) {
-                        bestIndex = i;
+                    if (distSq < bestDistSq) {
+                        bestDistSq = distSq;
+                        bestPoint = { x: cmd.x, y: cmd.y };
+                        if (canRotate) {
+                            bestIndex = i;
+                        }
                     }
                 }
             }
 
-            return { point: bestPoint, distance: bestDist, commandIndex: bestIndex };
+            // Only perform the expensive square root once at the very end
+            return { point: bestPoint, distance: Math.sqrt(bestDistSq), commandIndex: bestIndex };
         }
 
         /**
@@ -758,6 +771,20 @@
                 currentPos = { ...plan.metadata.entryPoint };
             }
 
+            const isIgnorableArcCmd = (c, start, end) => {
+                if (c.type !== 'ARC_CW' && c.type !== 'ARC_CCW') return false;
+                const dx = end.x - start.x;
+                const dy = end.y - start.y;
+                const iVal = c.i || 0;
+                const jVal = c.j || 0;
+
+                const isHelical = c.z !== null && Math.abs(c.z - start.z) > PRECISION; 
+
+                return !isHelical && (dx * dx + dy * dy) < PRECISION && (iVal * iVal + jVal * jVal) < PRECISION;
+            };
+
+            const precisionSq = PRECISION * PRECISION;
+
             while (i < commands.length) {
                 const cmd = commands[i];
 
@@ -774,26 +801,13 @@
 
                 // Resolve the absolute target position of this command
                 const cmdTargetPos = {
-                    x: cmd.x !== null && cmd.x !== undefined ? cmd.x : currentPos.x,
-                    y: cmd.y !== null && cmd.y !== undefined ? cmd.y : currentPos.y,
-                    z: cmd.z !== null && cmd.z !== undefined ? cmd.z : currentPos.z
+                    x: cmd.x !== null ? cmd.x : currentPos.x,
+                    y: cmd.y !== null ? cmd.y : currentPos.y,
+                    z: cmd.z !== null ? cmd.z : currentPos.z
                 };
 
-                // Check for ignorable, non-linear commands
-                let isIgnorableArc = false;
-                if (cmd.type === 'ARC_CW' || cmd.type === 'ARC_CCW') {
-                    const arcLength = Math.hypot(cmdTargetPos.x - currentPos.x, cmdTargetPos.y - currentPos.y);
-                    const arcRadius = Math.hypot(cmd.i || 0, cmd.j || 0); // Check the radius
-                    const isHelical = cmd.z !== null && Math.abs(cmd.z - currentPos.z) > 1e-6;
-
-                    // It's only ignorable if BOTH the chord length AND the radius are tiny.
-                    if (arcLength < 0.01 && arcRadius < 0.01 && !isHelical) {  
-                        isIgnorableArc = true;
-                    }
-                }
-
                 // If it's a significant non-linear move, add it and continue.
-                if (cmd.type !== 'LINEAR' && !isIgnorableArc) {
+                if (cmd.type !== 'LINEAR' && !isIgnorableArcCmd(cmd, currentPos, cmdTargetPos)) {
                     simplified.push(cmd);
                     currentPos = cmdTargetPos; // Update position
                     i++;
@@ -806,8 +820,8 @@
                 const linearSequenceCmds = [];
                 let sequenceEndPoint = cmdTargetPos; // End point of the *first* command
 
-                if (isIgnorableArc) {
-                    // Convert the ignorable arc to a linear command so the simplifier can process it
+                // It's either LINEAR or an ignorable ARC here
+                if (cmd.type !== 'LINEAR') {
                     linearSequenceCmds.push(new MotionCommand('LINEAR', { x: cmd.x, y: cmd.y, z: cmd.z }, { feed: cmd.f }));
                 } else {
                     linearSequenceCmds.push(cmd); // It's the first linear cmd
@@ -819,29 +833,16 @@
                     const nextCmd = commands[j];
 
                     // Stop gathering when hitting a tab command
-                    if (nextCmd.metadata && nextCmd.metadata.isTab === true) {
-                        break;
-                    }
+                    if (nextCmd.metadata && nextCmd.metadata.isTab === true) break;
 
                     const nextCmdTargetPos = {
-                        x: nextCmd.x !== null && nextCmd.x !== undefined ? nextCmd.x : sequenceEndPoint.x,
-                        y: nextCmd.y !== null && nextCmd.y !== undefined ? nextCmd.y : sequenceEndPoint.y,
-                        z: nextCmd.z !== null && nextCmd.z !== undefined ? nextCmd.z : sequenceEndPoint.z
+                        x: nextCmd.x !== null ? nextCmd.x : sequenceEndPoint.x,
+                        y: nextCmd.y !== null ? nextCmd.y : sequenceEndPoint.y,
+                        z: nextCmd.z !== null ? nextCmd.z : sequenceEndPoint.z
                     };
 
-                    let isNextIgnorableArc = false;
-                    if (nextCmd.type === 'ARC_CW' || nextCmd.type === 'ARC_CCW') {
-                        const arcLength = Math.hypot(nextCmdTargetPos.x - sequenceEndPoint.x, nextCmdTargetPos.y - sequenceEndPoint.y);
-                        const nextArcRadius = Math.hypot(nextCmd.i || 0, nextCmd.j || 0); // Check the radius
-
-                        if (arcLength < 0.01 && nextArcRadius < 0.01) {
-                            isNextIgnorableArc = true;
-                        }
-                    }
-
-                    if (nextCmd.type === 'LINEAR' || isNextIgnorableArc) {
-                        // Add it to the sequence
-                        if (isNextIgnorableArc) {
+                    if (nextCmd.type === 'LINEAR' || isIgnorableArcCmd(nextCmd, sequenceEndPoint, nextCmdTargetPos)) {
+                        if (nextCmd.type !== 'LINEAR') {
                             linearSequenceCmds.push(new MotionCommand('LINEAR', { x: nextCmd.x, y: nextCmd.y, z: nextCmd.z }, { feed: nextCmd.f }));
                         } else {
                             linearSequenceCmds.push(nextCmd);
@@ -867,15 +868,20 @@
                 // Create a point-in-time snapshot for each command
                 for (const linearCmd of linearSequenceCmds) {
                     tempPos = {
-                        x: linearCmd.x !== null && linearCmd.x !== undefined ? linearCmd.x : tempPos.x,
-                        y: linearCmd.y !== null && linearCmd.y !== undefined ? linearCmd.y : tempPos.y,
-                        z: linearCmd.z !== null && linearCmd.z !== undefined ? linearCmd.z : tempPos.z
+                        x: linearCmd.x !== null ? linearCmd.x : tempPos.x,
+                        y: linearCmd.y !== null ? linearCmd.y : tempPos.y,
+                        z: linearCmd.z !== null ? linearCmd.z : tempPos.z
                     };
 
                     // Check for zero-length segments / duplicate start point
-                    const dist = Math.hypot(tempPos.x - lastPushedPoint.x, tempPos.y - lastPushedPoint.y, tempPos.z - lastPushedPoint.z);
+                    const dx = tempPos.x - lastPushedPoint.x;
+                    const dy = tempPos.y - lastPushedPoint.y;
+                    const dz = tempPos.z - lastPushedPoint.z;
+                    const distSq = dx * dx + dy * dy + dz * dz;
 
-                    if (dist > EPSILON) {
+                    // Deduplicate microscopic moves before running the heavy collinear simplifier
+                    // This prevents NaN errors in angle calculations later
+                    if (distSq > precisionSq) {
                         points.push({ ...tempPos, isStart: false, cmd: linearCmd });
                         lastPushedPoint = tempPos;
                     } else if (points.length > 0) {
@@ -891,11 +897,6 @@
                 // Rebuild command list from simplified points
                 for (const pt of simplifiedPoints) {
                     if (pt.cmd) { 
-                        // Propagate metadata (isTab) if it exists on the original command
-                        // Although simplifySegments handles tabs explicitly, this is good hygiene for any other metadata that might be added in future.
-                        if (pt.cmd.metadata) {
-                            // preserve
-                        }
                         simplified.push(pt.cmd);
                     }
                 }
@@ -919,8 +920,6 @@
             const simplified = [points[0]]; // Always keep the start point
 
             const simpConfig = D.toolpath.generation.simplification;
-
-            // Get the 4 tolerance values from config
             const curveTolerance = simpConfig.curveToleranceFallback;
             const straightTolerance = simpConfig.straightToleranceFallback;
             const sharpCornerTolerance = simpConfig.sharpCornerTolerance;
@@ -933,20 +932,24 @@
                 const p2 = points[i + 1];
 
                 // Calculate deviation distance (how far p1 is from line p0-p2)
-                const dist = this.perpendicularDistance(p1, p0, p2);
+                const distSq = this.perpendicularDistanceSq(p1, p0, p2);
 
-                // Calculate the angle (curvature) at p1
                 const v1x = p1.x - p0.x;
                 const v1y = p1.y - p0.y;
                 const v2x = p2.x - p1.x;
                 const v2y = p2.y - p1.y;
 
-                const mag1 = Math.hypot(v1x, v1y);
-                const mag2 = Math.hypot(v2x, v2y);
+                // Pre-calculate magnitude squares
+                const mag1Sq = v1x * v1x + v1y * v1y;
+                const mag2Sq = v2x * v2x + v2y * v2y;
+                const tolSq = PRECISION * PRECISION;
 
                 let angle = 0;
                 // Only calculate angle if segments are not zero-length
-                if (mag1 > 1e-9 && mag2 > 1e-9) { // Review - 1e-9 epsilon is in the config? Coordinate precision good enough?
+                if (mag1Sq > tolSq && mag2Sq > tolSq) { 
+                    const mag1 = Math.sqrt(mag1Sq);
+                    const mag2 = Math.sqrt(mag2Sq);
+
                     const dot = v1x * v2x + v1y * v2y;
                     // Clamp to avoid floating point errors with acos()
                     const cosTheta = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
@@ -967,7 +970,7 @@
                 }
 
                 // Keep the point ONLY if it deviates more than the nuanced tolerance
-                if (dist >= effectiveTolerance) {
+                if (distSq >= (effectiveTolerance * effectiveTolerance)) {
                     simplified.push(p1); 
                 }
                 // If dist < effectiveTolerance, p1 is dropped.
@@ -978,36 +981,37 @@
         }
 
         /**
-         * Calculate perpendicular distance from point to line segment (3D)
+         * Calculates the squared perpendicular distance from a point to a line segment.
          */
-        perpendicularDistance(point, lineStart, lineEnd) {
+        perpendicularDistanceSq(point, lineStart, lineEnd) {
             const dx = lineEnd.x - lineStart.x;
             const dy = lineEnd.y - lineStart.y;
 
             const lengthSquared = (dx * dx) + (dy * dy);
 
-            if (lengthSquared < 1e-12) { // Line segment is a point
-                return Math.hypot(
-                    point.x - lineStart.x,
-                    point.y - lineStart.y
-                );
+            // If the line segment is essentially a single point, return the squared distance to that point
+            if (lengthSquared < 1e-12) { 
+                const pdx = point.x - lineStart.x;
+                const pdy = point.y - lineStart.y;
+                return (pdx * pdx) + (pdy * pdy);
             }
 
-            // Parameter t of projection onto line
-            let t = ((point.x - lineStart.x) * dx +
-                    (point.y - lineStart.y) * dy) / lengthSquared;
+            // Project point onto the line segment to find the intersection factor 't'
+            let t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lengthSquared;
 
-            t = Math.max(0, Math.min(1, t)); // Clamp t to [0, 1] for a line segment
+            // Clamp t to [0, 1] so the intersection stays within the physical line segment
+            t = Math.max(0, Math.min(1, t)); 
 
-            // Projected point
+            // Calculate the exact intersection coordinates
             const projX = lineStart.x + t * dx;
             const projY = lineStart.y + t * dy;
 
-            // Distance from point to projection
-            return Math.hypot(
-                point.x - projX,
-                point.y - projY
-            );
+            // Calculate the delta between our point and the intersection
+            const pdx = point.x - projX;
+            const pdy = point.y - projY;
+
+            // Return the squared distance
+            return (pdx * pdx) + (pdy * pdy);
         }
 
         getStats() {

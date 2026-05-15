@@ -359,13 +359,12 @@
                         if (option) {
                             this.renderer.setOptions({ [option]: isChecked });
                         }
-                        this.renderer.render();
                         break;
 
                     case 'update':
                         // Full re-process and redraw (e.g., fusion, offsets)
                         if (option) {
-                            this.renderer.setOptions({ [option]: isChecked });
+                            this.renderer.core.setOptions({ [option]: isChecked });
                         }
 
                         // Special logic for fusion/arc changes
@@ -399,8 +398,6 @@
                         if (option) {
                             this.renderer.setOptions({ [option]: isChecked });
                         }
-                        // This will be caught on the next render, but a simple render is safer // Review - What now?
-                        this.renderer.render();
                         break;
                 }
             });
@@ -950,18 +947,9 @@
 
                     this.updateProcessorFieldVisibility(newProcessor);
 
-                    // Clear cached G-code preview
-                    const previewText = document.getElementById('exporter-preview-text');
-                    if (previewText && previewText.value) {
-                        previewText.value = '';
-                        const lineCount = document.getElementById('exporter-line-count');
-                        const opCount = document.getElementById('exporter-op-count');
-                        const estTime = document.getElementById('exporter-est-time');
-                        const distance = document.getElementById('exporter-distance');
-                        if (lineCount) lineCount.textContent = '0';
-                        if (opCount) opCount.textContent = '0';
-                        if (estTime) estTime.textContent = '--:--';
-                        if (distance) distance.textContent = '0mm';
+                    // Clear Export Preview
+                    if (window.pcbcam?.modalManager) {
+                        window.pcbcam.modalManager.clearExportPreview();
                     }
 
                     // Update parameter constraints when switching processor type
@@ -1560,7 +1548,9 @@
                     const section = focused.closest('.section-content');
                     if (!section) return;
 
-                    const fields = Array.from(section.querySelectorAll('input, select, button')).filter(f => !f.disabled && f.offsetParent !== null); // Check offsetParent for visibility
+                    const fields = Array.from(section.querySelectorAll('input, select, button'))
+                        .filter(f => !f.disabled && f.closest('.property-field')?.style.display !== 'none');
+
                     const idx = fields.indexOf(focused);
                     const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
 

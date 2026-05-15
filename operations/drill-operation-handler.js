@@ -234,8 +234,9 @@
 
             if (!arc1.center || !arc2.center || !arc1.radius || !arc2.radius) return null;
 
-            const centerDist = Math.hypot(arc1.center.x - arc2.center.x, arc1.center.y - arc2.center.y);
-            if (centerDist > PRECISION) return null;
+            const dx = arc1.center.x - arc2.center.x;
+            const dy = arc1.center.y - arc2.center.y;
+            if ((dx * dx + dy * dy) > PRECISION * PRECISION) return null;
 
             if (Math.abs(arc1.radius - arc2.radius) > PRECISION) return null;
 
@@ -272,8 +273,9 @@
 
             if (Math.abs(sweep1 - Math.PI) > 0.15 || Math.abs(sweep2 - Math.PI) > 0.15) return null;
 
-            const centerDist = Math.hypot(arc1.center.x - arc2.center.x, arc1.center.y - arc2.center.y);
-            if (centerDist < PRECISION) return null;
+            const dx = arc1.center.x - arc2.center.x;
+            const dy = arc1.center.y - arc2.center.y;
+            if ((dx * dx + dy * dy) < PRECISION * PRECISION) return null;
 
             const r = (arc1.radius + arc2.radius) / 2;
             const start = arc1.center;
@@ -390,6 +392,71 @@
             this.debug(`Promoted ${promoted} recoverable shape(s)`);
         }
 
+        // ORCHESTRATION
+
+        async orchestrateGeneration(operation, params, core, options = {}) {
+            // Wipe all previous generation state
+            core.resetOperationState(operation.id);
+
+            // Compile parameters
+            const opParams = core.compileOperationParams(operation, params);
+
+            if (opParams.isLaser) {
+                await this.generateLaserFills(operation, opParams);
+
+                const count = operation.offsets?.[0]?.primitives?.length || 0;
+                if (count > 0) {
+                    operation.exportReady = true;
+                    operation.exportMetadata = {
+                        generatedAt: Date.now(),
+                        sourceOffsets: operation.offsets?.length || 0,
+                        strategy: opParams.clearStrategy || 'filled'
+                    };
+                }
+                return { success: count > 0, message: `Generated ${count} laser drill marks`, status: 'success' };
+            }
+
+            await this.generateGeometry(operation, { ...params, ...opParams });
+
+            if (operation.warnings?.length > 0) {
+                return { success: true, message: `Generated with ${operation.warnings.length} warning(s)`, status: 'warning', refreshPanel: true };
+            }
+
+            const count = operation.offsets?.[0]?.primitives?.length || 0;
+            const mode = params.millHoles ? 'milling paths' : 'peck positions';
+            return { success: count > 0, message: `Generated ${count} ${mode}`, status: 'success' };
+        }
+
+        /**
+         * Separates a drill operation's preview into milled paths and peck groups by diameter.
+         * Works regardless of millHoles setting — a milled operation still generates pecks
+         * for holes too small to mill.
+         */
+        static groupPrimitivesByDiameter(operation) {
+            if (!operation.preview?.primitives) return { milledPrimitives: [], peckGroups: [] };
+
+            const milledPrimitives = [];
+            const pecksByDiameter = new Map();
+
+            for (const prim of operation.preview.primitives) {
+                if (prim.properties?.role === 'peck_mark') {
+                    const dia = parseFloat(
+                        (prim.properties?.originalDiameter || prim.properties?.diameter || 0).toFixed(3)
+                    );
+                    if (!pecksByDiameter.has(dia)) pecksByDiameter.set(dia, []);
+                    pecksByDiameter.get(dia).push(prim);
+                } else {
+                    milledPrimitives.push(prim);
+                }
+            }
+
+            const peckGroups = Array.from(pecksByDiameter.entries())
+                .sort((a, b) => a[0] - b[0])
+                .map(([diameter, primitives]) => ({ diameter, primitives }));
+
+            return { milledPrimitives, peckGroups };
+        }
+
         /**
          * Drill Strategy & Geometry Generation
          */
@@ -426,7 +493,6 @@
                 settings: { ...settings }
             }];
 
-            this.core.isToolpathCacheValid = false;
             return operation.offsets;
         }
 

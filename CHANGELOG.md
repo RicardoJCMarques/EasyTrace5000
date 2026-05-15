@@ -4,15 +4,31 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-05-15
+
+### Fixed
+- **Overwriting Geometry:** If Offset/Preview geometry objects exist, they are now replaced when new objects are created with different parameters. [#17](https://github.com/RicardoJCMarques/EasyTrace5000/issues/17)
+- **Operation Warnings:** Some warnings wouldn't reset and could stack on themselves inside the parameter panel.
+
+### Added
+- **Op Keyboard Shortcuts:** Pressing 1-5 will select/cycle through existing geometry objects in each Operation. 1 for Isolation, etc.
+- **Copy To Clipboard:** New button to copy the g-code inside the preview text-box to make copy-pasting easier.
+
+### Changed
+- **Operation Orchestration:** Some logic that was inside Controller and UI modules was transfered into the Core and Operation Handlers.
+- **Export And Preview:** G-code/graphics export logic and preview generation was also moved from UI modules into the Core.
+- **Small Cleanup:** Removed some old dead code and tweaked some inefficiencies.
+
+
 ## [1.3.2] - 2026-05-01
 
 ### Fixed
-- **Geometry Transforms:** Rotation and mirroring won't break arc winding any more.
-- **Drill Macros:** Hole and slot macros for drill operations are now mirroring agnosting and are hardcoded climb milling.
+- **Geometry Transforms:** Rotation and mirroring won't break arc winding any more. [#15](https://github.com/RicardoJCMarques/EasyTrace5000/issues/15)
+- **Drill Macros:** Hole and slot macros for drill operations are now mirroring agnostic and are hardcoded climb milling.
 - **Tab Generation:** Was reinforced to handle mirroring without breaking arc winding for toolpaths at tab depth.
-- **Visualization State:** Layer visibility is more persistant and won't reset/desync when geometry changes happen.
+- **Visualization State:** Layer visibility is more persistant and won't reset/desync when geometry changes happen. [#14](https://github.com/RicardoJCMarques/EasyTrace5000/issues/14)
 - **File Parsing:** Leading and Trailing zeros are recognized and handled correctly now. Arcs that share a center, winding and touch will be merged too.
-- **Gerber Parsing:** Oval/Obround and other complex flashed pad macro shapes are properly processed.
+- **Gerber Parsing:** Oval/Obround and other complex flashed pad macro shapes are properly processed. [#16](https://github.com/RicardoJCMarques/EasyTrace5000/issues/16)
 - **Excellon Parsing:** More encoding formats are now supported.
 - **Arc Rendering:** Small improvements during debug states.
 

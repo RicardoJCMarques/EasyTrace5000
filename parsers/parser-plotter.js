@@ -126,12 +126,12 @@
                     // Calculate distance between start and end
                     const dx = item.end.x - item.start.x;
                     const dy = item.end.y - item.start.y;
-                    const length = Math.sqrt(dx * dx + dy * dy);
+                    const lengthSq = dx * dx + dy * dy;
                     const radius = item.diameter / 2;
 
                     this.debug(`Plotter Input [${index}]: type=${item.type}, start=(${item.start.x.toFixed(3)}, ${item.start.y.toFixed(3)}), end=(${item.end.x.toFixed(3)}, ${item.end.y.toFixed(3)}), diameter=${item.diameter.toFixed(3)}, calculated length=${length.toFixed(5)}`);
 
-                    if (length < PRECISION) { // Change to 5 * PRECISION? That was the previous tollerance.
+                    if (lengthSq < PRECISION * PRECISION) {
                         // It's a hole
                         properties.role = 'drill_hole';
                         primitive = new CirclePrimitive(
@@ -404,7 +404,7 @@
                         console.error(`[PARSER-PLOTTER] POSSIBLE CORRUPTION: ${points.length} pts, worst point[${maxIdx}]:`, 
                             points[maxIdx], 'neighbors:', points[maxIdx-1], points[maxIdx+1]);
                     } else {
-                        console.log(`[PARSER-PLOTTER] OK: ${points.length} pts, max coord: ${maxCoord.toFixed(2)}`);
+                        this.debug(`[PARSER-PLOTTER] OK: ${points.length} pts, max coord: ${maxCoord.toFixed(2)}`);
                     }
                 }
 

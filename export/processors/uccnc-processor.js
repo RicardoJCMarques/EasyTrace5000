@@ -60,7 +60,7 @@
                 feedDecimals: 1,
                 spindleDecimals: 0,
                 modalCommands: true,
-                lineNumbering: false,
+                lineNumbering: false, // To be implemented in the future
                 maxSpindleSpeed: 24000,
                 maxRapidRate: 5000,
                 defaults: {

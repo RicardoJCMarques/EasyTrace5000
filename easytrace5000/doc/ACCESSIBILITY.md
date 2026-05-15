@@ -34,6 +34,7 @@ These shortcuts work globally to navigate the application structure.
 | `Tab` | Move focus to the next interactive element within the current zone |
 | `Shift` + `Tab` | Move focus to the previous interactive element |
 | `F1` | Open the Help & Shortcuts modal |
+| `1` - `5` | Cycle focus through operation objects (`1`: Isolation → `5`: Stencil) |
 
 > **Note:** A **Skip Link** is available on the first `Tab` press after page load to jump directly to the Canvas.
 
@@ -208,7 +209,7 @@ EasyTrace5000 targets **WCAG 2.1 Level AA** compliance. While the application is
 
 If you encounter accessibility barriers, please report them via **GitHub Issues**.
 
-We have a dedicated template for these reports to ensure we get the necessary technical details.
+There's a dedicated template available for these reports to ensure the necessary technical details are included.
 
 1. Go to the [New Issue page](https://github.com/RicardoJCMarques/EasyTrace5000/issues/new/choose)
 2. Select the **Accessibility Report** template

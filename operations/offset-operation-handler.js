@@ -82,6 +82,46 @@
             return null;
         }
 
+        // ORCHESTRATION
+
+        async orchestrateGeneration(operation, params, core, options = {}) {
+            // Wipe all previous generation state
+            core.resetOperationState(operation.id);
+
+            // Compile parameters
+            const opParams = core.compileOperationParams(operation, params);
+
+            if (opParams.isLaser) {
+                operation.clearancePolygon = null;
+                await this.generateLaserFills(operation, opParams);
+            } else {
+                await this.generateGeometry(operation, { ...params, ...opParams });
+            }
+
+            const total = operation.offsets?.reduce((s, o) => s + (o.primitives?.length || 0), 0) || 0;
+            const passCount = operation.offsets?.length || 0;
+
+            if (total === 0) {
+                return { success: false, message: 'No geometry generated — tool may be too large for features', status: 'warning' };
+            }
+
+            if (opParams.isLaser) {
+                const strategy = opParams.clearStrategy || 'offset';
+
+                // CORE handles its own state
+                operation.exportReady = true;
+                operation.exportMetadata = {
+                    generatedAt: Date.now(),
+                    sourceOffsets: operation.offsets?.length || 0,
+                    strategy: strategy
+                };
+                
+                return { success: true, message: `Generated ${total} laser path(s) [${strategy}]`, status: 'success' };
+            }
+
+            return { success: true, message: `Generated ${passCount} offset(s)`, status: 'success' };
+        }
+
         // MAIN OFFSET PIPELINE
 
         async generateGeometry(operation, settings) {
@@ -105,17 +145,39 @@
             let isInternal = this._isInternalOffset(operation, settings);
             let isOnLine = this._isOnLine(operation, settings);
 
-            // Calculate offset distances
-            let offsetDistances;
+            let offsetDistances = [];
+
             if (isOnLine) {
                 offsetDistances = [0];
             } else {
-                offsetDistances = this.core._calculateOffsetDistances(
-                    settings.toolDiameter,
-                    settings.passes,
-                    settings.stepOver,
-                    isInternal
-                );
+                const radius = settings.toolDiameter / 2;
+                const sign = isInternal ? -1 : 1;
+
+                // Resolve step distance (support explicit LPCM/LPI or derive from stepOver)
+                const step = (settings.stepDistance && settings.stepDistance > 0)
+                    ? settings.stepDistance
+                    : settings.toolDiameter * (1 - (settings.stepOver || 0) / 100);
+
+                // LASER BEHAVIOR: Work down from a strict isolation boundary
+                if (settings.targetWidth !== null && settings.targetWidth > 0) {
+                    let currentOffset = radius;
+                    let passCount = 0;
+                    const maxPasses = C.ui.validation.maxAutoPasses || 500;
+
+                    while ((currentOffset + radius) <= settings.targetWidth + C.precision.coordinate && passCount < maxPasses) {
+                        offsetDistances.push(sign * currentOffset);
+                        currentOffset += step;
+                        passCount++;
+                    }
+
+                } 
+                // CNC BEHAVIOR: Work up from explicit pass counts
+                else {
+                    const count = Math.min(settings.passes || 1, C.ui.validation.maxAutoPasses || 500);
+                    for (let i = 0; i < count; i++) {
+                        offsetDistances.push(sign * (radius + i * step));
+                    }
+                }
             }
 
             // Guard: prevent internal offsets from collapsing small circular features
@@ -133,20 +195,6 @@
 
             if (isOnLine) {
                 offsetDistances = [0];
-            }
-
-            // Auto-cap internal offsets to prevent wasted WASM calls
-            if (isInternal && offsetDistances.length > 1 && operation.bounds) {
-                const smallestDim = Math.min(
-                    operation.bounds.maxX - operation.bounds.minX,
-                    operation.bounds.maxY - operation.bounds.minY
-                );
-                const maxInwardOffset = smallestDim / 2;
-                const cappedDistances = offsetDistances.filter(d => Math.abs(d) <= maxInwardOffset);
-                if (cappedDistances.length > 0 && cappedDistances.length < offsetDistances.length) {
-                    this.debug(`Auto-capped internal offsets: ${offsetDistances.length} → ${cappedDistances.length} (smallest dim: ${smallestDim.toFixed(3)}mm)`);
-                    offsetDistances = cappedDistances;
-                }
             }
 
             // PRE-FUSION FOR CUT-IN RESOLUTION
@@ -326,6 +374,12 @@
                     }
                 }
 
+                // Early termination: geometry collapsed to nothing at this distance
+                if (shellPassGeometry.length === 0 && holePassGeometry.length === 0) {
+                    this.debug(`Pass ${passIndex + 1}: geometry collapsed at ${distance.toFixed(3)}mm. Halting.`);
+                    break;
+                }
+
                 // POST-PROCESSING
                 const processBucket = (geometryBucket, groupTag, actualDist) => {
                     if (geometryBucket.length === 0) return;
@@ -360,6 +414,8 @@
                             finalCount: reconstructedGeometry.length,
                             generatedAt: Date.now(),
                             toolDiameter: settings.toolDiameter,
+                            targetWidth: settings.targetWidth || null,
+                            actualWidth: Math.abs(actualDist) + (settings.toolDiameter / 2), // Calculate the achieved width specifically for this pass
                             wasFused: primitivesToProcess !== operation.primitives,
                             thermalGroup: thermalGroup
                         }
@@ -369,6 +425,11 @@
                 processBucket(shellPassGeometry, 'shell', distance);
                 processBucket(holePassGeometry, 'hole', -distance);
             }
+
+            // Calculate actual width based on the last successful pass
+            const actualWidth = passResults.length > 0
+                ? Math.abs(passResults[passResults.length - 1].distance) + (settings.toolDiameter / 2)
+                : 0;
 
             // COMBINE PASSES
             if (settings.combineOffsets && passResults.length > 1) {
@@ -384,6 +445,8 @@
                         finalCount: allPassPrimitives.length,
                         generatedAt: Date.now(),
                         toolDiameter: settings.toolDiameter,
+                        targetWidth: settings.targetWidth || null,
+                        actualWidth: actualWidth,
                         offset: {
                             combined: true,
                             passes: passResults.length,
@@ -404,20 +467,18 @@
             this.debug(`Generated ${operation.offsets.length} offset group(s), ${totalPrimitives} total primitives.`);
             this.debug(`=== OFFSET PIPELINE COMPLETE ===`);
 
-            this.core.isToolpathCacheValid = false;
             return operation.offsets;
         }
 
         // LASER GEOMETRY
 
-        async generateLaserGeometry(operation, settings) {
+        async generateLaserFills(operation, settings) {
             this.debug(`=== LASER GEOMETRY GENERATION: ${settings.clearStrategy} ===`);
 
             const strategy = settings.clearStrategy || 'offset';
 
             if (strategy === 'offset') {
                 await this.generateGeometry(operation, settings);
-                this.core.isToolpathCacheValid = false;
                 return operation.offsets;
             }
 
@@ -475,7 +536,6 @@
                     break;
             }
 
-            this.core.isToolpathCacheValid = false;
             return operation.offsets;
         }
 

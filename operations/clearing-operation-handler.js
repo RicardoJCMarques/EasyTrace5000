@@ -36,33 +36,6 @@
 
         _needsCutInResolution() { return true; }
 
-        async generateGeometry(operation, settings) {
-            settings = { ...settings };
-
-            const stepOver = settings.stepOver;
-            const stepDistance = settings.toolDiameter * (1 - (stepOver / 100));
-
-            // Auto-calculate passes to cover the full geometry
-            if (operation.bounds && stepDistance > 0) {
-                const smallestDim = Math.min(
-                    operation.bounds.maxX - operation.bounds.minX,
-                    operation.bounds.maxY - operation.bounds.minY
-                );
-                settings.passes = Math.ceil((smallestDim / 2) / stepDistance);
-
-                // Clamp to safety limit
-                const maxPasses = C.ui.validation.maxAutoPasses; 
-                settings.passes = Math.min(settings.passes, maxPasses);
-            }
-
-            settings.stepOver = stepOver;
-            settings.combineOffsets = true;
-
-            this.debug(`Auto-calculated clearing: ${settings.passes} passes, ${stepOver}% stepover`);
-
-            return super.generateGeometry(operation, settings);
-        }
-
         /**
          * Laser clearance zone: the source geometry itself IS the area to fill.
          * Fuse primitives into clean polygons for hatching/filling.

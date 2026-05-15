@@ -721,7 +721,7 @@
             const offsetDist = strokeWidth / 2;
 
             // Threshold to absorb micro-segments that cause floating-point normal breakdown.
-            const minSegLen = Math.max(PRECISION, offsetDist * 0.02); 
+            const minSegLen = Math.max(PRECISION, offsetDist * 0.02);  // REVIEW - 0.02 seems arbitrary? Shouldn't it be? Should it be hardcoded in the config?
 
             let rawPoints = contour.points;
             if (!rawPoints || rawPoints.length < 2) return [];
@@ -731,7 +731,9 @@
             const last = rawPoints[rawPoints.length - 1];
             let sliced = false;
 
-            if (rawPoints.length > 2 && Math.hypot(first.x - last.x, first.y - last.y) < PRECISION) {
+            const dx = first.x - last.x;
+            const dy = first.y - last.y;
+            if (rawPoints.length > 2 && (dx * dx + dy * dy) < PRECISION * PRECISION) {
                 rawPoints = rawPoints.slice(0, -1);
                 sliced = true;
             }

@@ -34,6 +34,37 @@
 
     class StencilOperationHandler extends BaseOperationHandler {
 
+        async orchestrateGeneration(operation, params, core, options = {}) {
+            // Wipe all previous generation state
+            core.resetOperationState(operation.id);
+
+            // Compile parameters
+            const opParams = core.compileOperationParams(operation, params);
+            await this.generateGeometry(operation, { ...params, ...opParams });
+
+            const count = operation.offsets?.[0]?.primitives?.length || 0;
+            const skipped = operation.offsets?.[0]?.metadata?.skippedPads || operation.stencilMetadata?.skippedPads || 0;
+
+            if (count === 0) {
+                const msg = skipped > 0
+                    ? `No apertures generated (${skipped} overlapping pads skipped)`
+                    : 'No apertures generated (all filtered out)';
+                return { success: false, message: msg, status: 'warning' };
+            }
+
+            // CORE handles its own state
+            operation.exportReady = true;
+            operation.exportMetadata = {
+                generatedAt: Date.now(),
+                sourceOffsets: operation.offsets?.length || 0,
+                strategy: 'stencil'
+            };
+
+            let msg = `Generated ${count} stencil aperture(s)`;
+            if (skipped > 0) msg += ` (${skipped} overlapping pads skipped)`;
+            return { success: true, message: msg, status: 'success' };
+        }
+
         async generateGeometry(operation, settings) {
             // Clone to prevent mutating shared state
             settings = { ...settings };
@@ -98,6 +129,12 @@
 
             // Emit Warnings and Abort if Empty
             if (!operation.warnings) operation.warnings = [];
+
+            // Clear previous instances of this specific generation warning
+            operation.warnings = operation.warnings.filter(w => {
+                const msg = typeof w === 'string' ? w : w.message;
+                return !msg.includes('stencil pad(s) because they overlapped');
+            });
 
             if (skippedDueToDrill > 0) {
                 operation.warnings.push({
@@ -217,7 +254,6 @@
 
             operation.stencilMetadata = { skippedPads: skippedDueToDrill };
 
-            this.core.isToolpathCacheValid = false;
             this.debug(`Stencil generation complete: ${processedGeometry.length} primitives`);
             this.debug('=== STENCIL GEOMETRY COMPLETE ===');
             return operation.offsets;

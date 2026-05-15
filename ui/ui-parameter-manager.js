@@ -34,7 +34,9 @@
     const paramOptions = C.ui.parameterOptions;
 
     class ParameterManager {
-        constructor() {
+        constructor(core) {
+            this.core = core;
+
             // Parameter definitions and metadata
             this.parameterDefinitions = this.initializeDefinitions();
 
@@ -300,22 +302,6 @@
                     operationType: '_board_fill'
                 },
 
-                // Laser Geometry Stage — Step Over (all non-cutout ops)
-                laserStepOver: {
-                    type: 'number',
-                    label: 'Step Over',
-                    unit: '%',
-                    step: 5,
-                    min: 10,
-                    max: 95,
-                    default: 50,
-                    stage: 'geometry',
-                    category: 'laser_strategy',
-                    pipelineType: 'laser',
-                    operationTypes: ['isolation', 'clearing'],
-                    conditional: 'laserClearStrategy:offset,hatch'
-                },
-
                 // Laser Geometry Stage — Clearing Strategy
                 laserClearStrategy: {
                     type: 'select',
@@ -330,6 +316,71 @@
                     category: 'laser_strategy',
                     pipelineType: 'laser',
                     operationTypes: ['isolation', 'clearing']
+                },
+
+                // Laser Geometry Stage — Spacing Method (controls which density input is shown)
+                laserSpacingMode: {
+                    type: 'select',
+                    label: 'Spacing Method',
+                    options: [
+                        { value: 'stepover', label: 'Step Over %' },
+                        { value: 'lpcm',     label: 'Lines per cm' },
+                        { value: 'lpi',      label: 'Lines per inch' }
+                    ],
+                    default: 'stepover',
+                    stage: 'geometry',
+                    category: 'laser_strategy',
+                    pipelineType: 'laser',
+                    operationTypes: ['isolation', 'clearing'],
+                    conditional: 'laserClearStrategy:offset,hatch'
+                },
+
+                // Laser Geometry Stage — Step Over (visible when spacingMode is stepover)
+                laserStepOver: {
+                    type: 'number',
+                    label: 'Step Over',
+                    unit: '%',
+                    step: 1,
+                    min: 1,
+                    max: 95,
+                    default: 50,
+                    stage: 'geometry',
+                    category: 'laser_strategy',
+                    pipelineType: 'laser',
+                    operationTypes: ['isolation', 'clearing'],
+                    conditional: 'laserClearStrategy:offset,hatch&&laserSpacingMode:stepover'
+                },
+
+                // Laser Geometry Stage — Lines per cm (visible when spacingMode is lpcm)
+                laserLinesPerCm: {
+                    type: 'number',
+                    label: 'Lines per cm',
+                    unit: 'lines/cm',
+                    step: 1,
+                    min: 1,
+                    max: 1000,
+                    default: 200,
+                    stage: 'geometry',
+                    category: 'laser_strategy',
+                    pipelineType: 'laser',
+                    operationTypes: ['isolation', 'clearing'],
+                    conditional: 'laserClearStrategy:offset,hatch&&laserSpacingMode:lpcm'
+                },
+
+                // Laser Geometry Stage — Lines per inch (visible when spacingMode is lpi)
+                laserLinesPerInch: {
+                    type: 'number',
+                    label: 'Lines per inch',
+                    unit: 'lines/inch',
+                    step: 5,
+                    min: 5,
+                    max: 2540,
+                    default: 508,
+                    stage: 'geometry',
+                    category: 'laser_strategy',
+                    pipelineType: 'laser',
+                    operationTypes: ['isolation', 'clearing'],
+                    conditional: 'laserClearStrategy:offset,hatch&&laserSpacingMode:lpi'
                 },
 
                 // Laser Geometry Stage — Hatch Passes (number of angular passes)
@@ -726,9 +777,9 @@
             }
 
             // Sync laser spot size from machine settings
-            const controller = window.pcbcam;
-            if (controller?.isLaserPipeline?.()) {
-                const machineSpotSize = controller.core?.settings?.laser?.spotSize;
+            const isLaser = this.core?.settings?.laser && (window.pcbcam?.pipelineState?.type === 'laser' || window.pcbcam?.pipelineState?.type === 'hybrid');
+            if (isLaser) {
+                const machineSpotSize = this.core.settings.laser.spotSize;
                 if (machineSpotSize !== undefined && state.geometry) {
                     state.geometry.laserSpotSize = machineSpotSize;
                 }
@@ -748,7 +799,7 @@
             const params = [];
             const isLaser = pipelineType === 'laser' || pipelineType === 'hybrid';
 
-            const exportFormat = window.pcbcam.core.settings.laser.exportFormat;
+            const exportFormat = this.core?.settings?.laser?.exportFormat;
 
             for (const [name, def] of Object.entries(this.parameterDefinitions)) {
                 // Stage matching: 'export_summary' has no parameters — it's a display-only stage
@@ -771,7 +822,9 @@
 
                 // Hide clearing-related params if exporting to PNG
                 if (isLaser && exportFormat === 'png') {
-                    if (name === 'laserClearStrategy' || name === 'laserStepOver' || name === 'laserHatchAngle') {
+                    if (name === 'laserClearStrategy' || name === 'laserSpacingMode' ||
+                        name === 'laserStepOver' || name === 'laserLinesPerCm' ||
+                        name === 'laserLinesPerInch' || name === 'laserHatchAngle') {
                         continue; 
                     }
                 }
@@ -869,9 +922,9 @@
                 defaults.laserSpotSize = laserMachine.spotSize;
                 defaults.laserExportFormat = laserMachine.exportFormat;
                 defaults.laserExportDPI = laserMachine.exportDPI;
-                
+
                 // Spread operation-specific laser overrides directly
-                Object.assign(defaults, opLaserDefaults);
+                Object.assign(defaults, opLaserDefaults)
             }
 
             if (operationType === 'stencil') {

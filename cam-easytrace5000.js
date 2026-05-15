@@ -152,75 +152,6 @@
         }
 
         /**
-         * Auto-upgrades laser → hybrid when a CNC operation type is added.
-         * Called from processFile() after operation is created.
-         */
-        checkHybridUpgrade(operationType) {
-            // HYBRID LOCK: Disabled until laser operations are fully verified.
-            if (this.pipelineState.type === 'laser') {
-                this.debug(`Hybrid upgrade blocked for ${operationType} — feature locked.`);
-                return false;
-            }
-
-            if (this.pipelineState.type !== 'laser') return false;
-
-            const cncTypes = ['drill', 'cutout', 'clearing'];
-            if (cncTypes.includes(operationType)) {
-                this.pipelineState.type = 'hybrid';
-                try {
-                    localStorage.setItem('pcbcam-pipeline', JSON.stringify(this.pipelineState));
-                } catch (e) { /* ignore */ }
-
-                this.debug('Auto-upgraded to hybrid pipeline');
-
-                // Trigger UI updates for the new hybrid state
-                if (this.ui?.controls) {
-                    this.ui.controls.updatePipelineFieldVisibility();
-                }
-                return true;
-            }
-            return false;
-        }
-
-        /**
-         * Returns operation types available for the current pipeline.
-         */
-        getActiveOperationTypes() {
-            const state = this.pipelineState;
-
-            if (state.type === 'cnc') {
-                return ['isolation', 'drill', 'clearing', 'cutout', 'stencil'];
-            }
-
-            // Laser ops — always available
-            const ops = ['laser_isolation', 'laser_mask', 'laser_stencil', 'laser_silkscreen', 'laser_marking'];
-
-            // Capability-gated laser ops
-            if (state.laser?.capabilities?.canReflow) {
-                ops.push('laser_reflow');
-            }
-
-            // CNC ops available in laser mode (for hybrid potential)
-            if (state.laser?.capabilities?.canDrill) {
-                ops.push('drill');
-            }
-            if (state.laser?.capabilities?.canCut) {
-                ops.push('cutout');
-            }
-
-            // If already hybrid, ensure CNC ops are included
-            if (state.type === 'hybrid') {
-                if (!ops.includes('drill')) ops.push('drill');
-                if (!ops.includes('cutout')) ops.push('cutout');
-            }
-
-            // Stencil is always available regardless of pipeline
-            ops.push('stencil');
-
-            return ops;
-        }
-
-        /**
          * Quick check used across UI modules.
          */
         isLaserPipeline() {
@@ -241,6 +172,42 @@
         }
 
         /**
+         * Thin pass-through for modal preview ("Calculate Toolpaths" button).
+         */
+        async calculateToolpaths(intent) {
+            return this.core.generateCNCResults(intent, this.parameterManager);
+        }
+
+        /**
+         * Thin pass-through for unified export. Pre-sorts operations by pipeline type, then delegates everything to core.
+         * REVIEW - seems redundant?
+         */
+        async executeExports(intent) {
+            const cncOperationIds = [];
+            const laserOperationIds = [];
+            const stencilOperationIds = [];
+
+            for (const id of intent.operationIds) {
+                const op = this.core.operations.find(o => o.id === id);
+                if (!op) continue;
+                if (op.type === 'stencil') {
+                    stencilOperationIds.push(id);
+                } else if (this.isLaserExportForOperation(op.type)) {
+                    laserOperationIds.push(id);
+                } else {
+                    cncOperationIds.push(id);
+                }
+            }
+
+            return this.core.executeExport({
+                ...intent,
+                cncOperationIds,
+                laserOperationIds,
+                stencilOperationIds
+            }, this.parameterManager);
+        }
+
+        /**
          * Initialization
          */
 
@@ -252,7 +219,7 @@
                 this.core = new PCBCamCore({ skipInit: true });
 
                 // Initialize managers before UI
-                this.parameterManager = new ParameterManager();
+                this.parameterManager = new ParameterManager(this.core);
                 this.languageManager = new LanguageManager();
 
                 // Load the language file before the UI
@@ -265,6 +232,7 @@
                 this.gcodeGenerator = new GCodeGenerator(D.gcode);
                 this.gcodeGenerator.setCore(this.core);
                 this.gcodeGenerator.setLanguageManager(this.languageManager);
+                this.core.setGCodeGenerator(this.gcodeGenerator);
 
                 // Initialize engine-owned pipeline components
                 this.core.initializePipeline();
@@ -760,10 +728,14 @@
                     return;
                 }
 
-                // ═══════════════════════════════════════════════════════════════
-                // Add a function to 1-0 numeric characters?
-                // Select source files? Select operation and cycle source files?
-                // ═══════════════════════════════════════════════════════════════
+                /* Operation Category Cycling (1–5) */
+                const opTypeByKey = { '1': 'isolation', '2': 'drill', '3': 'clearing', '4': 'cutout', '5': 'stencil' };
+                const mappedOpType = opTypeByKey[key];
+                if (mappedOpType) {
+                    e.preventDefault();
+                    this.ui?.navTreePanel?.cycleOperationCategory(mappedOpType);
+                    return;
+                }
 
                 /* Origin Controls */
                 // B: Bottom-left origin
@@ -895,11 +867,6 @@
             // Ensure coordinate system is initialized after file upload
             this.ensureCoordinateSystem();
 
-            // Update UI
-            if (this.ui?.navTreePanel) {
-                this.ui.navTreePanel.expandAll();
-            }
-
             // Auto-fit to show all loaded geometry
             if (this.ui?.renderer) {
                 setTimeout(() => {
@@ -920,8 +887,10 @@
         }
 
         async loadExample(exampleId) {
-            const select = document.getElementById('pcb-example-select');
-            exampleId = select ? select.value : 'exampleSMD1';
+            if (!exampleId) {
+                const select = document.getElementById('pcb-example-select');
+                exampleId = select ? select.value : 'exampleSMD1';
+            }
 
             const example = PCB_EXAMPLES[exampleId];
             if (!example) {
@@ -936,7 +905,6 @@
             if (this.core) {
                 this.core.operations = [];
                 this.core.toolpaths.clear();
-                this.core.isToolpathCacheValid = false;
             }
 
             // Clear UI
@@ -986,7 +954,6 @@
             // Validate file type
             const validation = this.core?.validateFileType(file.name, type);
             if (validation && !validation.valid) {
-                this.ui?.showOperationMessage?.(type, validation.message, 'error');
                 this.ui?.updateStatus(validation.message, 'error');
                 return;
             }
@@ -1001,11 +968,6 @@
             // Add to UI tree if using advanced UI
             if (this.ui?.navTreePanel) {
                 this.ui.navTreePanel.addFileNode(operation);
-            }
-
-            // Render in operations manager if using basic UI
-            if (this.ui?.renderOperations) {
-                this.ui.renderOperations(type);
             }
 
             // Show loading status
@@ -1023,13 +985,19 @@
                     if (success) {
                         const count = operation.primitives.length;
 
-                        if (operation.parsed?.hasArcs && debugState.enabled) {
-                            console.log(`Preserved ${operation.originalArcs?.length || 0} arcs for potential reconstruction`);
+                        if (operation.geometricContext?.hasArcs && debugState.enabled) {
+                            let arcCount = 0;
+                            operation.primitives.forEach(p => {
+                                if (p.type === 'arc') arcCount++;
+                                if (p.contours) p.contours.forEach(c => {
+                                    if (c.arcSegments) arcCount += c.arcSegments.length;
+                                });
+                            });
+                            console.log(`Preserved ${arcCount} arcs for potential reconstruction`);
                         }
 
                         // Open Cutout Path Handling
                         if (operation.needsClosurePrompt && operation._closureInfo) {
-                            const info = operation._closureInfo;
 
                             setTimeout(() => {
                                 if (!this.modalManager) return;
@@ -1325,18 +1293,11 @@
                         }
 
                         // Display the final summary toast
-                        this.ui?.showOperationMessage?.(type, finalStatusMsg, finalStatusType);
                         this.ui?.updateStatus(finalStatusMsg, finalStatusType);
 
                         this.core.coordinateSystem.analyzeCoordinateSystem(this.core.operations);
                     } else {
-                        this.ui?.showOperationMessage?.(type, `Error: ${operation.error}`, 'error');
                         this.ui?.updateStatus(`Error processing ${operation.file.name}: ${operation.error}`, 'error');
-                    }
-
-                    // Update UI
-                    if (this.ui?.renderOperations) {
-                        this.ui.renderOperations(type);
                     }
 
                     // Update tree with geometry info if using advanced UI
@@ -1368,7 +1329,6 @@
 
                 reader.onerror = () => {
                     operation.error = 'Failed to read file';
-                    this.ui?.showOperationMessage?.(type, 'Failed to read file', 'error');
                     this.ui?.updateStatus(`Failed to read ${file.name}`, 'error');
                     resolve();
                 };
@@ -1457,374 +1417,10 @@
         }
 
         removeSelectedOperation() {
-            // Try advanced UI first
-            const selectedNode = this.ui?.navTreePanel.selectedNode;
+            const selectedNode = this.ui?.navTreePanel?.selectedNode;
             if (selectedNode?.type === 'file' && selectedNode.operation) {
                 this.ui.removeOperation(selectedNode.operation.id);
-                return;
             }
-
-            // Fall back to basic UI selection method if needed
-            const selectedOp = this.ui?.getSelectedOperation?.();
-            if (selectedOp) {
-                this.ui.removeOperation(selectedOp.id);
-            }
-        }
-
-        /**
-         * Toolpath Orchestration
-         *
-         * Application-specific: gathers UI state, applies processor
-         * quirks, then delegates to the core engine pipeline.
-         */
-
-        async orchestrateToolpaths(options) {
-            if (!options?.operationIds || !this.core || !this.gcodeGenerator) {
-                console.error("[Controller] Orchestration failed");
-                return { gcode: "; Generation Failed", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
-            }
-
-            // Build Contexts and Attach to Operations
-
-            this.debug(`Building contexts for ${options.operationIds.length} operations...`);
-
-            // Gather UI state and build contexts (application-specific)
-            const operationContextPairs = [];
-            for (const opId of options.operationIds) {
-                try {
-                    const operation = this.core.operations.find(o => o.id === opId);
-                    if (!operation) throw new Error(`Operation ${opId} not found.`);
-
-                    // Commit any live UI changes to the operation object before building the context from it.
-                    if (this.parameterManager.hasUnsavedChanges(opId)) {
-                        this.parameterManager.commitToOperation(operation);
-                        this.debug(`Committed unsaved parameters for ${opId}`);
-                    }
-
-                    const ctx = this.core.buildToolpathContext(opId, this.parameterManager);
-
-                    // Apply application-specific processor changes
-                    if (options.postProcessor === 'roland') {
-                        this._preprocessRolandContext(ctx, operation);
-                    }
-
-                    operationContextPairs.push({ operation, context: ctx });
-
-                } catch (error) {
-                    console.warn(`Skipping operation ${opId}: ${error.message}`);
-                }
-            }
-
-            if (operationContextPairs.length === 0) {
-                return { gcode: "; No valid operations to process", lineCount: 1, planCount: 0, estimatedTime: 0, totalDistance: 0 };
-            }
-
-            // Execute the engine pipeline
-            this.debug('Executing pipeline...');
-            const { plans: allMachineReadyPlans } = await this.core.executePipeline(
-                operationContextPairs,
-                { optimize: options.optimize === true }
-            );
-
-            // Generate G-code (application-specific export format)
-            this.debug('Generating G-code...');
-            const firstContext = operationContextPairs[0].context;
-            const gcodeConfig = firstContext.gcode;
-            const machineConfig = firstContext.machine;
-            const processorSettings = firstContext.processorSettings || {};
-            const rolandSettings = processorSettings.roland || {};
-
-            const genOptions = {
-                postProcessor: options.postProcessor,
-                includeComments: options.includeComments,
-                singleFile: options.singleFile,
-                toolChanges: options.toolChanges,
-                userStartCode: gcodeConfig.userStartCode,
-                userEndCode: gcodeConfig.userEndCode,
-                units: gcodeConfig.units,
-                safeZ: machineConfig.safeZ,
-                travelZ: machineConfig.travelZ,
-                coolant: machineConfig.coolant,
-                vacuum: machineConfig.vacuum,
-                rolandModel: rolandSettings.rolandModel,
-                rolandStepsPerMM: rolandSettings.rolandStepsPerMM,
-                rolandMaxFeed: rolandSettings.rolandMaxFeed,
-                rolandZMode: rolandSettings.rolandZMode,
-                rolandSpindleMode: rolandSettings.rolandSpindleMode,
-            };
-
-            // Generate G-code from the final, complete list of plans
-            const gcode = this.gcodeGenerator.generate(allMachineReadyPlans, genOptions);
-
-            // Calculate metrics
-            this.debug('Calculating metrics...');
-            // Pass context to metrics to get machine settings
-            const { estimatedTime, totalDistance } = this.core.machineProcessor.calculatePathMetrics(allMachineReadyPlans, firstContext);
-
-            return {
-                gcode: gcode,
-                lineCount: gcode.split('\n').length,
-                planCount: allMachineReadyPlans.length,
-                estimatedTime: estimatedTime,
-                totalDistance: totalDistance
-            };
-        }
-
-        /**
-         * Separates a drill operation's preview into milled paths and peck groups by diameter.
-         * Works regardless of millHoles setting — a milled operation still generates pecks for holes too small to mill.
-         */
-        _groupDrillPrimitives(operation) {
-            if (!operation.preview?.primitives) return { milledPrimitives: [], peckGroups: [] };
-
-            const milledPrimitives = [];
-            const pecksByDiameter = new Map();
-
-            for (const prim of operation.preview.primitives) {
-                if (prim.properties?.role === 'peck_mark') {
-                    const dia = parseFloat(
-                        (prim.properties?.originalDiameter || prim.properties?.diameter || 0).toFixed(3)
-                    );
-                    if (!pecksByDiameter.has(dia)) pecksByDiameter.set(dia, []);
-                    pecksByDiameter.get(dia).push(prim);
-                } else {
-                    milledPrimitives.push(prim);
-                }
-            }
-
-            const peckGroups = Array.from(pecksByDiameter.entries())
-                .sort((a, b) => a[0] - b[0])
-                .map(([diameter, primitives]) => ({ diameter, primitives }));
-
-            return { milledPrimitives, peckGroups };
-        }
-
-        /**
-         * Roland-specific context preprocessing.
-         * Enforces machine-safe settings based on the selected Roland profile.
-         * Extracted from orchestrateToolpaths to keep the main loop processor-agnostic.
-         */
-        _preprocessRolandContext(ctx, operation) {
-            const rolandSettings = ctx.processorSettings?.roland || {};
-            const rolandModel = rolandSettings.rolandModel;
-
-            // Get profile from the Roland processor itself (single source of truth)
-            const rolandProcessor = this.gcodeGenerator.getProcessor('roland');
-            const rolandProfile = rolandProcessor?.getProfile
-                ? rolandProcessor.getProfile(rolandModel)
-                : null;
-
-            const rolandZMode = rolandSettings.rolandZMode || rolandProfile?.zMode || '3d';
-
-            // 2.5D (PU/PD) mode: Z is always binary — no simultaneous XYZ motion.
-            // Helix entry, ramp entry and mid-path tab lifts are all physically impossible.
-            // 3D (Z x,y,z;) mode: full simultaneous XYZ. Arcs are linearized by the generator (supportsArcCommands: false), producing short LINEAR segments with interpolated Z — helix, ramp and tabs all work through linearization.
-            if (rolandZMode === '2.5d') {
-                ctx.strategy.entryType = 'plunge';
-
-                if (operation.type === 'cutout') {
-                    ctx.strategy.cutout.tabs = 0;
-                }
-
-                if (operation.type === 'drill' && ctx.strategy.drill.millHoles) {
-                    if (!ctx.strategy.multiDepth) {
-                        ctx.strategy.multiDepth = true;
-                    }
-                    const maxSafeStep = ctx.tool.diameter * 0.5;
-                    if (Math.abs(ctx.strategy.depthPerPass) > maxSafeStep) {
-                        ctx.strategy.depthPerPass = maxSafeStep;
-                    }
-                }
-            }
-
-            // Profile-based feed rate guardrails (all Z modes)
-            if (rolandProfile) {
-                const maxCutFeedMmMin = rolandProfile.maxFeedXY * 60;
-                const maxPlungeFeedMmMin = rolandProfile.maxFeedZ * 60;
-
-                if (ctx.cutting.feedRate > maxCutFeedMmMin) {
-                    this.debug(`Clamping feed rate ${ctx.cutting.feedRate} -> ${maxCutFeedMmMin} (${rolandProfile.label} limit)`);
-                    ctx.cutting.feedRate = maxCutFeedMmMin;
-                }
-                if (ctx.cutting.plungeRate > maxPlungeFeedMmMin) {
-                    this.debug(`Clamping plunge rate ${ctx.cutting.plungeRate} -> ${maxPlungeFeedMmMin} (${rolandProfile.label} limit)`);
-                    ctx.cutting.plungeRate = maxPlungeFeedMmMin;
-                }
-            }
-        }
-
-        /**
-         * Laser Export Orchestration
-         */
-
-        async orchestrateLaserExport(operations, exportOptions = {}) {
-            this.debug(`Orchestrating laser export for ${operations.length} operation(s)`);
-
-            if (!operations || operations.length === 0) {
-                this.ui?.updateStatus('No operations to export', 'warning');
-                return { success: false };
-            }
-
-            // REVIEW - These laser default fallbacks need more consistency.
-            const spotSize = this.core.settings.laser.spotSize;
-            const format = exportOptions.format || this.core.settings.laser.exportFormat;
-            const dpi = exportOptions.dpi || this.core.settings.laser.exportDPI;
-            const padding = exportOptions.padding ?? D.laser.exportPadding;
-            const singleFile = exportOptions.singleFile !== false; // default true
-            const baseName = exportOptions.baseName;
-
-            // Build coordinate transforms
-            const transforms = {
-                origin: this.core.coordinateSystem?.getOriginPosition() || { x: 0, y: 0 },
-                rotation: this.core.coordinateSystem?.currentRotation || 0,
-                rotationCenter: this.core.coordinateSystem?.rotationCenter || null,
-                mirrorX: this.core.coordinateSystem?.mirrorX || false,
-                mirrorY: this.core.coordinateSystem?.mirrorY || false,
-                mirrorCenter: this.core.coordinateSystem?.boardBounds ? {
-                    x: this.core.coordinateSystem.boardBounds.centerX,
-                    y: this.core.coordinateSystem.boardBounds.centerY
-                } : { x: 0, y: 0 }
-            };
-
-            const commonOptions = {
-                dpi, padding, transforms,
-                bounds: this.core.coordinateSystem?.boardBounds,
-                heatManagement: exportOptions.heatManagement || 'off',
-                reverseCutOrder: exportOptions.reverseCutOrder || false,
-                svgGrouping: exportOptions.svgGrouping || 'layer',
-                colorPerPass: exportOptions.colorPerPass || false,
-                palette: exportOptions.palette || null,
-                paletteLumping: exportOptions.paletteLumping || false
-            };
-
-            // Build layer objects from operations
-            const buildLayer = (op) => {
-                if (!op.offsets || op.offsets.length === 0) return null;
-
-                const color = exportOptions.layerColors?.[op.type] || '#000000';
-                const passes = op.offsets.map((offset, idx) => ({
-                    passIndex: idx + 1,
-                    type: offset.type || 'offset',
-                    primitives: offset.primitives || [],
-                    metadata: {
-                        ...(offset.metadata || {}),
-                        offsetType: offset.offsetType || 'external',
-                        thermalGroup: offset.metadata?.thermalGroup || offset.thermalGroup || 'shell',
-                        pass: offset.pass || idx + 1,
-                        distance: offset.distance
-                    }
-                }));
-
-                // Build a descriptive layer name for the SVG output.
-                // Stencils include the source filename so that top-paste and bottom-paste stencils get distinct Inkscape layer labels (e.g. "Stencil_paste_top" vs "Stencil_paste_bottom").
-                const isStencil = op.type === 'stencil';
-                let layerName = op.type;
-                if (isStencil) {
-                    const cleanName = op.file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-                    layerName = `Stencil_${cleanName}`;
-                }
-
-                return {
-                    operationId: op.id,
-                    operationType: op.type,
-                    fileName: op.file.name,
-                    baseColor: color,
-                    layerName: layerName,
-                    strokeWidth: spotSize,
-                    passes
-                };
-            };
-
-            // PNG split: rasterizable ops vs vector-only ops
-            const isPNGFormat = format === 'png';
-            const rasterTypes = ['isolation', 'clearing'];
-
-            let layerGroups; // Array of { layers, format, filenameSuffix }
-
-            if (isPNGFormat) {
-                const rasterLayers = [];
-                const vectorLayers = [];
-
-                for (const op of operations) {
-                    const layer = buildLayer(op);
-                    if (!layer) continue;
-                    if (rasterTypes.includes(op.type)) {
-                        rasterLayers.push(layer);
-                    } else {
-                        vectorLayers.push(layer);
-                    }
-                }
-
-                layerGroups = [];
-                if (rasterLayers.length > 0) {
-                    layerGroups.push({ layers: rasterLayers, format: 'png', suffix: '' });
-                }
-                if (vectorLayers.length > 0) {
-                    layerGroups.push({ layers: vectorLayers, format: 'svg', suffix: '-vectors' });
-                }
-            } else if (singleFile) {
-                // All operations in one SVG
-                const allLayers = operations.map(buildLayer).filter(Boolean);
-                if (allLayers.length > 0) {
-                    layerGroups = [{ layers: allLayers, format: 'svg', suffix: '' }];
-                } else {
-                    layerGroups = [];
-                }
-            } else {
-                // Multi-file: one file per operation
-                layerGroups = [];
-                for (const op of operations) {
-                    const layer = buildLayer(op);
-                    if (!layer) continue;
-
-                    // Respect PNG format for rasterizable operations
-                    const isRasterOp = isPNGFormat && rasterTypes.includes(op.type);
-
-                    layerGroups.push({
-                        layers: [layer],
-                        format: isRasterOp ? 'png' : 'svg',
-                        suffix: `-${op.type}`
-                    });
-                }
-            }
-
-            if (layerGroups.length === 0) {
-                this.ui?.updateStatus('No geometry to export', 'warning');
-                return { success: false };
-            }
-
-            if (typeof GraphicsExporter === 'undefined') {
-                this.ui?.updateStatus('Laser image exporter module not loaded', 'error');
-                return { success: false };
-            }
-
-            const exporter = new GraphicsExporter();
-            const files = [];
-
-            try {
-                for (const group of layerGroups) {
-                    const ext = group.format === 'png' ? '.png' : '.svg';
-                    const filename = `${baseName}${group.suffix}${ext}`;
-
-                    const result = await exporter.generate(group.layers, {
-                        ...commonOptions,
-                        format: group.format
-                    });
-
-                    if (result && result.blob) {
-                        files.push({ blob: result.blob, filename });
-                    }
-                }
-
-                if (files.length > 0) {
-                    return { success: true, files };
-                }
-            } catch (error) {
-                console.error('[Controller] Laser export failed:', error);
-                this.ui?.updateStatus('Laser export failed: ' + error.message, 'error');
-            }
-
-            return { success: false, files: [] };
         }
 
         /**
@@ -1979,7 +1575,7 @@
         }
         const registry = controller.core.geometryProcessor.arcReconstructor?.exportRegistry?.();
         if (registry) {
-            this.debug(`Arc Reconstructor Registry (${registry.length} curves):`);
+            controller.debug(`Arc Reconstructor Registry (${registry.length} curves):`);
             console.table(registry);
         }
         return registry;
