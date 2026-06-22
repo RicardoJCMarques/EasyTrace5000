@@ -4,39 +4,44 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const PRECISION = C.precision.coordinate;
     const debugState = D.debug;
 
     /**
      * Primitive-driven translation router.
-     * No operation-type branching — all dispatch is based on primitive properties (role, tabConfig, type).  Drill macro grouping runs as a pre-scan so the MachineProcessor receives one approach/retract cycle per hole regardless of how many concentric passes it contains.
-     * Shared utilities (translatePath, translateCircle, applyTransforms, reversePlan, _enforceClimbMilling) remain here as the single implementation consumed by every operation type.
+     * No operation-type branching - all dispatch is based on primitive properties (role, tabConfig, type).  Drill macro grouping runs as a pre-scan so the MachineProcessor receives one approach/retract cycle per hole regardless of how many concentric passes it contains.
+     *
+     * ── COORDINATE CONTRACT (shared by EasyTrace5000 & EasyShape5000) ──
+     * Input geometry (operation.offsets[].primitives) is ALWAYS in PIPELINE
+     * SPACE: file/workspace coordinates, pre-global-transform, pre-origin.
+     * Per-node scene-graph transforms have already been baked upstream
+     * (EasyShape: OperationBucket.syncPrimitives; EasyTrace: identity until
+     * per-object transforms land - same future code path).
+     *
+     * This translator is the ONE AND ONLY place geometry crosses into
+     * MACHINE SPACE. It applies a single combined matrix:
+     *
+     *     machineMatrix = T(−origin) ⊗ workspaceMatrix
+     *
+     * provided by cam-core's buildToolpathContext as ctx.transforms.
+     * Everything downstream (ToolpathOptimizer, MachineProcessor,
+     * GCodeGenerator) operates in machine coordinates and performs NO
+     * further coordinate math. GCodeGenerator's old per-command origin
+     * subtraction (transformCommand/originOffset) is deleted.
+     *
+     * transforms.machineIsIdentity short-circuits applyTransforms so
+     * untransformed jobs (typical EasyShape session with origin at 0,0)
+     * pay zero matrix cost and zero point allocations.
      */
     class GeometryTranslator {
         constructor(core) {
@@ -74,40 +79,48 @@
         }
 
         // ────────────────────────────────────────────────────────────
-        // Main Router — Primitive-Driven
+        // Main Router - Primitive-Driven
         // ────────────────────────────────────────────────────────────
 
         /**
          * Translates a single operation's offset geometry into ToolpathPlans.
-         * Phase 1 — Pre-scan:  Groups concentric circle/obround drill milling paths by holeIndex and emits one macro plan per hole.  All other primitives pass through.
-         * Phase 2 — Per-primitive dispatch based on properties.role and properties.tabConfig.  No operation-type checks.
+         * Phase 1 - Pre-scan:  Groups concentric circle/obround drill milling paths by holeIndex and emits one macro plan per hole.  All other primitives pass through.
+         * Phase 2 - Per-primitive dispatch based on properties.role and properties.tabConfig.  No operation-type checks.
+         * REVIEW - Should 3D toolpaths be spun-off entirely?
          */
         async translateOperation(operation, ctx) {
             const plans = [];
             const depthLevels = ctx.computed.depthLevels;
 
-            // Phase 1 — Extract grouped drill milling macros
+            // Phase 1 - Extract grouped drill milling macros
             const { macroPlans, remainingPrimitives } =
-                this._extractDrillMacros(operation, ctx, depthLevels);
+                this.extractDrillMacros(operation, ctx, depthLevels);
             plans.push(...macroPlans);
 
-            // Phase 2 — Role-based dispatch for everything else
+            // Phase 2 - Role-based dispatch for everything else
             for (const primitive of remainingPrimitives) {
                 const props = primitive.properties || {};
                 const role = props.role;
 
+                // 3D contours (V-Carve) - points carry their own Z.
+                // Bypasses depthLevels entirely (vcarve has no cutDepth).
+                if (props.is3DContour) {
+                    plans.push(...this.translate3DContour(primitive, ctx));
+                    continue;
+                }
+
                 // Point-based macros (peck marks)
                 if (role === 'peck_mark') {
-                    plans.push(this._translatePeckMark(primitive, ctx, depthLevels));
+                    plans.push(this.translatePeckMark(primitive, ctx, depthLevels));
                     continue;
                 }
 
                 // Remaining drill milling paths (centerlines, ungrouped fallbacks)
                 if (role === 'drill_milling_path') {
                     if (props.isCenterlinePath) {
-                        plans.push(...this._translateCenterlinePath(primitive, ctx, depthLevels));
+                        plans.push(...this.translateCenterlinePath(primitive, ctx, depthLevels));
                     } else {
-                        plans.push(...this._translateDrillMill(primitive, ctx, depthLevels));
+                        plans.push(...this.translateDrillMill(primitive, ctx, depthLevels));
                     }
                     continue;
                 }
@@ -127,7 +140,7 @@
 
                 if (!processable.contours?.length) {
                     // Fallback for raw circles/rectangles that couldn't be converted
-                    plans.push(...this._processStandardPrimitive(processable, ctx, depthLevels));
+                    plans.push(...this.processStandardPrimitive(processable, ctx, depthLevels));
                     continue;
                 }
 
@@ -141,9 +154,9 @@
 
                     if (isTabbedCutout && this.tabPlanner) {
                         // Remove 'props' argument, pass 'ctx' directly
-                        plans.push(...this._processTabbedContour(contour, ctx, depthLevels, isHole));
+                        plans.push(...this.processTabbedContour(contour, ctx, depthLevels, isHole));
                     } else {
-                        plans.push(...this._processStandardContour(contour, processable, ctx, depthLevels, isHole));
+                        plans.push(...this.processStandardContour(contour, processable, ctx, depthLevels, isHole));
                     }
                 }
             }
@@ -159,7 +172,7 @@
          * Groups concentric circle and obround drill milling paths by holeIndex, then emits a single drillMillMacro plan per hole.
          * Returns the macro plans and the list of primitives that were NOT consumed (pecks, centerlines, non-drill geometry).
          */
-        _extractDrillMacros(operation, ctx, depthLevels) {
+        extractDrillMacros(operation, ctx, depthLevels) {
             const macroPlans = [];
             const remainingPrimitives = [];
             const { operationId, tool, cutting, strategy, transforms } = ctx;
@@ -174,14 +187,13 @@
                     const props = primitive.properties || {};
 
                     if (props.role === 'drill_milling_path' && !props.isCenterlinePath) {
-                        const holeIdx = props.holeIndex ?? -1;
                         if (primitive.type === 'circle') {
-                            if (!circleMillByHole.has(holeIdx)) circleMillByHole.set(holeIdx, []);
-                            circleMillByHole.get(holeIdx).push(primitive);
+                            if (!circleMillByHole.has(holeIdxOf(props))) circleMillByHole.set(holeIdxOf(props), []);
+                            circleMillByHole.get(holeIdxOf(props)).push(primitive);
                             continue;
                         } else if (primitive.type === 'obround') {
-                            if (!obroundMillByHole.has(holeIdx)) obroundMillByHole.set(holeIdx, []);
-                            obroundMillByHole.get(holeIdx).push(primitive);
+                            if (!obroundMillByHole.has(holeIdxOf(props))) obroundMillByHole.set(holeIdxOf(props), []);
+                            obroundMillByHole.get(holeIdxOf(props)).push(primitive);
                             continue;
                         }
                     }
@@ -191,11 +203,16 @@
 
             // Emit circle macro plans
             for (const [holeIdx, holePrimitives] of circleMillByHole) {
-                const rings = holePrimitives.map((prim, idx) => ({
-                    center: this.applyTransforms(prim.center, transforms),
-                    radius: prim.radius,
-                    pass: idx + 1
-                }));
+                const rings = holePrimitives.map((prim, idx) => {
+                    // Clone via transform (or explicit copy on identity) so ring
+                    // centers never alias live source-primitive objects.
+                    const tc = this.applyTransforms(prim.center, transforms);
+                    return {
+                        center: (tc === prim.center) ? { x: tc.x, y: tc.y } : tc,
+                        radius: prim.radius,
+                        pass: idx + 1
+                    };
+                });
 
                 const innerRing = rings[0];
                 const entryX = innerRing.center.x + innerRing.radius;
@@ -239,6 +256,8 @@
             for (const [holeIdx, holePrimitives] of obroundMillByHole) {
                 const rings = holePrimitives.map((prim, idx) => {
                     const oData = this.getObroundData(prim);
+                    // getObroundData returns fresh objects, so identity
+                    // passthrough from applyTransforms is alias-safe here.
                     oData.startCapCenter = this.applyTransforms(oData.startCapCenter, transforms);
                     oData.endCapCenter = this.applyTransforms(oData.endCapCenter, transforms);
                     oData.pA = this.applyTransforms(oData.pA, transforms);
@@ -246,11 +265,12 @@
                     oData.pC = this.applyTransforms(oData.pC, transforms);
                     oData.pD = this.applyTransforms(oData.pD, transforms);
 
-                    // Normalize the sequence so the macro can remain transform agnostic
-                    let isFlipped = false;
-                    if (transforms) {
-                        isFlipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                    }
+                    // Normalize the sequence so the macro can remain transform agnostic.
+                    // windingFlipped is det-based (matches the matrix), replacing the
+                    // old mirrorX XOR mirrorY param check - identical result for
+                    // workspace params, but stays correct if the matrix ever carries
+                    // a reflection the params don't describe. // REVIEW - remove fallback? Fix consequences?
+                    const isFlipped = !!(transforms && transforms.windingFlipped);
                     if (isFlipped) {
                         const tempB = oData.pB; oData.pB = oData.pC; oData.pC = tempB;
                         const tempA = oData.pA; oData.pA = oData.pD; oData.pD = tempA;
@@ -302,7 +322,7 @@
          * Specific Translation Macros
          */
 
-        _translatePeckMark(primitive, ctx, depthLevels) {
+        translatePeckMark(primitive, ctx, depthLevels) {
             const { operationId, tool, cutting, strategy, transforms } = ctx;
             const finalDepth = depthLevels[depthLevels.length - 1];
 
@@ -317,8 +337,8 @@
             plan.metadata.isPeckMark = true;
 
             const transformedCenter = this.applyTransforms(primitive.center, transforms);
-            plan.metadata.entryPoint = { ...transformedCenter, z: finalDepth };
-            plan.metadata.exitPoint = { ...transformedCenter, z: finalDepth };
+            plan.metadata.entryPoint = { x: transformedCenter.x, y: transformedCenter.y, z: finalDepth };
+            plan.metadata.exitPoint = { x: transformedCenter.x, y: transformedCenter.y, z: finalDepth };
             plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:drill_TYPE:peck`;
 
             // Pack cycle parameters for the Machine Processor
@@ -330,7 +350,9 @@
             };
 
             plan.metadata.peckData = {
-                position: transformedCenter,
+                position: (transformedCenter === primitive.center)
+                    ? { x: transformedCenter.x, y: transformedCenter.y }
+                    : transformedCenter,
                 ...primitive.properties
             };
 
@@ -346,13 +368,13 @@
         /**
          * Fallback for drill milling paths that weren't captured by the macro grouping pre-scan (e.g. path-type geometry).
          */
-        _translateDrillMill(primitive, ctx, depthLevels) {
+        translateDrillMill(primitive, ctx, depthLevels) {
             const plans = [];
             const isClosed = primitive.type === 'circle' || primitive.type === 'obround' ||
                              (primitive.contours?.[0]?.points?.length >= 3);
             const finalDepth = depthLevels[depthLevels.length - 1];
 
-            const drillMillCtx = { ...ctx, _isDrillMilling: true };
+            const drillMillCtx = { ...ctx, isDrillMilling: true };
             const geometryEntity = (primitive.type === 'path' && primitive.contours?.length > 0)
                 ? primitive.contours[0]
                 : primitive;
@@ -361,7 +383,7 @@
                 const plan = this.createPurePlan(geometryEntity, drillMillCtx, finalDepth, isClosed, false, false);
                 if (plan) {
                     plan.metadata.isDrillMilling = true;
-                    if (isClosed) this._enforceClimbMilling(plan, false);
+                    if (isClosed) this.enforceClimbMilling(plan, false);
                     plans.push(plan);
                 }
             } else {
@@ -369,8 +391,8 @@
                     const plan = this.createPurePlan(geometryEntity, drillMillCtx, depth, isClosed, false, true);
                     if (plan) {
                         plan.metadata.isDrillMilling = true;
-                        this.calculatePlanBounds(plan);
-                        if (isClosed) this._enforceClimbMilling(plan, false);
+                        plan.computeBounds();
+                        if (isClosed) this.enforceClimbMilling(plan, false);
                         plans.push(plan);
                     }
                 }
@@ -382,7 +404,7 @@
          * Specialized translator for Centerline Slot Paths.
          * Generates a single "Macro" plan that the MachineProcessor expands into a Zig-Zag pattern.
          */
-        _translateCenterlinePath(primitive, ctx, depthLevels) {
+        translateCenterlinePath(primitive, ctx, depthLevels) {
             const plans = [];
 
             // Centerline slots are wrapped in a PathPrimitive, so the points are in the first contour.
@@ -426,7 +448,7 @@
                     { feed: ctx.cutting.feedRate }
                 ));
 
-                this.calculatePlanBounds(plan);
+                plan.computeBounds();
                 plans.push(plan);
             }
 
@@ -434,18 +456,89 @@
         }
 
         /**
+         * Translates a 3D contour primitive (V-Carve skeleton chain) into
+         * one open-path plan per contour. Every point carries its own Z;
+         * downstream stages must preserve it (metadata.is3DContour gates
+         * the MachineProcessor Z-overwrite and the optimizer's staydown
+         * links and 2D collinear simplifier).
+         */
+        // Not Wired
+        translate3DContour(primitive, ctx) {
+            const { operationId, tool, cutting } = ctx;
+            const transforms = ctx.transforms;
+            const plans = [];
+
+            for (const contour of (primitive.contours || [])) {
+                const pts = contour.points;
+                if (!pts || pts.length < 2) continue;
+
+                const plan = new ToolpathPlan(operationId);
+                plan.metadata.context = ctx;
+                plan.metadata.operationId = operationId;
+                plan.metadata.operationType = ctx.operationType;
+                plan.metadata.is3DContour = true;
+                plan.metadata.isClosed = false;
+                plan.metadata.isClosedLoop = false;
+                plan.metadata.primitiveType = 'path3d';
+                plan.metadata.feedRate = cutting.feedRate;
+                plan.metadata.plungeRate = cutting.plungeRate;
+                plan.metadata.spindleSpeed = cutting.spindleSpeed;
+                plan.metadata.spindleDwell = cutting.spindleDwell;
+                plan.metadata.toolDiameter = tool.diameter;
+                plan.metadata.entryType = 'plunge';
+                plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:${operationId}_TYPE:${ctx.operationType}`;
+
+                let minZ = 0;
+                const firstXY = this.applyTransforms(pts[0], transforms);
+                const firstZ = pts[0].z ?? 0;
+                if (firstZ < minZ) minZ = firstZ;
+                plan.metadata.entryPoint = { x: firstXY.x, y: firstXY.y, z: firstZ };
+
+                for (let i = 1; i < pts.length; i++) {
+                    const p = this.applyTransforms(pts[i], transforms);
+                    const z = pts[i].z ?? 0;
+                    if (z < minZ) minZ = z;
+                    plan.addLinear(p.x, p.y, z, cutting.feedRate);
+                }
+
+                const lastIdx = pts.length - 1;
+                const lastXY = this.applyTransforms(pts[lastIdx], transforms);
+                plan.metadata.exitPoint = { x: lastXY.x, y: lastXY.y, z: pts[lastIdx].z ?? 0 };
+
+                // cutDepth = 0 keeps all V-Carve chains in ONE Z-level group
+                // (groupByZLevel keys on cutDepth) so nearest-neighbor path
+                // ordering works across chains. The true deepest point is
+                // kept in minZ - per-command Z is what the export-depth
+                // validator actually checks.
+                plan.metadata.cutDepth = 0;
+                plan.metadata.finalDepth = minZ;
+                plan.metadata.minZ = minZ;
+
+                plan.metadata.optimization = {
+                    linkType: 'rapid',
+                    optimizedEntryPoint: plan.metadata.entryPoint,
+                    entryCommandIndex: 0
+                };
+
+                plan.computeBounds();
+                plans.push(plan);
+            }
+            return plans;
+        }
+
+        /**
          * Standard Multi-Depth Routing & Tabbing
          */
 
-        _processStandardContour(contour, primitive, ctx, depthLevels, isHole) {
+        processStandardContour(contour, primitive, ctx, depthLevels, isHole) {
             const plans = [];
             for (const depth of depthLevels) {
                 const isClosed = primitive.closed ?? true;
                 const plan = this.createPurePlan(contour, ctx, depth, isClosed, isHole, true);
                 if (plan) {
-                    this.calculatePlanBounds(plan);
+                    plan.computeBounds();
                     if (isClosed) {
-                        this._enforceClimbMilling(plan, isHole);
+                        this.enforceClimbMilling(plan, isHole);
                     }
                     plans.push(plan);
                 }
@@ -453,7 +546,7 @@
             return plans;
         }
 
-        _processStandardPrimitive(primitive, ctx, depthLevels) {
+        processStandardPrimitive(primitive, ctx, depthLevels) {
             const plans = [];
             const isHole = primitive.properties?.isHole || primitive.properties?.polarity === 'clear';
             const isClosed = primitive.type === 'circle' ||
@@ -464,9 +557,9 @@
             for (const depth of depthLevels) {
                 const plan = this.createPurePlan(primitive, ctx, depth, isClosed, isHole, true);
                 if (plan) {
-                    this.calculatePlanBounds(plan);
+                    plan.computeBounds();
                     if (isClosed) {
-                        this._enforceClimbMilling(plan, isHole);
+                        this.enforceClimbMilling(plan, isHole);
                     }
                     plans.push(plan);
                 }
@@ -480,7 +573,7 @@
          *
          * The tab planner receives the full context (ctx) for backward compatibility. The tabConfig on the primitive acts as the signal and provides the height for Z-lift calculation.
          */
-        _processTabbedContour(contour, ctx, depthLevels, isHole) {
+        processTabbedContour(contour, ctx, depthLevels, isHole) {
             const plans = [];
             const tabConfig = ctx.strategy.cutout; // Direct context access
 
@@ -532,8 +625,8 @@
                     plan.metadata.isTabbedPass = false;
                 }
 
-                this.calculatePlanBounds(plan);
-                this._enforceClimbMilling(plan, isHole);
+                plan.computeBounds();
+                this.enforceClimbMilling(plan, isHole);
                 plans.push(plan);
             }
 
@@ -544,6 +637,12 @@
          * Core Translation Utilities
          */
 
+        // TODO [METADATA-BLOAT] - Every plan stores a reference to the full ctx object
+        // via plan.metadata.context. This prevents GC of context data until all plans are
+        // collected, and risks silent corruption if ctx is mutated post-creation.
+        // ctx is now frozen (see cam-core.js buildToolpathContext) as a safety measure.
+        // Long-term fix: copy only the fields each plan needs (transforms, cutting, tool)
+        // into metadata directly, and remove the ctx reference.
         createPurePlan(primitive, ctx, depth, isClosed, isHole, generateCommands = true) {
             // Get all settings from the context
             const { operationId, operationType, tool, cutting, strategy } = ctx;
@@ -565,7 +664,7 @@
             plan.metadata.toolDiameter = tool.diameter;
             plan.metadata.stepOver = strategy.stepOver;
 
-            const isDrillMilling = ctx._isDrillMilling || false;
+            const isDrillMilling = ctx.isDrillMilling || false;
             const typeKey = isDrillMilling ? 'drill_mill' : 'mill';
             plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:${ctx.operationId}_TYPE:${typeKey}`;
 
@@ -576,9 +675,12 @@
             // Analyze primitive sets entry/exit points and metadata
             this.analyzePrimitive(plan, primitive, depth);
 
-            // Apply transforms to entry/exit points
+            // Apply the machine transform to entry/exit points.
+            // Gate on the MATRIX, not on rotation/mirror params - with origin
+            // folded into machineMatrix, the matrix is non-identity whenever
+            // origin ≠ (0,0), which the old param check missed.
             const transforms = ctx.transforms;
-            if (transforms && (transforms.mirrorX || transforms.mirrorY || transforms.rotation)) {
+            if (!this.isIdentityTransforms(transforms)) {
                 // Transform Entry and Exit
                 if (plan.metadata.entryPoint) {
                     const transformed = this.applyTransforms(plan.metadata.entryPoint, transforms);
@@ -845,12 +947,8 @@
             let isClockwise = primitive.clockwise;
 
             // If mirrored, it might be necessary to flip the arc direction
-            if (transforms) {
-                // XOR Logic: If mirrored on X OR Y (but not both), flip direction.
-                const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                if (flipped) {
-                    isClockwise = !isClockwise;
-                }
+            if (transforms && transforms.windingFlipped) {
+                isClockwise = !isClockwise;
             }
 
             // Add Linear move to Start
@@ -875,6 +973,13 @@
             plan.addArc(end.x, end.y, depth, i, j, isClockwise, feedRate);
         }
 
+        // TODO [ARC-NORMALIZATION] - Arc sweep normalization logic is duplicated across
+        // GeometryTranslator (translatePath, translateArc),
+        // ToolpathTabPlanner (getArcData, calculateTotalLength), and GCodeGenerator (linearizeArc).
+        // Each has slightly different edge-case handling for full circles and CW/CCW sign correction.
+        // A single normalizeArcSweep(startAngle, endAngle, clockwise) utility should replace all of them.
+        // Candidate location: ToolpathPlan static method or a shared geometry-utils module.
+        // Defer until the next dedicated arc-geometry audit pass.
         translatePath(plan, contour, depth, feedRate) {
             const points = contour.points;
             if (!points || points.length < 2) return;
@@ -923,15 +1028,24 @@
             }
 
             // Standard segment-by-segment processing
-            const isPhysicallyClosed = this._isClosedPoints(points);
+            const isPhysicallyClosed = ToolpathPlan.isClosedPoints(points);
             const numPoints = points.length;
             const segmentsToDraw = (isClosed && !isPhysicallyClosed) ? numPoints : numPoints - 1;
+
+            // Hoist winding flip out of the loop - constant for the whole path
+            const windingFlipped = !!(transforms && transforms.windingFlipped);
 
             let i = 0;
             let segmentsDrawn = 0;
 
+            // Transform the first point ONCE before the loop. Each iteration
+            // carries its endPoint into the next iteration's startPoint, so
+            // every point is transformed exactly once (the old loop body
+            // transformed each shared point twice - once as endPoint, again
+            // as the next segment's startPoint).
+            let startPoint = this.applyTransforms(points[0], transforms);
+
             while (segmentsDrawn < segmentsToDraw) {
-                const startPoint = this.applyTransforms(points[i], transforms);
                 const arc = arcMap.get(i);
 
                 let nextIndex = (i + 1) % numPoints;
@@ -946,6 +1060,7 @@
                     let sweep = arc.sweepAngle;
                     if (sweep === undefined) {
                         sweep = arc.endAngle - arc.startAngle;
+                        // REVIEW - should these be isClockwise too, for consistency?
                         if (arc.clockwise && sweep > 0) sweep -= 2 * Math.PI;
                         if (!arc.clockwise && sweep < 0) sweep += 2 * Math.PI;
                     }
@@ -957,11 +1072,8 @@
                         const j_val = transformedCenter.y - startPoint.y;
 
                         let clockwise = arc.clockwise;
-                        // Flip for mirror
-                        if (transforms) {
-                            const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                            if (flipped) clockwise = !clockwise;
-                        }
+                        // If mirrored, it might be necessary to flip the arc direction
+                        if (windingFlipped) { clockwise = !clockwise; }
                         plan.addArc(endPoint.x, endPoint.y, depth, i_val, j_val, clockwise, feedRate);
                     } else {
                         // Tiny arc or missing data, use line
@@ -976,6 +1088,7 @@
                 }
 
                 i = nextIndex;
+                startPoint = endPoint;
                 segmentsDrawn++;
             }
         }
@@ -984,7 +1097,6 @@
          * Reverses a toolpath plan in-place.
          * Rebuilds the path from absolute points, correctly flipping arcs.
          */
-
         reversePlan(plan) {
             if (!plan || !plan.commands || plan.commands.length === 0) return;
 
@@ -1074,7 +1186,7 @@
          * - External contours: CW
          * - Hole contours: CCW
          */
-        _enforceClimbMilling(plan, isHole = false) {
+        enforceClimbMilling(plan, isHole = false) {
             // Skip open paths and empty plans
             if (!plan.commands || plan.commands.length < 2) return false;
             if (!plan.metadata.isClosed && !plan.metadata.isClosedLoop) return false;
@@ -1099,27 +1211,6 @@
                 return true;
             }
             return false;
-        }
-
-        /**
-         * Calculate bounds for plan
-         */
-        calculatePlanBounds(plan) {
-            let minX = Infinity, minY = Infinity;
-            let maxX = -Infinity, maxY = -Infinity;
-
-            for (const cmd of plan.commands) {
-                if (cmd.x !== null) {
-                    minX = Math.min(minX, cmd.x);
-                    maxX = Math.max(maxX, cmd.x);
-                }
-                if (cmd.y !== null) {
-                    minY = Math.min(minY, cmd.y);
-                    maxY = Math.max(maxY, cmd.y);
-                }
-            }
-
-            plan.metadata.boundingBox = { minX, minY, maxX, maxY };
         }
 
         /**
@@ -1174,98 +1265,43 @@
             };
         }
 
-        applyTransforms(point, transforms) {
-            if (!transforms) return point;
-            let x = point.x;
-            let y = point.y;
-
-            // Rotate
-            if (transforms.rotation && transforms.rotation !== 0) {
-                const rc = transforms.rotationCenter || { x: 0, y: 0 };
-
-                // To match Canvas visual rotation in Y-up, negate effective angle
-                const isMirrored = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                const effectiveAngle = isMirrored ? -transforms.rotation : transforms.rotation;
-                const rad = (effectiveAngle * Math.PI) / 180;
-
-                const cos = Math.cos(rad);
-                const sin = Math.sin(rad);
-
-                const dx = x - rc.x;
-                const dy = y - rc.y;
-                x = rc.x + (dx * cos - dy * sin);
-                y = rc.y + (dx * sin + dy * cos);
+        /**
+         * True when ctx.transforms carries no machine transform - i.e. the
+         * combined machineMatrix (origin + workspace) is identity. Falls
+         * back to the legacy param check if the context predates the
+         * machineMatrix field (older saved contexts, tests).
+         */
+        // REVIEW - Remove fallback?
+        isIdentityTransforms(transforms) {
+            if (!transforms) return true;
+            if (transforms.machineIsIdentity !== undefined) {
+                return transforms.machineIsIdentity === true;
             }
-
-            // Mirror
-            if (transforms.mirrorX || transforms.mirrorY) {
-                const mc = transforms.mirrorCenter || transforms.origin || { x: 0, y: 0 };
-                if (transforms.mirrorX) x = 2 * mc.x - x;
-                if (transforms.mirrorY) y = 2 * mc.y - y;
-            }
-
-            return { x, y };
-        }
-
-        _isClosedPoints(points) {
-            if (points.length < 2) return false;
-            const first = points[0];
-            const last = points[points.length - 1];
-            const dx = first.x - last.x;
-            const dy = first.y - last.y;
-            return (dx * dx + dy * dy) < (PRECISION * PRECISION);
+            // Legacy fallback: param-based gate + origin
+            return !transforms.mirrorX && !transforms.mirrorY && !transforms.rotation &&
+                   (!transforms.origin || (transforms.origin.x === 0 && transforms.origin.y === 0));
         }
 
         /**
-         * Calculates total path length of a contour, handling both linear segments and arc segments. Exposed for the ToolpathTabPlanner which holds a reference to this translator instance.
+         * THE single pipeline→machine coordinate mapping.
+         * Identity transforms return the input point UNCHANGED (no clone) -
+         * callers must treat the result as read-only, or clone explicitly
+         * when storing it into mutable metadata (see extractDrillMacros).
          */
-        _calculatePathLength(contour) {
-            let length = 0;
-            const points = contour.points;
-            if (!points || points.length < 2) return 0;
-
-            // Create a map for fast arc lookup
-            const arcMap = new Map();
-            if (contour.arcSegments) {
-                for (const arc of contour.arcSegments) {
-                    arcMap.set(arc.startIndex, arc);
-                }
-            }
-
-            const numPoints = points.length;
-            // Cutouts are implicitly closed, so process the closing segment too
-            const limit = numPoints; 
-
-            for (let i = 0; i < limit; i++) {
-                const nextI = (i + 1) % numPoints;
-
-                // Stop if it's an open path and at the last point (safety check)
-                if (nextI === 0 && !contour.closed && !this._isClosedPoints(points)) {
-                    break;
-                }
-
-                const arc = arcMap.get(i);
-
-                if (arc && arc.endIndex === nextI) {
-                    // Arc Length
-                    let sweep = arc.endAngle - arc.startAngle;
-                    // Normalize sweep
-                    if (arc.clockwise) {
-                        if (sweep > 1e-9) sweep -= 2 * Math.PI;
-                    } else {
-                        if (sweep < -1e-9) sweep += 2 * Math.PI;
-                    }
-                    length += Math.abs(sweep * arc.radius);
-                } else {
-                    // Linear Length
-                    length += Math.hypot(
-                        points[nextI].x - points[i].x,
-                        points[nextI].y - points[i].y
-                    );
-                }
-            }
-            return length;
+        applyTransforms(point, transforms) {
+            if (this.isIdentityTransforms(transforms)) return point;
+            // machineMatrix = T(−origin) ⊗ workspaceMatrix.
+            // Fall back to the workspace-only matrix for legacy contexts
+            // (origin then still handled by GCodeGenerator, if present).
+            const m = transforms.machineMatrix || transforms.matrix;
+            return TransformMath.applyToPoint(m, point);
         }
+    }
+
+    // Module-private helper - keeps extractDrillMacros readable without
+    // re-evaluating the nullish default inline three times.
+    function holeIdxOf(props) {
+        return props.holeIndex ?? -1;
     }
 
     window.GeometryTranslator = GeometryTranslator;

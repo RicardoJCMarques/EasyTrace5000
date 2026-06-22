@@ -4,33 +4,17 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const PRECISION = C.precision.coordinate;
-    const D = window.PCBCAMConfig.defaults;
 
     class SVGParser extends ParserCore {
         constructor(options = {}) {
@@ -52,20 +36,20 @@
                 }
 
                 // Parse document dimensions and set up unit converter
-                this._parseDocumentDimensions(svgNode);
+                this.parseDocumentDimensions(svgNode);
 
                 // Parse embedded CSS class rules
-                this._parseStyleBlock(svgNode);
+                this.parseStyleBlock(svgNode);
 
                 // Check for unsupported features
-                this._checkUnsupportedFeatures(svgNode);
+                this.checkUnsupportedFeatures(svgNode);
 
                 // Build root transform: scale to mm + Y-flip
                 const s = this.unitScale;
                 const h = this.documentHeight;
                 // Matrix: scale by unitScale, flip Y, translate so Y=0 is at bottom
                 const rootTransform = [s, 0, 0, -s, 0, h];
-                this._traverseNode(svgNode, rootTransform);
+                this.traverseNode(svgNode, rootTransform);
 
                 this.layers.bounds = this.calculateBounds(this.layers.objects);
                 this.logStatistics();
@@ -93,12 +77,14 @@
             this.viewBox = null;
             this.unitScale = 1; // Scale factor to convert to mm
             this.cssRules = {};
+            this.currentGroupPath = [];   // EasyShape5000 group hierarchy tracking
+            this.nextGroupUid = 0;        // stable per-document group UIDs
         }
 
         /**
          * Parse SVG document dimensions and set up unit conversion
          */
-        _parseDocumentDimensions(svgNode) {
+        parseDocumentDimensions(svgNode) {
             const widthAttr = svgNode.getAttribute('width');
             const heightAttr = svgNode.getAttribute('height');
             const viewBoxAttr = svgNode.getAttribute('viewBox');
@@ -173,7 +159,7 @@
         /**
          * Check for unsupported SVG features and warn user
          */
-        _checkUnsupportedFeatures(svgNode) {
+        checkUnsupportedFeatures(svgNode) {
             // Check for text elements
             const textElements = svgNode.querySelectorAll('text, tspan, textPath');
             if (textElements.length > 0) {
@@ -208,7 +194,7 @@
             }
         }
 
-        _parseStyleBlock(svgNode) {
+        parseStyleBlock(svgNode) {
             this.cssRules = {};
             const styleNode = svgNode.querySelector('style');
             if (!styleNode) return;
@@ -232,46 +218,78 @@
             }
         }
 
-        _traverseNode(node, parentTransform, inheritedStyles = null) {
+        traverseNode(node, parentTransform, inheritedStyles = null) {
             if (node.nodeType !== 1) return;
 
-            const styles = this._getStyles(node, inheritedStyles);
+            const styles = this.getStyles(node, inheritedStyles);
             if (styles.display === 'none' || styles.visibility === 'hidden') return;
 
-            const nodeTransform = this._parseTransform(node.getAttribute('transform') || '');
-            const currentTransform = this._multiplyMatrix(parentTransform, nodeTransform);
+            const nodeTransform = this.parseTransform(node.getAttribute('transform') || '');
+            const currentTransform = this.multiplyMatrix(parentTransform, nodeTransform);
             const tagName = node.tagName.toLowerCase();
 
-            switch (tagName) {
-                case 'g': case 'svg': case 'defs': case 'symbol':
-                    // Skip processing children of defs/symbol (they're referenced, not rendered directly)
-                    if (tagName !== 'defs' && tagName !== 'symbol') {
-                        Array.from(node.children).forEach(child => this._traverseNode(child, currentTransform, styles));
-                    }
-                    break;
-                case 'text': case 'tspan': case 'textPath':
+            // EasyShape5000 group-hierarchy capture. The path is instance state so
+            // existing processFilledShape / processStrokedShape helpers can attach
+            // it via attachGroupPath without needing a new argument plumbed through.
+            // Previous path is saved and restored on exit so sibling subtrees don't
+            // inherit this <g>'s descriptor.
+            const prevGroupPath = this.currentGroupPath;
+            if (tagName === 'g') {
+                this.currentGroupPath = [...prevGroupPath, {
+                    uid: `g_${this.nextGroupUid++}`,
+                    id: node.getAttribute('id') || null,
+                    label: node.getAttribute('inkscape:label')
+                        || node.getAttribute('data-name')
+                        || node.getAttribute('aria-label')
+                        || null
+                }];
+            }
+
+            try {
+                switch (tagName) {
+                    case 'g': case 'svg': case 'defs': case 'symbol':
+                        // Skip processing children of defs/symbol (they're referenced, not rendered directly)
+                        if (tagName !== 'defs' && tagName !== 'symbol') {
+                            Array.from(node.children).forEach(child => this.traverseNode(child, currentTransform, styles));
+                        }
+                        break;
+                    case 'text': case 'tspan': case 'textPath':
                     // Already warned, skip silently
-                    break;
-                case 'path': case 'rect': case 'circle': case 'ellipse': case 'polygon': case 'polyline': case 'line':
-                    const geometry = this._parseShape(node);
-                    if (!geometry) break;
+                        break;
+                    case 'path': case 'rect': case 'circle': case 'ellipse': case 'polygon': case 'polyline': case 'line':
+                        const geometry = this.parseShape(node);
+                        if (!geometry) break;
 
-                    if (styles.fill && styles.fill !== 'none' && styles.fillOpacity > 0) {
-                        this._processFilledShape(geometry, currentTransform);
-                    }
+                        if (styles.fill && styles.fill !== 'none' && styles.fillOpacity > 0) {
+                            this.processFilledShape(geometry, currentTransform);
+                        }
 
-                    if (styles.stroke && styles.stroke !== 'none' && styles.strokeWidth > 0 && styles.strokeOpacity > 0) {
-                        // Scale stroke width by transform scale factor (viewBox units → mm)
-                        const det = currentTransform[0] * currentTransform[3] - currentTransform[1] * currentTransform[2];
-                        const scale = Math.sqrt(Math.abs(det));
-                        this._processStrokedShape(geometry, currentTransform, styles.strokeWidth * scale);
-                    }
-                    break;
+                        if (styles.stroke && styles.stroke !== 'none' && styles.strokeWidth > 0 && styles.strokeOpacity > 0) {
+                            // Scale stroke width by transform scale factor (viewBox units → mm)
+                            const det = currentTransform[0] * currentTransform[3] - currentTransform[1] * currentTransform[2];
+                            const scale = Math.sqrt(Math.abs(det));
+                            this.processStrokedShape(geometry, currentTransform, styles.strokeWidth * scale);
+                        }
+                        break;
+                }
+            } finally {
+                this.currentGroupPath = prevGroupPath;
             }
         }
 
-        _processFilledShape(geometry, transform) {
-            const transformed = this._applyTransformToGeometry(geometry, transform);
+        /**
+         * EasyShape5000-only: attach the active group path to an emitted layer object.
+         * EasyTrace5000 never reads obj.groupPath, so this is a no-op for its pipeline.
+         */
+        attachGroupPath(obj) {
+            if (this.currentGroupPath && this.currentGroupPath.length > 0) {
+                obj.groupPath = this.currentGroupPath.slice();
+            }
+            return obj;
+        }
+
+        processFilledShape(geometry, transform) {
+            const transformed = this.applyTransformToGeometry(geometry, transform);
 
             if (D.debug && transformed.type === 'path') {
                 const sp = transformed.subpaths || [];
@@ -282,31 +300,31 @@
 
             if (transformed.type === 'circle' || transformed.type === 'rectangle' || 
                 transformed.type === 'obround' || transformed.type === 'ellipse') {
-                this._createFlash(transformed);
+                this.createFlash(transformed);
             } else if (transformed.type === 'path') {
                 const subpaths = (transformed.subpaths && transformed.subpaths.length > 0)
                     ? transformed.subpaths
                     : (transformed.points && transformed.points.length > 0)
                         ? [transformed.points]
                         : [];
-                this._createPolarityRegions(subpaths);
+                this.createPolarityRegions(subpaths);
             }
         }
 
         /**
          * Process stroked shapes — converts SVG stroked paths into trace objects that the plotter can handle with correct width expansion.
          */
-        _processStrokedShape(geometry, transform, strokeWidth) {
-            const transformed = this._applyTransformToGeometry(geometry, transform);
+        processStrokedShape(geometry, transform, strokeWidth) {
+            const transformed = this.applyTransformToGeometry(geometry, transform);
 
             // Analytic shapes: create flash with stroke properties
             if (transformed.type === 'rectangle' || transformed.type === 'circle' || 
                 transformed.type === 'ellipse' || transformed.type === 'obround') {
-                const flash = this._createFlashObject(transformed);
+                const flash = this.createFlashObject(transformed);
                 flash.stroke = true;
                 flash.strokeWidth = strokeWidth;
                 flash.fill = false;
-                this.layers.objects.push(flash);
+                this.layers.objects.push(this.attachGroupPath(flash));
                 this.stats.objectsCreated++;
                 return;
             }
@@ -317,13 +335,13 @@
 
             // Simple point arrays (polygon/polyline — no subpath wrapper)
             if (subpaths.length === 0 && points?.length > 0) {
-                this.layers.objects.push({
+                this.layers.objects.push(this.attachGroupPath({
                     type: 'trace',
                     interpolation: 'linear_path',
                     points,
                     width: strokeWidth,
                     polarity: 'dark'
-                });
+                }));
                 this.stats.objectsCreated++;
                 return;
             }
@@ -335,13 +353,13 @@
 
                 // Already a simple point array (e.g. from polygon/polyline transform)
                 if (subpath.length > 0 && subpath[0].x !== undefined) {
-                    this.layers.objects.push({
+                    this.layers.objects.push(this.attachGroupPath({
                         type: 'trace',
                         interpolation: 'linear_path',
                         points: subpath,
                         width: strokeWidth,
                         polarity: 'dark'
-                    });
+                    }));
                     this.stats.objectsCreated++;
                     continue;
                 }
@@ -364,24 +382,24 @@
 
                 if (!hasNonLinear && extractedPoints.length >= 2) {
                     // Pure linear open path → trace object
-                    this.layers.objects.push({
+                    this.layers.objects.push(this.attachGroupPath({
                         type: 'trace',
                         interpolation: 'linear_path',
                         points: extractedPoints,
                         width: strokeWidth,
                         polarity: 'dark'
-                    });
+                    }));
                     this.stats.objectsCreated++;
                 } else {
                     // Complex path with curves → region with stroke properties (plotter will need to handle stroke expansion for these)
-                    this.layers.objects.push({
+                    this.layers.objects.push(this.attachGroupPath({
                         type: 'region',
                         analyticSubpaths: [subpath],
                         polarity: 'dark',
                         stroke: true,
                         strokeWidth: strokeWidth,
                         fill: false
-                    });
+                    }));
                     this.stats.objectsCreated++;
                 }
             }
@@ -390,7 +408,7 @@
         /**
          * Create flash object from geometry (shared between fill and stroke paths)
          */
-        _createFlashObject(geom) {
+        createFlashObject(geom) {
             const flash = { type: 'flash', polarity: 'dark', parameters: [] };
             switch(geom.type) {
                 case 'circle':
@@ -424,43 +442,43 @@
             return flash;
         }
         
-        _createFlash(geom) {
-            const flash = this._createFlashObject(geom);
+        createFlash(geom) {
+            const flash = this.createFlashObject(geom);
             flash.fill = true;
             flash.stroke = false;
-            this.layers.objects.push(flash);
+            this.layers.objects.push(this.attachGroupPath(flash));
             this.stats.objectsCreated++;
         }
 
-        _createPolarityRegions(subpaths) {
+        createPolarityRegions(subpaths) {
             const validSubpaths = subpaths.filter(segments => segments && segments.length > 0);
 
             this.debug(`Received ${subpaths.length} subpaths. Found ${validSubpaths.length} valid subpaths to plot.`);
 
             if (validSubpaths.length === 0) return;
 
-            this.layers.objects.push({
+            this.layers.objects.push(this.attachGroupPath({
                 type: 'region',
                 polarity: 'dark',
                 analyticSubpaths: validSubpaths
-            });
+            }));
 
             this.stats.objectsCreated++;
         }
 
-        _parseShape(node) {
+        parseShape(node) {
             const tagName = node.tagName.toLowerCase();
             switch (tagName) {
-                case 'rect': return this._parseRect(node);
-                case 'circle': return this._parseCircle(node);
-                case 'ellipse': return this._parseEllipse(node);
-                case 'polygon': return { type: 'path', subpaths: [this._parsePoly(node)] };
-                case 'polyline': return { type: 'path', subpaths: [this._parsePoly(node)] };
+                case 'rect': return this.parseRect(node);
+                case 'circle': return this.parseCircle(node);
+                case 'ellipse': return this.parseEllipse(node);
+                case 'polygon': return { type: 'path', subpaths: [this.parsePoly(node)] };
+                case 'polyline': return { type: 'path', subpaths: [this.parsePoly(node)] };
                 case 'path':
                     const subpathsOfSegments = new PathDataParser(node.getAttribute('d')).getSubPaths();
                     return { type: 'path', subpaths: subpathsOfSegments };
                 case 'line':
-                    const p = this._parseLine(node);
+                    const p = this.parseLine(node);
                     return p ? { type: 'path', points: p, subpaths: [] } : null;
             }
             return null;
@@ -469,7 +487,7 @@
         /**
          * Parse rectangle with optional corner radius (rx/ry)
          */
-        _parseRect(node) {
+        parseRect(node) {
             const x = parseFloat(node.getAttribute('x') || 0);
             const y = parseFloat(node.getAttribute('y') || 0);
             const width = parseFloat(node.getAttribute('width') || 0);
@@ -503,13 +521,13 @@
             }
 
             // General rounded rectangle - convert to path with arcs
-            return this._roundedRectToPath(x, y, width, height, rx, ry);
+            return this.roundedRectToPath(x, y, width, height, rx, ry);
         }
 
         /**
          * Convert rounded rectangle to path geometry with analytic arcs
          */
-        _roundedRectToPath(x, y, width, height, rx, ry) {
+        roundedRectToPath(x, y, width, height, rx, ry) {
             const segments = [];
 
             // Start at top-left, after the corner arc
@@ -607,7 +625,7 @@
             return { type: 'path', subpaths: [segments] };
         }
 
-        _parseCircle(node) {
+        parseCircle(node) {
             const r = parseFloat(node.getAttribute('r') || 0);
             return r > 0 ? {
                 type: 'circle',
@@ -619,7 +637,7 @@
             } : null;
         }
 
-        _parseEllipse(node) {
+        parseEllipse(node) {
             const rx = parseFloat(node.getAttribute('rx') || 0);
             const ry = parseFloat(node.getAttribute('ry') || 0);
             return (rx > 0 && ry > 0) ? {
@@ -632,7 +650,7 @@
             } : null;
         }
 
-        _parseLine(node) {
+        parseLine(node) {
             return [{
                 x: parseFloat(node.getAttribute('x1') || 0),
                 y: parseFloat(node.getAttribute('y1') || 0)
@@ -642,7 +660,7 @@
             }];
         }
 
-        _parsePoly(node) {
+        parsePoly(node) {
             const pointsStr = (node.getAttribute('points') || '').trim();
             if (!pointsStr) return [];
             const numbers = (pointsStr.match(/-?(?:\d*\.\d+|\d+)(?:[eE][+-]?\d+)?/g) || []).map(parseFloat);
@@ -653,7 +671,7 @@
             return points;
         }
 
-        _applyTransformToGeometry(geom, m) {
+        applyTransformToGeometry(geom, m) {
             const determinant = m[0] * m[3] - m[1] * m[2];
             const isReflection = determinant < 0;
             const scale = Math.sqrt(Math.abs(determinant));
@@ -664,7 +682,7 @@
             if (geom.type === 'circle') {
                 return {
                     type: 'circle',
-                    center: this._applyTransformToPoint(geom.center, m),
+                    center: this.applyTransformToPoint(geom.center, m),
                     radius: geom.radius * scale
                 };
             }
@@ -673,18 +691,18 @@
                 if (isAxisAligned) {
                     return {
                         type: 'ellipse',
-                        center: this._applyTransformToPoint(geom.center, m),
+                        center: this.applyTransformToPoint(geom.center, m),
                         rx: geom.rx * Math.abs(m[0]),
                         ry: geom.ry * Math.abs(m[3])
                     };
                 }
                 // Non-axis-aligned ellipse - convert to path
-                return this._ellipseToPath(geom, m);
+                return this.ellipseToPath(geom, m);
             }
 
             if (geom.type === 'rectangle' && isAxisAligned) {
-                const p1 = this._applyTransformToPoint({ x: geom.x, y: geom.y }, m);
-                const p2 = this._applyTransformToPoint({ x: geom.x + geom.width, y: geom.y + geom.height }, m);
+                const p1 = this.applyTransformToPoint({ x: geom.x, y: geom.y }, m);
+                const p2 = this.applyTransformToPoint({ x: geom.x + geom.width, y: geom.y + geom.height }, m);
                 return {
                     type: 'rectangle',
                     x: Math.min(p1.x, p2.x),
@@ -695,8 +713,8 @@
             }
 
             if (geom.type === 'obround' && isAxisAligned) {
-                const p1 = this._applyTransformToPoint({ x: geom.x, y: geom.y }, m);
-                const p2 = this._applyTransformToPoint({ x: geom.x + geom.width, y: geom.y + geom.height }, m);
+                const p1 = this.applyTransformToPoint({ x: geom.x, y: geom.y }, m);
+                const p2 = this.applyTransformToPoint({ x: geom.x + geom.width, y: geom.y + geom.height }, m);
                 return {
                     type: 'obround',
                     x: Math.min(p1.x, p2.x),
@@ -708,18 +726,18 @@
 
             // Non-axis-aligned rectangle/obround - convert to path
             if (geom.type === 'rectangle' || geom.type === 'obround') {
-                return this._shapeToPath(geom, m);
+                return this.shapeToPath(geom, m);
             }
 
             if (geom.type === 'path') {
-                return this._transformPath(geom, m, isReflection);
+                return this.transformPath(geom, m, isReflection);
             }
 
             // Fallback for geometry with points
             if (geom.points && geom.points.length > 0) {
                 return {
                     type: 'path',
-                    points: this._applyTransformToPoints(geom.points, m),
+                    points: this.applyTransformToPoints(geom.points, m),
                     subpaths: []
                 };
             }
@@ -730,43 +748,43 @@
         /**
          * Transform path geometry, handling arc direction for reflections
          */
-        _transformPath(geom, m, isReflection) {
+        transformPath(geom, m, isReflection) {
             const transformedSubpaths = geom.subpaths.map(segments => {
                 // Point arrays (polygon/polyline)
                 if (segments.length > 0 && segments[0].x !== undefined) {
-                    return this._applyTransformToPoints(segments, m);
+                    return this.applyTransformToPoints(segments, m);
                 }
 
                 return segments.map(seg => {
                     if (seg.type === 'move') {
-                        return { ...seg, p: this._applyTransformToPoint(seg.p, m) };
+                        return { ...seg, p: this.applyTransformToPoint(seg.p, m) };
                     }
                     if (seg.type === 'line') {
                         return { 
                             ...seg,
-                            p0: this._applyTransformToPoint(seg.p0, m), 
-                            p1: this._applyTransformToPoint(seg.p1, m) 
+                            p0: this.applyTransformToPoint(seg.p0, m), 
+                            p1: this.applyTransformToPoint(seg.p1, m) 
                         };
                     }
                     if (seg.type === 'arc') {
                         // Transform arc analytically
-                        return this._transformArc(seg, m, isReflection);
+                        return this.transformArc(seg, m, isReflection);
                     }
                     if (seg.type === 'cubic') {
                         return {
                             ...seg,
-                            p0: this._applyTransformToPoint(seg.p0, m),
-                            p1: this._applyTransformToPoint(seg.p1, m),
-                            p2: this._applyTransformToPoint(seg.p2, m),
-                            p3: this._applyTransformToPoint(seg.p3, m)
+                            p0: this.applyTransformToPoint(seg.p0, m),
+                            p1: this.applyTransformToPoint(seg.p1, m),
+                            p2: this.applyTransformToPoint(seg.p2, m),
+                            p3: this.applyTransformToPoint(seg.p3, m)
                         };
                     }
                     if (seg.type === 'quad') {
                         return {
                             ...seg,
-                            p0: this._applyTransformToPoint(seg.p0, m),
-                            p1: this._applyTransformToPoint(seg.p1, m),
-                            p2: this._applyTransformToPoint(seg.p2, m)
+                            p0: this.applyTransformToPoint(seg.p0, m),
+                            p1: this.applyTransformToPoint(seg.p1, m),
+                            p2: this.applyTransformToPoint(seg.p2, m)
                         };
                     }
                     return seg;
@@ -796,10 +814,10 @@
         /**
          * Transform an arc segment, preserving analytic data
          */
-        _transformArc(seg, m, isReflection) {
-            const p0 = this._applyTransformToPoint(seg.p0, m);
-            const p1 = this._applyTransformToPoint(seg.p1, m);
-            const center = seg.center ? this._applyTransformToPoint(seg.center, m) : null;
+        transformArc(seg, m, isReflection) {
+            const p0 = this.applyTransformToPoint(seg.p0, m);
+            const p1 = this.applyTransformToPoint(seg.p1, m);
+            const center = seg.center ? this.applyTransformToPoint(seg.center, m) : null;
 
             // Calculate scale factors
             const scaleX = Math.sqrt(m[0] * m[0] + m[1] * m[1]);
@@ -852,7 +870,7 @@
         /**
          * Convert ellipse to path for non-axis-aligned transforms
          */
-        _ellipseToPath(ellipse, m) {
+        ellipseToPath(ellipse, m) {
             const { center, rx, ry } = ellipse;
             const p0 = { x: center.x + rx, y: center.y };
             
@@ -866,13 +884,13 @@
                 }
             ];
 
-            return this._transformPath({ type: 'path', subpaths: [segments] }, m, m[0] * m[3] - m[1] * m[2] < 0);
+            return this.transformPath({ type: 'path', subpaths: [segments] }, m, m[0] * m[3] - m[1] * m[2] < 0);
         }
 
         /**
          * Convert rectangle/obround to path for non-axis-aligned transforms
          */
-        _shapeToPath(geom, m) {
+        shapeToPath(geom, m) {
             const { x, y, width, height } = geom;
             let segments;
 
@@ -891,13 +909,13 @@
             } else {
                 // Obround
                 const r = Math.min(width, height) / 2;
-                segments = this._buildObroundSegments(x, y, width, height, r);
+                segments = this.buildObroundSegments(x, y, width, height, r);
             }
 
-            return this._transformPath({ type: 'path', subpaths: [segments] }, m, m[0] * m[3] - m[1] * m[2] < 0);
+            return this.transformPath({ type: 'path', subpaths: [segments] }, m, m[0] * m[3] - m[1] * m[2] < 0);
         }
 
-        _buildObroundSegments(x, y, width, height, r) {
+        buildObroundSegments(x, y, width, height, r) {
             const segments = [];
             
             if (width > height) {
@@ -934,7 +952,7 @@
             return segments;
         }
 
-        _getStyles(node, inheritedStyles = null) {
+        getStyles(node, inheritedStyles = null) {
             const styles = {
                 // Inheritable SVG properties — start from parent or SVG spec defaults
                 fill: inheritedStyles?.fill ?? 'black',
@@ -992,20 +1010,20 @@
             return styles;
         }
 
-        _applyTransformToPoint(p, m) {
+        applyTransformToPoint(p, m) {
             return {
                 x: m[0] * p.x + m[2] * p.y + m[4],
                 y: m[1] * p.x + m[3] * p.y + m[5]
             };
         }
 
-        _applyTransformToPoints(points, m) {
-            return points.map(p => this._applyTransformToPoint(p, m));
+        applyTransformToPoints(points, m) {
+            return points.map(p => this.applyTransformToPoint(p, m));
         }
 
-        _identityMatrix() { return [1, 0, 0, 1, 0, 0]; }
+        identityMatrix() { return [1, 0, 0, 1, 0, 0]; }
 
-        _multiplyMatrix(m1, m2) {
+        multiplyMatrix(m1, m2) {
             return [
                 m1[0] * m2[0] + m1[2] * m2[1],
                 m1[1] * m2[0] + m1[3] * m2[1],
@@ -1016,8 +1034,8 @@
             ];
         }
 
-        _parseTransform(transformString) {
-            let matrix = this._identityMatrix();
+        parseTransform(transformString) {
+            let matrix = this.identityMatrix();
             if (!transformString) return matrix;
 
             const regex = /(\w+)\s*\(([^)]+)\)/g;
@@ -1028,7 +1046,7 @@
                 // Extract numbers robustly
                 const values = (match[2].match(/-?(?:\d*\.\d+|\d+)(?:[eE][+-]?\d+)?/g) || []).map(parseFloat);
 
-                let transform = this._identityMatrix();
+                let transform = this.identityMatrix();
 
                 if (type === 'matrix' && values.length === 6) {
                     transform = values;
@@ -1043,8 +1061,8 @@
                     const cos = Math.cos(angle), sin = Math.sin(angle);
                     if (values.length === 3) {
                         const [cx, cy] = [values[1], values[2]];
-                        transform = this._multiplyMatrix([1, 0, 0, 1, cx, cy], [cos, sin, -sin, cos, 0, 0]);
-                        transform = this._multiplyMatrix(transform, [1, 0, 0, 1, -cx, -cy]);
+                        transform = this.multiplyMatrix([1, 0, 0, 1, cx, cy], [cos, sin, -sin, cos, 0, 0]);
+                        transform = this.multiplyMatrix(transform, [1, 0, 0, 1, -cx, -cy]);
                     } else {
                         transform = [cos, sin, -sin, cos, 0, 0];
                     }
@@ -1053,7 +1071,7 @@
                 } else if (type === 'skewy') {
                     transform[1] = Math.tan((values[0] || 0) * Math.PI / 180);
                 }
-                matrix = this._multiplyMatrix(matrix, transform);
+                matrix = this.multiplyMatrix(matrix, transform);
             }
             return matrix;
         }
@@ -1070,14 +1088,14 @@
         }
 
         getSubPaths() {
-            this._parse();
+            this.parse();
             // Only return subpaths that actually have geometry to draw
             return this.subPaths
                 .filter(sp => sp.segments.length > 1)
                 .map(sp => sp.segments);
         }
 
-        _parse() {
+        parse() {
             const d = this.d;
             const len = d.length;
             let idx = 0;
@@ -1127,7 +1145,7 @@
             };
 
             const exec = (cmd, args) => {
-                [currentPoint, controlPoint, startPoint] = this._executeCommand(
+                [currentPoint, controlPoint, startPoint] = this.executeCommand(
                     cmd, args, currentPoint, controlPoint, startPoint, lastCmd
                 );
                 lastCmd = cmd;
@@ -1163,7 +1181,7 @@
             }
         }
 
-        _executeCommand(cmd, args, currentPoint, controlPoint, startPoint, lastCmd) {
+        executeCommand(cmd, args, currentPoint, controlPoint, startPoint, lastCmd) {
             const isRelative = cmd === cmd.toLowerCase();
             const cmdLower = cmd.toLowerCase();
             let p0 = {...currentPoint};
@@ -1239,7 +1257,7 @@
                 }
                 case 'a': {
                     const p2 = { x: isRelative ? p0.x + args[5] : args[5], y: isRelative ? p0.y + args[6] : args[6] };
-                    const arcParams = this._calculateArcParams(p0, args[0], args[1], args[2], args[3], args[4], p2);
+                    const arcParams = this.calculateArcParams(p0, args[0], args[1], args[2], args[3], args[4], p2);
                     if (arcParams) {
                         this.currentSubPath.segments.push({
                             type: 'arc', p0: {...p0}, p1: {...p2},
@@ -1261,7 +1279,7 @@
             return [currentPoint, controlPoint, startPoint];
         }
 
-        _calculateArcParams(p1, rx, ry, phi, fA, fS, p2) {
+        calculateArcParams(p1, rx, ry, phi, fA, fS, p2) {
             // SVG spec: if endpoints are effectively identical, arc is omitted
             const dx2 = (p1.x - p2.x) / 2;
             const dy2 = (p1.y - p2.y) / 2;

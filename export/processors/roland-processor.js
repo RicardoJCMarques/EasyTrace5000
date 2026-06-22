@@ -4,25 +4,9 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
@@ -314,8 +298,8 @@
             this.currentVZ = null;      // !VZ value (mm/min internally)
 
             // !PZ register tracking (in mm, converted on output)
-            this._pzDownMM = 0;
-            this._pzUpMM = 5.0;
+            this.pzDownMM = 0;
+            this.pzUpMM = 5.0;
 
             // Machine parameters (set from options in generateHeader)
             this.stepsPerMM = 100;
@@ -379,9 +363,9 @@
             }
 
             // 3. Z parameters — safety registers (used as fallback in both modes)
-            this._pzDownMM = 0;
-            this._pzUpMM = this.travelZ;
-            lines.push(`!PZ${this.fmtCoord(this._pzDownMM)},${this.fmtCoord(this._pzUpMM)};`);
+            this.pzDownMM = 0;
+            this.pzUpMM = this.travelZ;
+            lines.push(`!PZ${this.fmtCoord(this.pzDownMM)},${this.fmtCoord(this.pzUpMM)};`);
 
             // 4. Spindle — after all setup params are established
             if (firstPlan && firstPlan.metadata && firstPlan.metadata.spindleSpeed > 0) {
@@ -456,7 +440,7 @@
          * Main dispatch — routes to the correct command model.
          */
         processCommand(cmd) {
-            return this.zMode === '3d' ? this._process3D(cmd) : this._process25D(cmd);
+            return this.zMode === '3d' ? this.process3D(cmd) : this.process25D(cmd);
         }
 
         /**
@@ -472,7 +456,7 @@
          *   - Cuts = Z command at cutting feed
          *   - Plunges = Z command at plunge feed
          */
-        _process3D(cmd) {
+        process3D(cmd) {
             const targetX = cmd.x ?? this.currentPosition.x;
             const targetY = cmd.y ?? this.currentPosition.y;
             const targetZ = cmd.z ?? this.currentPosition.z;
@@ -587,7 +571,7 @@
          * Z position is implicit: after PU it's z2, after PD it's z1.
          * No simultaneous XYZ motion is possible.
          */
-        _process25D(cmd) {
+        process25D(cmd) {
             const targetX = cmd.x ?? this.currentPosition.x;
             const targetY = cmd.y ?? this.currentPosition.y;
             const targetZ = cmd.z ?? this.currentPosition.z;
@@ -615,7 +599,7 @@
                 case 'RETRACT': {
                     // Update the PU height register (z2) if Z target changed
                     if (zChanged) {
-                        const pz = this._emitPZIfChanged(this._pzDownMM, targetZ);
+                        const pz = this.emitPZIfChanged(this.pzDownMM, targetZ);
                         if (pz) lines.push(pz);
                     }
                     lines.push(`PU${this.fmtCoord(targetX)},${this.fmtCoord(targetY)};`);
@@ -623,7 +607,7 @@
                     this.currentPosition = {
                         x: stepTargetX / this.stepsPerMM,
                         y: stepTargetY / this.stepsPerMM,
-                        z: this._pzUpMM
+                        z: this.pzUpMM
                     };
                     break;
                 }
@@ -655,7 +639,7 @@
 
                     // Update the PD depth register (z1) if Z target changed
                     if (zChanged) {
-                        const pz = this._emitPZIfChanged(targetZ, this._pzUpMM);
+                        const pz = this.emitPZIfChanged(targetZ, this.pzUpMM);
                         if (pz) lines.push(pz);
                     }
 
@@ -663,7 +647,7 @@
                     this.currentPosition = {
                         x: stepTargetX / this.stepsPerMM,
                         y: stepTargetY / this.stepsPerMM,
-                        z: this._pzDownMM
+                        z: this.pzDownMM
                     };
                     break;
                 }
@@ -681,14 +665,14 @@
                     // Should never reach here — fallback to linear
                     console.warn('[RolandProcessor] Arc command reached 2.5D processor — should have been linearized');
                     if (zChanged) {
-                        const pz = this._emitPZIfChanged(targetZ, this._pzUpMM);
+                        const pz = this.emitPZIfChanged(targetZ, this.pzUpMM);
                         if (pz) lines.push(pz);
                     }
                     lines.push(`PD${this.fmtCoord(targetX)},${this.fmtCoord(targetY)};`);
                     this.currentPosition = {
                         x: stepTargetX / this.stepsPerMM,
                         y: stepTargetY / this.stepsPerMM,
-                        z: this._pzDownMM
+                        z: this.pzDownMM
                     };
                     break;
                 }
@@ -703,14 +687,14 @@
         /**
          * Emits !PZ command only if register values actually changed.
          */
-        _emitPZIfChanged(newDownMM, newUpMM) {
-            const downChanged = Math.abs(newDownMM - this._pzDownMM) > 1e-9;
-            const upChanged = Math.abs(newUpMM - this._pzUpMM) > 1e-9;
+        emitPZIfChanged(newDownMM, newUpMM) {
+            const downChanged = Math.abs(newDownMM - this.pzDownMM) > 1e-9; // REVIEW - change to config constant epsilon?
+            const upChanged = Math.abs(newUpMM - this.pzUpMM) > 1e-9; // REVIEW - change to config constant epsilon?
 
             if (downChanged || upChanged) {
-                this._pzDownMM = newDownMM;
-                this._pzUpMM = newUpMM;
-                return `!PZ${this.fmtCoord(this._pzDownMM)},${this.fmtCoord(this._pzUpMM)};`;
+                this.pzDownMM = newDownMM;
+                this.pzUpMM = newUpMM;
+                return `!PZ${this.fmtCoord(this.pzDownMM)},${this.fmtCoord(this.pzUpMM)};`;
             }
             return '';
         }

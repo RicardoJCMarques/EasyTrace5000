@@ -1,0 +1,764 @@
+{
+  "meta": {
+    "app": "EasyShape5000",
+    "version": "1.0"
+  },
+  "clipper2scale": 1000,
+  "defaultTools": {
+    "profile": "em_3.175mm_flat",
+    "pocket": "em_3.175mm_flat",
+    "drill": "drill_3.175mm",
+    "engrave": "vbit_90deg_0.3mm",
+    "vcarve": "vbit_90deg_0.3mm"
+  },
+  "fileTypes": {
+    "profile": {"extensions": [".svg"] },
+    "pocket": {"extensions": [".svg"] },
+    "drill": {"extensions": [".svg"] },
+    "engrave": {"extensions": [".svg"] },
+    "vcarve": {"extensions": [".svg"] },
+    "unassigned": {"extensions": [".svg"] }
+  },
+  "examples": {
+    "mesa": {
+      "name": "mesa",
+      "files": { "svg": "../examples/mesa/mesa.svg" }
+    }
+  },
+  "ui": {
+    "categories": {
+      "tool": "Tool Selection",
+      "offset": "Cut Settings",
+      "depth": "Depth & Passes",
+      "tabs": "Holding Tabs",
+      "drill": "Drill Strategy",
+      "feeds": "Feeds & Speeds",
+      "pattern": "Pattern Layout",
+      "general": "General Settings"
+    },
+    "icons": {
+      "warning": "icon-warning",
+      "offsetCombined": "icon-offset-combined",
+      "offsetPass": "icon-offset-pass",
+      "preview": "icon-preview",
+      "toolpath": "icon-toolpath",
+      "defaultGeometry": "icon-file",
+      "dragHandle": "icon-drag-handle",
+      "tooltipTrigger": "?",
+      "file": "icon-file",
+      "gear": "icon-gear",
+      "offsetsStage": "icon-offsets-stage"
+    },
+    "text": {
+      "noToolsAvailable": "No tools available",
+      "gcodePlaceholder": "Click 'Generate G-code' to continue",
+      "gcodeNoExportAlert": "No operations ready to export",
+      "statusReady": "Ready - Import an SVG to begin",
+      "statusLoading": "Loading...",
+      "statusProcessing": "Processing...",
+      "statusSuccess": "Done",
+      "statusError": "Error",
+      "statusWarning": "Warning",
+      "logHintViz": "Toggle verbose debug messages in the Viz Panel."
+    }
+  },
+  "machineDefaults": {
+    "stock": {
+      "width": 600,
+      "height": 400,
+      "thickness": 18,
+      "material": "plywood",
+      "zeroReference": "bottom-left"
+    },
+    "heights": {
+      "safeZ": 15.0,
+      "travelZ": 5.0,
+      "feedHeight": 2.0,
+      "maxSafeDepth": -50.0
+    },
+    "speeds": {
+      "rapidFeed": 2000,
+      "maxFeed": 5000,
+      "maxAcceleration": 200
+    }
+  },
+  "parameters": {
+
+    "_comment_tools": "═══ TOOL SELECTION (geometry stage) ═══",
+
+    "tool": {
+      "type": "select",
+      "label": "Tool",
+      "stage": "geometry",
+      "category": "tool",
+      "operationTypes": ["profile", "pocket", "drill"]
+    },
+    "engraveTool": {
+      "type": "select",
+      "label": "Tool",
+      "stage": "geometry",
+      "category": "tool",
+      "operationType": "engrave"
+    },
+    "vcarveTool": {
+      "type": "select",
+      "label": "V-Bit",
+      "stage": "geometry",
+      "category": "tool",
+      "operationType": "vcarve"
+    },
+    "toolDiameter": {
+      "type": "number",
+      "label": "Tool Diameter",
+      "unit": "mm",
+      "stage": "geometry",
+      "category": "tool",
+      "operationTypes": ["profile", "pocket", "drill", "engrave", "vcarve"],
+      "min": 0.01,
+      "max": 25.4,
+      "step": 0.01
+    },
+
+    "_comment_profile_geo": "═══ PROFILE GEOMETRY ═══",
+
+    "detectNesting": {
+      "type": "checkbox",
+      "label": "Detect Nested Holes",
+      "stage": "geometry",
+      "category": "offset",
+      "operationTypes": ["profile", "pocket", "engrave"],
+      "default": false
+    },
+
+    "cutSide": {
+      "type": "select",
+      "label": "Cut Side",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "profile",
+      "default": "outside",
+      "options": [
+        { "value": "outside", "label": "Outside" },
+        { "value": "inside", "label": "Inside" },
+        { "value": "on", "label": "On Path (Centerline)" }
+      ]
+    },
+
+    "_comment_pocket_geo": "═══ POCKET GEOMETRY ═══",
+
+    "pocketStrategy": {
+      "type": "select",
+      "label": "Clearing Strategy",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "pocket",
+      "default": "offset",
+      "options": [
+        { "value": "offset", "label": "Concentric Offsets" },
+        { "value": "raster", "label": "Raster / Zig-Zag" }
+      ]
+    },
+    "stepOver": {
+      "type": "number",
+      "label": "Stepover",
+      "unit": "%",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "pocket",
+      "default": 40,
+      "min": 1,
+      "max": 95,
+      "step": 1
+    },
+    "rasterAngle": {
+      "type": "number",
+      "label": "Raster Angle",
+      "unit": "°",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "pocket",
+      "default": 45,
+      "min": 0,
+      "max": 180,
+      "step": 5,
+      "conditional": "pocketStrategy:raster"
+    },
+    "rasterBidirectional": {
+      "type": "checkbox",
+      "label": "Bidirectional Cuts",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "pocket",
+      "default": true,
+      "conditional": "pocketStrategy:raster"
+    },
+
+    "_comment_drill_geo": "═══ DRILL GEOMETRY ═══",
+
+    "millHoles": {
+      "type": "checkbox",
+      "label": "Mill Oversize Holes",
+      "stage": "geometry",
+      "category": "drill",
+      "operationType": "drill",
+      "default": true
+    },
+    "drillStepOver": {
+      "type": "number",
+      "label": "Mill Stepover",
+      "unit": "%",
+      "stage": "geometry",
+      "category": "drill",
+      "operationType": "drill",
+      "default": 50,
+      "min": 10,
+      "max": 90,
+      "step": 5,
+      "conditional": "millHoles"
+    },
+
+    "_comment_drill_mill_strat": "═══ DRILL MILLING DEPTH (strategy, conditional on millHoles) ═══",
+
+    "drillMultiDepth": {
+      "type": "checkbox",
+      "label": "Multi-depth Milling",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "drill",
+      "default": true,
+      "conditional": "millHoles"
+    },
+    "drillDepthPerPass": {
+      "type": "number",
+      "label": "Depth Per Pass",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "drill",
+      "default": 2,
+      "min": 0.1,
+      "max": 50,
+      "step": 0.5,
+      "conditional": "millHoles && drillMultiDepth"
+    },
+    "drillEntryType": {
+      "type": "select",
+      "label": "Entry Method",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "drill",
+      "default": "helix",
+      "conditional": "millHoles",
+      "options": [
+        { "value": "plunge", "label": "Plunge (Vertical)" },
+        { "value": "helix", "label": "Helix (Spiral entry)" }
+      ]
+    },
+
+    "_comment_engrave_geo": "═══ ENGRAVE GEOMETRY ═══",
+
+    "engraveOffsetMode": {
+      "type": "select",
+      "label": "Path Mode",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "engrave",
+      "default": "on",
+      "options": [
+        { "value": "on", "label": "On Path (Centerline)" },
+        { "value": "inside", "label": "Inside (Tool compensated)" },
+        { "value": "outside", "label": "Outside (Tool compensated)" }
+      ]
+    },
+
+    "_comment_vcarve_geo": "═══ V-CARVE GEOMETRY ═══",
+
+    "vbitAngle": {
+      "type": "number",
+      "label": "V-Bit Included Angle",
+      "unit": "°",
+      "stage": "geometry",
+      "category": "tool",
+      "operationType": "vcarve",
+      "default": 90,
+      "min": 10,
+      "max": 180,
+      "step": 5
+    },
+    "vcarveFlatDepth": {
+      "type": "number",
+      "label": "Flat Area Depth",
+      "unit": "mm",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "vcarve",
+      "default": 0,
+      "min": 0,
+      "max": 10,
+      "step": 0.1
+    },
+    "useVcarveClearingTool": {
+      "type": "checkbox",
+      "label": "Use Clearing Tool for Flats",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "vcarve",
+      "default": false
+    },
+    "vcarveClearingTool": {
+      "type": "select",
+      "label": "Clearing Tool",
+      "stage": "geometry",
+      "category": "offset",
+      "operationType": "vcarve",
+      "conditional": "useVcarveClearingTool"
+    },
+
+    "_comment_pattern_geo": "═══ PATTERN GEOMETRY (geometry-only, no strategy/machine) ═══",
+
+    "patternType": {
+      "type": "select",
+      "label": "Pattern Type",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": "grid",
+      "options": [
+        { "value": "grid", "label": "Rectangular Grid" },
+        { "value": "hex", "label": "Hexagonal" },
+        { "value": "radial", "label": "Radial Array" },
+        { "value": "linear", "label": "Linear Array" }
+      ]
+    },
+    "patternRows": {
+      "type": "number",
+      "label": "Rows",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 3,
+      "min": 1,
+      "max": 100,
+      "step": 1,
+      "conditional": "patternType:grid,hex"
+    },
+    "patternCols": {
+      "type": "number",
+      "label": "Columns",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 3,
+      "min": 1,
+      "max": 100,
+      "step": 1,
+      "conditional": "patternType:grid,hex"
+    },
+    "patternSpacingX": {
+      "type": "number",
+      "label": "Spacing X",
+      "unit": "mm",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 20,
+      "min": 0.1,
+      "max": 500,
+      "step": 1,
+      "conditional": "patternType:grid,hex,linear"
+    },
+    "patternSpacingY": {
+      "type": "number",
+      "label": "Spacing Y",
+      "unit": "mm",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 20,
+      "min": 0.1,
+      "max": 500,
+      "step": 1,
+      "conditional": "patternType:grid,hex"
+    },
+    "patternCount": {
+      "type": "number",
+      "label": "Count",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 6,
+      "min": 1,
+      "max": 100,
+      "step": 1,
+      "conditional": "patternType:radial,linear"
+    },
+    "patternRadius": {
+      "type": "number",
+      "label": "Radius",
+      "unit": "mm",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 50,
+      "min": 1,
+      "max": 500,
+      "step": 1,
+      "conditional": "patternType:radial"
+    },
+    "patternStartAngle": {
+      "type": "number",
+      "label": "Start Angle",
+      "unit": "°",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 0,
+      "min": 0,
+      "max": 360,
+      "step": 5,
+      "conditional": "patternType:radial"
+    },
+    "patternEndAngle": {
+      "type": "number",
+      "label": "End Angle",
+      "unit": "°",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 360,
+      "min": 0,
+      "max": 360,
+      "step": 5,
+      "conditional": "patternType:radial"
+    },
+    "patternRotateInstances": {
+      "type": "checkbox",
+      "label": "Rotate Instances to Face Outward",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": true,
+      "conditional": "patternType:radial"
+    },
+    "patternLinearAngle": {
+      "type": "number",
+      "label": "Array Angle",
+      "unit": "°",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": 0,
+      "min": 0,
+      "max": 360,
+      "step": 5,
+      "conditional": "patternType:linear"
+    },
+    "patternMirror": {
+      "type": "select",
+      "label": "Mirror",
+      "stage": "geometry",
+      "category": "pattern",
+      "operationType": "pattern",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "horizontal", "label": "Horizontal" },
+        { "value": "vertical", "label": "Vertical" },
+        { "value": "both", "label": "Both Axes" }
+      ]
+    },
+
+    "_comment_depth": "═══ DEPTH & PASSES (strategy stage) ═══",
+
+    "cutDepth": {
+      "type": "number",
+      "label": "Cut Depth",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "depth",
+      "operationTypes": ["profile", "pocket", "drill"],
+      "default": 18,
+      "min": 0.1,
+      "max": 100,
+      "step": 0.5
+    },
+    "engraveDepth": {
+      "type": "number",
+      "label": "Depth",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "engrave",
+      "default": 0.5,
+      "min": 0.05,
+      "max": 5,
+      "step": 0.05
+    },
+    "multiDepth": {
+      "type": "checkbox",
+      "label": "Multi-depth Cutting",
+      "stage": "strategy",
+      "category": "depth",
+      "operationTypes": ["profile", "pocket"],
+      "default": true
+    },
+    "depthPerPass": {
+      "type": "number",
+      "label": "Per Pass",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "depth",
+      "operationTypes": ["profile", "pocket"],
+      "default": 3,
+      "min": 0.1,
+      "max": 50,
+      "step": 0.5,
+      "conditional": "multiDepth"
+    },
+    "entryType": {
+      "type": "select",
+      "label": "Entry Method",
+      "stage": "strategy",
+      "category": "depth",
+      "operationTypes": ["profile", "pocket"],
+      "default": "plunge",
+      "options": [
+        { "value": "plunge", "label": "Plunge (Vertical)" },
+        { "value": "ramp", "label": "Ramp (Angled entry)" },
+        { "value": "helix", "label": "Helix (Spiral entry)" }
+      ]
+    },
+    "finishingPass": {
+      "type": "checkbox",
+      "label": "Finishing Pass",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "pocket",
+      "default": false
+    },
+    "finishStepover": {
+      "type": "number",
+      "label": "Finish Stepover",
+      "unit": "%",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "pocket",
+      "default": 10,
+      "min": 1,
+      "max": 50,
+      "step": 1,
+      "conditional": "finishingPass"
+    },
+
+    "_comment_vcarve_strat": "═══ V-CARVE STRATEGY ═══",
+
+    "vcarveMaxDepth": {
+      "type": "number",
+      "label": "Max Depth",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "vcarve",
+      "default": 3,
+      "min": 0.1,
+      "max": 20,
+      "step": 0.1
+    },
+    "vcarveStartDepth": {
+      "type": "number",
+      "label": "Start Depth",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "vcarve",
+      "default": 0,
+      "min": 0,
+      "max": 20,
+      "step": 0.1
+    },
+
+    "_comment_engrave_strat": "═══ ENGRAVE STRATEGY ═══",
+
+    "engraveMultiPass": {
+      "type": "checkbox",
+      "label": "Multi-Pass",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "engrave",
+      "default": false
+    },
+    "engravePassCount": {
+      "type": "number",
+      "label": "Number of Passes",
+      "stage": "strategy",
+      "category": "depth",
+      "operationType": "engrave",
+      "default": 2,
+      "min": 1,
+      "max": 10,
+      "step": 1,
+      "conditional": "engraveMultiPass"
+    },
+
+    "_comment_drill_strat": "═══ DRILL STRATEGY ═══",
+
+    "peckDepth": {
+      "type": "number",
+      "label": "Peck Depth",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "drill",
+      "operationType": "drill",
+      "default": 2,
+      "min": 0,
+      "max": 50,
+      "step": 0.5
+    },
+    "dwellTime": {
+      "type": "number",
+      "label": "Dwell Time",
+      "unit": "s",
+      "stage": "strategy",
+      "category": "drill",
+      "operationType": "drill",
+      "default": 0,
+      "min": 0,
+      "max": 10,
+      "step": 0.1
+    },
+    "retractHeight": {
+      "type": "number",
+      "label": "Retract Height",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "drill",
+      "operationType": "drill",
+      "default": 2.0,
+      "min": 0.1,
+      "max": 20,
+      "step": 0.5
+    },
+    "cannedCycle": {
+      "type": "select",
+      "label": "Canned Cycle",
+      "stage": "strategy",
+      "category": "drill",
+      "operationType": "drill",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None (G0 + G1)" },
+        { "value": "G81", "label": "G81 - Simple Drill" },
+        { "value": "G82", "label": "G82 - Dwell" },
+        { "value": "G83", "label": "G83 - Peck (Full Retract)" },
+        { "value": "G73", "label": "G73 - Peck (Chip Break)" }
+      ]
+    },
+    "spotDrill": {
+      "type": "checkbox",
+      "label": "Spot Drill First",
+      "stage": "strategy",
+      "category": "drill",
+      "operationType": "drill",
+      "default": false
+    },
+    "spotDepth": {
+      "type": "number",
+      "label": "Spot Drill Depth",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "drill",
+      "operationType": "drill",
+      "default": 1.0,
+      "min": 0.1,
+      "max": 5,
+      "step": 0.1,
+      "conditional": "spotDrill"
+    },
+
+    "_comment_tabs": "═══ HOLDING TABS (strategy stage, profile only) ═══",
+
+    "tabs": {
+      "type": "number",
+      "label": "Number of Tabs",
+      "stage": "strategy",
+      "category": "tabs",
+      "operationType": "profile",
+      "default": 4,
+      "min": 0,
+      "max": 20,
+      "step": 1
+    },
+    "tabWidth": {
+      "type": "number",
+      "label": "Tab Width",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "tabs",
+      "operationType": "profile",
+      "default": 6,
+      "min": 1,
+      "max": 20,
+      "step": 0.5
+    },
+    "tabHeight": {
+      "type": "number",
+      "label": "Tab Height",
+      "unit": "mm",
+      "stage": "strategy",
+      "category": "tabs",
+      "operationType": "profile",
+      "default": 2,
+      "min": 0.5,
+      "max": 10,
+      "step": 0.5
+    },
+
+    "_comment_machine": "═══ FEEDS & SPEEDS (machine stage) ═══",
+
+    "feedRate": {
+      "type": "number",
+      "label": "Feed Rate",
+      "unit": "mm/min",
+      "stage": "machine",
+      "category": "feeds",
+      "operationTypes": ["profile", "pocket", "drill", "engrave", "vcarve"],
+      "min": 10,
+      "max": 10000,
+      "step": 100
+    },
+    "plungeRate": {
+      "type": "number",
+      "label": "Plunge Rate",
+      "unit": "mm/min",
+      "stage": "machine",
+      "category": "feeds",
+      "operationTypes": ["profile", "pocket", "drill", "engrave", "vcarve"],
+      "min": 10,
+      "max": 5000,
+      "step": 50
+    },
+    "spindleSpeed": {
+      "type": "number",
+      "label": "Spindle Speed",
+      "unit": "RPM",
+      "stage": "machine",
+      "category": "feeds",
+      "operationTypes": ["profile", "pocket", "drill", "engrave", "vcarve"],
+      "min": 1000,
+      "max": 60000,
+      "step": 500
+    },
+    "spindleDwell": {
+      "type": "number",
+      "label": "Spindle Dwell",
+      "unit": "s",
+      "stage": "machine",
+      "category": "feeds",
+      "operationTypes": ["profile", "pocket", "drill", "engrave", "vcarve"],
+      "default": 1,
+      "min": 0,
+      "max": 30,
+      "step": 0.5
+    }
+  }
+}

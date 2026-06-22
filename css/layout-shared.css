@@ -1,0 +1,692 @@
+/*!
+ * @file        css/layout-shared.css
+ * @description Shared layout structure — toolbar, workspace grid, sidebars, footer, status bar, inspector, modals infrastructure.
+ * @author      Eltryus - Ricardo Marques
+ * @copyright   2025-2026 Eltryus - Ricardo Marques
+ * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+ *
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/* ============================================================================
+   TOOLBAR
+   ============================================================================ */
+
+.toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--header-layout-height);
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--spacing-xl);
+    padding-top: var(--safe-area-top);
+    z-index: var(--z-sticky);
+}
+
+.toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.toolbar-left {
+    flex: 1;
+    justify-content: flex-start;
+}
+
+.toolbar-center {
+    flex: 0 0 auto;
+}
+
+.toolbar-right {
+    flex: 1;
+    justify-content: flex-end;
+    gap: var(--spacing-xs);
+}
+
+.toolbar-separator,
+.toolbar .separator {
+    width: 1px;
+    height: 1.25rem;
+    background: var(--color-border-secondary);
+    margin: 0 var(--spacing-sm);
+}
+
+.workspace-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    margin: 0;
+    line-height: 1;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+}
+
+/* ============================================================================
+   MAIN WORKSPACE GRID
+   ============================================================================ */
+
+.workspace {
+    display: grid;
+    grid-template-columns: var(--sidebar-left-width) 1fr var(--sidebar-right-width);
+    height: calc(var(--vh-full) - var(--header-layout-height) - var(--footer-total-height));
+    margin-top: var(--header-layout-height);
+    width: 100vw;
+    overflow: hidden;
+}
+
+.workspace-main {
+    position: relative;
+    background: var(--color-bg-primary);
+    overflow: hidden;
+}
+
+/* ============================================================================
+   SIDEBARS
+   ============================================================================ */
+
+.sidebar {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-primary);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.sidebar-right {
+    border-right: 0px;
+}
+
+.sidebar-left {
+    border-left: 0px;
+}
+
+/* Sidebar Sections */
+.sidebar-section {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 2px solid var(--color-border-primary);
+}
+
+.sidebar-section:last-child .section-content {
+    padding-bottom: var(--spacing-md);
+}
+
+.sidebar-section + .sidebar-section .section-header {
+    border-top: 1px solid var(--color-bg-hover);
+}
+
+/* Section Headers */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--section-header-height);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border-primary);
+    flex-shrink: 0;
+}
+
+.section-header h2 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-secondary);
+}
+
+/* Collapsible sections */
+.section-header.collapsible {
+    cursor: pointer;
+    user-select: none;
+}
+
+.section-header.collapsible:hover {
+    background: var(--color-bg-hover);
+}
+
+.collapse-indicator {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+}
+
+.collapse-indicator.collapsed {
+    transform: rotate(-90deg);
+}
+
+.section-content {
+    flex: 1;
+    padding: var(--spacing-md);
+}
+
+.section-content.collapsed {
+    display: none;
+}
+
+/* Browser section (left sidebar tree container) */
+.browser-section {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Tree view base (padding set per-app) */
+.tree-view {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ============================================================================
+   PROPERTY INSPECTOR
+   ============================================================================ */
+
+.inspector-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.inspector-section .section-header {
+    flex-shrink: 0;
+}
+
+.property-form {
+    padding: var(--spacing-lg);
+    flex: 1;
+}
+
+.property-empty {
+    padding: var(--spacing-xl);
+    text-align: center;
+    color: var(--color-text-secondary);
+}
+
+.property-section {
+    margin-bottom: var(--spacing-xl);
+}
+
+.property-section h3 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--color-border-primary);
+}
+
+.property-field {
+    margin-bottom: var(--spacing-lg);
+}
+
+.property-field label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.property-actions {
+    background: var(--color-bg-secondary);
+    padding: var(--spacing-md) 0 0 0;
+    margin-top: var(--spacing-lg);
+    border-top: 1px solid var(--color-border-primary);
+}
+
+/* Origin Section */
+.origin-section {
+    margin-bottom: var(--spacing-xl);
+    padding-bottom: var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border-primary);
+}
+
+.origin-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+}
+
+.origin-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-sm);
+}
+
+.origin-buttons + .origin-buttons {
+    margin-top: var(--spacing-sm);
+}
+
+/* ============================================================================
+   COORDINATE DISPLAY
+   ============================================================================ */
+
+.coordinate-display {
+    position: static;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    margin-left: var(--spacing-md);
+    padding-left: var(--spacing-md);
+    border-left: 1px solid var(--color-border-secondary);
+    height: 60%;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+}
+
+.coord-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    white-space: nowrap;
+}
+
+.coord-value {
+    color: var(--color-text-primary);
+    min-width: 2.5rem;
+}
+
+/* ============================================================================
+   FOOTER & STATUS BAR
+   ============================================================================ */
+
+.footer-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--status-bar-height);
+    background: var(--color-bg-tertiary);
+    border-top: 1px solid var(--color-border-primary);
+    display: grid;
+    grid-template-columns: var(--sidebar-left-width) 1fr auto;
+    align-items: center;
+    font-size: var(--font-size-sm);
+    z-index: var(--z-sticky);
+    padding-bottom: var(--safe-area-bottom, 0px);
+    box-sizing: border-box; /* border-box so padding doesn't add to height unexpectedly */
+}
+
+/* Left-aligned content in the left grid cell */
+.status-left {
+    display: flex;
+    align-items: center;
+    padding-left: var(--spacing-lg);
+    position: relative;
+    height: 100%;
+}
+
+/* Right-aligned content in the right grid cell */
+.status-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: var(--spacing-lg);
+    height: 100%;
+}
+
+/* Clickable status bar in the center grid cell */
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 0 var(--spacing-md);
+    height: 100%;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Clickable icon for the log toggle */
+.log-toggle-icon {
+    font-size: 0.625rem;
+    color: var(--color-text-secondary);
+    transform: rotate(180deg);
+}
+
+.status-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--color-text-secondary);
+}
+
+/* Status colors */
+.status-text.success { color: var(--color-success); }
+.status-text.warning { color: var(--color-warning); }
+.status-text.error { color: var(--color-error); }
+.status-text.info { color: var(--color-info); }
+
+/* Progress bar */
+.status-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+}
+
+/* Log Panel */
+.status-log-panel {
+    position: fixed;
+    bottom: var(--footer-total-height);
+    left: var(--sidebar-left-width);
+    right: var(--sidebar-right-width);
+    height: 0;
+    background: var(--color-bg-primary);
+    border-top: 1px solid var(--color-border-primary);
+    border-left: 1px solid var(--color-border-primary);
+    border-right: 1px solid var(--color-border-primary);
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
+    z-index: var(--z-dropdown);
+}
+
+.status-log-history {
+    padding: var(--spacing-md);
+    height: 100%;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    word-break: break-word;
+}
+
+/* Expanded state */
+.footer-bar.is-expanded .log-toggle-icon {
+    transform: rotate(0deg);
+}
+
+.status-log-panel.is-expanded {
+    height: 12.5rem;
+    opacity: 1;
+    visibility: visible;
+}
+
+.status-info {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+}
+
+.license-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: var(--color-text-hint);
+    font-size: var(--font-size-xs);
+}
+
+.license-info a {
+    color: var(--color-text-secondary);
+    text-decoration: none;
+}
+
+.license-info a:hover {
+    color: var(--color-accent-primary);
+    text-decoration: underline;
+}
+
+/* Viz Panel */
+.viz-panel {
+    position: absolute;
+    bottom: calc(100% + var(--spacing-sm));
+    left: 0;
+    min-width: 16.25rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    z-index: var(--z-dropdown);
+    transform-origin: bottom left;
+}
+
+.viz-panel.collapsed {
+    display: none;
+}
+
+.viz-panel .section-header .collapse-indicator {
+    display: none;
+}
+
+.viz-panel .section-content {
+    max-height: 22.5rem;
+    overflow-y: auto;
+    padding: var(--spacing-md);
+}
+
+/* ============================================================================
+   LOADING OVERLAY
+   ============================================================================ */
+
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--color-bg-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: calc(var(--z-modal) + 1); /* Raises it just above standard modals */
+}
+
+.loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-message {
+    margin-top: var(--spacing-lg);
+    color: var(--color-text-primary);
+}
+
+.loading-progress {
+    margin-top: var(--spacing-sm);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+/* ============================================================================
+   VIEWPORT WIDTH WARNINGS
+   ============================================================================ */
+
+.viewport-warning {
+    display: none; /* Hidden on wide screens */
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius);
+    margin-bottom: var(--modal-gap);
+    line-height: var(--line-height-base);
+}
+
+.viewport-warning-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.viewport-warning-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.viewport-warning-content strong {
+    font-size: var(--font-size-sm);
+}
+
+.viewport-warning-content span {
+    font-size: var(--font-size-xs);
+    opacity: 0.9;
+}
+
+/* Info variant (Welcome modal) */
+.viewport-warning--info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: var(--color-info);
+}
+
+.viewport-warning--info .viewport-warning-icon {
+    color: var(--color-info);
+    animation: gentle-rotate 3s ease-in-out infinite;
+}
+
+/* Caution variant (Quickstart modal) */
+.viewport-warning--caution {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution .viewport-warning-icon {
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution strong {
+    color: var(--color-warning);
+}
+
+.viewport-warning--caution span {
+    color: var(--color-text-primary);
+}
+
+/* Gentle rotation animation for the phone icon */
+@keyframes gentle-rotate {
+    0%, 15% { transform: rotate(0deg); }
+    35%, 65% { transform: rotate(-90deg); }
+    85%, 100% { transform: rotate(0deg); }
+}
+
+/* Workspace persistent bar */
+.workspace-viewport-bar {
+    display: none;
+    position: fixed;
+    top: var(--header-layout-height);
+    left: 0;
+    right: 0;
+    z-index: var(--z-sticky);
+    background: var(--color-warning);
+    color: #000;
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    text-align: center;
+}
+
+.workspace-viewport-bar-icon {
+    flex-shrink: 0;
+    stroke: #000;
+}
+
+.workspace-viewport-bar span {
+    flex: 1;
+}
+
+.workspace-viewport-bar-dismiss {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #000;
+    cursor: pointer;
+    padding: var(--spacing-xs);
+    flex-shrink: 0;
+}
+
+.workspace-viewport-bar-dismiss:hover {
+    opacity: 1;
+}
+
+.workspace-viewport-bar-dismiss svg {
+    stroke: #000;
+}
+
+.workspace-viewport-bar.dismissed {
+    display: none !important;
+}
+
+/* ============================================================================
+   RESPONSIVE BREAKPOINTS
+   ============================================================================ */
+
+@media (max-width: 1000px) {
+    /* Compact sidebars and stacked controls */
+    :root {
+        --sidebar-left-width: clamp(12rem, 18vw, 18rem);
+        --sidebar-right-width: clamp(11rem, 18vw, 17rem);
+    }
+
+    /* Stack origin buttons and mirror toggles */
+    .origin-buttons {
+        grid-template-columns: 1fr;
+    }
+
+    /* Tighter property spacing */
+    .property-section {
+        margin-bottom: var(--spacing-lg);
+    }
+
+    .property-field {
+        margin-bottom: var(--spacing-md);
+    }
+}
+
+/* Smaller screens (≤965px) */
+@media (max-width: 965px) {
+    .license-info:first-child span {
+        display: none;
+    }
+}
+
+/* Small screens (≤768px) - Viewport warnings visible */
+@media (max-width: 768px) {
+    .toolbar {
+        padding: 0 var(--spacing-sm);
+    }
+
+    .toolbar-separator {
+        display: none;
+    }
+
+    .status-left {
+        padding-left: var(--spacing-sm);
+    }
+
+    .status-right {
+        padding-right: var(--spacing-sm);
+    }
+
+    /* Show viewport warnings */
+    .viewport-warning {
+        display: flex;
+    }
+
+    .workspace-viewport-bar:not(.dismissed) {
+        display: flex;
+    }
+}

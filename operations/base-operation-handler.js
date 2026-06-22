@@ -4,31 +4,15 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const D = window.PCBCAMConfig.defaults;
+    const D = window.CAMConfig.defaults;
     const debugState = D.debug;
 
     class BaseOperationHandler {
@@ -55,6 +39,54 @@
          */
         postParsePrimitives(operation) {
             // No-op by default
+        }
+
+        /**
+         * Default preparation for offset pipeline: strips SVG visual
+         * properties and forces machining-intent flags. Primitives that
+         * already have fill:true + no stroke pass through unchanged.
+         * Subclasses override only when they need different behavior
+         * (e.g. copper handlers that preserve stroke for expandStroke).
+         */
+        preparePrimitivesForOffset(primitives) {
+            return primitives.map(prim => {
+                const props = prim.properties || {};
+                if (props.fill && !props.stroke && !props.isTrace) return prim;
+
+                // Shallow spread first (keeps a V8 hidden class — fast property
+                // access downstream in the offset loop and Clipper marshalling),
+                // then re-attach the prototype for class methods (getBounds etc).
+                // Object.create + Object.assign built the object incrementally
+                // on a bare prototype, forcing dictionary-mode lookups.
+                const clone = {
+                    ...prim,
+                    properties: {
+                        ...props,
+                        fill: true,
+                        stroke: false,
+                        strokeWidth: 0,
+                        isTrace: false
+                    }
+                };
+                Object.setPrototypeOf(clone, Object.getPrototypeOf(prim));
+                return clone;
+            });
+        }
+
+        /**
+         * Routes a single primitive to the appropriate geometry operation
+         * during the per-pass offset loop.
+         *
+         * Default: calls offsetBoundary (treat everything as a filled boundary).
+         * EasyTrace5000 copper handlers override to detect strokes, nesting and
+         * call expandStroke with combined width instead.
+         *
+         * @param {Object} primitive - A single primitive to offset
+         * @param {number} distance - Signed offset distance
+         * @returns {Object|Array|null} Offset result(s)
+         */
+        async offsetSinglePrimitive(primitive, distance) {
+            return this.core.geometryOffsetter.offsetBoundary(primitive, distance);
         }
 
         /**

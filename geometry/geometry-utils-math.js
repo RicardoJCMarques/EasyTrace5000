@@ -4,33 +4,17 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     // WARNING - NOT FULLY UPDATED TO NEW CONFIG STRUCTURE YET
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const debugState = D.debug;
 
     /**
@@ -41,7 +25,7 @@
      * (GeometryAnalyticOffsetter) call a single implementation.
      *
      * Dependencies:
-     *   - PCBCAMConfig          (epsilon, minRoundJointSegments)
+     *   - CAMConfig             (epsilon, minRoundJointSegments)
      *   - GeometryUtils         (getOptimalSegments — must be loaded first)
      *   - globalCurveRegistry   (optional, for round-joint curve registration)
      */
@@ -62,7 +46,7 @@
          */
         lineLineIntersection(p1, p2, p3, p4) {
             const den = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
-            const epsilon = geomConfig.offsetting?.epsilon || 1e-9; // REVIEW - Double check if such a small epsilon is necessar
+            const epsilon = geomConfig.offsetting?.epsilon || 1e-9; // REVIEW - Double check if such a small epsilon is necessary, link is also broken
             if (Math.abs(den) < epsilon) return null;
 
             const t_num = (p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x);
@@ -310,13 +294,9 @@
         // ==========================================
 
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[GeometryMath] ${message}`, data);
-                } else {
-                    console.log(`[GeometryMath] ${message}`);
-                }
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[GeometryMath] ${message}`, data)
+                 : console.log(`[Geometrymath] ${message}`);
         }
     };
 

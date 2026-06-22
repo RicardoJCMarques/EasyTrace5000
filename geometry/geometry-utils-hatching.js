@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const PRECISION = C.precision.coordinate;
     const debugState = D.debug;
 
@@ -112,7 +96,7 @@
             for (let i = 0; i < numPasses; i++) {
                 const passAngle = baseAngle + (angleStep * i);
 
-                const lines = this._generatePass(normalizedPrimitives, passAngle, spacing, opType);
+                const lines = this.generatePass(normalizedPrimitives, passAngle, spacing, opType);
                 if (lines.length === 0) continue;
 
                 passes.push({
@@ -143,14 +127,14 @@
         /**
          * Generates a single pass of parallel hatch lines at the given angle.
          */
-        _generatePass(primitives, angleDeg, spacing, operationType) {
+        generatePass(primitives, angleDeg, spacing, operationType) {
             const angleRad = angleDeg * Math.PI / 180;
 
             // Use the global origin as rotation center so all operations hare the same rotated coordinate space. This makes hatch lines from separate operations collinear and mergeable.
             const center = { x: 0, y: 0 };
 
             // Collect all contour edges, rotate into scanline-aligned space.
-            const { edges, minY, maxY } = this._collectAndRotateEdges(primitives, -angleRad, center);
+            const { edges, minY, maxY } = this.collectAndRotateEdges(primitives, -angleRad, center);
 
             if (edges.length === 0 || !isFinite(minY) || !isFinite(maxY)) {
                 this.debug('No valid edges found after rotation');
@@ -161,7 +145,7 @@
 
             // Scanline sweep phase-locked to the rotated origin.
             // The origin (0,0) maps to (0,0) in rotated space, so align the grid to Y=0: first scanline at the nearest grid-aligned Y above minY.
-            const rawScanlines = this._scanAndPair(edges, minY, maxY, spacing);
+            const rawScanlines = this.scanAndPair(edges, minY, maxY, spacing);
 
             if (rawScanlines.length === 0) {
                 this.debug('Scanline sweep produced no intersections');
@@ -169,19 +153,19 @@
             }
 
             // Zig-zag reorder for minimal laser travel.
-            const zigzagLines = this._applyZigZag(rawScanlines);
+            const zigzagLines = this.applyZigZag(rawScanlines);
 
             // Rotate back to world coordinates.
-            const worldLines = this._rotateBack(zigzagLines, angleRad, center);
+            const worldLines = this.rotateBack(zigzagLines, angleRad, center);
 
             // Package as PathPrimitives.
-            return this._packageAsPathPrimitives(worldLines, angleDeg, operationType);
+            return this.packageAsPathPrimitives(worldLines, angleDeg, operationType);
         },
 
         /**
          * Collects all contour edges from all primitives into a single flat pool, rotates each edge endpoint, and precomputes yMin/yMax for fast scanline rejection. Arc segments are tessellated into dense linear sub-edges so canline intersections follow the true curve, not straight chords.
          */
-        _collectAndRotateEdges(primitives, angleRad, center) {
+        collectAndRotateEdges(primitives, angleRad, center) {
             const cos = Math.cos(angleRad);
             const sin = Math.sin(angleRad);
             const edges = [];
@@ -202,7 +186,7 @@
 
                 // Skip truly degenerate edges (protects against division-by-zero).
                 // Use a tight epsilon — SMALLER THAN PRECISION (0.001mm) — so that thin-sliver edges from Clipper boolean artifacts survive into the edge pool.
-                // Near-coincident crossings from surviving slivers are handled by intersection deduplication in _scanAndPair.
+                // Near-coincident crossings from surviving slivers are handled by intersection deduplication in scanAndPair.
                 if (Math.abs(ry1 - ry2) < 1e-10) return;
 
                 const yMin = Math.min(ry1, ry2);
@@ -263,7 +247,7 @@
 
                         if (arc) {
                             // This edge starts an arc. Tessellate the full arc into dense sub-edges using the analytic arc parameters.
-                            const arcPts = this._tessellateArcForScanline(
+                            const arcPts = this.tessellateArcForScanline(
                                 arc,
                                 pts[arc.startIndex],            // actual start point
                                 pts[arc.endIndex % len]         // actual end point
@@ -291,7 +275,7 @@
          * Tessellates an arc segment into dense linear sub-edges for the scanline edge pool. Uses the arc's analytic parameters (center, radius, angles) to compute intermediate points. The first and last points are taken from the actual contour to avoid floating-point gaps at arc–line junctions.
          * Doesn't use the existing Util to avoid adding unnecessary arcs to the registry.
          */
-        _tessellateArcForScanline(arc, startPoint, endPoint) {
+        tessellateArcForScanline(arc, startPoint, endPoint) {
             // Determine sweep angle: use stored value if available, compute otherwise
             let sweepAngle = arc.sweepAngle;
 
@@ -352,7 +336,7 @@
          * After sorting X-intersections, near-coincident values are deduplicated using XOR-style toggle cancellation. This handles thin slivers from Clipper boolean artifacts: both edges of a sliver produce near-coincident crossings that cancel out, maintaining correct even-odd parity.
          * Remaining intersections are paired Even-Odd: pairs [0,1], [2,3], … represent filled segments. Holes create extra pairs that produce gaps.
          */
-        _scanAndPair(edges, minY, maxY, spacing) {
+        scanAndPair(edges, minY, maxY, spacing) {
             const scanlines = [];
             const edgeCount = edges.length;
 
@@ -410,7 +394,7 @@
          * Even-indexed scanlines: segments ordered left→right, each drawn L→R.
          * Odd-indexed scanlines:  segments ordered right→left, each drawn R→L.
          */
-        _applyZigZag(scanlines) {
+        applyZigZag(scanlines) {
             const lines = [];
 
             for (let i = 0; i < scanlines.length; i++) {
@@ -442,7 +426,7 @@
         /**
          * Rotates all line endpoints back from scanline-aligned space to world coordinates.
          */
-        _rotateBack(lines, angleRad, center) {
+        rotateBack(lines, angleRad, center) {
             const cos = Math.cos(angleRad);
             const sin = Math.sin(angleRad);
 
@@ -473,7 +457,7 @@
          * - stroke/fill: false — prevents stroke-to-polygon conversion in preprocessor
          * These primitives only exist in operation.offsets and never enter the geometry preprocessing pipeline.
          */
-        _packageAsPathPrimitives(lines, angleDeg, operationType) {
+        packageAsPathPrimitives(lines, angleDeg, operationType) {
             return lines.map((line, idx) => {
                 return new PathPrimitive([{
                     points: [line.start, line.end],
@@ -496,13 +480,9 @@
         },
 
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[HatchGenerator] ${message}`, data);
-                } else {
-                    console.log(`[HatchGenerator] ${message}`);
-                }
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[HatchGenerator] ${message}`, data)
+                 : console.log(`[HatchGenerator] ${message}`);
         }
     };
 

@@ -4,25 +4,9 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 const fs = require('fs');
@@ -33,76 +17,18 @@ const path = require('path');
 // ============================================================================
 
 const CONFIG = {
-    // CSS files to inline (order matters for cascade)
-    cssFiles: [
-        'css/base.css',
-        'css/components.css',
-        'css/modals.css',
-        'css/layout.css',
-        'css/canvas.css',
-        'css/theme.css'
-    ],
-
-    // JavaScript files in load order (from index.html)
-    jsFiles: [
-        'config.js',
-        'themes/theme-loader.js',
-        'language/language-manager.js',
-        'geometry/clipper2z.js',
-        'geometry/geometry-processor.js',
-        'geometry/geometry-curve-registry.js',
-        'geometry/geometry-arc-reconstructor.js',
-        'geometry/geometry-clipper-wrapper.js',
-        'geometry/geometry-utils.js',
-        'geometry/geometry-utils-hatching.js',
-        'geometry/geometry-offsetter.js',
-        'parsers/primitives.js',
-        'parsers/parser-core.js',
-        'parsers/parser-gerber.js',
-        'parsers/parser-excellon.js',
-        'parsers/parser-svg.js',
-        'parsers/parser-plotter.js',
-        'renderer/renderer-core.js',
-        'renderer/renderer-primitives.js',
-        'renderer/renderer-overlay.js',
-        'renderer/renderer-interaction.js',
-        'renderer/renderer-layer.js',
-        'ui/ui-tooltip.js',
-        'ui/tool-library.js',
-        'ui/ui-parameter-manager.js',
-        'ui/ui-nav-tree-panel.js',
-        'ui/ui-operation-panel.js',
-        'ui/ui-status-manager.js',
-        'ui/ui-controls.js',
-        'ui/ui-modal-manager.js',
-        'toolpath/toolpath-primitives.js',
-        'toolpath/toolpath-optimizer.js',
-        'toolpath/toolpath-machine-processor.js',
-        'toolpath/toolpath-tab-planner.js',
-        'toolpath/toolpath-geometry-translator.js',
-        'operations/base-operation-handler.js',
-        'operations/offset-operation-handler.js',
-        'operations/isolation-operation-handler.js',
-        'operations/clearing-operation-handler.js',
-        'operations/cutout-operation-handler.js',
-        'operations/drill-operation-handler.js',
-        'operations/stencil-operation-handler.js',
-        'export/processors/base-processor.js',
-        'export/processors/grbl-processor.js',
-        'export/processors/makera-processor.js',
-        'export/processors/grblHAL-processor.js',
-        'export/processors/roland-processor.js',
-        'export/processors/marlin-processor.js',
-        'export/processors/uccnc-processor.js',
-        'export/processors/mach3-processor.js',
-        'export/processors/linuxcnc-processor.js',
-        'export/gcode-generator.js',
-        'export/graphics-exporter.js',
-        'utils/coordinate-system.js',
-        'utils/canvas-exporter.js',
-        'cam-core.js',
-        'cam-ui.js',
-        'cam-easytrace5000.js'
+    // Define your app entry points here
+    apps: [
+        {
+            name: 'EasyTrace5000',
+            html: 'easytrace5000/index.html',
+            jsBundle: 'easytrace5000/easytrace5000.js'
+        },
+        {
+            name: 'EasyShape5000',
+            html: 'easyshape5000/index.html',
+            jsBundle: 'easyshape5000/easyshape5000.js'
+        }
     ],
 
     // Documentation pages to process (CSS inlining only)
@@ -112,14 +38,6 @@ const CONFIG = {
         'easytrace5000/doc/cnc.html', 
         'easytrace5000/doc/laser.html',
         'easytrace5000/doc/accessibility.html'
-    ],
-
-    // CSS files for documentation pages
-    docCssFiles: [
-        'css/base.css',
-        'css/components.css',
-        'css/theme.css',
-        'css/doc.css'
     ],
 
     // Files/folders to exclude from dist
@@ -145,12 +63,20 @@ const CONFIG = {
         'unit-converter.js'
     ],
 
+    // Files to explicitly protect from deletion (used by unbundled docs, etc)
+    preserveFiles: [
+        'themes/theme-loader.js'
+    ],
+
     // Embedded assets
     embedLanguage: 'language/en.json',
     embedTools: 'tools.json',
 
-    // Output bundle name
-    bundleName: 'app.bundle.js'
+    // Profiles to inject directly into the JS controllers
+    embedProfiles: [
+        { path: 'ui/profile-trace.json', target: 'easytrace5000/cam-easytrace5000.js', varName: 'EMBEDDED_PROFILE_TRACE' },
+        { path: 'ui/profile-shape.json', target: 'easyshape5000/cam-easyshape5000.js', varName: 'EMBEDDED_PROFILE_SHAPE' }
+    ]
 };
 
 // ============================================================================
@@ -227,13 +153,30 @@ function deleteDir(dirpath) {
     }
 }
 
-function buildCssHeader(title) {
+function buildHeader(title, subtitle, format = 'js') {
+    const YEARS  = '2025-2026';
+    const HOLDER = 'Eltryus - Ricardo Marques';
+    const REPO   = 'https://github.com/RicardoJCMarques/EasyTrace5000';
+
+    const heading = subtitle ? `${title} — ${subtitle}` : title;
+    const timestamp = new Date().toISOString();
+
+    if (format === 'html') {
+        return `<!--!
+  ${heading}
+  Copyright (C) ${YEARS} ${HOLDER}
+  SPDX-License-Identifier: AGPL-3.0-or-later
+  Source: ${REPO}
+  Built: ${timestamp}
+-->`;
+    }
+
     return `/*!
- * ${title}
- * @author      Eltryus - Ricardo Marques
- * @copyright   2025-2026 Eltryus - Ricardo Marques
- * @license     AGPL-3.0-or-later
- * Built: ${new Date().toISOString()}
+ * ${heading}
+ * Copyright (C) ${YEARS} ${HOLDER}
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ * Source: ${REPO}
+ * Built: ${timestamp}
  */\n\n`;
 }
 
@@ -246,6 +189,7 @@ class Builder {
         this.srcDir = path.resolve(srcDir);
         this.distDir = path.resolve(distDir);
         this.stats = { css: 0, js: 0, html: 0 };
+        this.processedFiles = new Set();
     }
 
     run() {
@@ -254,12 +198,17 @@ class Builder {
 
         this.cleanDist();
         this.copySource();
+
+        // Embed assets
         this.embedLanguageJSON();
         this.embedToolsJSON();
-        this.inlineDocCSS();
-        this.inlineCSS();
-        this.bundleJS();
-        this.updateHTML();
+        this.embedAppProfiles();
+        this.embedIconSprite();
+
+        // Process apps and docs
+        this.processApps();
+        this.processDocPages();
+
         this.cleanup();
         this.printStats();
     }
@@ -291,17 +240,10 @@ class Builder {
         let manager = readFile(managerPath);
 
         // Insert embedded strings after 'use strict'
-        const embedCode = `\n    // BUILD: Embedded English strings (eliminates blocking fetch)\n    const EMBEDDED_STRINGS = ${langJSON};\n`;
-        manager = manager.replace(
-            /\(function\(\)\s*\{\s*'use strict';/,
-            `(function() {\n    'use strict';${embedCode}`
-        );
-
+        const embedCode = `\n    // BUILD: Embedded English strings\n    const EMBEDDED_STRINGS = ${langJSON};\n`;
+        manager = manager.replace(/\(function\(\)\s*\{\s*'use strict';/, `(function() {\n    'use strict';${embedCode}`);
         // Modify constructor to pre-populate strings
-        manager = manager.replace(
-            /this\.strings\s*=\s*\{\};/,
-            `this.strings = EMBEDDED_STRINGS;`
-        );
+        manager = manager.replace(/this\.strings\s*=\s*\{\};/, `this.strings = EMBEDDED_STRINGS;`);
 
         // Modify load() to skip fetch for English
         const oldLoad = /async load\(lang\s*=\s*'en'\)\s*\{[\s\S]*?try\s*\{[\s\S]*?const response = await fetch/;
@@ -340,16 +282,11 @@ class Builder {
         let library = readFile(libraryPath);
 
         // Insert embedded constant
-        const embedCode = `\n    // BUILD: Embedded default tools (eliminates blocking fetch)\n    const EMBEDDED_TOOLS = ${toolsJSON};\n`;
-
-        library = library.replace(
-            /\(function\(\)\s*\{\s*'use strict';/,
-            `(function() {\n    'use strict';${embedCode}`
-        );
+        const embedCode = `\n    // BUILD: Embedded default tools\n    const EMBEDDED_TOOLS = ${toolsJSON};\n`;
+        library = library.replace(/\(function\(\)\s*\{\s*'use strict';/, `(function() {\n    'use strict';${embedCode}`);
 
         // Modify init() to prefer embedded tools
         const oldInit = /async init\(\) \{[\s\S]*?try \{[\s\S]*?const loaded = await this\.loadFromFile\('[^']*tools\.json'\);/;
-
         const newInit = `async init() {
             if (this.isLoaded) return true;
 
@@ -372,195 +309,264 @@ class Builder {
         log('  Embedded and removed tools.json');
     }
 
-    inlineCSS() {
-        log('Inlining CSS into HTML...');
+    embedAppProfiles() {
+        log('Embedding app profiles into controllers...');
+        for (const profile of CONFIG.embedProfiles) {
+            const profilePath = path.join(this.distDir, profile.path);
+            const targetPath = path.join(this.distDir, profile.target);
 
-        const cssContents = buildCssHeader('EasyTrace5000 - Bundled Styles') + CONFIG.cssFiles
-            .map(file => {
-                const filepath = path.join(this.distDir, file);
-                if (!fs.existsSync(filepath)) {
-                    log(`  Warning: ${file} not found`);
-                    return '';
-                }
-                const content = stripComments(readFile(filepath), 'css');
-                this.stats.css += content.length;
-                return `/* ${file} */\n${content}`;
-            })
-            .filter(Boolean)
-            .join('\n\n');
-
-        const htmlPath = path.join(this.distDir, 'easytrace5000/index.html');
-        let html = readFile(htmlPath);
-
-        // Remove CSS link tags
-        html = html.replace(/<link rel="stylesheet" href="(\.\.\/){0,2}css\/[^"]+\.css">\s*/g, '');
-
-        // Remove CSS architecture comment
-        html = html.replace(/\s*<!-- Modular CSS Architecture -->\s*/g, '\n    ');
-
-        // Insert inline style before </head>
-        const styleTag = `\n    <!-- BUILD: Inlined CSS -->\n    <style>\n${cssContents}\n    </style>\n`;
-        html = html.replace('</head>', styleTag + '</head>');
-
-        writeFile(htmlPath, html);
-
-        log(`  Inlined ${(this.stats.css / 1024).toFixed(1)}KB CSS`);
-    }
-
-    inlineDocCSS() {
-        log('Inlining CSS into documentation pages...');
-
-        const cssContents = buildCssHeader('EasyTrace5000 Documentation - Bundled Styles') + CONFIG.docCssFiles
-            .map(file => {
-                const filepath = path.join(this.distDir, file);
-                if (!fs.existsSync(filepath)) {
-                    log(`  Warning: ${file} not found`);
-                    return '';
-                }
-                return `/* ${file} */\n${stripComments(readFile(filepath), 'css')}`;
-            })
-            .filter(Boolean)
-            .join('\n\n');
-
-        // Process each documentation page
-        for (const page of CONFIG.docPages) {
-            const pagePath = path.join(this.distDir, page);
-            if (!fs.existsSync(pagePath)) {
-                log(`  Warning: ${page} not found, skipping`);
+            if (!fs.existsSync(profilePath) || !fs.existsSync(targetPath)) {
+                log(`  Warning: Profile or target not found for ${profile.varName}, skipping`);
                 continue;
             }
 
-            let html = readFile(pagePath);
+            const profileData = JSON.parse(readFile(profilePath));
+            const profileJSON = JSON.stringify(profileData);
+            let targetContent = readFile(targetPath);
 
-            // Remove CSS link tags
-            html = html.replace(/<link rel="stylesheet" href="(\.\.\/){0,2}css\/[^"]+\.css">\s*/g, '');
+            const embedCode = `\n    // BUILD: Embedded App Profile\n    window.${profile.varName} = ${profileJSON};\n`;
 
-            // Insert inline style before </head>
-            const styleTag = `\n    <!-- BUILD: Inlined CSS -->\n    <style>\n${cssContents}\n    </style>\n`;
-            html = html.replace('</head>', styleTag + '</head>');
+            targetContent = targetContent.replace(
+                /\(function\(\)\s*\{\s*'use strict';/,
+                `(function() {\n    'use strict';${embedCode}`
+            );
 
-            writeFile(pagePath, html);
-            log(`  Processed ${page}`);
+            writeFile(targetPath, targetContent);
+            deleteFile(profilePath); // Clean it up from the dist folder
+            log(`  Embedded and removed ${profile.path}`);
         }
     }
 
-    bundleJS() {
-        log('Bundling JavaScript...');
+    extractDependencies(htmlContent, htmlFilePath) {
+        const css = [];
+        const js = [];
+        const htmlDir = path.dirname(htmlFilePath);
 
-        const header = `/*!
- * EasyTrace5000 - Bundled Application Logic
- * @author      Eltryus - Ricardo Marques
- * @copyright   2025-2026 Eltryus - Ricardo Marques
- * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- * Built: ${new Date().toISOString()}
- * --- Embedded Libraries ---
- * Clipper2 WASM: Copyright (c) 2010-2024 Angus Johnson + ErikSom (Boost License 1.0)
- * See /geometry/LICENSE for details.
- */
-`;
+        // Map out every <!-- ... --> span so tags inside comments can be ignored
+        const commentRanges = [];
+        const commentRegex = /<!--[\s\S]*?-->/g;
+        let c;
+        while ((c = commentRegex.exec(htmlContent)) !== null) {
+            commentRanges.push([c.index, c.index + c[0].length]);
+        }
+        const isCommented = (idx) => commentRanges.some(([s, e]) => idx >= s && idx < e);
 
-        const jsContents = CONFIG.jsFiles
-            .map(file => {
-                const filepath = path.join(this.distDir, file);
-                if (!fs.existsSync(filepath)) {
-                    log(`  Warning: ${file} not found`);
-                    return '';
-                }
-                let content = stripComments(readFile(filepath), 'js');
+        const cssRegex = /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+        let match;
+        while ((match = cssRegex.exec(htmlContent)) !== null) {
+            if (isCommented(match.index)) continue;
+            css.push({ tag: match[0], relPath: match[1], absPath: path.resolve(htmlDir, match[1]) });
+        }
 
-                // Fix WASM path in clipper2z.js (factory always has wrong relative path)
-                if (file.includes('clipper2z')) {
-                    content = content.replace(
-                        /["'](\.?\/)?(geometry\/)?clipper2z\.wasm["']/g,
-                        '"../geometry/clipper2z.wasm"'
-                    );
-                }
+        const jsRegex = /<script[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi;
+        while ((match = jsRegex.exec(htmlContent)) !== null) {
+            if (isCommented(match.index)) continue;
+            js.push({ tag: match[0], relPath: match[1], absPath: path.resolve(htmlDir, match[1]) });
+        }
 
-                this.stats.js += content.length;
-                return `\n// --- ${file} ---\n${content}`;
-            })
-            .filter(Boolean)
-            .join('\n');
-
-        const bundle = header + jsContents;
-        const bundlePath = path.join(this.distDir, 'easytrace5000', CONFIG.bundleName);
-        writeFile(bundlePath, bundle);
-
-        // Files to preserve (used by doc pages separately)
-        const preserveFiles = ['themes/theme-loader.js'];
-
-        // Delete individual JS files and track directories
-        const jsDirs = new Set();
-        CONFIG.jsFiles.forEach(file => {
-            // Skip files that should be preserved
-            if (preserveFiles.includes(file)) {
-                log(`  Preserving ${file} for doc pages`);
-                return;
-            }
-
-            const filepath = path.join(this.distDir, file);
-            deleteFile(filepath);
-            const dir = path.dirname(file);
-            if (dir !== '.') jsDirs.add(dir);
-        });
-
-        // Delete empty JS directories (non-empty ones like geometry/ are preserved)
-        jsDirs.forEach(dir => {
-            const dirPath = path.join(this.distDir, dir);
-            if (fs.existsSync(dirPath)) {
-                const remaining = fs.readdirSync(dirPath);
-                if (remaining.length === 0) {
-                    deleteDir(dirPath);
-                } else {
-                    log(`  Keeping ${dir}/ (contains: ${remaining.join(', ')})`);
-                }
-            }
-        });
-
-        log(`  Bundled ${(this.stats.js / 1024).toFixed(1)}KB JS into ${CONFIG.bundleName}`);
+        return { css, js };
     }
 
-    updateHTML() {
-        log('Updating HTML script references...');
+    embedIconSprite() {
+        log('Embedding icon sprite into HTML files...');
 
-        const htmlPath = path.join(this.distDir, 'easytrace5000/index.html');
-        let html = readFile(htmlPath);
+        const iconsDir = path.join(this.srcDir, 'images', 'icons');
+        if (!fs.existsSync(iconsDir)) {
+            log('  Warning: images/icons/ not found, skipping');
+            return;
+        }
 
-        // Remove all deferred script tags (the individual JS files, including theme-loader)
-        html = html.replace(/<script defer src="[^"]+\.js"><\/script>\s*/g, '');
+        const symbols = [];
+        const iconFiles = fs.readdirSync(iconsDir)
+            .filter(f => f.startsWith('icon-') && f.endsWith('.svg'))
+            .sort();
 
-        // Remove the "Application Scripts" comment
-        html = html.replace(/\s*<!-- Application Scripts[^>]*-->\s*/g, '\n');
+        for (const file of iconFiles) {
+            const content = readFile(path.join(iconsDir, file));
+            const id = file.replace('.svg', '');
 
-        // Remove any standalone theme loader comment if present
-        html = html.replace(/\s*<!-- Theme Loader[^>]*-->\s*/g, '\n');
+            const vbMatch = content.match(/viewBox=["']([^"']+)["']/);
+            const viewBox = vbMatch ? vbMatch[1] : '0 0 24 24';
 
-        // Insert bundle before the inline initialization script
-        const bundleTag = `    <!-- BUILD: Bundled application js logic -->\n    <script defer src="${CONFIG.bundleName}"></script>\n\n    `;
+            const svgTagMatch = content.match(/<svg([^>]*)>/i);
+            let gAttrs = '';
+            const allowedAttrs = ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'];
 
-        // Insert before the inline init script
-        html = html.replace(
-            /(<script>\s*document\.addEventListener\('DOMContentLoaded')/,
-            `${bundleTag}$1`
-        );
+            if (svgTagMatch) {
+                allowedAttrs.forEach(attr => {
+                    const attrMatch = svgTagMatch[1].match(new RegExp(`${attr}=["']([^"']+)["']`, 'i'));
+                    if (attrMatch) gAttrs += ` ${attr}="${attrMatch[1]}"`;
+                });
+            }
 
-        // Update loading progress UI
-        html = html.replace(
-            /<div id="loading-progress"[^>]*>[^<]*<\/div>/,
-            '<div id="loading-progress" class="loading-progress" role="progressbar" aria-label="Application loading">Loading...</div>'
-        );
+            if (!gAttrs.includes('fill=')) gAttrs += ' fill="none"';
+            if (!gAttrs.includes('stroke=')) gAttrs += ' stroke="currentColor"';
+            if (!gAttrs.includes('stroke-width=')) gAttrs += ' stroke-width="2"';
+            if (!gAttrs.includes('stroke-linecap=')) gAttrs += ' stroke-linecap="round"';
+            if (!gAttrs.includes('stroke-linejoin=')) gAttrs += ' stroke-linejoin="round"';
 
-        this.stats.html = html.length;
-        writeFile(htmlPath, html);
-        log('  Replaced defer scripts with ' + CONFIG.bundleName);
+            const innerMatch = content.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+            if (!innerMatch) continue;
+
+            const inner = innerMatch[1].trim();
+            symbols.push(`  <symbol id="${id}" viewBox="${viewBox}">\n    <g${gAttrs}>\n      ${inner}\n    </g>\n  </symbol>`);
+        }
+
+        if (symbols.length === 0) {
+            log('  Warning: No icon SVGs found');
+            return;
+        }
+
+        const spriteBlock = `<svg id="cam-icon-sprite" aria-hidden="true" style="position: absolute; width: 0; height: 0; visibility: hidden;">\n${symbols.join('\n')}\n</svg>`;
+
+        // Inject into each app HTML
+        for (const app of CONFIG.apps) {
+            const htmlPath = path.join(this.distDir, app.html);
+            if (!fs.existsSync(htmlPath)) continue;
+
+            let html = readFile(htmlPath);
+
+            // Inject sprite directly after <body> tag
+            html = html.replace(/<body>/, `<body>\n${spriteBlock}`);
+
+            writeFile(htmlPath, html);
+        }
+
+        // Also inject into doc pages if they use icons
+        for (const page of CONFIG.docPages) {
+            const pagePath = path.join(this.distDir, page);
+            if (!fs.existsSync(pagePath)) continue;
+            let html = readFile(pagePath);
+            if (html.includes('cam-icon')) {
+                html = html.replace(/<body>/, `<body>\n${spriteBlock}`);
+                writeFile(pagePath, html);
+            }
+        }
+
+        log(`  Embedded ${symbols.length} icons as inline sprite`);
+    }
+
+    processApps() {
+        log('Processing application entry points...');
+        for (const app of CONFIG.apps) {
+            const htmlPath = path.join(this.distDir, app.html);
+            if (!fs.existsSync(htmlPath)) {
+                log(`  Warning: Entry point ${app.html} not found, skipping.`);
+                continue;
+            }
+
+            let htmlContent = readFile(htmlPath).replace(/\0/g, '');
+
+            // Strip the main header
+            htmlContent = htmlContent.replace(/\s*<!--![\s\S]*?-->/g, '');
+
+            // Strip <!-- AppName ... --> blocks (GPL prose)
+            htmlContent = htmlContent.replace(/\s*<!--\s*Easy(?:Trace|Shape)5000[\s\S]*?-->/g, '');
+
+            // Inject the new compact deployment header
+            const htmlHeader = buildHeader(app.name, 'Main Workspace', 'html');
+            if (htmlContent.match(/<!DOCTYPE[^>]*>/i)) {
+                htmlContent = htmlContent.replace(/(<!DOCTYPE[^>]*>)/i, `$1\n${htmlHeader}\n`);
+            } else {
+                htmlContent = htmlHeader + '\n' + htmlContent; // Fallback
+            }
+
+            const deps = this.extractDependencies(htmlContent, htmlPath);
+
+            let cssContents = buildHeader(app.name, 'Bundled Styles', 'css');
+            for (const item of deps.css) {
+                if (fs.existsSync(item.absPath)) {
+                    cssContents += `/* ${item.relPath} */\n${stripComments(readFile(item.absPath), 'css')}\n\n`;
+                    this.processedFiles.add(item.absPath);
+                    htmlContent = htmlContent.split(item.tag).join('');
+                }
+            }
+            this.stats.css += cssContents.length;
+            const styleTag = `\n    <style>\n${cssContents}    </style>\n`;
+            htmlContent = htmlContent.replace('</head>', styleTag + '</head>');
+
+            // REVIEW - Not very important but while this logic removes the comments, it doesn't remove the "new lines" where comments existed. (Everything is still handled by the deployment minifier)
+            let jsContents = buildHeader(app.name, 'Bundled Logic', 'js');
+            for (const item of deps.js) {
+                if (fs.existsSync(item.absPath)) {
+                    let content = stripComments(readFile(item.absPath), 'js');
+                    if (item.relPath.includes('clipper2z')) {
+                        content = content.replace(/["'](\.?\/)?(geometry\/)?clipper2z\.wasm["']/g, '"../geometry/clipper2z.wasm"');
+                    }
+                    jsContents += `\n// --- ${item.relPath} ---\n${content}\n`;
+                    this.processedFiles.add(item.absPath);
+                    htmlContent = htmlContent.split(item.tag).join('');
+                }
+            }
+            this.stats.js += jsContents.length;
+
+            const bundleAbsPath = path.join(this.distDir, app.jsBundle);
+            writeFile(bundleAbsPath, jsContents);
+
+            let bundleRelPath = path.relative(path.dirname(htmlPath), bundleAbsPath).replace(/\\/g, '/');
+            if (!bundleRelPath.startsWith('.')) bundleRelPath = './' + bundleRelPath;
+
+            const bundleTag = `    \n    <script defer src="${bundleRelPath}"></script>\n`;
+            htmlContent = htmlContent.replace('</body>', `${bundleTag}</body>`);
+            htmlContent = htmlContent.replace(/^\s*[\r\n]/gm, '');
+
+            this.stats.html += htmlContent.length;
+            writeFile(htmlPath, htmlContent);
+            log(`  Processed ${app.html} -> generated ${app.jsBundle}`);
+        }
+    }
+
+    processDocPages() {
+        log('Processing documentation pages...');
+        for (const page of CONFIG.docPages) {
+            const pagePath = path.join(this.distDir, page);
+            if (!fs.existsSync(pagePath)) continue;
+
+            let htmlContent = readFile(pagePath).replace(/\0/g, ''); 
+
+            // Strip the original headers
+            htmlContent = htmlContent.replace(/[\r\n]*/, '');
+            htmlContent = htmlContent.replace(/[\r\n]*/i, '');
+
+            // Inject the new compact deployment header
+            const htmlHeader = buildHeader('Documentation', 'Manual', 'html');
+            if (htmlContent.match(/<!DOCTYPE[^>]*>/i)) {
+                htmlContent = htmlContent.replace(/(<!DOCTYPE[^>]*>)/i, `$1\n${htmlHeader}\n`);
+            } else {
+                htmlContent = htmlHeader + '\n' + htmlContent;
+            }
+
+            const deps = this.extractDependencies(htmlContent, pagePath);
+
+            let cssContents = buildHeader('Documentation', 'Bundled Styles', 'css');
+            for (const item of deps.css) {
+                if (fs.existsSync(item.absPath)) {
+                    cssContents += `/* ${item.relPath} */\n${stripComments(readFile(item.absPath), 'css')}\n\n`;
+                    htmlContent = htmlContent.split(item.tag).join('');
+                }
+            }
+
+            if (deps.css.length > 0) {
+                const styleTag = `\n    \n    <style>\n${cssContents}    </style>\n`;
+                htmlContent = htmlContent.replace('</head>', styleTag + '</head>');
+                htmlContent = htmlContent.replace(/^\s*[\r\n]/gm, '');
+                writeFile(pagePath, htmlContent);
+                log(`  Inlined CSS for ${page}`);
+            }
+        }
     }
 
     cleanup() {
-        log('Cleaning up empty directories...');
+        log('Cleaning up bundled files and empty directories...');
 
         // CSS was inlined into all pages, safe to remove
-        deleteDir(path.join(this.distDir, 'css'));
+        for (const filePath of this.processedFiles) {
+            if (CONFIG.preserveFiles.some(p => filePath.endsWith(path.normalize(p)))) {
+                log(`  Preserving ${path.basename(filePath)}`);
+                continue;
+            }
+            deleteFile(filePath);
+        }
 
         // Clean any remaining empty directories
         const cleanEmptyDirs = (dir) => {
@@ -580,9 +586,7 @@ class Builder {
 
         // Remove language folder if empty (en.json was deleted)
         const langDir = path.join(this.distDir, 'language');
-        if (fs.existsSync(langDir) && fs.readdirSync(langDir).length === 0) {
-            deleteDir(langDir);
-        }
+        if (fs.existsSync(langDir) && fs.readdirSync(langDir).length === 0) deleteDir(langDir);
     }
 
     printStats() {
@@ -606,11 +610,9 @@ function main() {
     let distDir = './dist';
 
     for (let i = 0; i < args.length; i++) {
-        if (args[i] === '--src' && args[i + 1]) {
-            srcDir = args[++i];
-        } else if (args[i] === '--dist' && args[i + 1]) {
-            distDir = args[++i];
-        } else if (args[i] === '--help' || args[i] === '-h') {
+        if (args[i] === '--src' && args[i + 1]) srcDir = args[++i];
+        else if (args[i] === '--dist' && args[i + 1]) distDir = args[++i];
+        else if (args[i] === '--help' || args[i] === '-h') {
             console.log(`
 EasyTrace5000 Build Script
 

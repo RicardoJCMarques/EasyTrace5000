@@ -4,25 +4,9 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
@@ -125,7 +109,50 @@
         addCannedPeck(x, y, z, retract, peckDepth, feed, cycleType = 'G83') {
             this.commands.push(new MotionCommand('CANNED_PECK', {x, y, z}, {retract, peckDepth, feed, cycleType}));
         }
+
+        /**
+         * Computes and stores the XY bounding box from this plan's commands.
+         * Single source of truth — replaces duplicated implementations in
+         * GeometryTranslator and ToolpathOptimizer.
+         */
+        computeBounds() {
+            let minX = Infinity, minY = Infinity;
+            let maxX = -Infinity, maxY = -Infinity;
+
+            for (const cmd of this.commands) {
+                if (cmd.x !== null && cmd.x !== undefined) {
+                    if (cmd.x < minX) minX = cmd.x;
+                    if (cmd.x > maxX) maxX = cmd.x;
+                }
+                if (cmd.y !== null && cmd.y !== undefined) {
+                    if (cmd.y < minY) minY = cmd.y;
+                    if (cmd.y > maxY) maxY = cmd.y;
+                }
+            }
+
+            this.metadata.boundingBox = { minX, minY, maxX, maxY };
+            return this.metadata.boundingBox;
+        }
     }
+
+    /**
+     * Checks whether a points array forms a closed loop (first ≈ last).
+     * Single source of truth — replaces duplicated implementations in
+     * GeometryTranslator, ToolpathTabPlanner, and ToolpathOptimizer.
+     * @param {Array<{x: number, y: number}>} points
+     * @param {number} [precision] - Squared-distance threshold (default: uses CAMConfig coordinate precision)
+     * @returns {boolean}
+     */
+    // REVIEW - Why is this outside of ToolpathPlan, while it's extending it? What?
+    ToolpathPlan.isClosedPoints = function(points, precision) {
+        if (!points || points.length < 2) return false;
+        const first = points[0];
+        const last = points[points.length - 1];
+        const dx = first.x - last.x;
+        const dy = first.y - last.y;
+        const threshold = precision !== undefined ? precision : (window.CAMConfig?.constants?.precision?.coordinate || 0.001);
+        return (dx * dx + dy * dy) < (threshold * threshold);
+    };
 
     window.MotionCommand = MotionCommand;
     window.ToolpathPlan = ToolpathPlan;

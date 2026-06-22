@@ -4,38 +4,19 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
     const EPSILON = C.precision.epsilon;
     const PRECISION = C.precision.coordinate;
-    const opsConfig = D.operations;
-    const debugState = D.debug;
 
-    class DrillOperationHandler extends BaseOperationHandler {
+    class DrillHandler extends BaseOperationHandler {
 
         /**
          * SVG Drill Classification
@@ -45,11 +26,11 @@
 
         postParsePrimitives(operation) {
             if (operation.file.name.toLowerCase().endsWith('.svg')) {
-                this._classifySVGDrillPrimitives(operation);
+                this.classifySVGDrillPrimitives(operation);
             }
         }
 
-        _classifySVGDrillPrimitives(operation) {
+        classifySVGDrillPrimitives(operation) {
             const quantize = (value) => Math.round(value / PRECISION) * PRECISION;
 
             const accepted = [];
@@ -169,7 +150,7 @@
                 const prim = operation.primitives.find(p => p.id === entry.id);
                 if (!prim || prim.type !== 'path') continue;
 
-                const circleMatch = this._detectCircleFromPath(prim);
+                const circleMatch = this.detectCircleFromPath(prim);
                 if (circleMatch) {
                     const qDiam = quantize(circleMatch.diameter);
                     recoverableCircles.push({
@@ -179,7 +160,7 @@
                     continue;
                 }
 
-                const obroundMatch = this._detectObroundFromPath(prim);
+                const obroundMatch = this.detectObroundFromPath(prim);
                 if (obroundMatch) {
                     const qDiam = quantize(obroundMatch.diameter);
                     recoverableObrounds.push({
@@ -223,7 +204,7 @@
             this.debug(`Classified ${accepted.length} accepted, ${rejected.length} rejected from ${accepted.length + rejected.length} primitives`);
         }
 
-        _detectCircleFromPath(primitive) {
+        detectCircleFromPath(primitive) {
             if (primitive.type !== 'path' || !primitive.contours || primitive.contours.length !== 1) return null;
 
             const contour = primitive.contours[0];
@@ -255,7 +236,7 @@
             return { center, radius, diameter: radius * 2 };
         }
 
-        _detectObroundFromPath(primitive) {
+        detectObroundFromPath(primitive) {
             if (primitive.type !== 'path' || !primitive.contours || primitive.contours.length !== 1) return null;
 
             const contour = primitive.contours[0];
@@ -393,6 +374,60 @@
         }
 
         // ORCHESTRATION
+        async generateLaserFills(operation, settings) {
+            this.debug(`=== LASER DRILL GENERATION ===`);
+            await this.core.ensureProcessorReady();
+
+            if (!this.core.geometryOffsetter) {
+                throw new Error('Geometry processors not initialized');
+            }
+
+            // Calculate a simple internal offset of half the laser spot size
+            const offsetDist = -(settings.toolDiameter / 2);
+            const processedGeometry = [];
+
+            for (const prim of operation.primitives) {
+                // Safeguard: Ensure we only offset actual drill holes/slots
+                if (prim.properties?.role !== 'drill_hole' && prim.properties?.role !== 'drill_slot') {
+                    continue;
+                }
+
+                const offsetResult = await this.core.geometryOffsetter.offsetBoundary(prim, offsetDist);
+                
+                if (offsetResult) {
+                    if (Array.isArray(offsetResult)) {
+                        processedGeometry.push(...offsetResult);
+                    } else {
+                        processedGeometry.push(offsetResult);
+                    }
+                }
+            }
+
+            // Tag the newly generated geometry 
+            processedGeometry.forEach(p => {
+                if (!p.properties) p.properties = {};
+                p.properties.isOffset = true;
+                p.properties.offsetType = 'internal';
+                p.properties.offsetDistance = offsetDist;
+            });
+
+            // Assign the result to the operation's offsets array
+            operation.offsets = [{
+                id: `laser_drill_${operation.id}`,
+                distance: offsetDist,
+                pass: 1,
+                type: 'drill',
+                primitives: processedGeometry,
+                metadata: {
+                    strategy: 'offset',
+                    toolDiameter: settings.toolDiameter,
+                    finalCount: processedGeometry.length,
+                    generatedAt: Date.now()
+                }
+            }];
+
+            return operation.offsets;
+        }
 
         async orchestrateGeneration(operation, params, core, options = {}) {
             // Wipe all previous generation state
@@ -468,10 +503,10 @@
             this.debug(`=== DRILL STRATEGY GENERATION ===`);
             this.debug(`Mode: ${settings.millHoles ? 'milling' : 'pecking'}`);
 
-            const { plan, warnings } = this._determineDrillStrategy(operation, settings);
+            const { plan, warnings } = this.determineDrillStrategy(operation, settings);
             operation.warnings = warnings;
 
-            const strategyGeometry = await this._generateGeometryFromPlan(plan, operation, settings);
+            const strategyGeometry = await this.generateGeometryFromPlan(plan, operation, settings);
 
             operation.offsets = [{
                 id: `drill_strategy_${operation.id}`,
@@ -496,11 +531,11 @@
             return operation.offsets;
         }
 
-        _determineDrillStrategy(operation, settings) {
+        determineDrillStrategy(operation, settings) {
             const plan = [];
             const warnings = [];
             const toolDiameter = parseFloat(settings.toolDiameter);
-            const minMillingMargin = parseFloat(opsConfig.drill?.strategy?.minMillingMargin || 0.05);
+            const minMillingMargin = 0.05; // Slightly arbitrary safeguard for helixes that are too tight
 
             for (const primitive of operation.primitives) {
                 const role = primitive.properties?.role;
@@ -591,7 +626,7 @@
             return { plan, warnings };
         }
 
-        async _generateGeometryFromPlan(plan, operation, settings) {
+        async generateGeometryFromPlan(plan, operation, settings) {
             const strategyPrimitives = [];
             const toolDiameter = parseFloat(settings.toolDiameter);
 
@@ -622,16 +657,15 @@
                 } else if (action.type === 'mill') {
                     const source = action.primitiveToOffset;
                     const toolRadius = toolDiameter / 2;
-                    const drillStrategyConfig = opsConfig.drill?.strategy || {};
-                    const minFeatureSize = drillStrategyConfig.minMillingFeatureSize || 0.001;
+                    const minFeatureSize = 0.01; // Slightly arbitrary safeguard REVIEW - can't remember what for though? force plunge entry instead of helix?
 
                     if (source.type === 'circle') {
                         const holeRadius = source.radius;
                         const pathRadius = holeRadius - toolRadius;
 
                         if (pathRadius > minFeatureSize) {
-                            const stepOverPct = settings.stepOver !== undefined ? settings.stepOver : D.toolpath.generation.drilling.defaultStepOver;
-                            const stepDist = toolDiameter * (stepOverPct / 100);
+                            const stepOverPct = settings.stepOver;
+                            const stepDist = toolDiameter * (1.0 - (stepOverPct / 100.0));
 
                             const concentricPasses = [];
                             let currentRadius = pathRadius;
@@ -691,8 +725,8 @@
                             const centerX = (originalSlot.start.x + originalSlot.end.x) / 2;
                             const centerY = (originalSlot.start.y + originalSlot.end.y) / 2;
                             const isHorizontal = Math.abs(dx) > Math.abs(dy);
-                            const stepOverPct = settings.stepOver !== undefined ? settings.stepOver : D.toolpath.generation.drilling.defaultStepOver;
-                            const stepDist = toolDiameter * (stepOverPct / 100);
+                            const stepOverPct = settings.stepOver; // REVIEW - Is this logic flipped? 90% step-over is only doing less passes 10%?
+                            const stepDist = toolDiameter * (1.0 - (stepOverPct / 100.0));
 
                             const concentricPasses = [];
                             let currentShort = pathThickness;
@@ -779,5 +813,5 @@
         }
     }
 
-    window.DrillOperationHandler = DrillOperationHandler;
+    window.DrillHandler = DrillHandler;
 })();

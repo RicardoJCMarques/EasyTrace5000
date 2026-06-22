@@ -8,27 +8,12 @@
         @author      Eltryus - Ricardo Marques
         @copyright   2025-2026 Eltryus - Ricardo Marques
         @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
-        @license     AGPL-3.0-or-later
-    -->
-    <!--
-        EasyTrace5000 - Advanced PCB Isolation CAM Workspace
-        Copyright (C) 2025-2026 Eltryus
-
-        This program is free software: you can redistribute it and/or modify
-        it under the terms of the GNU Affero General Public License as published by
-        the Free Software Foundation, either version 3 of the License, or
-        (at your option) any later version.
-
-        This program is distributed in the hope that it will be useful,
-        but WITHOUT ANY WARRANTY; without even the implied warranty of
-        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-        GNU Affero General Public License for more details.
-
-        You should have received a copy of the GNU Affero General Public License
-        along with this program.  If not, see <https://www.gnu.org/licenses/>.
+        
+        SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+        SPDX-License-Identifier: AGPL-3.0-or-later
     -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Eltryus CAM Suite | Free Browser-Based Manufacturing Tools</title>
+    <title>Eltryus EasyCAM5000 Suite | Free Browser-Based Manufacturing Tools</title>
 
     <meta name="description" content="A suite of free, open-source CAM tools running directly in your browser. Features EasyTrace5000 for PCB milling, and upcoming 2.5D routing tools.">
     <meta name="keywords" content="CAM Suite, PCB CAM, CNC Router software, browser CAM tool, open source CAM, G-code generator">
@@ -40,7 +25,7 @@
 
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://cam.eltryus.design/">
-    <meta property="og:title" content="Eltryus CAM Suite | Free Browser-Based Manufacturing Tools">
+    <meta property="og:title" content="Eltryus EasyCAM5000 Suite | Free Browser-Based Manufacturing Tools">
     <meta property="og:site_name" content="Eltryus">
     <meta property="og:description" content="Free, open-source, client-side CAM software for makers. Featuring EasyTrace5000 for PCB isolation routing and upcoming 2.5D woodworking tools.">
     <meta property="og:image" content="https://cam.eltryus.design/images/social-preview.jpg">
@@ -66,7 +51,7 @@
         {
             "@context": "https://schema.org",
             "@type": "WebApplication",
-            "name": "Eltryus CAM Suite",
+            "name": "Eltryus EasyCAM5000 Suite",
             "url": "https://cam.eltryus.design/",
             "operatingSystem": "Any (Browser-based)",
             "applicationCategory": "DeveloperApplication",
@@ -122,7 +107,7 @@
                 {
                     "@type": "ListItem",
                     "position": 1,
-                    "name": "Eltryus CAM Suite",
+                    "name": "Eltryus EasyCAM5000 Suite",
                     "item": "https://cam.eltryus.design/"
                 }
             ]
@@ -137,19 +122,11 @@
     <!-- Header — matches doc pages -->
     <header class="doc-header">
         <div class="doc-brand">
-            <a href="/" aria-label="Eltryus CAM Suite Homepage">Eltryus CAM Suite</a>
+            <a href="/" aria-label="Eltryus EasyCAM5000 Suite Homepage">Eltryus EasyCAM5000 Suite</a>
         </div>
 
-        <button class="doc-menu-toggle" aria-label="Toggle Navigation Menu" aria-expanded="false">
-            <svg class="icon-menu" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-            <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+        <button class="btn btn--icon doc-menu-toggle" aria-expanded="false" aria-label="Toggle menu">
+            <svg class="cam-icon" width="24" height="24"><use href="#icon-menu"></use></svg>
         </button>
 
         <nav class="doc-nav" aria-label="Main Navigation">
@@ -162,9 +139,8 @@
             <span class="separator" aria-hidden="true"></span>
             <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
 
-            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle between light and dark theme">
-                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
             </button>
         </nav>
     </header>
@@ -175,7 +151,7 @@
             <!-- Hero -->
             <section class="hero">
                 <h1>Browser-Based CAM Tools for Makers</h1>
-                <p class="tagline">Free, open-source manufacturing software that runs entirely in your browser. From PCB isolation routing to 2.5D woodworking—no cloud, no accounts, no installations.</p>
+                <p class="tagline">Free, open-source manufacturing software that runs entirely in your browser. From PCB isolation routing to 2.5D woodworking. Zero installations, definetly no accounts or cloud.</p>
             </section>
 
             <section id="suite-tools">
@@ -196,18 +172,18 @@
                         <span class="btn btn--primary btn--block" aria-hidden="true">Launch EasyTrace5000 Workspace</span>
                     </a>
 
-                    <div class="pipeline-card pipeline-card--dev" style="opacity: 0.8; cursor: default;">
+                    <a href="easyshape5000/" class="pipeline-card pipeline-card--dev" draggable="false" aria-label="Launch EasyShape5000 Workspace">
                         <h3>
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                 <path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"></path>
                                 <polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon>
                             </svg>
                             3D Router CAM
-                            <span class="doc-badge doc-badge--dev">Eventually</span>
+                            <span class="doc-badge doc-badge--dev">Pre-Alpha</span>
                         </h3>
                         <p>A CAM tool for woodworking, furniture/sign making and 3D reliefs.</p>
-                        <span class="btn btn--secondary btn--block" aria-hidden="true" style="pointer-events: none;">Maybe, Kinda, Sorta</span>
-                    </div>
+                        <span class="btn btn--primary btn--block" aria-hidden="true">Launch EasyShape5000 Workspace</span>
+                    </a>
 
                 </div>
             </section>
@@ -232,10 +208,9 @@
                 <div class="pipeline-grid">
                     <a href="easytrace5000/doc/cnc" class="pipeline-card pipeline-card--active" draggable="false" aria-label="Read the CNC Milling Guide">
                         <h3>
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                                <circle cx="12" cy="12" r="3"/>
-                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-                            </svg>
+                            <button class="btn btn--icon doc-menu-toggle" aria-expanded="false" aria-label="Toggle menu">
+                                <svg class="cam-icon" width="24" height="24"><use href="#icon-cnc"></use></svg>
+                            </button>
                             CNC Milling
                             <span class="doc-badge doc-badge--stable">Stable</span>
                         </h3>
@@ -245,10 +220,9 @@
 
                     <a href="easytrace5000/doc/laser" class="pipeline-card pipeline-card--dev" draggable="false" aria-label="Read the Laser Processing Guide">
                         <h3>
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                                <path d="M12 2v8"/><path d="M12 14v8"/><circle cx="12" cy="12" r="2"/>
-                                <path d="M4.93 4.93l4.24 4.24"/><path d="M14.83 14.83l4.24 4.24"/>
-                            </svg>
+                            <button class="btn btn--icon doc-menu-toggle" aria-expanded="false" aria-label="Toggle menu">
+                                <svg class="cam-icon" width="24" height="24"><use href="#icon-laser"></use></svg>
+                            </button>
                             Laser Processing
                             <span class="doc-badge doc-badge--dev">Beta</span>
                         </h3>
@@ -344,25 +318,25 @@
                 <div class="sponsor-grid">
                     <a href="https://ko-fi.com/eltryus" target="_blank" class="sponsor-slot" title="Support on Ko-fi" draggable="false" aria-label="Support development on Ko-fi (opens in a new tab)">
                         <div class="slot-content">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                            </svg>
+                            <button class="btn btn--icon doc-menu-toggle" aria-expanded="false" aria-label="Toggle menu">
+                                <svg class="cam-icon" width="24" height="24"><use href="#icon-heart"></use></svg>
+                            </button>
                             <span>Support on Ko-fi</span>
                         </div>
                     </a>
                     <a href="mailto:sponsor@eltryus.design" class="sponsor-slot" title="Become a Sponsor" draggable="false" aria-label="Contact us about sponsorship">
                         <div class="slot-content">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                                <path d="M12 5v14M5 12h14"/>
-                            </svg>
+                            <button class="btn btn--icon doc-menu-toggle" aria-expanded="false" aria-label="Toggle menu">
+                                <svg class="cam-icon" width="24" height="24"><use href="#icon-add"></use></svg>
+                            </button>
                             <span>Your Logo Here</span>
                         </div>
                     </a>
                     <a href="mailto:sponsor@eltryus.design" class="sponsor-slot" title="Become a Sponsor" draggable="false" aria-label="Contact us about sponsorship">
                         <div class="slot-content">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                                <path d="M12 5v14M5 12h14"/>
-                            </svg>
+                            <button class="btn btn--icon doc-menu-toggle" aria-expanded="false" aria-label="Toggle menu">
+                                <svg class="cam-icon" width="24" height="24"><use href="#icon-add"></use></svg>
+                            </button>
                             <span>Your Logo Here</span>
                         </div>
                     </a>
@@ -375,7 +349,7 @@
         <!-- Footer -->
         <footer class="doc-footer" aria-label="Footer">
             <p>
-                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.3.3</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.4.0</a> |
                 <a href="easytrace5000/" draggable="false">Open EasyTrace5000</a> |
                 <a href="easytrace5000/doc/" draggable="false">EasyTrace5000 Documentation</a> |
                 <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a> |
@@ -388,20 +362,55 @@
     <script defer src="themes/theme-loader.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Load the SVG Sprite
+            fetch('images/icons/sprite.svg')
+                .then(response => response.text())
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
+
             // Theme toggle
             const themeBtn = document.getElementById('theme-toggle');
             if (themeBtn && window.ThemeLoader) {
-                themeBtn.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+                // Set initial icon
+                if (useEl) {
+                    useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+                }
+
+                // Handle click and swap icon
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) {
+                        useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                    }
+                });
             }
 
             // Mobile menu toggle
             const menuBtn = document.querySelector('.doc-menu-toggle');
             const nav = document.querySelector('.doc-nav');
             if (menuBtn && nav) {
+                const useEl = menuBtn.querySelector('use');
                 menuBtn.addEventListener('click', () => {
                     const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
                     menuBtn.setAttribute('aria-expanded', !isExpanded);
                     nav.classList.toggle('is-open');
+
+                    // Swap the icon between hamburger and close
+                    if (useEl) {
+                        useEl.setAttribute('href', !isExpanded ? '#icon-close' : '#icon-menu');
+                    }
                 });
             }
         });

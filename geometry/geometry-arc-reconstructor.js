@@ -4,33 +4,17 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
-    const debugState = D.debug;
+    const C = window.CAMConfig.constants;
+    const PRECISION = C.precision.coordinate;
+    const debugState = window.CAMConfig.defaults.debug;
 
     class ArcReconstructor {
         constructor(options = {}) {
@@ -95,7 +79,7 @@
             const reconstructed = [];
             for (const primitive of primitives) {
                 // Check if this is a composite primitive with arcs
-                if (primitive.type === 'path' && this._hasAnyCurveData(primitive)) {
+                if (primitive.type === 'path' && this.hasAnyCurveData(primitive)) {
                     reconstructed.push(...this.reconstructPrimitive(primitive));
                 } else {
                     reconstructed.push(primitive);
@@ -111,7 +95,7 @@
             return reconstructed;
         }
 
-        _hasAnyCurveData(primitive) {
+        hasAnyCurveData(primitive) {
             if (!primitive.contours) return false;
             return primitive.contours.some(c =>
                 (c.curveIds && c.curveIds.length > 0) ||
@@ -142,7 +126,7 @@
 
             const reconstructedContours = [];
             for (const contour of primitive.contours) {
-                const reconstructed = this._reconstructSingleContour(contour, isClosed);
+                const reconstructed = this.reconstructSingleContour(contour, isClosed);
                 if (reconstructed) reconstructedContours.push(reconstructed);
             }
 
@@ -154,7 +138,7 @@
             })];
         }
 
-        _reconstructSingleContour(contour, isClosed) {
+        reconstructSingleContour(contour, isClosed) {
             if (!contour.points || contour.points.length < 3) return contour;
 
             const originalPointCount = contour.points.length;
@@ -171,31 +155,16 @@
                     if (curveData) {
                         const arcFromPoints = this.calculateArcFromPoints(group.points, curveData);
 
-                        // Pre-determine if this should be a full circle
-                        const expectedSegments = GeometryUtils.getOptimalSegments(curveData.radius, curveData.type === 'circle' ? 'circle' : 'arc');
-                        const isFullCircle = curveData.type === 'circle' && group.points.length >= expectedSegments;
-
-                        // Correct the sweep angle before validation
-                        if (arcFromPoints && isFullCircle) {
-                            arcFromPoints.sweepAngle = this.calculateAngularSweep(group.points, curveData.center, true);
-                        }
-
-                        // Bypass worthiness checks if it's known it's a full circle
-                        if (arcFromPoints && (isFullCircle || this._isArcWorthReconstruction(arcFromPoints, group.points))) {
-                            // Extract exact endpoints from the group body (legacy behavior)
+                        if (arcFromPoints && this.isArcWorthReconstruction(arcFromPoints, group.points)) {
+                            // Extract exact endpoints from the group body
                             const startPoint = group.points[0];
                             const endPoint = group.points[group.points.length - 1];
 
                             newPoints.push(startPoint);
                             const arcStartIdx = newPoints.length - 1;
 
-                            if (isFullCircle) {
-                                this.stats.fullCircles++;
-                                newPoints.push({ x: startPoint.x, y: startPoint.y });
-                            } else {
-                                this.stats.partialArcs++;
-                                newPoints.push(endPoint);
-                            }
+                            this.stats.partialArcs++;
+                            newPoints.push(endPoint);
 
                             const arcEndIdx = newPoints.length - 1;
 
@@ -473,11 +442,12 @@
          * Determines if a detected arc is worth reconstructing.
          * Tiny, nearly-flat arcs are left as linear segments so downstream simplification (DP) can handle them if need be.
          */
-        _isArcWorthReconstruction(arcParams, points) {
+        isArcWorthReconstruction(arcParams, points) {
             const minSweepDeg = 2.0;
             const minChordLen = 0.01;
 
-            const maxFlatnessRatio = 1 + C.precision.coordinate;
+            // Dynamic ratio: scales with the radius so large arcs are preserved while tiny artifacts are flattened.
+            const maxFlatnessRatio = 1 + (PRECISION / Math.max(1, arcParams.radius));
 
             const absSweep = Math.abs(arcParams.sweepAngle);
 
@@ -486,21 +456,27 @@
                 return false;
             }
 
+            // Full circles have near-zero chord but ≈ 2π sweep — always reconstruct
+            // REVIEW - This could have unnintended consequences.
+            const isFullCircle = Math.abs(absSweep - 2 * Math.PI) < PRECISION;
+
             const p0 = points[0];
             const pN = points[points.length - 1];
             const dx = pN.x - p0.x;
             const dy = pN.y - p0.y;
             const chordLen = Math.sqrt(dx * dx + dy * dy);
 
-            if (chordLen < minChordLen) {
+            if (!isFullCircle && chordLen < minChordLen) {
                 this.debug(`Arc Rejected: Chord too short (${chordLen.toFixed(4)} < ${minChordLen})`, { curveId: arcParams.curveId });
                 return false;
             }
 
-            const arcLen = arcParams.radius * absSweep;
-            if (chordLen > 0 && (arcLen / chordLen) < maxFlatnessRatio) {
-                this.debug(`Arc Rejected: Arc too flat (Ratio: ${(arcLen / chordLen).toFixed(3)} < ${maxFlatnessRatio})`, { curveId: arcParams.curveId });
-                return false;
+            if (!isFullCircle) {
+                const arcLen = arcParams.radius * absSweep;
+                if (chordLen > 0 && (arcLen / chordLen) < maxFlatnessRatio) {
+                    this.debug(`Arc Rejected: Arc too flat (Ratio: ${(arcLen / chordLen).toFixed(3)} < ${maxFlatnessRatio})`, { curveId: arcParams.curveId });
+                    return false;
+                }
             }
 
             return true;
@@ -584,6 +560,16 @@
                 if (sweepAngle < 0) sweepAngle += 2 * Math.PI;
             }
 
+            // Detect full circle: when start ≈ end the above produces sweep ≈ 0,
+            // but the actual point traversal covers ≈ 2π.  Use the cumulative
+            // angular sweep through consecutive points as ground truth.
+            // REVIEW - This could have unnintended consequences.
+            const cumulativeSweep = this.calculateAngularSweep(points, curveData.center, false);
+            if (Math.abs(Math.abs(cumulativeSweep) - 2 * Math.PI) < 0.03) {
+                sweepAngle = actuallyClockwise ? -2 * Math.PI : 2 * Math.PI;
+                this.debug(`Full-circle sweep detected via cumulative traversal (${points.length} pts)`);
+            }
+
             if (curveData.clockwise !== actuallyClockwise) {
                 this.debug(`Corrected: ${curveData.clockwise ? 'CW' : 'CCW'} → ${actuallyClockwise ? 'CW' : 'CCW'}`);
             }
@@ -603,7 +589,7 @@
          * Performs a radius check and, if angle data is available, a sweep check to prevent false positives on arcs that share the same center/radius.
          * NOTICE: There's a risk this can cause arc-arc edge point collision metadata recovery checks to become greedy when arc points overlap the next linear segment points and they mathematically are within the tolerance assigned.
          */
-        _pointBelongsToCurve(point, curveData, tolerance) {
+        pointBelongsToCurve(point, curveData, tolerance) {
             if (!curveData || !curveData.center || !curveData.radius) return false;
 
             // Radius Check
@@ -657,48 +643,38 @@
             const len = contourPoints.length;
             let recovered = 0;
 
-            // Snapshot original curve IDs to prevent cascading/flood-fill recovery
-            // Only points adjacent to *originally* valid arc points should be recovered
+            // Snapshot original curve IDs to prevent cascading recovery.
             const originalIds = new Array(len);
             for (let i = 0; i < len; i++) {
                 originalIds[i] = contourPoints[i].curveId || 0;
             }
 
-            // Forward pass: let originally tagged points claim the next untagged neighbor
+            // Single bidirectional pass: only recover a point when BOTH its
+            // original neighbors share the same curveId.  This prevents
+            // greedy boundary extension at arc-to-straight transitions
+            // (where only one neighbor is tagged) while still healing
+            // internal single-point losses within an arc run.
             for (let i = 0; i < len; i++) {
                 const current = contourPoints[i];
                 if (current.curveId > 0) continue; // Already tagged
 
                 const prevIdx = (i - 1 + len) % len;
-                if (!isClosed && i === 0) continue; // Don't wrap on open paths
+                const nextIdx = (i + 1) % len;
+
+                // Don't wrap on open paths
+                if (!isClosed && (i === 0 || i === len - 1)) continue;
 
                 // Use originalIds to prevent the cascade
                 const prevId = originalIds[prevIdx];
-                if (!prevId || prevId <= 0) continue;
-
-                const curveData = this.getCurve(prevId);
-                if (curveData && this._pointBelongsToCurve(current, curveData, C.precision.coordinate)) {
-                    current.curveId = prevId;
-                    recovered++;
-                }
-            }
-
-            // Backward pass: let originally tagged points claim the previous untagged neighbor
-            for (let i = len - 1; i >= 0; i--) {
-                const current = contourPoints[i];
-                if (current.curveId > 0) continue; // Already tagged
-
-                const nextIdx = (i + 1) % len;
-                if (!isClosed && i === len - 1) continue;
-
-                // Use originalIds to prevent the cascade
                 const nextId = originalIds[nextIdx];
-                if (!nextId || nextId <= 0) continue;
 
-                const curveData = this.getCurve(nextId);
-                if (curveData && this._pointBelongsToCurve(current, curveData, C.precision.coordinate)) {
-                    current.curveId = nextId;
-                    recovered++;
+                // Both neighbors must be originally tagged with the SAME curve
+                if (prevId > 0 && prevId === nextId) {
+                    const curveData = this.getCurve(prevId);
+                    if (curveData && this.pointBelongsToCurve(current, curveData, PRECISION)) {
+                        current.curveId = prevId;
+                        recovered++;
+                    }
                 }
             }
 
@@ -707,16 +683,6 @@
             }
 
             return contourPoints;
-        }
-
-        debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[ArcReconstructor] ${message}`, data);
-                } else {
-                    console.log(`[ArcReconstructor] ${message}`);
-                }
-            }
         }
 
         getStats() {
@@ -731,6 +697,12 @@
                 successRate: `${successRate}%`,
                 wrapAroundMerges: this.stats.wrappedGroups
             };
+        }
+
+        debug(message, data = null) {
+            if (!debugState.enabled) return;
+            data ? console.log(`[ArcReconstructor] ${message}`, data)
+                 : console.log(`[ArcReconstructor] ${message}`);
         }
     }
 

@@ -1,498 +1,77 @@
 /*!
  * @file        ui/ui-parameter-manager.js
- * @description Parameter input management and validation
+ * @description Parameter input management, validation and form rendering.
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
- /*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const validationRules = C.ui.validation;
-    const paramOptions = C.ui.parameterOptions;
 
     class ParameterManager {
         constructor(core) {
             this.core = core;
 
-            // Parameter definitions and metadata
-            this.parameterDefinitions = this.initializeDefinitions();
+            // Parameter definitions start empty, populated by the app controller
+            this.parameterDefinitions = {};
 
             // State storage - persists across operation/stage switches
-            this.operationStates = new Map(); // operationId -> { source: {}, offset: {}, preview: {} }
-            this.dirtyFlags = new Map(); // operationId -> Set of dirty stages
+            this.operationStates = new Map();
+            this.dirtyFlags = new Map();
 
             // Active state
             this.currentOperationId = null;
             this.currentStage = null;
 
-            this.validators = this.initializeValidators();
+            this.validators = {};
 
-            // Change listeners
             this.changeListeners = new Set();
+
+            this.definitionsSource = 'empty';
         }
 
-        initializeDefinitions() {
-            return {
+        /**
+         * Replaces parameter definitions with an external set and rebuilds
+         * validators. Used by EasyShape to load app-specific definitions
+         * from a JSON file instead of the hardcoded EasyTrace set.
+         */
+        setDefinitions(definitions) {
+            this.parameterDefinitions = definitions;
+            this.validators = this.initializeValidators();
+            this.operationStates.clear();
+            this.dirtyFlags.clear();
+            this.definitionsSource = 'external';
+        }
 
-                // ═══════════════════════════════════════
-                // CNC PIPELINE PARAMETERS
-                // ═══════════════════════════════════════
-
-                // Geometry
-                tool: {
-                    type: 'select',
-                    label: 'Tool',
-                    stage: 'geometry',
-                    category: 'tool',
-                    operationTypes: ['isolation', 'clearing', 'cutout', 'drill']
-                },
-                toolDiameter: {
-                    type: 'number',
-                    label: 'Tool Diameter',
-                    unit: 'mm',
-                    ...validationRules.toolDiameter,
-                    stage: 'geometry',
-                    category: 'tool',
-                    operationTypes: ['isolation', 'clearing', 'cutout', 'drill']
-                },
-                passes: {
-                    type: 'number',
-                    label: 'Number of Passes',
-                    ...validationRules.passes,
-                    stage: 'geometry',
-                    category: 'offset',
-                    operationTypes: 'isolation'
-                },
-                stepOver: {
-                    type: 'number',
-                    label: 'Step Over',
-                    unit: '%',
-                    ...validationRules.stepOver,
-                    stage: 'geometry',
-                    category: 'offset',
-                    operationTypes: ['isolation', 'clearing']
-                },
-                combineOffsets: {
-                    type: 'checkbox',
-                    label: 'Combine Passes',
-                    default: true,
-                    stage: 'geometry',
-                    category: 'offset',
-                    operationTypes: 'isolation'
-                },
-                millHoles: {
-                    type: 'checkbox',
-                    label: 'Mill Holes',
-                    default: true,
-                    stage: 'geometry',
-                    category: 'drill',
-                    operationType: 'drill'
-                },
-                cutSide: {
-                    type: 'select',
-                    label: 'Cut Side',
-                    options: paramOptions.cutSide,
-                    default: 'outside',
-                    stage: 'geometry',
-                    category: 'cutout',
-                    operationType: 'cutout'
-                },
-
-                // Strategy
-                cutDepth: {
-                    type: 'number',
-                    label: 'Cut Depth',
-                    unit: 'mm',
-                    ...validationRules.cutDepth,
-                    stage: 'strategy',
-                    category: 'depth'
-                },
-                depthPerPass: {
-                    type: 'number',
-                    label: 'Depth per Pass',
-                    unit: 'mm',
-                    ...validationRules.depthPerPass,
-                    stage: 'strategy',
-                    category: 'depth',
-                    conditional: 'multiDepth'
-                },
-                multiDepth: {
-                    type: 'checkbox',
-                    label: 'Multi-depth Cutting',
-                    default: true,
-                    stage: 'strategy',
-                    category: 'depth'
-                },
-                entryType: {
-                    type: 'select',
-                    label: 'Entry Type',
-                    options: paramOptions.entryType,
-                    stage: 'strategy',
-                    category: 'strategy'
-                },
-                peckDepth: {
-                    type: 'number',
-                    label: 'Peck Depth',
-                    unit: 'mm',
-                    ...validationRules.peckDepth,
-                    stage: 'strategy',
-                    category: 'drill',
-                    operationType: 'drill'
-                },
-                dwellTime: {
-                    type: 'number',
-                    label: 'Dwell Time',
-                    unit: 's',
-                    ...validationRules.dwellTime,
-                    stage: 'strategy',
-                    category: 'drill',
-                    operationType: 'drill'
-                },
-                retractHeight: {
-                    type: 'number',
-                    label: 'Retract Height',
-                    unit: 'mm',
-                    ...validationRules.retractHeight,
-                    stage: 'strategy',
-                    category: 'drill',
-                    operationType: 'drill'
-                },
-                cannedCycle: {
-                    type: 'select',
-                    label: 'Canned Cycle',
-                    options: paramOptions.cannedCycle,
-                    stage: 'strategy',
-                    category: 'drill',
-                    operationType: 'drill',
-                },
-                tabs: {
-                    type: 'number',
-                    label: 'Number of Tabs',
-                    ...validationRules.tabs,
-                    stage: 'strategy',
-                    category: 'cutout',
-                    operationType: 'cutout'
-                },
-                tabWidth: {
-                    type: 'number',
-                    label: 'Tab Width',
-                    unit: 'mm',
-                    ...validationRules.tabWidth,
-                    stage: 'strategy',
-                    category: 'cutout',
-                    operationType: 'cutout'
-                },
-                tabHeight: {
-                    type: 'number',
-                    label: 'Tab Height',
-                    unit: 'mm',
-                    ...validationRules.tabHeight,
-                    stage: 'strategy',
-                    category: 'cutout',
-                    operationType: 'cutout'
-                },  
-
-                // Machine
-                feedRate: {
-                    type: 'number',
-                    label: 'Feed Rate',
-                    unit: 'mm/min',
-                    ...validationRules.feedRate,
-                    stage: 'machine',
-                    category: 'feeds'
-                },
-                plungeRate: {
-                    type: 'number',
-                    label: 'Plunge Rate',
-                    unit: 'mm/min',
-                    ...validationRules.plungeRate,
-                    stage: 'machine',
-                    category: 'feeds'
-                },
-                spindleSpeed: {
-                    type: 'number',
-                    label: 'Spindle Speed',
-                    unit: 'RPM',
-                    ...validationRules.spindleSpeed,
-                    stage: 'machine',
-                    category: 'feeds'
-                },
-                spindleDwell: {
-                    type: 'number',
-                    label: 'Dwell',
-                    unit: 's',
-                    step: 0.5,
-                    default: 1,
-                    ...validationRules.spindleDwell,
-                    stage: 'machine',
-                    category: 'feeds'
-                },
-
-                // ═══════════════════════════════════════
-                // LASER PIPELINE PARAMETERS
-                // ═══════════════════════════════════════
-
-                // Laser Geometry Stage — Tool
-                laserSpotSize: {
-                    type: 'number',
-                    label: 'Laser Spot Size',
-                    unit: 'mm',
-                    step: 0.01,
-                    min: 0.01,
-                    max: 1.0,
-                    default: 0.05,
-                    stage: 'geometry',
-                    category: 'laser_tool',
-                    pipelineType: 'laser',
-                    readOnly: true
-                },
-
-                // Laser Geometry Stage — Isolation
-                laserIsolationWidth: {
-                    type: 'number',
-                    label: 'Isolation Width',
-                    unit: 'mm',
-                    step: 0.01,
-                    min: 0.01,
-                    max: 5.0,
-                    default: 0.3,
-                    stage: 'geometry',
-                    category: 'laser_geometry',
-                    pipelineType: 'laser',
-                    operationType: 'isolation'
-                },
-
-                // Laser Geometry Stage — Clearing Padding
-                // NOTE: Dormant — reserved for future "fill-to-cutout" board-fill feature.
-                // Currently hidden from all operation types.
-                laserClearingPadding: {
-                    type: 'number',
-                    label: 'Clearing Padding',
-                    unit: 'mm',
-                    step: 0.1,
-                    min: 0,
-                    max: 10.0,
-                    default: 1.0,
-                    stage: 'geometry',
-                    category: 'laser_geometry',
-                    pipelineType: 'laser',
-                    operationType: '_board_fill'
-                },
-
-                // Laser Geometry Stage — Clearing Strategy
-                laserClearStrategy: {
-                    type: 'select',
-                    label: 'Clearing Strategy',
-                    options: [
-                        { value: 'offset', label: 'Offset Paths — Concentric, streak-proof' },
-                        { value: 'filled', label: 'Filled Polygon — Laser software controls fill' },
-                        { value: 'hatch', label: 'Hatch Fill — Directional line coverage' }
-                    ],
-                    default: 'offset',
-                    stage: 'geometry',
-                    category: 'laser_strategy',
-                    pipelineType: 'laser',
-                    operationTypes: ['isolation', 'clearing']
-                },
-
-                // Laser Geometry Stage — Spacing Method (controls which density input is shown)
-                laserSpacingMode: {
-                    type: 'select',
-                    label: 'Spacing Method',
-                    options: [
-                        { value: 'stepover', label: 'Step Over %' },
-                        { value: 'lpcm',     label: 'Lines per cm' },
-                        { value: 'lpi',      label: 'Lines per inch' }
-                    ],
-                    default: 'stepover',
-                    stage: 'geometry',
-                    category: 'laser_strategy',
-                    pipelineType: 'laser',
-                    operationTypes: ['isolation', 'clearing'],
-                    conditional: 'laserClearStrategy:offset,hatch'
-                },
-
-                // Laser Geometry Stage — Step Over (visible when spacingMode is stepover)
-                laserStepOver: {
-                    type: 'number',
-                    label: 'Step Over',
-                    unit: '%',
-                    step: 1,
-                    min: 1,
-                    max: 95,
-                    default: 50,
-                    stage: 'geometry',
-                    category: 'laser_strategy',
-                    pipelineType: 'laser',
-                    operationTypes: ['isolation', 'clearing'],
-                    conditional: 'laserClearStrategy:offset,hatch&&laserSpacingMode:stepover'
-                },
-
-                // Laser Geometry Stage — Lines per cm (visible when spacingMode is lpcm)
-                laserLinesPerCm: {
-                    type: 'number',
-                    label: 'Lines per cm',
-                    unit: 'lines/cm',
-                    step: 1,
-                    min: 1,
-                    max: 1000,
-                    default: 200,
-                    stage: 'geometry',
-                    category: 'laser_strategy',
-                    pipelineType: 'laser',
-                    operationTypes: ['isolation', 'clearing'],
-                    conditional: 'laserClearStrategy:offset,hatch&&laserSpacingMode:lpcm'
-                },
-
-                // Laser Geometry Stage — Lines per inch (visible when spacingMode is lpi)
-                laserLinesPerInch: {
-                    type: 'number',
-                    label: 'Lines per inch',
-                    unit: 'lines/inch',
-                    step: 5,
-                    min: 5,
-                    max: 2540,
-                    default: 508,
-                    stage: 'geometry',
-                    category: 'laser_strategy',
-                    pipelineType: 'laser',
-                    operationTypes: ['isolation', 'clearing'],
-                    conditional: 'laserClearStrategy:offset,hatch&&laserSpacingMode:lpi'
-                },
-
-                // Laser Geometry Stage — Hatch Passes (number of angular passes)
-                laserHatchPasses: {
-                    type: 'number',
-                    label: 'Hatch Passes',
-                    step: 1,
-                    min: 1,
-                    max: 8,
-                    default: 2,
-                    stage: 'geometry',
-                    category: 'laser_strategy',
-                    pipelineType: 'laser',
-                    operationTypes: ['isolation', 'clearing'],
-                    conditional: 'laserClearStrategy:hatch'
-                },
-
-                // Laser Geometry Stage — Hatch Angle
-                laserHatchAngle: {
-                    type: 'number',
-                    label: 'Hatch Base Angle',
-                    unit: '°',
-                    step: 5,
-                    min: 0,
-                    max: 180,
-                    default: 45,
-                    stage: 'geometry',
-                    category: 'laser_strategy',
-                    pipelineType: 'laser',
-                    operationTypes: ['isolation', 'clearing'],
-                    conditional: 'laserClearStrategy:hatch'
-                },
-
-                // Laser Geometry Stage — Cutout
-                laserCutSide: {
-                    type: 'select',
-                    label: 'Cut Side',
-                    options: null, // Populated from C.ui.parameterOptions.laserCutSide
-                    default: 'outside',
-                    stage: 'geometry',
-                    category: 'laser_cutout',
-                    pipelineType: 'laser',
-                    operationTypes: ['cutout', 'drill']
-                },
-
-                // ═══════════════════════════════════════
-                // STENCIL PIPELINE PARAMETERS
-                // ═══════════════════════════════════════
-
-                stencilOffset: {
-                    type: 'number',
-                    label: 'Aperture Offset',
-                    unit: 'mm',
-                    step: 0.01,
-                    min: -1.0,
-                    max: 1.0,
-                    default: -0.05,
-                    stage: 'geometry',
-                    category: 'stencil',
-                    operationType: 'stencil'
-                },
-                stencilIgnoreRegions: {
-                    type: 'checkbox',
-                    label: 'Ignore Solid Regions (Pads Only)',
-                    default: true,
-                    stage: 'geometry',
-                    category: 'stencil',
-                    operationType: 'stencil'
-                },
-                stencilExcludeDrillPads: {
-                    type: 'checkbox',
-                    label: 'Exclude Pads Over Drill Holes',
-                    default: true,
-                    stage: 'geometry',
-                    category: 'stencil',
-                    operationType: 'stencil'
-                },
-                stencilAddRegHoles: {
-                    type: 'checkbox',
-                    label: 'Add Registration Holes',
-                    default: false,
-                    stage: 'geometry',
-                    category: 'stencil',
-                    operationType: 'stencil'
-                },
-                stencilRegDiameter: {
-                    type: 'number',
-                    label: 'Registration Hole Diameter',
-                    unit: 'mm',
-                    step: 0.1,
-                    min: 0.5,
-                    max: 10.0,
-                    default: 3.0,
-                    stage: 'geometry',
-                    category: 'stencil',
-                    operationType: 'stencil',
-                    conditional: 'stencilAddRegHoles'
-                },
-                stencilRegMargin: {
-                    type: 'number',
-                    label: 'Registration Hole Margin',
-                    unit: 'mm',
-                    step: 0.5,
-                    min: 1.0,
-                    max: 25.0,
-                    default: 5.0,
-                    stage: 'geometry',
-                    category: 'stencil',
-                    operationType: 'stencil',
-                    conditional: 'stencilAddRegHoles'
+        /**
+         * Loads parameter definitions from a JSON URL. Returns true on success.
+         */
+        async loadDefinitionsFromURL(url) {
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const json = await resp.json();
+                // Strip meta key if present
+                const defs = {};
+                for (const [k, v] of Object.entries(json)) {
+                    if (k.startsWith('_')) continue;
+                    defs[k] = v;
                 }
-            };
+                this.setDefinitions(defs);
+                this.debug(`Loaded ${Object.keys(defs).length} definitions from ${url}`);
+                return true;
+            } catch (e) {
+                console.error(`[ParameterManager] Failed to load definitions from ${url}:`, e);
+                return false;
+            }
         }
 
         initializeValidators() {
@@ -525,8 +104,6 @@
          * Called when the user changes the Roland machine model or switches post-processor.
          */
         updateMachineConstraints(machineProfile, postProcessor) {
-            if (!machineProfile) return;
-
             const isRoland = postProcessor === 'roland';
 
             // Update spindle speed constraints from profile
@@ -543,10 +120,8 @@
                     if (num > def.max) return { success: false, error: `${def.label} must be no more than ${def.max}`, correctedValue: def.max };
                     return { success: true, value: num };
                 };
-            } else if (isRoland && !machineProfile.supportsRC) {
-                // Fixed or manual spindle - accept any value but it won't be emitted
-                // REVIEW - Is this supposed to be doing something? Why is it empty?
-            }
+            } // Roland without RC: fixed/manual spindle — no validator override needed.
+            
 
             // Update feed rate constraints from profile max speeds
             if (isRoland && machineProfile.maxFeedXY) {
@@ -574,7 +149,7 @@
                 };
             } else if (!isRoland) {
                 // Switching away from Roland — restore default validation limits
-                this._restoreDefaultValidators(['feedRate', 'plungeRate', 'spindleSpeed']);
+                this.restoreDefaultValidators(['feedRate', 'plungeRate', 'spindleSpeed']);
             }
 
             // Re-validate all currently loaded operations against new constraints
@@ -596,7 +171,7 @@
         }
 
         // Restores validators to their original config-based limits.
-        _restoreDefaultValidators(paramNames) {
+        restoreDefaultValidators(paramNames) {
             for (const name of paramNames) {
                 const def = this.parameterDefinitions[name];
                 if (!def || def.type !== 'number') continue;
@@ -625,11 +200,7 @@
         // Get or create state for an operation
         getOperationState(operationId) {
             if (!this.operationStates.has(operationId)) {
-                this.operationStates.set(operationId, {
-                    geometry: {},
-                    strategy: {},
-                    machine: {}
-                });
+                this.operationStates.set(operationId, {});
             }
             return this.operationStates.get(operationId);
         }
@@ -637,7 +208,8 @@
         // Get parameters for current context
         getParameters(operationId, stage) {
             const state = this.getOperationState(operationId);
-            return state[stage] || {};
+            if (!state[stage]) state[stage] = {};
+            return state[stage];
         }
 
         setParameter(operationId, stage, name, value) {
@@ -694,11 +266,11 @@
         // Get all parameters for an operation (merged across stages)
         getAllParameters(operationId) {
             const state = this.getOperationState(operationId);
-            return {
-                ...state.geometry,
-                ...state.strategy,
-                ...state.machine
-            };
+            const merged = {};
+            for (const stageParams of Object.values(state)) {
+                Object.assign(merged, stageParams);
+            }
+            return merged;
         }
 
         // Commit parameters to operation object
@@ -742,7 +314,7 @@
 
                 // Check for a value in the manager's current "live" state first.
                 // Preserve unsaved changes if switching tabs and coming back.
-                value = state[def.stage][name];
+                value = state[def.stage]?.[name];
 
                 // If not in live state, check the operation's saved settings.
                 // This is the "load" step. ONLY check for the flat property.
@@ -776,8 +348,8 @@
                 }
             }
 
-            // Sync laser spot size from machine settings
-            const isLaser = this.core?.settings?.laser && (window.pcbcam?.pipelineState?.type === 'laser' || window.pcbcam?.pipelineState?.type === 'hybrid');
+            // Sync laser spot size from machine settings safely
+            const isLaser = this.core.settings?.laser !== undefined;
             if (isLaser) {
                 const machineSpotSize = this.core.settings.laser.spotSize;
                 if (machineSpotSize !== undefined && state.geometry) {
@@ -799,7 +371,7 @@
             const params = [];
             const isLaser = pipelineType === 'laser' || pipelineType === 'hybrid';
 
-            const exportFormat = this.core?.settings?.laser?.exportFormat;
+            const exportFormat = this.core.settings?.laser?.exportFormat;
 
             for (const [name, def] of Object.entries(this.parameterDefinitions)) {
                 // Stage matching: 'export_summary' has no parameters — it's a display-only stage
@@ -825,19 +397,11 @@
                     if (name === 'laserClearStrategy' || name === 'laserSpacingMode' ||
                         name === 'laserStepOver' || name === 'laserLinesPerCm' ||
                         name === 'laserLinesPerInch' || name === 'laserHatchAngle') {
-                        continue; 
+                        continue;
                     }
                 }
 
-                // Resolve dynamic options from config
                 const resolved = { name, ...def };
-                if (resolved.options === null) {
-                    const configOptions = C.ui.parameterOptions?.[name];
-                    if (configOptions) {
-                        resolved.options = configOptions;
-                    }
-                }
-
                 params.push(resolved);
             }
 
@@ -892,50 +456,44 @@
 
         // Get default values for operation type
         getDefaults(operationType) {
-            const opConfig = D.operations?.[operationType] || {};
-            const cuttingConfig = opConfig.cutting || {};
-            const settingsConfig = opConfig.defaultSettings || {};
-            const defaultToolId = opConfig.defaultTool;
+            const defaults = {};
 
-            let toolDiameter;
-            if (defaultToolId && window.pcbcam?.ui?.toolLibrary) {
-                const libraryDiameter = window.pcbcam.ui.toolLibrary.getToolDiameter(defaultToolId);
-                if (libraryDiameter !== null && libraryDiameter !== undefined) {
-                    toolDiameter = libraryDiameter;
+            // Ask the Tool Library for an appropriate starting tool via the core
+            if (this.core.toolLibrary) {
+                const tool = this.core.toolLibrary.getDefaultToolForOperation(operationType);
+                if (tool) {
+                    defaults.tool = tool.id;
+                    defaults.toolDiameter = this.core.toolLibrary.getToolDiameter(tool.id);
+
+                    // Pull cutting parameters from the tool so form fields populate
+                    if (tool.cutting) {
+                        if (tool.cutting.feedRate !== undefined) defaults.feedRate = tool.cutting.feedRate;
+                        if (tool.cutting.plungeRate !== undefined) defaults.plungeRate = tool.cutting.plungeRate;
+                        if (tool.cutting.spindleSpeed !== undefined) defaults.spindleSpeed = tool.cutting.spindleSpeed;
+                        if (tool.cutting.spindleDwell !== undefined) defaults.spindleDwell = tool.cutting.spindleDwell;
+                        if (tool.cutting.cutDepth !== undefined) defaults.cutDepth = tool.cutting.cutDepth;
+                        if (tool.cutting.depthPerPass !== undefined) defaults.depthPerPass = tool.cutting.depthPerPass;
+                    }
                 }
             }
 
-            // Flatten the config objects directly without shadow fallbacks
-            const defaults = {
-                tool: defaultToolId,
-                toolDiameter: toolDiameter,
-                ...cuttingConfig,
-                ...settingsConfig
-            };
-
             // Handle specific pipeline injections (Laser/Stencil)
-            const controller = window.pcbcam;
-            if (controller?.isLaserPipeline?.()) {
-                const laserMachine = controller.core?.settings?.laser || {};
-                const opLaserDefaults = D.laser.operations?.[operationType];
-
-                defaults.laserSpotSize = laserMachine.spotSize;
-                defaults.laserExportFormat = laserMachine.exportFormat;
-                defaults.laserExportDPI = laserMachine.exportDPI;
-
-                // Spread operation-specific laser overrides directly
-                Object.assign(defaults, opLaserDefaults)
+            const settings = this.core.settings || {};
+            if (settings.laser) {
+                defaults.laserSpotSize = settings.laser.spotSize;
+                defaults.laserExportFormat = settings.laser.exportFormat;
+                defaults.laserExportDPI = settings.laser.exportDPI;
             }
 
-            if (operationType === 'stencil') {
-                const stencilSettings = D.operations.stencil.defaultSettings || {};
-                Object.assign(defaults, stencilSettings);
+            // Check app profile for operation-specific overrides
+            const profileDefaults = this.core.appProfile?.operationDefaults?.[operationType];
+            if (profileDefaults) {
+                Object.assign(defaults, profileDefaults);
             }
 
             return defaults;
         }
 
-        // Change notification
         addChangeListener(callback) {
             this.changeListeners.add(callback);
         }
@@ -950,7 +508,6 @@
             }
         }
 
-        // Export state for saving
         exportState() {
             const state = {};
             for (const [opId, opState] of this.operationStates) {
@@ -959,7 +516,6 @@
             return state;
         }
 
-        // Import saved state
         importState(state) {
             this.operationStates.clear();
             this.dirtyFlags.clear();
@@ -969,10 +525,237 @@
             }
         }
 
-        // Clear state for an operation
         clearOperation(operationId) {
             this.operationStates.delete(operationId);
             this.dirtyFlags.delete(operationId);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Form Rendering
+        // ═══════════════════════════════════════════════════════════════
+
+        /**
+         * Creates a complete .property-field element from a parameter definition.
+         *
+         * @param {Object}   param              Parameter definition
+         * @param {*}        value              Current value
+         * @param {Object}   [options]
+         * @param {string}   [options.idPrefix='op-']  DOM id prefix
+         * @param {string}   [options.opType]          Operation type (for tool filtering)
+         * @param {Object}   [options.toolLibrary]     ToolLibrary instance
+         * @param {Object}   [options.lang]            LanguageManager instance
+         * @param {Function} [options.onChange]         Callback(paramName, newValue, inputElement)
+         * @returns {HTMLElement} The .property-field div
+         */
+        static createField(param, value, options = {}) {
+            const field = document.createElement('div');
+            field.className = 'property-field';
+            field.dataset.param = param.name;
+            if (param.conditional) field.dataset.conditional = param.conditional;
+
+            const inputId = `${options.idPrefix || 'op-'}${param.name}`;
+
+            const label = document.createElement('label');
+            label.setAttribute('for', inputId);
+
+            const lang = options.lang;
+            const labelText = lang ? lang.get(`parameters.${param.name}`, param.label) : param.label;
+            label.textContent = labelText;
+            field.appendChild(label);
+
+            if (lang && lang.has(`tooltips.parameters.${param.name}`)) {
+                const helpText = lang.get(`tooltips.parameters.${param.name}`);
+                if (helpText && window.TooltipManager) {
+                    window.TooltipManager.attachWithIcon(label, { title: labelText, text: helpText }, { showOnFocus: true });
+                }
+            }
+
+            let inputEl;
+
+            switch (param.type) {
+                case 'number': {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'input-unit';
+                    inputEl = document.createElement('input');
+                    inputEl.type = 'number';
+                    inputEl.id = inputId;
+                    inputEl.value = value ?? 0;
+                    if (param.min !== undefined) inputEl.min = param.min;
+                    if (param.max !== undefined) inputEl.max = param.max;
+                    if (param.step !== undefined) inputEl.step = param.step;
+                    if (param.unit) inputEl.setAttribute('aria-label', `${labelText} in ${param.unit}`);
+                    if (param.readOnly) { inputEl.readOnly = true; inputEl.classList.add('input-readonly'); }
+
+                    inputEl.addEventListener('input', () => inputEl.classList.remove('input-error'));
+
+                    wrapper.appendChild(inputEl);
+                    if (param.unit) {
+                        const unit = document.createElement('span');
+                        unit.className = 'unit';
+                        unit.textContent = param.unit;
+                        unit.setAttribute('aria-hidden', 'true');
+                        wrapper.appendChild(unit);
+                    }
+                    field.appendChild(wrapper);
+                    break;
+                }
+
+                case 'select': {
+                    inputEl = document.createElement('select');
+                    inputEl.id = inputId;
+
+                    const isToolSelect = param.name === 'tool' || param.name.endsWith('Tool');
+                    if (isToolSelect && options.toolLibrary) {
+                        ParameterManager.populateToolSelect(inputEl, options.opType, value, options.toolLibrary);
+                    } else if (param.options) {
+                        for (const opt of param.options) {
+                            const o = document.createElement('option');
+                            o.value = opt.value;
+                            const optLabel = lang ? lang.get(`dropdowns.${opt.value}`, opt.label) : opt.label;
+                            o.textContent = optLabel;
+                            if (String(opt.value) === String(value)) o.selected = true;
+                            inputEl.appendChild(o);
+                        }
+                    }
+                    field.appendChild(inputEl);
+                    break;
+                }
+
+                case 'checkbox': {
+                    const icon = label.querySelector('.tooltip-trigger');
+                    if (icon) label.removeChild(icon);
+
+                    label.className = 'checkbox-label';
+                    label.removeAttribute('for');
+                    label.textContent = '';
+
+                    inputEl = document.createElement('input');
+                    inputEl.type = 'checkbox';
+                    inputEl.id = inputId;
+                    inputEl.checked = !!value;
+
+                    const span = document.createElement('span');
+                    span.textContent = labelText;
+                    label.appendChild(inputEl);
+                    label.appendChild(span);
+
+                    if (icon) {
+                        icon.addEventListener('mousedown', e => e.stopPropagation());
+                        icon.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
+                        label.appendChild(icon);
+                    }
+                    break;
+                }
+            }
+
+            if (inputEl && options.onChange) {
+                const handleCommit = () => {
+                    const val = param.type === 'checkbox' ? inputEl.checked
+                        : param.type === 'number' ? (parseFloat(inputEl.value) || 0)
+                        : inputEl.value;
+                    options.onChange(param.name, val, inputEl);
+                };
+                inputEl.addEventListener('change', handleCommit);
+            }
+
+            return field;
+        }
+
+        /**
+         * Populates a <select> with tools from the ToolLibrary.
+         */
+        static populateToolSelect(select, opType, selectedId, toolLibrary) {
+            if (!toolLibrary || !toolLibrary.isLoaded) {
+                select.innerHTML = '<option>No tools loaded</option>';
+                select.disabled = true;
+                return;
+            }
+            const tools = toolLibrary.getToolsForOperation(opType) || [];
+            if (tools.length === 0) {
+                select.innerHTML = '<option>No compatible tools</option>';
+                select.disabled = true;
+                return;
+            }
+            for (const tool of tools) {
+                const opt = document.createElement('option');
+                opt.value = tool.id;
+                const diam = toolLibrary.getToolDiameter(tool.id);
+                opt.textContent = `${tool.name} (${diam}mm)`;
+                if (tool.id === selectedId) opt.selected = true;
+                select.appendChild(opt);
+            }
+        }
+
+        /**
+         * Shows/hides fields based on [data-conditional] attributes.
+         * Supports: "paramName" (truthy), "!paramName" (falsy),
+         * "paramName:val1,val2" (value match), "a && b" (compound).
+         */
+        static evaluateConditionals(container, values) {
+            container.querySelectorAll('[data-conditional]').forEach(field => {
+                const cond = field.dataset.conditional;
+                let show = true;
+
+                for (const clause of cond.split('&&')) {
+                    const trimmed = clause.trim();
+                    if (trimmed.includes(':')) {
+                        const colonIdx = trimmed.indexOf(':');
+                        const paramName = trimmed.substring(0, colonIdx);
+                        const allowedValues = trimmed.substring(colonIdx + 1).split(',');
+                        show = show && allowedValues.includes(String(values[paramName] ?? ''));
+                    } else if (trimmed.startsWith('!')) {
+                        show = show && !values[trimmed.slice(1)];
+                    } else {
+                        show = show && !!values[trimmed];
+                    }
+                }
+
+                field.style.display = show ? '' : 'none';
+            });
+
+            ParameterManager.updateCannedCycleOptions(container, values);
+        }
+
+        /**
+         * Dynamically filters canned cycle options based on peck/dwell values.
+         */
+        static updateCannedCycleOptions(container, values) {
+            const wrapper = container.querySelector('.property-field[data-param="cannedCycle"]');
+            if (!wrapper) return;
+
+            const cannedSelect = wrapper.querySelector('select');
+            if (!cannedSelect) return;
+
+            const peckDepth = values.peckDepth || 0;
+            const dwellTime = values.dwellTime || 0;
+            let currentStillValid = false;
+
+            Array.from(cannedSelect.options).forEach(opt => {
+                const val = opt.value;
+                let visible = true;
+
+                if (val === 'G82' && dwellTime <= 0) visible = false;
+                if ((val === 'G83' || val === 'G73') && peckDepth <= 0) visible = false;
+
+                opt.style.display = visible ? '' : 'none';
+                opt.disabled = !visible;
+
+                if (visible && opt.value === cannedSelect.value) currentStillValid = true;
+            });
+
+            if (!currentStillValid) {
+                cannedSelect.value = 'none';
+                cannedSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        /**
+         * Resolves a tool diameter from a tool ID.
+         * Returns the diameter or null if not found.
+         */
+        static resolveToolDiameter(toolId, toolLibrary) {
+            if (!toolLibrary) return null;
+            return toolLibrary.getToolDiameter(toolId);
         }
 
         debug(message, data = null) {

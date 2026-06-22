@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const formatConfig = C.formats.excellon;
 
     class ExcellonParser extends ParserCore {
@@ -142,13 +126,10 @@
                 linesProcessed: 0,
                 objectsCreated: 0,
                 coordinatesParsed: 0,
-                invalidCoordinates: 0,
                 commandsProcessed: 0
             };
 
             this.coordinateValidation = {
-                validCoordinates: 0,
-                invalidCoordinates: 0,
                 coordinateRange: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
                 suspiciousCoordinates: []
             };
@@ -411,10 +392,6 @@
                         y: this.parseCoordinateValue(slotMatch[4], this.options.format)
                     };
 
-                    if (!this.validateCoordinates(startCoords, lineNumber) || !this.validateCoordinates(endCoords, lineNumber)) {
-                        return;
-                    }
-
                     this.updateCoordinateRange(startCoords);
                     this.updateCoordinateRange(endCoords);
 
@@ -504,19 +481,12 @@
                     this.stats.coordinatesParsed++;
                 }
 
-                if (!this.validateCoordinates(coordinates, lineNumber)) {
-                    return null;
-                }
-
-                this.coordinateValidation.validCoordinates++;
                 this.updateCoordinateRange(coordinates);
 
                 // Return the newly parsed coordinates (which will become the new state)
                 return coordinates; 
 
             } catch (error) {
-                this.coordinateValidation.invalidCoordinates++;
-                this.stats.invalidCoordinates++;
                 this.errors.push(`Line ${lineNumber}: ${error.message}`);
                 return null;
             }

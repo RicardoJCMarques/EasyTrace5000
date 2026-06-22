@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;;
     const PRECISION = C.precision.coordinate;
     const debugState = D.debug;
 
@@ -59,7 +43,7 @@
     }
 
     const GeometryUtils = {
-        _calculateSegments(radius, targetLength, minSegments, maxSegments) {
+        calculateSegments(radius, targetLength, minSegments, maxSegments) {
             const minSeg = C.geometry.segments.defaultMinSegments;
             // For zero/negative radius, return the minimum valid count.
             if (radius <= 0) {
@@ -452,22 +436,13 @@
                 finalMax = config.defaultFallbackSegments.max;
             }
 
-            return this._calculateSegments(
+            return this.calculateSegments(
                 radius, 
                 finalTargetLength, 
                 finalMin,
                 finalMax
             );
         },
-
-        // Validate Clipper scale factor
-        // REVIEW - Dead code?
-        // validateScale(scale, min, max) {
-        //     const minScale = min ?? C.geometry.clipper.minScale;
-        //     const maxScale = max ?? C.geometry.clipper.maxScale;
-        //     const defaultScale = C.geometry.clipperScale;
-        //     return Math.max(minScale, Math.min(maxScale, scale || defaultScale));
-        // },
 
         // Calculate winding (signed area)
         calculateWinding(points) {
@@ -476,7 +451,7 @@
             let area = 0;
             const len = points.length;
             for (let i = 0; i < len; i++) {
-                const j = i === len - 1 ? 0 : i + 1; // 2-3x faster than modulo
+                const j = i === len - 1 ? 0 : i + 1;
                 area += points[i].x * points[j].y;
                 area -= points[j].x * points[i].y;
             }
@@ -573,7 +548,7 @@
                         i = arc.endIndex - 1; 
                     } else if (arc.endIndex < i) {
                         // Do not break. Fast-forward to the end of the array so the wrapped arc is processed, and the loop naturally finishes.
-                        i = len - 1; 
+                        i = points.length - 1;
                     }
                 } else {
                     // Standard linear segment logic
@@ -720,8 +695,8 @@
             const boundaryStrokes = [];
             const offsetDist = strokeWidth / 2;
 
-            // Threshold to absorb micro-segments that cause floating-point normal breakdown.
-            const minSegLen = Math.max(PRECISION, offsetDist * 0.02);  // REVIEW - 0.02 seems arbitrary? Shouldn't it be? Should it be hardcoded in the config?
+            // Threshold to absorb micro-segments that cause floating-point normal breakdown. Arbitrary, adjust as necessary.
+            const minSegLen = Math.max(PRECISION, offsetDist * 0.02);
 
             let rawPoints = contour.points;
             if (!rawPoints || rawPoints.length < 2) return [];
@@ -1135,7 +1110,7 @@
             const wantCW = isHole;
 
             if (constructedAsCW !== wantCW) {
-                this._reverseContourWinding(contour);
+                this.reverseContourWinding(contour);
                 this.debug('arcToPolygon: reversed winding to match polarity');
             }
 
@@ -1413,6 +1388,144 @@
                     console.warn(`[GeoUtils] primitiveToPath: Unknown type ${primitive.type}`);
                     return null;
             }
+        },
+
+        /**
+         * Returns a new primitive with all coordinates transformed by an
+         * affine matrix { a, b, c, d, e, f }. Preserves circle/obround
+         * types under uniform scale or pure translation so drill
+         * classification still works. Falls back to PathPrimitive for
+         * non-uniform or rotated analytic shapes.
+         */
+        // REVIEW - Consider if it's worth merging with the transform in the svg parser, replace epsilons and coordinate epsilons with config links like PRECISION
+        transformPrimitive(primitive, matrix) {
+            if (!primitive || !matrix) return primitive;
+
+            // Identity shortcut
+            if (TransformMath.isIdentity(matrix)) {
+                return primitive;
+            }
+            // REVIEW - this is the old version. Is it better or worse to double check identity? It does seem slower but are there any advantages?
+            // if (matrix.a === 1 && matrix.b === 0 && matrix.c === 0 &&
+            //     matrix.d === 1 && matrix.e === 0 && matrix.f === 0) {
+            //     return primitive;
+            // }
+
+            const applyPt = (p) => TransformMath.applyToPoint(matrix, p);
+
+            // Detect transform class
+            const scaleX = Math.sqrt(matrix.a * matrix.a + matrix.b * matrix.b);
+            const scaleY = Math.sqrt(matrix.c * matrix.c + matrix.d * matrix.d);
+
+            const hasRotation = Math.abs(matrix.b) > 1e-9 || Math.abs(matrix.c) > 1e-9;
+            const isTranslationOnly = !hasRotation && Math.abs(scaleX - 1) < 1e-9;
+
+            // Circle: preserve under uniform scale (rotation doesn't matter for circles)
+            if (primitive.type === 'circle') {
+                return new CirclePrimitive(
+                    applyPt(primitive.center),
+                    primitive.radius * scaleX,
+                    { ...primitive.properties }
+                );
+            }
+
+            // Obround: preserve under pure translation
+            if (primitive.type === 'obround' && isTranslationOnly) {
+                return new ObroundPrimitive(
+                    applyPt(primitive.position),
+                    primitive.width, primitive.height,
+                    { ...primitive.properties }
+                );
+            }
+
+            // Rectangle: preserve under pure translation
+            if (primitive.type === 'rectangle' && isTranslationOnly) {
+                return new RectanglePrimitive(
+                    applyPt(primitive.position),
+                    primitive.width, primitive.height,
+                    { ...primitive.properties }
+                );
+            }
+
+            // General case: convert to path, transform all points
+            let pathPrim = primitive;
+            if (primitive.type !== 'path') {
+                pathPrim = this.primitiveToPath(primitive);
+                if (!pathPrim) return null;
+            }
+
+            const newContours = pathPrim.contours.map(c => {
+                const newPoints = c.points.map(p => {
+                    const x = matrix.a * p.x + matrix.c * p.y + matrix.e;
+                    const y = matrix.b * p.x + matrix.d * p.y + matrix.f;
+                    // Single-literal construction keeps every point on ONE
+                    // V8 hidden class (no post-hoc property additions).
+                    if (p.curveId > 0) {
+                        return {
+                            x, y,
+                            curveId: p.curveId,
+                            segmentIndex: p.segmentIndex,
+                            totalSegments: p.totalSegments,
+                            t: p.t
+                        };
+                    }
+                    return { x, y };
+                });
+
+                // Helper: transform an angle through the linear part of the matrix
+                const transformAngle = (angle) => {
+                    const cosA = Math.cos(angle);
+                    const sinA = Math.sin(angle);
+                    const newX = matrix.a * cosA + matrix.c * sinA;
+                    const newY = matrix.b * cosA + matrix.d * sinA;
+                    return Math.atan2(newY, newX);
+                };
+
+                const det = matrix.a * matrix.d - matrix.b * matrix.c;
+
+                const newArcs = (c.arcSegments || []).map(a => {
+                    const newArc = {
+                        ...a,
+                        center: applyPt(a.center),
+                        radius: a.radius * scaleX, // exact: UI scale is always uniform (sx===sy); elliptical (non-uniform) arcs are intentionally unsupported — see transformPrimitive header
+                        startPoint: a.startPoint ? applyPt(a.startPoint) : undefined,
+                        endPoint: a.endPoint ? applyPt(a.endPoint) : undefined
+                    };
+
+                    // Transform angles through the matrix
+                    if (a.startAngle !== undefined) newArc.startAngle = transformAngle(a.startAngle);
+                    if (a.endAngle !== undefined) newArc.endAngle = transformAngle(a.endAngle);
+
+                    // Reflections flip arc winding and sweep direction
+                    if (det < 0) {
+                        newArc.clockwise = !a.clockwise;
+                        if (a.sweepAngle !== undefined) newArc.sweepAngle = -a.sweepAngle;
+                    }
+
+                    return newArc;
+                });
+
+                // Non-uniform or reflective transforms may flip winding
+                let isHole = c.isHole;
+                if (det < 0) isHole = !isHole; // Reflection flips winding
+
+                return {
+                    points: newPoints,
+                    isHole: isHole,
+                    nestingLevel: c.nestingLevel || 0,
+                    parentId: c.parentId || null,
+                    arcSegments: newArcs,
+                    curveIds: c.curveIds ? [...c.curveIds] : []
+                };
+            });
+
+            const result = new PathPrimitive(newContours, {
+                ...pathPrim.properties,
+                wasTransformed: true
+            });
+
+            if (pathPrim.curveIds) result.curveIds = [...pathPrim.curveIds];
+            return result;
         },
 
         /**
@@ -1996,7 +2109,7 @@
             return compounds;
         },
 
-        _isPrimitiveClosed(prim, tolerance) {
+        isPrimitiveClosed(prim, tolerance) {
             // Inherently closed primitives
             if (prim.type === 'circle' || prim.type === 'rectangle' || prim.type === 'obround') return true;
 
@@ -2008,7 +2121,7 @@
             return (dx * dx + dy * dy) < tolerance * tolerance;
         },
 
-        _endpointsConnect(edgeA, edgeB, tolerance) {
+        endpointsConnect(edgeA, edgeB, tolerance) {
             const tolSq = tolerance * tolerance;
             const test = (p1, p2) => {
                 const dx = p1.x - p2.x, dy = p1.y - p2.y;
@@ -2018,19 +2131,58 @@
                    test(edgeA.end, edgeB.start)   || test(edgeA.end, edgeB.end);
         },
 
-        _reverseContourWinding(contour) {
+        reverseContourWinding(contour) {
             const n = contour.points.length;
             contour.points.reverse();
+
+            const curveIdMap = new Map();
+
             if (contour.arcSegments && contour.arcSegments.length > 0) {
-                contour.arcSegments = contour.arcSegments.map(arc => ({
-                    ...arc,
-                    startIndex: (n - 1) - arc.endIndex,
-                    endIndex: (n - 1) - arc.startIndex,
-                    startAngle: arc.endAngle,
-                    endAngle: arc.startAngle,
-                    clockwise: !arc.clockwise,
-                    sweepAngle: arc.sweepAngle !== undefined ? -arc.sweepAngle : undefined
-                }));
+                contour.arcSegments = contour.arcSegments.map(arc => {
+                    let newCurveId = arc.curveId;
+
+                    if (arc.curveId && window.globalCurveRegistry) {
+                        if (!curveIdMap.has(arc.curveId)) {
+                            const oldCurve = window.globalCurveRegistry.getCurve(arc.curveId);
+                            if (oldCurve) {
+                                const flippedCurveId = window.globalCurveRegistry.register({
+                                    ...oldCurve,
+                                    clockwise: !oldCurve.clockwise,
+                                    startAngle: oldCurve.endAngle,
+                                    endAngle: oldCurve.startAngle,
+                                    sweepAngle: oldCurve.sweepAngle !== undefined ? -oldCurve.sweepAngle : undefined,
+                                    source: (oldCurve.source || 'unknown') + '_flipped'
+                                });
+                                curveIdMap.set(arc.curveId, flippedCurveId);
+                            }
+                        }
+                        newCurveId = curveIdMap.get(arc.curveId) || arc.curveId;
+                    }
+
+                    return {
+                        ...arc,
+                        startIndex: (n - 1) - arc.endIndex,
+                        endIndex: (n - 1) - arc.startIndex,
+                        startAngle: arc.endAngle,
+                        endAngle: arc.startAngle,
+                        clockwise: !arc.clockwise,
+                        sweepAngle: arc.sweepAngle !== undefined ? -arc.sweepAngle : undefined,
+                        curveId: newCurveId
+                    };
+                });
+            }
+
+            if (curveIdMap.size > 0) {
+                for (const pt of contour.points) {
+                    if (pt.curveId && curveIdMap.has(pt.curveId)) {
+                        pt.curveId = curveIdMap.get(pt.curveId);
+                    }
+                }
+                if (contour.curveIds) {
+                    contour.curveIds = contour.curveIds.map(id =>
+                        curveIdMap.has(id) ? curveIdMap.get(id) : id
+                    );
+                }
             }
         },
 
@@ -2043,7 +2195,7 @@
             const open = [];
 
             for (const prim of primitives) {
-                if (this._isPrimitiveClosed(prim, precision)) {
+                if (this.isPrimitiveClosed(prim, precision)) {
                     closed.push(prim);
                 } else {
                     open.push(prim);
@@ -2081,7 +2233,7 @@
             const uf = new UnionFind(edges.length);
             for (let i = 0; i < edges.length; i++) {
                 for (let j = i + 1; j < edges.length; j++) {
-                    if (this._endpointsConnect(edges[i], edges[j], precision)) uf.union(i, j);
+                    if (this.endpointsConnect(edges[i], edges[j], precision)) uf.union(i, j);
                 }
             }
 
@@ -2127,6 +2279,69 @@
         },
 
         /**
+         * Re-derives hole assignment for a single compound PathPrimitive
+         * using geometric containment instead of winding sign.
+         *
+         * Explodes contours into individual loops, classifies via
+         * classifyCutoutTopology, then reassembles into compound
+         * primitive(s) with correct isHole/nestingLevel/winding.
+         *
+         * @param {PathPrimitive} primitive - A path with ≥2 contours
+         * @returns {PathPrimitive[]} One or more correctly-tagged primitives
+         */
+        resolveCompoundContours(primitive) {
+            if (!primitive || primitive.type !== 'path') return [primitive];
+            const contours = primitive.contours;
+            if (!contours || contours.length < 2) return [primitive];
+
+            // EAGLE-composited primitives carry nestingLevel from the
+            // sequential compositing pipeline — don't re-derive.
+            if (primitive.properties?.isComposited) return [primitive];
+
+            // Explode each contour into a single-contour PathPrimitive.
+            // Reset isHole so classifyCutoutTopology starts from scratch.
+            const loops = contours.map(c => new PathPrimitive([{
+                points:      c.points,
+                arcSegments: c.arcSegments || [],
+                curveIds:    c.curveIds    || [],
+                isHole: false, nestingLevel: 0, parentId: null
+            }], { ...primitive.properties }));
+
+            // Classify by containment (area rank + pointInPolygon)
+            const topology = this.classifyCutoutTopology(loops);
+
+            // If no nesting found, return corrected-winding loops
+            if (!topology.some(t => t.isHole)) return loops;
+
+            // Reassemble: group holes under their parent outer
+            const outers = topology.filter(t => !t.isHole);
+            const holes  = topology.filter(t => t.isHole);
+            const compounds = [];
+
+            for (const outer of outers) {
+                const children = holes.filter(h => h.parentIdx === outer.originalIdx);
+                // Outer contour first — classifyCutoutTopology reads contours[0]
+                // for any future re-analysis, so outer must be at index 0.
+                const newContours = [outer.loop.contours[0]];
+                for (const child of children) {
+                    newContours.push(child.loop.contours[0]);
+                }
+                compounds.push(new PathPrimitive(newContours, {
+                    ...primitive.properties
+                }));
+            }
+
+            // Orphan holes with no containing outer — keep as standalone
+            for (const hole of holes) {
+                if (hole.parentIdx === null) {
+                    compounds.push(hole.loop);
+                }
+            }
+
+            return compounds.length > 0 ? compounds : [primitive];
+        },
+
+        /**
          * Determines nesting hierarchy of closed loops via containment testing.
          * Assigns isHole and enforces correct winding (CCW outer, CW hole).
          */
@@ -2143,7 +2358,7 @@
 
             if (loops.length === 1) {
                 const contour = loops[0].contours[0];
-                if (this.isClockwise(contour.points)) this._reverseContourWinding(contour);
+                if (this.isClockwise(contour.points)) this.reverseContourWinding(contour);
                 contour.isHole = false;
                 contour.nestingLevel = 0;
                 return [{ loop: loops[0], isHole: false, parentIdx: null, depth: 0, originalIdx: 0 }];
@@ -2191,8 +2406,8 @@
                 const isHole = (entry.depth % 2) !== 0;
                 const contour = entry.loop.contours[0];
                 const isCW = this.isClockwise(contour.points);
-                if (isHole && !isCW) this._reverseContourWinding(contour);
-                else if (!isHole && isCW) this._reverseContourWinding(contour);
+                if (isHole && !isCW) this.reverseContourWinding(contour);
+                else if (!isHole && isCW) this.reverseContourWinding(contour);
                 contour.isHole = isHole;
                 contour.nestingLevel = entry.depth;
                 return { loop: entry.loop, isHole, parentIdx: entry.parentIdx, depth: entry.depth, originalIdx: entry.originalIdx };
@@ -2203,14 +2418,10 @@
         },
 
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[GeoUtils] ${message}`, data);
-                } else {
-                    console.log(`[GeoUtils] ${message}`);
-                }
-            }
-        },
+            if (!debugState.enabled) return;
+            data ? console.log(`[GeometryUtils] ${message}`, data)
+                 : console.log(`[GeometryUtils] ${message}`);
+        }
     };
 
     window.GeometryUtils = GeometryUtils;

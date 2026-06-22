@@ -4,18 +4,18 @@
    
    <url>
       <loc>https://cam.eltryus.design/</loc>
-      <lastmod>2026-04-12</lastmod>
+      <lastmod>2026-06-22</lastmod>
       <changefreq>weekly</changefreq>
       <priority>1.0</priority>
       <image:image>
-         <image:loc>https://cam.eltryus.design/images/social-preview.jpg</image:loc>
+         <image:loc>https://cam.eltryus.design/images/social-trace.jpg</image:loc>
          <image:title>EasyTrace5000 PCB CAM Workspace</image:title>
       </image:image>
    </url>
 
    <url>
       <loc>https://cam.eltryus.design/easytrace5000/</loc>
-      <lastmod>2026-05-16</lastmod>
+      <lastmod>2026-06-22</lastmod>
       <changefreq>weekly</changefreq>
       <priority>1.0</priority>
    </url>
@@ -46,6 +46,13 @@
       <lastmod>2026-05-16</lastmod>
       <changefreq>monthly</changefreq>
       <priority>0.6</priority>
+   </url>
+
+   <url>
+      <loc>https://cam.eltryus.design/easyshape5000/</loc>
+      <lastmod>2026-06-22</lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>1.0</priority>
    </url>
 
 </urlset>

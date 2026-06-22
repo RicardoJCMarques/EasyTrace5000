@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
 
     class GlobalCurveRegistry {
         constructor() {
@@ -62,8 +46,13 @@
             if (metadata.type === 'arc') {
                 const roundedStartAngle = Math.round((metadata.startAngle || 0) * hashPrecision) / hashPrecision;
                 const roundedEndAngle = Math.round((metadata.endAngle || Math.PI * 2) * hashPrecision) / hashPrecision;
-                str += `_${roundedStartAngle}_${roundedEndAngle}_${metadata.clockwise === true}`;
+                str += `_${roundedStartAngle}_${roundedEndAngle}`;
             }
+
+            // Clockwise flag differentiates CW/CCW curves of the same geometry.
+            // Required for ALL types so that reverseContourWinding() can register
+            // flipped curves as distinct registry entries.
+            str += `_${metadata.clockwise === true}`;
 
             // Include offset flag in hash to separate source from offset curves
             if (metadata.isOffsetDerived) {

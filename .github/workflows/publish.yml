@@ -24,11 +24,17 @@ jobs:
         run: |
           npm install terser html-minifier-terser --no-save
 
-          # Minify JS bundle
-          npx terser dist/easytrace5000/app.bundle.js \
+          # Minify EasyTrace5000 JS bundle
+          npx terser dist/easytrace5000/easytrace5000.js \
             --compress --mangle \
             --comments '/^!/' \
-            -o dist/easytrace5000/app.bundle.js
+            -o dist/easytrace5000/easytrace5000.js
+
+          # Minify EasyShape5000 JS bundle
+          npx terser dist/easyshape5000/easyshape5000.js \
+            --compress --mangle \
+            --comments '/^!/' \
+            -o dist/easyshape5000/easyshape5000.js
 
           # Minify theme-loader.js
           npx terser dist/themes/theme-loader.js \

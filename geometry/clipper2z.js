@@ -5,7 +5,7 @@
  * Copyright (c) 2010-2026 Erik Som
  * Licensed under the Boost Software License 1.0.
  *
- * This file is part of the EasyTrace5000 and Clipper2 syntax test page dependency tree.
+ * This file is part of the EasyCAM5000 dependency tree.
  * Do not modify this file directly unless you know what you are doing.
  */
 

@@ -4,32 +4,15 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const D = window.CAMConfig.defaults;
 
     class TooltipManager {
         constructor() {
@@ -37,8 +20,8 @@
             this.currentTarget = null;
             this.showTimeout = null;
             this.hideTimeout = null;
-            this.delayShow = 300; // ms // Review - add to config?
-            this.delayHide = 150; // ms // Review - add to config?
+            this.delayShow = D.ui.tooltips.delayShow;
+            this.delayHide = D.ui.tooltips.delayHide;
 
             this.createTooltip();
         }
@@ -187,7 +170,7 @@
         attachWithIcon(element, content, options = {}) {
             const icon = document.createElement('span');
             icon.className = 'tooltip-trigger';
-            icon.innerHTML = '?';
+            icon.innerHTML = `<svg class="cam-icon" width="14" height="14"><use href="#icon-help"></use></svg>`;
             icon.setAttribute('tabindex', '0');
             icon.setAttribute('role', 'button');
             icon.setAttribute('aria-label', 'Show help');

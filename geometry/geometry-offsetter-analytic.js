@@ -4,33 +4,17 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     // WARNING - NOT FULLY UPDATED TO NEW CONFIG STRUCTURE YET
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const PRECISION = C.precision.coordinate;
     const debugState = D.debug;
 
@@ -56,13 +40,315 @@
      *
      * Error contract:
      *   offsetContour() THROWS Error on topology collapse (entities that miss
-     *   each other after offset). The caller (GeometryOffsetter._offsetSingleContour)
+     *   each other after offset). The caller (GeometryOffsetter.offsetSingleContour)
      *   catches the throw and falls through to the polygon-only fallback.
      */
+
+    // Logic pulled from geometry-offsetter.js if it's ever to be used again it needs to be re-wired.
+
+        // This is the routing block
+            /**
+            // Fall-through to Analytic Offsetter (For pure straight-segment polygons)
+            this.debug(`Routing path ${path.id} to Analytic Offsetter (Straight segments only)`);
+
+            if (this.analyticOffsetter) {
+                return await this.analyticOffsetter.offsetPath(path, distance);
+            }
+
+            // Multi-contour decomposition
+            if (path.contours.length > 1) {
+                this.debug(`Decomposing compound path with ${path.contours.length} contours for offset`);
+                const results = [];
+
+                for (const contour of path.contours) {
+                    if (!contour.points || contour.points.length < 2) continue;
+                    const contourDistance = contour.isHole ? -distance : distance;
+
+                    const offsetResult = this.offsetSingleContour(contour, contourDistance, path.properties);
+                    if (offsetResult) {
+                        if (Array.isArray(offsetResult)) {
+                            results.push(...offsetResult);
+                        } else {
+                            results.push(offsetResult);
+                        }
+                    }
+                }
+                return results.length > 0 ? results : null;
+            }
+
+            // Single contour
+            const contour = path.contours[0];
+            if (!contour.points || contour.points.length < 2) return null;
+
+            return this.offsetSingleContour(contour, distance, path.properties);
+             */
+        //
+
+
+    /**
+     * Offsets a single contour. Tries analytic (arc-aware) first if arcs are present and the analytic module is loaded, then falls back to the polygon-only path.
+     */
+    /**
+    offsetSingleContour(contour, distance, pathProperties) {
+        const hasArcs = contour.arcSegments && contour.arcSegments.length > 0;
+
+        this.debug(`Contour: ${contour.points.length} pts, ${contour.arcSegments?.length || 0} arcs, hasArcs=${hasArcs}`);
+
+        // Try analytic offsetter first for arc-containing geometry
+        if (hasArcs && this.analyticOffsetter) {
+            try {
+                const offsetResult = this.analyticOffsetter.offsetContour(contour, distance);
+                if (offsetResult) {
+                    const makeProps = (polarity) => ({
+                        ...pathProperties,
+                        closed: true,
+                        fill: true,
+                        isOffset: true,
+                        offsetDistance: distance,
+                        offsetType: distance < 0 ? 'internal' : 'external',
+                        polarity: polarity
+                    });
+
+                    return new PathPrimitive([{
+                        points: offsetPoints,
+                        isHole: contour.isHole || false,
+                        nestingLevel: contour.nestingLevel || 0,
+                        parentId: contour.parentId || null,
+                        arcSegments: [],
+                        curveIds: collectedCurveIds
+                    }], makeProps(contour.isHole ? 'clear' : 'dark'));
+                }
+            } catch (e) {
+                this.debug(`Analytic offset failed (${e.message}), falling back to polygon offsetter.`);
+            }
+        }
+
+        // FALLBACK: Polygon-only offset (no arc awareness)
+        // If hasArcs was false, OR if the try block failed and threw an error, the code arrives here and runs the robust polygon offsetter.
+        const offsetPoints = this.offsetContourPoints(contour.points, distance);
+        if (!offsetPoints || offsetPoints.length < 3) return null;
+
+        // Collect curve IDs from rounded joints
+        const collectedCurveIds = Array.from(
+            new Set(offsetPoints.filter(p => p.curveId > 0).map(p => p.curveId))
+        );
+
+        return new PathPrimitive([{
+            points: offsetPoints,
+            isHole: contour.isHole || false,
+            nestingLevel: contour.nestingLevel || 0,
+            parentId: contour.parentId || null,
+            arcSegments: [],
+            curveIds: collectedCurveIds
+        }], {
+            ...pathProperties,
+            closed: true,
+            fill: true,
+            isOffset: true,
+            offsetDistance: distance,
+            offsetType: distance < 0 ? 'internal' : 'external',
+            polarity: contour.isHole ? 'clear' : 'dark'
+        });
+    }
+     */
+
+    /*
+     * POLYGON-ONLY CONTOUR OFFSET
+     */
+    /**
+    offsetContourPoints(points, distance) {
+        const isInternal = distance < 0;
+        const offsetDist = Math.abs(distance);
+
+        let polygonPoints = points.slice();
+
+        // Remove closing duplicate
+        const first = polygonPoints[0];
+        const last = polygonPoints[polygonPoints.length - 1];
+        if (Math.hypot(first.x - last.x, first.y - last.y) < PRECISION) {
+            polygonPoints.pop();
+        }
+
+        // Simplification for internal offsets only
+        const simplificationConfig = D.geometry.simplification;
+        if (isInternal && simplificationConfig?.enabled && polygonPoints.length > 10) {
+            const tolerance = simplificationConfig.tolerance || 0.001;
+            const sqTolerance = tolerance * tolerance;
+
+            // Protect curve points during internal simplification fallback
+            const protectedIndices = new Set();
+            for (let i = 0; i < polygonPoints.length; i++) {
+                if (polygonPoints[i].curveId && polygonPoints[i].curveId > 0) {
+                    protectedIndices.add(i);
+                }
+            }
+
+            const before = polygonPoints.length;
+            const { points: simplified } = GeometryUtils.simplifyDouglasPeucker(
+                polygonPoints,
+                sqTolerance,
+                protectedIndices.size > 0 ? protectedIndices : null
+            );
+
+            if (simplified.length >= 3) {
+                polygonPoints = simplified;
+            }
+            if (before > polygonPoints.length) {
+                this.debug(`Simplified: ${before} → ${polygonPoints.length} points`);
+            }
+        }
+
+        const n = polygonPoints.length;
+        if (n < 3) return null;
+
+        // Determine winding and normal direction
+        const isPathClockwise = GeometryUtils.isClockwise(polygonPoints);
+        let normalDirection = isInternal ? 1 : -1;
+        if (isPathClockwise) normalDirection *= -1;
+
+        // Build offset segments
+        const offsetSegments = [];
+        for (let i = 0; i < n; i++) {
+            const p1 = polygonPoints[i];
+            const p2 = polygonPoints[i === n - 1 ? 0 : i + 1]; // Optimized wrapping
+
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.sqrt(dx * dx + dy * dy); // ~4x faster than Math.hypot
+            if (len < PRECISION) continue;
+
+            const nx = normalDirection * (-dy / len);
+            const ny = normalDirection * (dx / len);
+
+            offsetSegments.push({
+                p1: { x: p1.x + nx * offsetDist, y: p1.y + ny * offsetDist },
+                p2: { x: p2.x + nx * offsetDist, y: p2.y + ny * offsetDist }
+            });
+        }
+
+        // Process joints
+        const finalPoints = [];
+        const numSegs = offsetSegments.length;
+        if (numSegs < 2) return null;
+
+        const miterLimit = (this.options.miterLimit || 2.0) * offsetDist;
+
+        let gapCount = 0;
+        let miterCount = 0;
+        let roundCount = 0;
+        let collinearCount = 0;
+        let bevelCount = 0;
+
+        for (let i = 0; i < numSegs; i++) {
+            const seg1 = offsetSegments[i];
+            const seg2 = offsetSegments[(i + 1) % numSegs];
+
+            const curr = polygonPoints[(i + 1) % n];
+            const prev = polygonPoints[i];
+            const next = polygonPoints[(i + 2) % n];
+
+            const v1_vec = { x: curr.x - prev.x, y: curr.y - prev.y };
+            const v2_vec = { x: next.x - curr.x, y: next.y - curr.y };
+
+            const crossProduct = (v1_vec.x * v2_vec.y) - (v1_vec.y * v2_vec.x);
+
+            const len1 = Math.hypot(v1_vec.x, v1_vec.y);
+            const len2 = Math.hypot(v2_vec.x, v2_vec.y);
+            let dot = 0;
+
+            if (len1 > PRECISION && len2 > PRECISION) {
+                dot = (v1_vec.x * v2_vec.x + v1_vec.y * v2_vec.y) / (len1 * len2);
+            }
+
+            const isCollinear = (dot > C.precision.collinearDot) || (len1 < PRECISION) || (len2 < PRECISION);
+
+            // UNIVERSAL JOINT CLASSIFIER
+            let isMiterJoint = (crossProduct * normalDirection >= 0);
+            if (isCollinear) isMiterJoint = true;
+
+            if (isCollinear) collinearCount++;
+
+            if (isMiterJoint) {
+                const jointPoints = this.createMiterBevelJoint(seg1, seg2, miterLimit);
+
+                if (jointPoints.length === 2) {
+                    // Bevel — check gap distance
+                    const gapDist = Math.hypot(jointPoints[0].x - jointPoints[1].x, jointPoints[0].y - jointPoints[1].y);
+                    bevelCount++;
+                    if (gapDist > offsetDist * 0.1) {
+                        gapCount++;
+                        console.warn(`[OFFSET-JOINT] GAP at vertex ${(i+1) % n}: bevel gap=${gapDist.toFixed(4)}mm, seg lengths=${len1.toFixed(4)}/${len2.toFixed(4)}, dot=${dot.toFixed(6)}, cross=${crossProduct.toFixed(6)}, collinear=${isCollinear}`);
+                    }
+                } else {
+                    miterCount++;
+                }
+
+                finalPoints.push(...jointPoints);
+            } else {
+                // For round joints (external), add the segment's end, then the arc
+                if (finalPoints.length === 0) {
+                    // Must include the start point from the first segment
+                    finalPoints.push(seg1.p1);
+                }
+                finalPoints.push(seg1.p2);
+
+                const arcPoints = GeometryMath.createRoundJoint(
+                    curr, v1_vec, v2_vec,
+                    normalDirection, offsetDist, distance, PRECISION
+                );
+                roundCount++;
+
+                if (arcPoints.length === 0) {
+                    console.warn(`[OFFSET-JOINT] EMPTY round joint at vertex ${(i+1) % n}: seg lengths=${len1.toFixed(4)}/${len2.toFixed(4)}`);
+                }
+
+                finalPoints.push(...arcPoints);
+            }
+        }
+
+        if (finalPoints.length < 3) return null;
+
+        // Close path
+        const firstFinal = finalPoints[0];
+        const lastFinal = finalPoints[finalPoints.length - 1];
+        if (Math.hypot(firstFinal.x - lastFinal.x, firstFinal.y - lastFinal.y) > PRECISION) {
+            finalPoints.push({ ...firstFinal });
+        }
+
+        return finalPoints;
+    }
+     */
+
+    /*
+     * POLYGON JOINT HELPERS
+     */
+    /**
+    createMiterBevelJoint(seg1, seg2, miterLimit) {
+        const intersection = GeometryMath.lineLineIntersection(
+            seg1.p1, seg1.p2,
+            seg2.p1, seg2.p2
+        );
+
+        if (intersection) {
+            const miterLength = Math.hypot(intersection.x - seg1.p2.x, intersection.y - seg1.p2.y);
+
+            if (miterLength > miterLimit) {
+                console.log(`[MITER] Limit exceeded: ${miterLength.toFixed(4)} > ${miterLimit.toFixed(4)} → bevel`);
+                return [seg1.p2, seg2.p1];
+            } else {
+                return [intersection];
+            }
+        } else {
+            // Parallel — this is fine for nearly-collinear segments
+            return [seg1.p2];
+        }
+    }
+     */
+
     class GeometryAnalyticOffsetter {
         constructor(options = {}) {
             this.options = {
-                miterLimit: options.miterLimit || geomConfig.offsetting?.miterLimit || 2.0
+                miterLimit: options.miterLimit // || geomConfig.offsetting?.miterLimit || 2.0
             };
         }
 
@@ -205,8 +491,8 @@
                 const ent2 = liveEntities[(i + 1) % numEntities];
 
                 // Classify corner convexity via tangent cross product
-                const v1End = this._entityEndTangent(ent1);
-                const v2Start = this._entityStartTangent(ent2);
+                const v1End = this.entityEndTangent(ent1);
+                const v2Start = this.entityStartTangent(ent2);
                 const crossProduct = v1End.x * v2Start.y - v1End.y * v2Start.x;
 
                 // Collinearity check
@@ -224,7 +510,7 @@
 
                 if (needsTrim) {
                     // Trim: find intersection point where entities meet
-                    const trimPoint = this._computeTrimJoint(ent1, ent2, ent1.originalVertex, miterLimit);
+                    const trimPoint = this.computeTrimJoint(ent1, ent2, ent1.originalVertex, miterLimit);
 
                     if (trimPoint) {
                         ent1.trimmedEnd = { ...trimPoint, curveId: ent1.curveId || null };
@@ -426,7 +712,7 @@
          *
          * @throws {Error} If entities miss each other (topology collapse).
          */
-        _computeTrimJoint(ent1, ent2, originalVertex, miterLimit) {
+        computeTrimJoint(ent1, ent2, originalVertex, miterLimit) {
             let candidates;
 
             // Line–Line
@@ -479,7 +765,7 @@
          * For lines: the line direction itself.
          * For arcs: the tangent at the end angle.
          */
-        _entityEndTangent(entity) {
+        entityEndTangent(entity) {
             if (entity.type === 'line') {
                 return {
                     x: entity.p2.x - entity.p1.x,
@@ -500,7 +786,7 @@
          * For lines: the line direction itself.
          * For arcs: the tangent at the start angle.
          */
-        _entityStartTangent(entity) {
+        entityStartTangent(entity) {
             if (entity.type === 'line') {
                 return {
                     x: entity.p2.x - entity.p1.x,
@@ -521,13 +807,9 @@
         // ==========================================
 
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[AnalyticOffsetter] ${message}`, data);
-                } else {
-                    console.log(`[AnalyticOffsetter] ${message}`);
-                }
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[AnalyticOffsetter] ${message}`, data)
+                 : console.log(`[AnalyticOffsetter] ${message}`);
         }
     }
 

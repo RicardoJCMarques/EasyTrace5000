@@ -4,32 +4,17 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
+    const debugState = D.debug;
 
     class GraphicsExporter {
         constructor() {
@@ -41,18 +26,18 @@
 
         async generate(layers, options) {
             // Fuse colinear hatch segments across operation layers before export
-            this._fuseColinearSegments(layers);
+            this.fuseColinearSegments(layers);
 
             // Build user-transform matrix (rotation, mirror, origin — no bounds shift or Y-flip)
-            const userMat = this._buildUserTransformMatrix(options.transforms);
+            const userMat = this.buildUserTransformMatrix(options.transforms);
 
             // Apply userMat to all geometry to find the TRUE output bounds.
             // This prevents the white-PNG / clipped-SVG bug where rotated or mirrored geometry extends beyond the raw board bounds used for the viewBox.
-            const trueBounds = this._computeTransformedBounds(layers, userMat);
+            const trueBounds = this.computeTransformedBounds(layers, userMat);
 
             // Build full output matrix (userMat + bounds-shift + Y-flip) using true bounds
             const padding = options.padding || 0;
-            const output = this._buildOutputMatrix(userMat, trueBounds, padding);
+            const output = this.buildOutputMatrix(userMat, trueBounds, padding);
 
             // Package pre-computed values for the generators
             const renderCtx = {
@@ -60,69 +45,42 @@
                 widthMm: output.widthMm,
                 heightMm: output.heightMm,
                 padding: padding,
+                origin: options.transforms?.origin || { x: 0, y: 0 },
                 heatManagement: options.heatManagement || 'off',
                 reverseCutOrder: options.reverseCutOrder || false,
                 svgGrouping: options.svgGrouping || 'layer',
                 colorPerPass: options.colorPerPass || false,
                 palette: options.palette || null,
-                paletteLumping: options.paletteLumping || false
+                paletteLumping: options.paletteLumping || false,
+                includeComments: options.includeComments,
+                commentBlock: options.commentBlock
             };
 
             if (options.format === 'png') {
-                return this._generatePNG(layers, options, renderCtx);
+                return this.generatePNG(layers, options, renderCtx);
             }
-            return this._generateSVG(layers, renderCtx);
+            return this.generateSVG(layers, renderCtx);
         }
 
         /**
-         * Builds ONLY the user-space transform: rotation → mirror → origin.
-         * No bounds-shift or Y-flip — those depend on the true post-transform bounds.
+         * User-space transform as a matrix: delegates to WorkspaceTransform
+         * so the exporter can never disagree with the toolpath pipeline.
+         * Bounds-shift and Y-flip are composed on top in buildOutputMatrix.
          */
-        _buildUserTransformMatrix(transforms) {
-            let m = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-            if (!transforms) return m;
-
-            // Rotate
-            if (transforms.rotation && transforms.rotation !== 0) {
-                const isMirrored = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                const effectiveAngle = isMirrored ? -transforms.rotation : transforms.rotation;
-                const rad = (-effectiveAngle * Math.PI) / 180;
-                const cos = Math.cos(rad);
-                const sin = Math.sin(rad);
-                const cx = transforms.rotationCenter?.x || 0;
-                const cy = transforms.rotationCenter?.y || 0;
-                m = this._matMul(m, {
-                    a: cos, b: sin, c: -sin, d: cos,
-                    e: cx * (1 - cos) + cy * sin,
-                    f: cy * (1 - cos) - cx * sin
-                });
-            }
-
-            // Mirror
-            if (transforms.mirrorX || transforms.mirrorY) {
-                const cx = transforms.mirrorCenter?.x || 0;
-                const cy = transforms.mirrorCenter?.y || 0;
-                const sx = transforms.mirrorX ? -1 : 1;
-                const sy = transforms.mirrorY ? -1 : 1;
-                m = this._matMul(m, {
-                    a: sx, b: 0, c: 0, d: sy,
-                    e: cx * (1 - sx),
-                    f: cy * (1 - sy)
-                });
-            }
-
-            return m;
+        buildUserTransformMatrix(transforms) {
+            if (!transforms) return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+            return transforms.matrix;
         }
 
         /**
          * Scans all geometry through the user-transform matrix to find the true bounding box of the output.
          */
-        _computeTransformedBounds(layers, userMat) {
+        computeTransformedBounds(layers, userMat) {
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
 
             const expand = (x, y) => {
-                const p = this._tx(x, y, userMat);
+                const p = this.tx(x, y, userMat);
                 if (p.x < minX) minX = p.x;
                 if (p.x > maxX) maxX = p.x;
                 if (p.y < minY) minY = p.y;
@@ -163,7 +121,7 @@
         /**
          * Builds the final output matrix by composing: boundsShift (using TRUE post-transform bounds) → Y-flip on top of the pre-built user-transform matrix.
          */
-        _buildOutputMatrix(userMat, trueBounds, padding) {
+        buildOutputMatrix(userMat, trueBounds, padding) {
             const widthMm  = (trueBounds.maxX - trueBounds.minX) + (padding * 2);
             const heightMm = (trueBounds.maxY - trueBounds.minY) + (padding * 2);
 
@@ -171,14 +129,14 @@
             let m = userMat;
 
             // Bounds shift using TRUE bounds → geometry min lands at (padding, padding)
-            m = this._matMul({
+            m = this.matMul({
                 a: 1, b: 0, c: 0, d: 1,
                 e: -trueBounds.minX + padding,
                 f: -trueBounds.minY + padding
             }, m);
 
             // Y-flip: SVG/Canvas Y-down, CAM Y-up → y' = heightMm - y
-            m = this._matMul({
+            m = this.matMul({
                 a: 1, b: 0, c: 0, d: -1,
                 e: 0, f: heightMm
             }, m);
@@ -189,7 +147,7 @@
         /**
          * Multiplies two affine matrices: result = m1 ∘ m2 (m1 applied after m2 to a point)
          */
-        _matMul(m1, m2) {
+        matMul(m1, m2) {
             return {
                 a: m1.a * m2.a + m1.c * m2.b,
                 b: m1.b * m2.a + m1.d * m2.b,
@@ -201,7 +159,7 @@
         }
 
         /** Applies pre-computed affine matrix to a point. */
-        _tx(x, y, m) {
+        tx(x, y, m) {
             return {
                 x: m.a * x + m.c * y + m.e,
                 y: m.b * x + m.d * y + m.f
@@ -212,7 +170,7 @@
          * Builds a lookup map from point index → arc segment for a contour.
          * Falls back to primitive-level arcSegments for single-contour paths.
          */
-        _buildArcMap(contour, primArcSegments) {
+        buildArcMap(contour, primArcSegments) {
             const map = new Map();
             const arcs = (contour.arcSegments && contour.arcSegments.length > 0)
                 ? contour.arcSegments
@@ -230,18 +188,38 @@
         // SVG Generation
         // ────────────────────────────────────────────────────────────
 
-        async _generateSVG(layers, renderCtx) {
-            const { mat, widthMm, heightMm, svgGrouping, reverseCutOrder } = renderCtx;
+        async generateSVG(layers, renderCtx) {
+            // Destructure origin from context package
+            const { mat, widthMm, heightMm, svgGrouping, reverseCutOrder, origin } = renderCtx;
             const p = this.DECIMAL;
-            const fmt = (n) => this._formatNumber(n, this.DECIMAL);
+            const fmt = (n) => this.formatNumber(n, this.DECIMAL);
 
             const lines = [];
             lines.push(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`);
+
+            // Consider a comment structure similar to:
+            // <!--
+            // -->
+            // with single top and bottom comment tag instead of looping through each line?
+            if (renderCtx.includeComments && renderCtx.commentBlock && renderCtx.commentBlock.length > 0) {
+                renderCtx.commentBlock.forEach(comment => {
+                    this.debug("Writing comment:", comment);
+                    const safeComment = String(comment).replace(/--/g, '=='); // '--' is illegal inside an XML/SVG comment; replace it.
+                    lines.push(`<!-- ${safeComment} -->`);
+                });
+            }
+
             lines.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="${widthMm.toFixed(p)}mm" height="${heightMm.toFixed(p)}mm" viewBox="0 0 ${widthMm.toFixed(p)} ${heightMm.toFixed(p)}" version="1.1">`);
 
             lines.push(`<style>path,circle,line{vector-effect:non-scaling-stroke;-inkscape-stroke:hairline}</style>`);
 
-            const transformAttr = `transform="matrix(${mat.a}, ${mat.b}, ${mat.c}, ${mat.d}, ${mat.e}, ${mat.f})"`;
+            // Adjust translation components to compensate for the inner path shifts
+            const txOriginX = mat.a * origin.x + mat.c * origin.y;
+            const txOriginY = mat.b * origin.x + mat.d * origin.y;
+            const adjE = mat.e + txOriginX;
+            const adjF = mat.f + txOriginY;
+
+            const transformAttr = `transform="matrix(${mat.a}, ${mat.b}, ${mat.c}, ${mat.d}, ${this.formatNumber(adjE, p)}, ${this.formatNumber(adjF, p)})"`;
 
             lines.push(`<g id="EasyTrace_Export" ${transformAttr} stroke-linecap="round" stroke-linejoin="round" stroke-width="1px">`);
 
@@ -266,9 +244,9 @@
 
                     if (renderCtx.colorPerPass && physicalPassCount > 0 && !isFilledLayer) {
                         if (renderCtx.palette && renderCtx.palette.length > 0) {
-                            passColors = this._generatePaletteMappedColors(physicalPassCount, renderCtx.palette, renderCtx.paletteLumping);
+                            passColors = this.generatePaletteMappedColors(physicalPassCount, renderCtx.palette, renderCtx.paletteLumping);
                         } else {
-                            passColors = this._generatePassColors(layer.baseColor, physicalPassCount);
+                            passColors = this.generatePassColors(layer.baseColor, physicalPassCount);
                         }
                     }
 
@@ -355,7 +333,7 @@
 
                     // Skip thermal sorting and reversing for hatch buckets — preserves zig-zag scan order
                     if (renderCtx.heatManagement !== 'off' && !hasHatch) {
-                        primitives = this._applyHeatManagementSort(primitives);
+                        primitives = this.applyHeatManagementSort(primitives);
                     }
                     if (reverseCutOrder && !hasHatch) {
                         primitives = primitives.slice().reverse();
@@ -367,23 +345,24 @@
 
                     if (hasHatch) {
                         // Hatch: batch all scan lines into a single <path> to preserve order
-                        const batchedData = this._buildRawPathData(primitives);
+                        const batchedData = this.buildRawPathData(primitives);
                         if (batchedData) lines.push(`    <path d="${batchedData}"/>`);
                     } else {
                         // Offset: individual elements for circle/path rendering
                         for (const prim of primitives) {
                             if (prim.type === 'circle' && prim.center && prim.radius) {
-                                lines.push(`    <circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
+                                // Normalize raw circle coordinates
+                                lines.push(`    <circle cx="${fmt(prim.center.x - origin.x)}" cy="${fmt(prim.center.y - origin.y)}" r="${fmt(prim.radius)}"/>`);
                             } else {
                                 if (prim.contours && prim.contours.length > 1) {
                                     for (const contour of prim.contours) {
                                         const singlePrim = { ...prim, contours: [contour] };
-                                        const pathData = this._buildRawPathData([singlePrim]);
+                                        const pathData = this.buildRawPathData([singlePrim], origin);
                                         if (pathData) lines.push(`    <path d="${pathData}"/>`);
                                     }
                                 } else {
-                                    const singlePathData = this._buildRawPathData([prim]);
-                                    if (singlePathData) lines.push(`    <path d="${singlePathData}"/>`);
+                                    const pathData = this.buildRawPathData([prim], origin);
+                                    if (pathData) lines.push(`    <path d="${pathData}"/>`);
                                 }
                             }
                         }
@@ -399,26 +378,23 @@
                     // Output each primitive as its OWN path to prevent evenodd interference
                     for (const prim of primitives) {
                         if (prim.type === 'circle' && prim.center && prim.radius) continue; // Handled below
-                        const pathData = this._buildRawPathData([prim]);
+                        const pathData = this.buildRawPathData([prim], origin);
                         if (pathData) lines.push(`    <path d="${pathData}" fill-rule="evenodd"/>`);
                     }
 
-                    this._appendRawCircles(lines, primitives, '    ');
+                    this.appendRawCircles(lines, primitives, '    ', origin);
                     lines.push(`  </g>`);
                 }
 
-                lines.push(`</g>`);
-                lines.push(`</svg>`);
-
-                const blob = new Blob([lines.join('\n')], { type: 'image/svg+xml;charset=utf-8' });
-                return { blob };
+                lines.push(`</g>\n</svg>`);
+                return { blob: new Blob([lines.join('\n')], { type: 'image/svg+xml;charset=utf-8' }) };
             }
 
             // ════════════════════════════════════════════════════════════
             // LAYER / GROUP / NONE BRANCHES (LightBurn, RDWorks, Generic)
             // ════════════════════════════════════════════════════════════
             for (const layer of orderedLayers) {
-                const layerId = this._sanitizeId(layer.layerName);
+                const layerId = this.sanitizeId(layer.layerName);
                 const orderedPasses = reverseCutOrder ? layer.passes.slice().reverse() : layer.passes;
 
                 // Calculate true physical pass count to prevent palette skewing
@@ -429,18 +405,13 @@
 
                 // Compute per-pass colors for offset AND hatch strategies (not filled)
                 if (renderCtx.colorPerPass && physicalPassCount > 0 && !isFilledLayer) {
-                    if (renderCtx.palette && renderCtx.palette.length > 0) {
-                        passColors = this._generatePaletteMappedColors(physicalPassCount, renderCtx.palette, renderCtx.paletteLumping);
-                    } else {
-                        passColors = this._generatePassColors(layer.baseColor, physicalPassCount);
-                    }
+                    passColors = renderCtx.palette && renderCtx.palette.length > 0
+                        ? this.generatePaletteMappedColors(physicalPassCount, renderCtx.palette, renderCtx.paletteLumping)
+                        : this.generatePassColors(layer.baseColor, physicalPassCount);
                 }
 
                 const wrapOperation = useGroups && !useLayers && orderedLayers.length > 1;
-
-                if (wrapOperation) {
-                    lines.push(`  <g id="Layer_${layerId}">`);
-                }
+                if (wrapOperation) lines.push(`  <g id="Layer_${layerId}">`);
 
                 const indent = wrapOperation ? '    ' : '  ';
                 const innerIndent = useGroups ? (wrapOperation ? '      ' : '    ') : '  ';
@@ -450,46 +421,39 @@
                     if (!pass.primitives || pass.primitives.length === 0) continue;
 
                     const physicalIndex = (pass.metadata?.pass || 1) - 1;
-
                     const isFilled = pass.type === 'filled';
-                    const passId = this._buildPassId(layer.layerName, pass, physicalIndex);
+                    const passId = this.buildPassId(layer.layerName, pass, physicalIndex);
                     const isHatch = pass.metadata?.isHatch === true;
 
                     let color = layer.baseColor;
-                    if (renderCtx.colorPerPass && passColors) {
-                        color = passColors[physicalIndex] || layer.baseColor;
-                    }
+                    if (renderCtx.colorPerPass && passColors) color = passColors[physicalIndex] || layer.baseColor;
 
                     let sortablePrimitives = pass.primitives;
                     if (renderCtx.heatManagement !== 'off' && !isFilled && !isHatch && sortablePrimitives.length > 1) {
-                        sortablePrimitives = this._applyHeatManagementSort(sortablePrimitives);
+                        sortablePrimitives = this.applyHeatManagementSort(sortablePrimitives);
                     }
 
                     // Reverse cut order for non-filled, non-hatch passes only
-                    if (reverseCutOrder && !isFilled && !isHatch) {
-                        sortablePrimitives = sortablePrimitives.slice().reverse();
-                    }
+                    if (reverseCutOrder && !isFilled && !isHatch) sortablePrimitives = sortablePrimitives.slice().reverse();
 
-                    const layerAttrs = useLayers
-                        ? ` inkscape:groupmode="layer" inkscape:label="${passId}"`
-                        : '';
+                    const layerAttrs = useLayers ? ` inkscape:groupmode="layer" inkscape:label="${passId}"` : '';
 
                     if (isFilled) {
                         if (useGroups) {
                             lines.push(`${indent}<g id="${passId}"${layerAttrs} fill="${color}" stroke="none">`);
                             for (const prim of sortablePrimitives) {
                                 if (prim.type === 'circle' && prim.center && prim.radius) continue; // Handled below
-                                const pathData = this._buildRawPathData([prim]);
+                                const pathData = this.buildRawPathData([prim], origin);
                                 if (pathData) lines.push(`${innerIndent}<path d="${pathData}" fill-rule="evenodd"/>`);
                             }
-                            this._appendRawCircles(lines, sortablePrimitives, innerIndent);
+                            this.appendRawCircles(lines, sortablePrimitives, innerIndent, origin);
                             lines.push(`${indent}</g>`);
                         } else {
                             for (const prim of sortablePrimitives) {
                                 if (prim.type === 'circle' && prim.center && prim.radius) {
-                                    lines.push(`${indent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}" fill="${color}" stroke="none"/>`);
+                                    lines.push(`${indent}<circle cx="${fmt(prim.center.x - origin.x)}" cy="${fmt(prim.center.y - origin.y)}" r="${fmt(prim.radius)}" fill="${color}" stroke="none"/>`);
                                 } else {
-                                    const pathData = this._buildRawPathData([prim]);
+                                    const pathData = this.buildRawPathData([prim], origin);
                                     if (pathData) lines.push(`${indent}<path d="${pathData}" fill="${color}" stroke="none" fill-rule="evenodd"/>`);
                                 }
                             }
@@ -499,66 +463,60 @@
                         if (useGroups) {
                             lines.push(`${indent}<g id="${passId}"${layerAttrs} fill="none" stroke="${color}">`);
                             if (isHatch) {
-                                const batchedData = this._buildRawPathData(sortablePrimitives);
+                                const batchedData = this.buildRawPathData(sortablePrimitives, origin);
                                 if (batchedData) lines.push(`${innerIndent}<path d="${batchedData}"/>`);
                             } else {
                                 for (const prim of sortablePrimitives) {
                                     if (prim.type === 'circle' && prim.center && prim.radius) {
-                                        lines.push(`${innerIndent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
+                                        lines.push(`${innerIndent}<circle cx="${fmt(prim.center.x - origin.x)}" cy="${fmt(prim.center.y - origin.y)}" r="${fmt(prim.radius)}"/>`);
                                     } else if (prim.contours && prim.contours.length > 1) {
                                         for (const contour of prim.contours) {
                                             const singlePrim = { ...prim, contours: [contour] };
-                                            const pathData = this._buildRawPathData([singlePrim]);
+                                            const pathData = this.buildRawPathData([singlePrim], origin);
                                             if (pathData) lines.push(`${innerIndent}<path d="${pathData}"/>`);
                                         }
                                     } else {
-                                        const singlePathData = this._buildRawPathData([prim]);
-                                        if (singlePathData) lines.push(`${innerIndent}<path d="${singlePathData}"/>`);
+                                        const pathData = this.buildRawPathData([prim], origin);
+                                        if (pathData) lines.push(`${innerIndent}<path d="${pathData}"/>`);
                                     }
                                 }
                             }
                             lines.push(`${indent}</g>`);
                         } else {
                             if (isHatch) {
-                                const batchedData = this._buildRawPathData(sortablePrimitives);
+                                const batchedData = this.buildRawPathData(sortablePrimitives, origin);
                                 if (batchedData) lines.push(`${indent}<path d="${batchedData}" fill="none" stroke="${color}"/>`);
                             } else {
                                 for (const prim of sortablePrimitives) {
                                     if (prim.type === 'circle' && prim.center && prim.radius) {
-                                        lines.push(`${innerIndent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
+                                        lines.push(`${innerIndent}<circle cx="${fmt(prim.center.x - origin.x)}" cy="${fmt(prim.center.y - origin.y)}" r="${fmt(prim.radius)}"/>`);
                                     } else if (prim.contours && prim.contours.length > 1) {
                                         for (const contour of prim.contours) {
                                             const singlePrim = { ...prim, contours: [contour] };
-                                            const pathData = this._buildRawPathData([singlePrim]);
+                                            const pathData = this.buildRawPathData([singlePrim], origin);
                                             if (pathData) lines.push(`${innerIndent}<path d="${pathData}" fill="none" stroke="${color}"/>`);
                                         }
                                     } else {
-                                        const singlePathData = this._buildRawPathData([prim]);
-                                        if (singlePathData) lines.push(`${innerIndent}<path d="${singlePathData}" fill="none" stroke="${color}"/>`);
+                                        const pathData = this.buildRawPathData([prim], origin);
+                                        if (pathData) lines.push(`${innerIndent}<path d="${pathData}" fill="none" stroke="${color}"/>`);
                                     }
                                 }
                             }
                         }
                     }
                 }
-
-                if (wrapOperation) {
-                    lines.push(`  </g>`);
-                }
+                if (wrapOperation) lines.push(`  </g>`);
             }
 
-            lines.push(`</g>`);
-            lines.push(`</svg>`);
-
-            const blob = new Blob([lines.join('\n')], { type: 'image/svg+xml;charset=utf-8' });
-            return { blob };
+            lines.push(`</g>\n</svg>`);
+            return { blob: new Blob([lines.join('\n')], { type: 'image/svg+xml;charset=utf-8' }) };
         }
 
         // ────────────────────────────────────────────────────────────
         // PNG Generation
         // ────────────────────────────────────────────────────────────
 
-        async _generatePNG(layers, options, renderCtx) {
+        async generatePNG(layers, options, renderCtx) {
             const { mat, widthMm, heightMm } = renderCtx;
             const dpi = options.dpi || 1000;
 
@@ -605,7 +563,7 @@
                     const color = layer.baseColor;
 
                     ctx.beginPath();
-                    this._traceTransformedPrimitives(ctx, pass.primitives, mat, scaleX, scaleY);
+                    this.traceTransformedPrimitives(ctx, pass.primitives, mat, scaleX, scaleY);
 
                     if (isFilled) {
                         ctx.fillStyle = color;
@@ -640,22 +598,22 @@
          * Example: 0.5000 -> .5 | -0.2500 -> -.25 | 10.0000 -> 10
          */
         // REVIEW - the performance penalty is negligeable, worth keeping? File size only matters if laser control programs care. If it speeds parsing or not.
-        // _formatNumber(value, precision) {
+        // formatNumber(value, precision) {
         //     const s = parseFloat(value.toFixed(precision)).toString();
         //     return s.startsWith('0.') ? s.substring(1) : (s.startsWith('-0.') ? '-' + s.substring(2) : s);
         // }
 
-        _formatNumber(value, precision) {
+        formatNumber(value, precision) {
             return parseFloat(value.toFixed(precision)).toString();
         }
 
         /**
          * Builds SVG path 'd' attribute
          */
-        _buildRawPathData(primitives) {
+        buildRawPathData(primitives, origin = { x: 0, y: 0 }) {
             const chunks = [];
             const prec = this.DECIMAL;
-            const fmt = (n) => this._formatNumber(n, prec);
+            const fmt = (n) => this.formatNumber(n, prec);
 
             for (const prim of primitives) {
                 if (prim.type === 'circle') continue;
@@ -665,24 +623,26 @@
                     const pts = contour.points;
                     if (!pts || pts.length < 2) continue;
 
-                    const arcMap = this._buildArcMap(contour, prim.arcSegments);
+                    const arcMap = this.buildArcMap(contour, prim.arcSegments);
 
-                    let cx = pts[0].x;
-                    let cy = pts[0].y;
-
+                    // Shift absolute initial positioning
+                    let cx = pts[0].x - origin.x;
+                    let cy = pts[0].y - origin.y;
                     // Start absolute
                     let d = `M${fmt(cx)} ${fmt(cy)}`;
 
                     // Helper to append optimized relative line
                     const appendRelLine = (tx, ty) => {
-                        const dx = tx - cx;
-                        const dy = ty - cy;
+                        // Relative changes remain perfectly identical since the origin scalar cancels out
+                        const dx = (tx - origin.x) - cx;
+                        const dy = (ty - origin.y) - cy;
                         const sDx = fmt(dx);
                         const sDy = fmt(dy);
                         // Skip space if the Y value starts with a minus sign
                         const sep = sDy.startsWith('-') ? '' : ' ';
                         d += `l${sDx}${sep}${sDy}`;
-                        cx = tx; cy = ty;
+                        cx = tx - origin.x; 
+                        cy = ty - origin.y;
                     };
 
                     let i = 1;
@@ -706,17 +666,18 @@
                             const sR = fmt(r);
 
                             if (Math.abs(span) >= Math.PI * 1.99) {
-                                const mx = 2 * arc.center.x - pts[i - 1].x;
-                                const my = 2 * arc.center.y - pts[i - 1].y;
+                                // Shift absolute midpoint positions
+                                const mx = (2 * arc.center.x - pts[i - 1].x) - origin.x;
+                                const my = (2 * arc.center.y - pts[i - 1].y) - origin.y;
                                 d += `A${sR} ${sR} 0 0 ${sweep} ${fmt(mx)} ${fmt(my)}`;
-                                d += `A${sR} ${sR} 0 0 ${sweep} ${fmt(endPt.x)} ${fmt(endPt.y)}`;
+                                d += `A${sR} ${sR} 0 0 ${sweep} ${fmt(endPt.x - origin.x)} ${fmt(endPt.y - origin.y)}`;
                             } else {
-                                // Arcs remain absolute (A), so update tracking coordinates afterward
-                                d += `A${sR} ${sR} 0 ${largeArc} ${sweep} ${fmt(endPt.x)} ${fmt(endPt.y)}`;
+                                // Arcs remain absolute, shift the absolute target endpoint
+                                d += `A${sR} ${sR} 0 ${largeArc} ${sweep} ${fmt(endPt.x - origin.x)} ${fmt(endPt.y - origin.y)}`;
                             }
 
-                            cx = endPt.x;
-                            cy = endPt.y;
+                            cx = endPt.x - origin.x;
+                            cy = endPt.y - origin.y;
                             i = endIdx + 1;
                         } else {
                             appendRelLine(pts[i].x, pts[i].y);
@@ -724,40 +685,36 @@
                         }
                     }
 
-                    const isClosed = prim.properties?.closed !== false && pts.length > 2;
-                    if (isClosed) d += 'Z';
-
+                    if (prim.properties?.closed !== false && pts.length > 2) d += 'Z';
                     chunks.push(d);
                 }
             }
-
             return chunks.length > 0 ? chunks.join(' ') : null;
         }
 
         /**
          * Appends raw <circle>
          */
-        _appendRawCircles(lines, primitives, indent) {
-            const fmt = (n) => this._formatNumber(n, this.DECIMAL);
+        appendRawCircles(lines, primitives, indent, origin = { x: 0, y: 0 }) {
+            const fmt = (n) => this.formatNumber(n, this.DECIMAL);
 
             for (const prim of primitives) {
                 if (prim.type !== 'circle' || !prim.center || !prim.radius) continue;
-
-                lines.push(`${indent}<circle cx="${fmt(prim.center.x)}" cy="${fmt(prim.center.y)}" r="${fmt(prim.radius)}"/>`);
+                lines.push(`${indent}<circle cx="${fmt(prim.center.x - origin.x)}" cy="${fmt(prim.center.y - origin.y)}" r="${fmt(prim.radius)}"/>`);
             }
         }
 
         /**
          * Traces pre-transformed primitives into a Canvas path.
          */
-        _traceTransformedPrimitives(ctx, primitives, mat, scaleX, scaleY) {
+        traceTransformedPrimitives(ctx, primitives, mat, scaleX, scaleY) {
             const det = mat.a * mat.d - mat.b * mat.c;
             const scaleFactor = Math.sqrt(mat.a * mat.a + mat.b * mat.b);
             const rScale = Math.min(scaleX, scaleY);
 
             for (const prim of primitives) {
                 if (prim.type === 'circle' && prim.center && prim.radius) {
-                    const c = this._tx(prim.center.x, prim.center.y, mat);
+                    const c = this.tx(prim.center.x, prim.center.y, mat);
                     const rPx = prim.radius * scaleFactor * rScale;
                     const cx = c.x * scaleX;
                     const cy = c.y * scaleY;
@@ -772,9 +729,9 @@
                     const pts = contour.points;
                     if (!pts || pts.length < 2) continue;
 
-                    const arcMap = this._buildArcMap(contour, prim.arcSegments);
+                    const arcMap = this.buildArcMap(contour, prim.arcSegments);
 
-                    const p0 = this._tx(pts[0].x, pts[0].y, mat);
+                    const p0 = this.tx(pts[0].x, pts[0].y, mat);
                     ctx.moveTo(p0.x * scaleX, p0.y * scaleY);
 
                     let i = 1;
@@ -783,14 +740,14 @@
 
                         if (arc && arc.endIndex < pts.length && arc.endIndex > i - 1) {
                             // Transform center and compute pixel-space values
-                            const tc = this._tx(arc.center.x, arc.center.y, mat);
+                            const tc = this.tx(arc.center.x, arc.center.y, mat);
                             const rPx = arc.radius * scaleFactor * rScale;
                             const tcx = tc.x * scaleX;
                             const tcy = tc.y * scaleY;
 
                             // Compute angles in transformed space from actual points
-                            const tStart = this._tx(pts[i - 1].x, pts[i - 1].y, mat);
-                            const tEnd = this._tx(pts[arc.endIndex].x, pts[arc.endIndex].y, mat);
+                            const tStart = this.tx(pts[i - 1].x, pts[i - 1].y, mat);
+                            const tEnd = this.tx(pts[arc.endIndex].x, pts[arc.endIndex].y, mat);
                             const sa = Math.atan2(tStart.y * scaleY - tcy, tStart.x * scaleX - tcx);
                             const ea = Math.atan2(tEnd.y * scaleY - tcy, tEnd.x * scaleX - tcx);
 
@@ -819,7 +776,7 @@
 
                             i = arc.endIndex + 1;
                         } else {
-                            const pt = this._tx(pts[i].x, pts[i].y, mat);
+                            const pt = this.tx(pts[i].x, pts[i].y, mat);
                             ctx.lineTo(pt.x * scaleX, pt.y * scaleY);
                             i++;
                         }
@@ -840,7 +797,7 @@
          * Merges colinear/overlapping hatch line segments across all layers.
          * Only operates on hatch passes. Modifies passes in-place.
          */
-        _fuseColinearSegments(layers) {
+        fuseColinearSegments(layers) {
             const tol = this.FUSION_TOLERANCE;
             const scanLines = new Map();
 
@@ -933,7 +890,7 @@
                     }
 
                     if (!newPrimitivesByPass.has(targetKey)) newPrimitivesByPass.set(targetKey, []);
-                    newPrimitivesByPass.get(targetKey).push(this._createLinePrimitive(worldP0, worldP1, {
+                    newPrimitivesByPass.get(targetKey).push(this.createLinePrimitive(worldP0, worldP1, {
                         isHatch: true, isFused: true,
                         fusedCount: merge.sources.length,
                         angle: ref.angle, closed: false
@@ -1022,7 +979,7 @@
             }
         }
 
-        _createLinePrimitive(p0, p1, properties) {
+        createLinePrimitive(p0, p1, properties) {
             if (typeof PathPrimitive !== 'undefined') {
                 return new PathPrimitive([{
                     points: [p0, p1], isHole: false,
@@ -1042,7 +999,7 @@
          * This ensures small sensitive features are always cut before large geometry isolate them from the rest of the copper and limits their ability to cool between cutting passes.
          * Returns a new array; never mutates the input.
          */
-        _applyHeatManagementSort(primitives) {
+        applyHeatManagementSort(primitives) {
             if (!primitives || primitives.length <= 1) return primitives;
 
             const len = primitives.length;
@@ -1076,7 +1033,7 @@
         /**
          * Assigns colors based on laser controller profile palettes
          */
-        _generatePaletteMappedColors(passCount, palette, enableLumping) {
+        generatePaletteMappedColors(passCount, palette, enableLumping) {
             const maxColors = palette.length;
             const colors = [];
 
@@ -1096,7 +1053,7 @@
          * Generates a distinct color for each pass by rotating hue from a base color.
          * Returns an array of hex color strings, one per pass.
          */
-        _generatePassColors(baseColor, passCount) {
+        generatePassColors(baseColor, passCount) {
             if (passCount <= 1) return [baseColor];
 
             // Parse base color to HSL
@@ -1126,13 +1083,13 @@
 
             for (let i = 0; i < passCount; i++) {
                 const pH = (h + hueStep * i) % 1.0;
-                colors.push(this._hslToHex(pH, sat, lit));
+                colors.push(this.hslToHex(pH, sat, lit));
             }
 
             return colors;
         }
 
-        _hslToHex(h, s, l) {
+        hslToHex(h, s, l) {
             const hue2rgb = (p, q, t) => {
                 if (t < 0) t += 1;
                 if (t > 1) t -= 1;
@@ -1161,8 +1118,8 @@
             return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
         }
 
-        _buildPassId(layerName, pass, index) {
-            const safe = this._sanitizeId(layerName);
+        buildPassId(layerName, pass, index) {
+            const safe = this.sanitizeId(layerName);
             if (pass.metadata?.isHatch && pass.metadata?.angle !== undefined) {
                 return `${safe}_Hatch_${pass.metadata.angle}deg`;
             }
@@ -1170,8 +1127,14 @@
             return `${safe}_Pass_${index + 1}`;
         }
 
-        _sanitizeId(str) {
+        sanitizeId(str) {
             return (str || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
+        }
+
+        debug(message, data = null) {
+            if (!debugState.enabled) return;
+            data ? console.log(`[GraphicsExporter] ${message}`, data)
+                 : console.log(`[GraphicsExporter] ${message}`);
         }
     }
 

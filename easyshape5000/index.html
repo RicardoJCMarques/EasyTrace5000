@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <!--!
+        @file        easyshape5000/index.html
+        @description EasyShape5000 App Workspace
+        @author      Eltryus - Ricardo Marques
+        @copyright   2025-2026 Eltryus - Ricardo Marques
+        @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+
+        SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+        SPDX-License-Identifier: AGPL-3.0-or-later
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyShape5000 Workspace | Free Browser-Based CAM for CNC Routers</title>
+
+    <meta name="description" content="Convert SVG CAD fabrication files into machine ready files. 100% web-based, client-side, open-source and free to use.">
+    <meta name="keywords" content="CNC CAM, CNC Router CAM, G-code Generator, SVG to G-code, Open Source CAM, Easel alternative, browser CAM, woodworking CAM, pocket milling, profile cutting">
+    <meta name="author" content="Eltryus">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#1a1a1a">
+
+    <link rel="canonical" href="https://cam.eltryus.design/easyshape5000/">
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://cam.eltryus.design/easyshape5000/">
+    <meta property="og:title" content="EasyShape5000 Workspace | Free Browser-Based CAM for CNC Routers">
+    <meta property="og:site_name" content="Eltryus">
+    <meta property="og:description" content="Convert SVG CAD designs into machine ready files. 100% web-based, client-side, open-source and free to use.">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-shape.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:locale" content="en_US">
+
+    <link rel="icon" type="image/png" href="../images/favicon/favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="../images/favicon/favicon.svg">
+    <link rel="shortcut icon" href="../images/favicon/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="../images/favicon/site.webmanifest">
+
+    <!-- Shared CSS -->
+    <link rel="stylesheet" href="../css/base.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/modals.css">
+    <link rel="stylesheet" href="../css/canvas.css">
+    <link rel="stylesheet" href="../css/theme.css">
+    <link rel="stylesheet" href="../css/layout-shared.css">
+
+    <!-- App-specific layout -->
+    <link rel="stylesheet" href="../css/layout-easyshape5000.css">
+
+    <!-- WASM preload -->
+    <link rel="preload" href="../geometry/clipper2z.wasm" as="fetch" crossorigin>
+
+    <script type="application/ld+json">
+        [
+            {
+                "@context": "https://schema.org",
+                "@type": "WebApplication",
+                "name": "EasyShape5000",
+                "alternateName": "EasyShape",
+                "url": "https://cam.eltryus.design/easyshape5000/",
+                "operatingSystem": "Any (Browser-based)",
+                "applicationCategory": "DeveloperApplication",
+                "applicationSubCategory": "CAM Software",
+                "isPartOf": {
+                    "@type": "WebApplication",
+                    "name": "Eltryus CAM Suite",
+                    "url": "https://cam.eltryus.design/"
+                },
+                "subjectOf": [
+                    {
+                        "@type": "TechArticle",
+                        "url": "https://www.eltryus.design/en/work/easytrace5000/",
+                        "name": "Case Study: Developing EasyTrace5000"
+                    },
+                ],
+                "description": "Browser-based CAM tool for CNC routers. Import SVG designs, assign profile/pocket/drill/engrave operations, and export optimized G-code.",
+                "potentialAction": [
+                    {
+                        "@type": "ViewAction",
+                        "target": "https://cam.eltryus.design/easyshape5000/#quickstart",
+                        "name": "Quick Start Guide"
+                    },
+                    {
+                        "@type": "DonateAction",
+                        "target": "https://cam.eltryus.design/easyshape5000/#support",
+                        "name": "Support Development"
+                    }
+                ],
+                "softwareHelp": {
+                    "@type": "CollectionPage",
+                    "url": "https://cam.eltryus.design/easyshape5000/doc/",
+                    "name": "EasyShape5000 Documentation"
+                },
+                "author": {
+                    "@type": "Organization",
+                    "name": "Eltryus",
+                    "url": "https://www.eltryus.design",
+                    "logo": "https://www.eltryus.design/images/logo.png"
+                },
+                "screenshot": {
+                    "@type": "ImageObject",
+                    "url": "https://cam.eltryus.design/images/social-shape.jpg",
+                    "caption": "EasyShape5000 main workspace"
+                },
+                "featureList": [
+                    "Browser-based, 100% client-side CAM processing with zero cloud dependencies",
+                    "SVG import with hierarchical group preservation",
+                    "Scene graph with group/ungroup, lock, visibility, and undo/redo",
+                    "Per-shape operation assignment (Profile, Pocket, Drill, Engrave)",
+                    "WebAssembly geometry engine for high-performance boolean operations",
+                    "Smart drill strategy with dynamic peck-or-mill selection",
+                    "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
+                    "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
+                ],
+                "softwareVersion": "1.0.0",
+                "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
+                "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
+                "installUrl": "https://cam.eltryus.design/easytrace5000/",
+                "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+                "isAccessibleForFree": true,
+                "browserRequirements": "Requires JavaScript and WebAssembly support",
+                "sameAs": ["https://github.com/RicardoJCMarques/EasyTrace5000"]
+            },
+            {
+                "@context": "https://schema.org",
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    {
+                        "@type": "ListItem",
+                        "position": 1,
+                        "name": "Eltryus CAM Suite",
+                        "item": "https://cam.eltryus.design/"
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 2,
+                        "name": "EasyShape5000 Workspace",
+                        "item": "https://cam.eltryus.design/easyshape5000/"
+                    }
+                ]
+            }
+        ]
+    </script>
+</head>
+<body>
+
+    <!-- Viewport warning bar — persistent, dismissible -->
+    <div class="workspace-viewport-bar" id="workspace-viewport-bar">
+        <svg class="cam-icon workspace-viewport-bar-icon" width="20" height="20"><use href="#icon-warning"></use></svg>
+        <span>Screen too narrow — rotate device or use a larger screen.</span>
+        <button class="workspace-viewport-bar-dismiss" id="dismiss-viewport-bar" aria-label="Dismiss warning">
+            <svg class="cam-icon" width="20" height="20"><use href="#icon-close"></use></svg>
+        </button>
+    </div>
+
+    <!-- Skip link -->
+    <a href="#preview-canvas" class="skip-link">Skip to Canvas</a>
+
+    <!-- For non-JS crawlers -->
+    <noscript>
+        <div style="padding: 2rem; text-align: center; background: #1a1a1a; color: #fff;">
+            <h1>EasyShape5000 — CNC Router CAM</h1>
+            <p>JavaScript required for application functionality.</p>
+            <p><a href="doc/" style="color: #3b82f6;">View Documentation</a></p>
+        </div>
+    </noscript>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay" tabindex="-1">
+        <div class="loading-spinner spinner"></div>
+        <div id="loading-text">Loading EasyShape5000...</div>
+        <div id="loading-progress" class="loading-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Application loading progress">0%</div>
+    </div>
+
+    <!-- TOP TOOLBAR -->
+    <div class="cam-toolbar toolbar" id="cam-toolbar" role="toolbar" aria-label="Main toolbar">
+        <div class="toolbar-section toolbar-left">
+            <div class="dropdown-menu dropdown">
+                <button class="btn--menu btn" id="quick-actions-btn">
+                    <svg width="20" height="20" viewBox="0 0 20 20">
+                        <rect x="2" y="4" width="16" height="2" fill="currentColor"/>
+                        <rect x="2" y="9" width="16" height="2" fill="currentColor"/>
+                        <rect x="2" y="14" width="16" height="2" fill="currentColor"/>
+                    </svg>
+                    <span>Actions</span>
+                </button>
+                <div class="dropdown-content" id="quick-actions-menu">
+                    <button class="menu-item" id="toolbar-import-svg">
+                        <span><svg class="cam-icon" width="16" height="16"><use href="#icon-folder-open"></use></svg></span> Import SVG
+                    </button>
+                    <div class="menu-divider"></div>
+                    <button class="menu-item" id="toolbar-export-canvas">
+                        <span><svg class="cam-icon" width="16" height="16"><use href="#icon-image"></use></svg></span> Export Canvas SVG
+                    </button>
+                    <div class="menu-divider"></div>
+                    <button class="menu-item" id="toolbar-export-gcode">
+                        <span><svg class="cam-icon" width="16" height="16"><use href="#icon-wrench"></use></svg></span> Export G-code
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="toolbar-section toolbar-center">
+            <h1 class="workspace-title">EasyShape5000 - 3D CAM Workspace</h1>
+        </div>
+
+        <div class="toolbar-section toolbar-right">
+            <button class="btn--tool btn" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg class="cam-icon" width="18" height="18"><use href="#icon-undo"></use></svg>
+                </svg>
+            </button>
+            <button class="btn--tool btn" id="btn-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg class="cam-icon" width="18" height="18"><use href="#icon-redo"></use></svg>
+                </svg>
+            </button>
+            <div class="toolbar-separator separator"></div>
+            <button class="btn--tool btn" id="zoom-fit-btn" title="Fit to View (F)" aria-label="Fit to View">
+                 <svg class="cam-icon" width="18" height="18"><use href="#icon-zoom-fit"></use></svg>
+            </button>
+            <button class="btn--tool btn" id="zoom-in-btn" title="Zoom In (+)" aria-label="Zoom In">
+                <svg class="cam-icon" width="18" height="18"><use href="#icon-zoom-in"></use></svg>
+            </button>
+            <button class="btn--tool btn" id="zoom-out-btn" title="Zoom Out (-)" aria-label="Zoom Out">
+                <svg class="cam-icon" width="18" height="18"><use href="#icon-zoom-out"></use></svg>
+            </button>
+            <div class="toolbar-separator separator"></div>
+            <button id="btn-help" class="btn btn--icon" title="Help (F1)" aria-label="Help">?</button>
+            <button class="btn btn--icon theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- WORKSPACE — three-column grid -->
+    <div class="cam-workspace workspace" id="cam-workspace">
+
+        <!-- LEFT SIDEBAR — scene tree + operations -->
+        <aside class="sidebar sidebar-left" id="sidebar-left" aria-label="Scene & Operations">
+
+            <!-- Operations Panel (generated operation object) -->
+            <div class="sidebar-section operations-section">
+                <header class="section-header">
+                    <h2>Operations</h2>
+                </header>
+                <div class="operations-list" id="operations-bucket-list" role="tree" aria-label="Operations">
+                    <div class="empty-state" id="ops-empty-state">
+                        Select geometry and generate offsets to create an operation object.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scene Tree (source geometry) -->
+            <div class="sidebar-section browser-section">
+                <header class="section-header">
+                    <h2>Imported Objects</h2>
+                    <button id="btn-clear-all" class="btn btn--icon btn--compact" title="Remove all" aria-label="Remove all" style="display: none;">
+                        <svg class="cam-icon" width="12" height="12"><use href="#icon-delete"></use></svg>
+                    </button>
+                </header>
+
+                <div class="tree-toolbar" id="tree-toolbar">
+                    <button class="btn btn--icon btn--compact" id="tree-btn-group" title="Group (Ctrl+G)" disabled>
+                        <svg class="cam-icon" width="12" height="12"><use href="#icon-group"></use></svg>
+                    </button>
+                    <button class="btn btn--icon btn--compact" id="tree-btn-ungroup" title="Ungroup (Ctrl+Shift+G)" disabled>
+                        <svg class="cam-icon" width="12" height="12"><use href="#icon-ungroup"></use></svg>
+                    </button>
+                    <div class="toolbar-separator separator"></div>
+                    <button class="btn btn--icon btn--compact" id="tree-btn-lock" title="Toggle Lock" disabled>
+                        <svg class="cam-icon" width="12" height="12"><use href="#icon-lock"></use></svg>
+                    </button>
+                    <button class="btn btn--icon btn--compact" id="tree-btn-hide" title="Toggle Visibility" disabled>
+                        <svg class="cam-icon" width="12" height="12"><use href="#icon-visibility"></use></svg>
+                    </button>
+                    <button class="btn btn--icon btn--compact" id="tree-btn-delete" title="Delete Selection" disabled>
+                        <svg class="cam-icon" width="12" height="12"><use href="#icon-delete"></use></svg>
+                    </button>
+                </div>
+
+                <div class="tree-view" id="scene-tree-list" role="tree" aria-label="Scene tree">
+                    <div class="empty-state" id="scene-empty-state">
+                        <strong>No paths yet</strong>
+                        Import an SVG to populate the scene tree.
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- CENTRE — canvas -->
+        <main class="workspace-main" aria-label="Canvas">
+            <div class="canvas-container">
+
+                <canvas id="preview-canvas" tabindex="0"></canvas>
+
+                <div id="canvas-loading-overlay" class="canvas-loading-overlay hidden">
+                    <div class="loading-spinner spinner"></div>
+                    <div id="canvas-loading-message" class="loading-message"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- RIGHT SIDEBAR -->
+        <aside class="sidebar sidebar-right" id="sidebar-right" aria-label="Settings">
+
+            <!-- Stock Setup -->
+            <div class="sidebar-section stock-section">
+                <header class="section-header collapsible-header collapsible" data-target="stock-controls">
+                    <h2>Stock Setup</h2>
+                    <span class="collapse-indicator">▼</span>
+                </header>
+                <div class="section-content collapsible" id="stock-controls">
+                    <div class="property-field">
+                        <label for="stock-width">Width</label>
+                        <div class="input-unit"><input type="number" id="stock-width" value="600" min="1" step="1"><span class="unit">mm</span></div>
+                    </div>
+                    <div class="property-field">
+                        <label for="stock-height">Height</label>
+                        <div class="input-unit"><input type="number" id="stock-height" value="400" min="1" step="1"><span class="unit">mm</span></div>
+                    </div>
+                    <div class="property-field">
+                        <label for="stock-thickness">Thickness</label>
+                        <div class="input-unit"><input type="number" id="stock-thickness" value="18" min="0.1" step="0.5"><span class="unit">mm</span></div>
+                    </div>
+                    <div class="property-field">
+                        <label for="stock-material">Material</label>
+                        <select id="stock-material">
+                            <option value="plywood">Plywood</option>
+                            <option value="mdf">MDF</option>
+                            <option value="hardwood">Hardwood</option>
+                            <option value="softwood">Softwood</option>
+                            <option value="acrylic">Acrylic</option>
+                            <option value="aluminum">Aluminum (soft)</option>
+                            <option value="foam">Foam / Modeling Board</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div class="property-field">
+                        <label for="z-zero">Z Zero Reference</label>
+                        <select id="z-zero">
+                            <option value="material" selected>Material Surface (Top)</option>
+                            <option value="bed">Machine Bed (Spoilboard)</option>
+                        </select>
+                    </div>
+                    <div class="property-field" role="group" aria-labelledby="stock-origin-label">
+                        <label id="stock-origin-label">Stock Origin Offset</label>
+                        <div class="input-stack">
+                            <div class="input-unit">
+                                <input type="number" id="stock-x-offset" value="0" step="0.5">
+                                <span class="unit" aria-hidden="true">X mm</span>
+                            </div>
+                            <div class="input-unit">
+                                <input type="number" id="stock-y-offset" value="0" step="0.5">
+                                <span class="unit" aria-hidden="true">Y mm</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="origin-buttons">
+                        <button class="btn btn--compact btn--secondary" id="stock-bottom-left-btn">Bottom-Left</button>
+                        <button class="btn btn--compact btn--secondary" id="stock-center-btn">Center</button>
+                    </div>
+                    <div class="origin-buttons">
+                        <button class="btn btn--compact btn--primary" id="apply-stock">Apply</button>
+                        <button class="btn btn--compact btn--secondary" id="reset-stock">Reset</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Global Machine Parameters -->
+            <div class="sidebar-section machine-section">
+                <header class="section-header collapsible-header collapsible" data-target="machine-controls">
+                    <h2>Machine Settings</h2>
+                    <span class="collapse-indicator">▼</span>
+                </header>
+                <div class="section-content collapsible" id="machine-controls">
+
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label for="post-processor" data-i18n-tooltip="tooltips.machineSettings.postProcessor">Post-Processor</label>
+                            <select id="post-processor">
+                            </select>
+                        </div>
+                        <div class="property-field">
+                            <label for="start-code-ta" data-i18n-tooltip="tooltips.parameters.startCode">Start Code</label>
+                            <textarea id="start-code-ta" rows="5"></textarea>
+                        </div>
+                        <div class="property-field">
+                            <label for="end-code-ta" data-i18n-tooltip="tooltips.parameters.endCode">End Code</label>
+                            <textarea id="end-code-ta" rows="5"></textarea>
+                        </div>
+                        <div class="property-field" data-processor-group="gcode">
+                            <label for="gcode-units" data-i18n-tooltip="tooltips.machineSettings.gcodeUnits">Units</label>
+                            <select id="gcode-units">
+                                <option value="mm">Millimeters (G21)</option>
+                                <option value="inch">Inches (G20)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Roland-specific settings -->
+                    <div class="property-section" data-processor-group="roland" style="display: none;">
+                        <div class="property-field">
+                            <label for="roland-machine-model" data-i18n-tooltip="tooltips.machineSettings.rolandMachineModel">Machine Model</label>
+                            <select id="roland-machine-model">
+                                <optgroup label="Pro Series">
+                                    <option value="mdx540">MDX-540 / MDX-540S</option>
+                                    <option value="mdx50">MDX-50</option>
+                                    <option value="mdx40">MDX-40A</option>
+                                </optgroup>
+                                <optgroup label="monoFab">
+                                    <option value="srm20">SRM-20</option>
+                                </optgroup>
+                                <optgroup label="Engraver">
+                                    <option value="egx350">EGX-350</option>
+                                </optgroup>
+                                <optgroup label="Legacy">
+                                    <option value="mdx20">MDX-20</option>
+                                    <option value="mdx15">MDX-15</option>
+                                    <option value="imodela">iModela (iM-01)</option>
+                                </optgroup>
+                                <optgroup label="Other">
+                                    <option value="custom">Custom</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="property-field">
+                            <label for="roland-steps-per-mm" data-i18n-tooltip="tooltips.machineSettings.rolandStepsPerMM">Steps per mm</label>
+                            <div class="input-unit">
+                                <input type="number" id="roland-steps-per-mm" value="100" step="1" min="1" aria-label="Steps per millimeter resolution">
+                                <span class="unit" aria-hidden="true">steps/mm</span>
+                            </div>
+                        </div>
+                        <div class="property-field">
+                            <label for="roland-z-mode" data-i18n-tooltip="tooltips.machineSettings.rolandZMode">Z Command Mode</label>
+                            <select id="roland-z-mode">
+                                <option value="3d">3D — Z x,y,z (simultaneous XYZ)</option>
+                                <option value="2.5d">2.5D — PU/PD (pen up/down only)</option>
+                            </select>
+                        </div>
+                        <div class="property-field">
+                            <label for="roland-max-feed" data-i18n-tooltip="tooltips.machineSettings.rolandMaxFeed">Max Feed Rate</label>
+                            <div class="input-unit">
+                                <input type="number" id="roland-max-feed" value="60" step="0.1" min="0.1" aria-label="Maximum feed rate in millimeters per second">
+                                <span class="unit" aria-hidden="true">mm/sec</span>
+                            </div>
+                        </div>
+                        <div class="property-field">
+                            <label for="roland-spindle-mode" data-i18n-tooltip="tooltips.machineSettings.rolandSpindleMode">Spindle Control</label>
+                            <select id="roland-spindle-mode">
+                                <option value="direct">Direct RPM (!RC + !MC)</option>
+                                <option value="manual">Manual Only (!MC on/off)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label for="safe-z" data-i18n-tooltip="tooltips.machineSettings.safeZ">Safe Z</label>
+                            <div class="input-unit">
+                                <input type="number" id="safe-z" step="0.5" aria-label="Safe Z Height in millimeters">
+                                <span class="unit" aria-hidden="true">mm</span>
+                            </div>
+                        </div>
+
+                        <div class="property-field">
+                            <label for="travel-z" data-i18n-tooltip="tooltips.machineSettings.travelZ">Travel Z</label>
+                            <div class="input-unit">
+                                <input type="number" id="travel-z" step="0.5" aria-label="Travel Z Height in millimeters">
+                                <span class="unit" aria-hidden="true">mm</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="property-section">
+                        <div class="property-field">
+                            <label for="rapid-feed" data-i18n-tooltip="tooltips.machineSettings.rapidFeed">Rapid Feed</label>
+                            <div class="input-unit">
+                                <input type="number" id="rapid-feed" step="100" aria-label="Rapid Feed Rate in millimeters per minute">
+                                <span class="unit" aria-hidden="true">mm/min</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="property-section" data-processor-group="gcode">
+                        <div class="property-field">
+                            <label for="coolant-type">Coolant</label>
+                            <select id="coolant-type">
+                                <option value="none" selected>none</option>
+                                <option value="mist">Mist</option>
+                                <option value="flood">Flood</option>
+                            </select>
+                        </div>
+
+                        <div class="property-field">
+                            <label class="checkbox-label" for="vacuum-toggle">
+                                <input type="checkbox" id="vacuum-toggle">
+                                <span>Vacuum</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Operation Inspector -->
+            <div class="sidebar-section inspector-section">
+                <header class="section-header">
+                    <h2>Cut Settings</h2>
+                </header>
+                <div class="property-form" id="right-panel" data-right-panel-state="no-svg">
+
+                    <div class="empty-state" data-panel-state="no-svg">
+                        <strong>No design loaded</strong>
+                        Import an SVG to begin assigning cuts.
+                    </div>
+
+                    <div class="empty-state" data-panel-state="no-selection">
+                        <strong>Nothing selected</strong>
+                        Select a path to create an operation.
+                    </div>
+
+                    <!-- Shape transform — visible when any shape is selected -->
+                    <div class="shape-inspector" data-panel-state="source-selected bucket-stage" id="shape-inspector">
+                        <div class="property-section">
+                            <h3>Shape Transform</h3>
+
+                            <div class="property-field">
+                                <label for="shape-x">X</label>
+                                <div class="input-unit"><input type="number" id="shape-x" step="0.5"><span class="unit">mm</span></div>
+                            </div>
+                            <div class="property-field">
+                                <label for="shape-y">Y</label>
+                                <div class="input-unit"><input type="number" id="shape-y" step="0.5"><span class="unit">mm</span></div>
+                            </div>
+                            <div class="origin-buttons">
+                                <button class="btn btn--compact btn--secondary" id="shape-align-center">Center</button>
+                                <button class="btn btn--compact btn--secondary" id="shape-align-bl">Bot-Left</button>
+                            </div>
+                            <div class="origin-buttons">
+                                <button class="btn btn--compact btn--primary" id="shape-apply-transform">Apply</button>
+                                <button class="btn btn--compact btn--secondary" id="shape-reset-transform">Reset</button>
+                            </div>
+                            <div class="property-field">
+                                <label for="shape-rotation">Rotation</label>
+                                <div class="input-unit"><input type="number" id="shape-rotation" step="5"><span class="unit">°</span></div>
+                            </div>
+                            <div class="origin-buttons">
+                                <!-- REVIEW - These id's for rotation aren't wired -->
+                                <button class="btn btn--compact btn--primary" id="shape-apply-rotation">Apply</button>
+                                <button class="btn btn--compact btn--secondary" id="shape-reset-rotation">Reset</button>
+                            </div>
+                            <div class="property-field">
+                                <label for="shape-scale">Scale</label>
+                                <div class="input-unit">
+                                    <input type="number" id="shape-scale" value="1" step="0.05" min="0.01"><span class="unit">x</span>
+                                </div>
+                            </div>
+                            <div class="origin-buttons">
+                                <button class="btn btn--compact btn--primary" id="shape-apply-scale">Apply</button>
+                                <button class="btn btn--compact btn--secondary" id="shape-reset-scale">Reset</button>
+                            </div>
+                            <div class="mirror-section">
+                                <div class="property-field" role="group" aria-labelledby="shape-mirror-label">
+                                    <label id="shape-mirror-label">Mirror</label>
+                                    <div class="field-row">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="shape-mirror-x">
+                                            <span>Horizontal</span>
+                                            <svg class="cam-icon" width="20" height="20"><use href="#icon-mirror-h"></use></svg>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="shape-mirror-y">
+                                            <span>Vertical</span>
+                                            <svg class="cam-icon" width="20" height="20"><use href="#icon-mirror-v"></use></svg>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="meta-line" id="shape-meta-size"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fresh selection: op type tabs + geometry params -->
+                    <div data-panel-state="source-selected">
+                        <div class="op-type-selector" id="op-type-selector">
+                            <button class="op-type-tab active" data-op="profile" title="Profile Cut" aria-label="Profile Cut">
+                                <svg class="cam-icon" width="16" height="16"><use href="#icon-op-profile"></use></svg>
+                            </button>
+                            <button class="op-type-tab" data-op="pocket" title="Pocket Clear" aria-label="Pocket Clear">
+                                <svg class="cam-icon" width="16" height="16"><use href="#icon-op-pocket"></use></svg>
+                            </button>
+                            <button class="op-type-tab" data-op="drill" title="Drill Holes" aria-label="Drill Holes">
+                                <svg class="cam-icon" width="16" height="16"><use href="#icon-op-drilling"></use></svg>
+                            </button>
+                            <button class="op-type-tab" data-op="engrave" title="Engrave" aria-label="Engrave" disabled>
+                                <svg class="cam-icon" width="16" height="16"><use href="#icon-op-engrave"></use></svg>
+                            </button>
+                            <button class="op-type-tab" data-op="vcarve" title="V-Carve" aria-label="V-Carve" disabled>
+                                <svg class="cam-icon" width="16" height="16"><use href="#icon-op-vcarve"></use></svg>
+                            </button>
+                        </div>
+                        <div id="fresh-params-form"></div>
+                    </div>
+
+                    <!-- Bucket stage params — populated dynamically -->
+                    <div id="operation-form-container" data-panel-state="source-selected bucket-stage"></div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- FOOTER & STATUS BAR -->
+    <footer class="footer-bar" id="footer-bar">
+        <div class="status-left">
+            <button class="btn btn--icon" id="show-viz-panel-btn" title="Visualization Settings" aria-label="Visualization Settings">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-eye"></use></svg>
+            </button>
+
+            <div class="coordinate-display" id="coordinate-display">
+                <span>X: <span id="coord-x">0.00</span></span>
+                <span>Y: <span id="coord-y">0.00</span></span>
+                <span>Zoom: <span id="zoom-level">100%</span></span>
+            </div>
+
+            <div class="viz-panel collapsed" id="viz-panel">
+                <div class="section-header" id="viz-panel-header">
+                    <h2>Visualization</h2>
+                    <span class="collapse-indicator">▲</span>
+                </div>
+                <div class="section-content" id="viz-controls">
+                    <div class="control-group">
+                        <h3>Display</h3>
+                        <label class="checkbox-control checkbox-label" for="show-grid" data-i18n-tooltip="tooltips.vizPanel.grid">
+                            <input type="checkbox" id="show-grid" data-option="showGrid" data-action="render" checked>
+                            <span>Grid</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-wireframe" data-i18n-tooltip="tooltips.vizPanel.wireframe">
+                            <input type="checkbox" id="show-wireframe" data-option="showWireframe" data-action="render">
+                            <span>Wireframe</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-bounds" data-i18n-tooltip="tooltips.vizPanel.boardBounds">
+                            <input type="checkbox" id="show-bounds" data-option="showBounds" data-action="render">
+                            <span>Board Bounds</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-rulers" data-i18n-tooltip="tooltips.vizPanel.rulers">
+                            <input type="checkbox" id="show-rulers" data-option="showRulers" data-action="render" checked>
+                            <span>Rulers</span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <h3>Geometry</h3>
+                        <label class="checkbox-control checkbox-label" for="show-unassigned">
+                            <input type="checkbox" id="show-unassigned" checked>
+                            <span>Unassigned Shapes</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-profile">
+                            <input type="checkbox" id="show-profile" checked><span>Profile</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-pocket">
+                            <input type="checkbox" id="show-pocket" checked><span>Pocket</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-drill">
+                            <input type="checkbox" id="show-drill" checked><span>Drill</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-engrave">
+                            <input type="checkbox" id="show-engrave" checked><span>Engrave</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-vcarve">
+                            <input type="checkbox" id="show-vcarve" checked><span>V-Carve</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-pattern">
+                            <input type="checkbox" id="show-pattern" checked><span>Pattern</span>
+                        </label>
+                    </div>
+
+                    <!-- REVIEW - These toggles needs to be reworked once operational orchestration is settled, including data-i18n-tooltip -->
+                    <div class="control-group">
+                        <h3>Toolpaths</h3>
+                        <label class="checkbox-control checkbox-label" for="show-generated">
+                            <input type="checkbox" id="show-generated" checked>
+                            <span>Generated Paths</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-tool-preview-shape">
+                            <input type="checkbox" id="show-tool-preview-shape" checked>
+                            <span>Tool Previews</span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <h3>Advanced</h3>
+                        <label class="checkbox-control checkbox-label" for="fuse-geometry" data-i18n-tooltip="tooltips.vizPanel.fusionMode">
+                            <input type="checkbox" id="fuse-geometry" data-option="fuseGeometry" data-action="update">
+                            <span>Fusion Mode</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-preprocessed" data-i18n-tooltip="tooltips.vizPanel.preprocessed">
+                            <input type="checkbox" id="show-preprocessed" data-option="showPreprocessed" data-action="update" data-dependency="fuse-geometry">
+                            <span>Preprocessed</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="show-preprocessed-offsets">
+                            <input type="checkbox" id="show-preprocessed-offsets" data-option="showPreprocessedOffsets" data-action="render">
+                            <span>Offset Polygons</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="enable-arc-reconstruction" data-i18n-tooltip="tooltips.vizPanel.arcReconstruction">
+                            <input type="checkbox" id="enable-arc-reconstruction" data-option="enableArcReconstruction" data-action="update" data-dependency="fuse-geometry">
+                            <span>Arc Reconstruction</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="debug-points" data-i18n-tooltip="tooltips.vizPanel.debugPoints">
+                            <input type="checkbox" id="debug-points" data-option="debugPoints" data-action="render">
+                            <span>Debug Points</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="debug-arcs" data-i18n-tooltip="tooltips.vizPanel.debugArcs">
+                            <input type="checkbox" id="debug-arcs" data-option="debugArcs" data-action="render">
+                            <span>Debug Arcs</span>
+                        </label>
+                        <label class="checkbox-control checkbox-label" for="black-and-white" data-i18n-tooltip="tooltips.vizPanel.bwMode">
+                            <input type="checkbox" id="black-and-white" data-option="blackAndWhite" data-action="render">
+                            <span>Black & White</span>
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <h3>Log</h3>
+                        <label class="checkbox-control checkbox-label" for="debug-log-toggle" data-i18n-tooltip="tooltips.vizPanel.verboseDebug">
+                            <input type="checkbox" id="debug-log-toggle" data-action="toggle-debug">
+                            <span>Verbose Debug</span>
+                        </label>
+                    </div>
+                    <div id="arc-reconstruction-stats" class="stats-info hidden"></div>
+                </div>
+            </div>
+        </div>
+        <div class="status-bar" id="status-bar" title="Click to expand log">
+            <span class="log-toggle-icon" id="log-toggle-icon">▲</span>
+            <span class="status-text" id="status-text" role="status" aria-live="polite">Ready</span>
+            <span class="status-progress progress hidden" id="status-progress">
+                <span class="progress-bar" id="progress-bar"></span>
+            </span>
+        </div>
+        <div class="status-right" id="status-right">
+            <div class="status-info license-info">
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.0.0</a> |
+                <a href="/" title="Return to Homepage" draggable="false">Home</a> |
+                <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View AGPLv3 License (opens in a new tab)">AGPLv3</a> |
+                <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/issues" target="_blank" title="Repo" draggable="false" aria-label="GitHub Issues (opens in new tab)">Help</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" title="Repo" draggable="false" aria-label="GitHub (opens in new tab)">GitHub</a> |
+                <a href="#support" title="Support the Project" draggable="false" aria-label="Opens Support modal">Support Development</a>
+            </div>
+        </div>
+        <div class="status-log-panel" id="status-log-panel">
+            <div class="status-log-history" id="status-log-history"></div>
+        </div>
+    </footer>
+
+    <!-- TEMPLATES -->
+    <template id="invalidation-panel-template">
+        <div class="warning-panel invalidation-panel">
+            <div class="warning-header">
+                <span class="file-icon"><svg class="cam-icon" width="14" height="14"><use href="#icon-warning"></use></svg></span>
+                <span>Geometry Invalidated</span>
+            </div>
+            <p class="warning-message"></p>
+            <button class="btn btn--secondary btn--block invalidation-redo-btn">Delete Invalid Geometry & Redo</button>
+        </div>
+    </template>
+
+    <!-- WELCOME MODAL -->
+    <div id="welcome-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Welcome to EasyShape5000</h2>
+                <button class="modal-close" id="welcome-close" aria-label="Close">
+                    <svg class="cam-icon" width="20" height="20"><use href="#icon-close"></use></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="viewport-warning viewport-warning--info" id="welcome-viewport-warning">
+                    <svg class="cam-icon" width="20" height="20"><use href="#icon-warning"></use></svg>
+                    <div class="viewport-warning-content">
+                        <strong>Screen too narrow. If possible, rotate your device.</strong>
+                        <span>UI is optimized for small screens but only in a horizontal orientation.</span>
+                    </div>
+                </div>
+
+                <p class="welcome-intro">EasyShape5000 is a CAM tool for CNC routing.</p>
+
+                <div class="modal-notice modal-notice--info" id="welcome-firstrelease-notice">
+                    <svg class="cam-icon" width="20" height="20"><use href="#icon-warning"></use></svg>
+                    <div class="modal-notice-content">
+                        <strong>Initial public release.</strong>
+                        <span>While its foundations are shared with EasyTrace5000, more testing is needed. Please
+                            <a href="https://github.com/RicardoJCMarques/EasyTrace5000/issues" target="_blank" rel="noopener">report unexpected behavior</a>.
+                        </span>
+                        <p>Toolpaths should be safe but the optimization layer needs to be reworked for operations with a lot of polygons.</p>
+                    </div>
+                </div>
+
+                <p class="pipeline-subtitle">Select your workspace mode</p>
+
+                <div class="pipeline-selection">
+                    <a href="#quickstart" class="pipeline-card pipeline-card--active" id="pipeline-cnc" draggable="false" aria-label="Select 2D Workspace">
+                        <div class="pipeline-icon" aria-hidden="true">
+                            <svg class="cam-icon" width="48" height="48"><use href="#icon-cnc"></use></svg>
+                        </div>
+                        <h3>2D Workspace</h3>
+                        <span class="pipeline-badge pipeline-badge--stable">Standard</span>
+                        <p class="pipeline-desc">Standard 2.5D routing for profiles, pockets, engraving, and V-carving.</p>
+                        <span class="pipeline-action" aria-hidden="true">Start 2D</span>
+                    </a>
+
+                    <a href="#" class="pipeline-card pipeline-card--dev" draggable="false" style="cursor: not-allowed;" aria-label="3D Workspace is in development">
+                        <div class="pipeline-icon" aria-hidden="true">
+                            <svg class="cam-icon" width="48" height="48"><use href="#icon-image"></use></svg>
+                        </div>
+                        <h3>3D Workspace</h3>
+                        <span class="pipeline-badge pipeline-badge--dev">Coming Soon™</span>
+                        <p class="pipeline-desc">Advanced 3D interface for relief maps, adjustable tabs, and complex toolpath previews.</p>
+                        <span class="pipeline-action" aria-hidden="true">In Development</span>
+                    </a>
+                </div>
+
+                <div class="sponsors-section">
+                    <h4>Project Sponsors</h4>
+                    <div class="sponsor-grid">
+                        <a href="#" class="sponsor-slot" id="sponsor-slot-1" draggable="false" aria-label="Sponsor Slot Available">
+                            <div class="slot-content">
+                                <svg class="cam-icon" width="48" height="48"><use href="#icon-sponsor"></use></svg>
+                                <span style="margin-top: 4px;">Your Logo</span>
+                            </div>
+                        </a>
+                        <a href="#" class="sponsor-slot" id="sponsor-slot-2" draggable="false" aria-label="Sponsor Slot Available">
+                            <div class="slot-content">
+                                <svg class="cam-icon" width="48" height="48"><use href="#icon-sponsor"></use></svg>
+                                <span style="margin-top: 4px;">Your Logo</span>
+                            </div>
+                        </a>
+                        <a href="#" class="sponsor-slot" id="sponsor-slot-3" draggable="false" aria-label="Sponsor Slot Available">
+                            <div class="slot-content">
+                                <svg class="cam-icon" width="48" height="48"><use href="#icon-sponsor"></use></svg>
+                                <span style="margin-top: 4px;">Your Logo</span>
+                            </div>
+                        </a>
+                    </div>
+                    <a href="#support" class="sponsor-cta" id="sponsor-contact-cta" draggable="false" aria-label="Opens the Support Project modal">Learn about becoming a sponsor</a>
+                </div>
+            </div>
+            <div class="modal-footer welcome-footer">
+                <div class="welcome-footer-links">
+                    <a href="#help" id="welcome-help-link" draggable="false" aria-label="Opens Help modal">Help</a>
+                    <span class="separator" aria-hidden="true"></span>
+                    <a href="../LICENSE" target="_blank" draggable="false" aria-label="AGPLv3 License (opens in a new tab)">AGPLv3</a>
+                    <span class="separator" aria-hidden="true"></span>
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" target="_blank" rel="noopener" draggable="false">Changelog</a>
+                    <span class="separator" aria-hidden="true"></span>
+                    <a href="doc/" target="_blank" draggable="false" aria-label="Documentation (opens in a new tab)">Documentation</a>
+                    <span class="separator" aria-hidden="true"></span>
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QUICKSTART MODAL -->
+    <div id="quickstart-modal" class="modal" role="dialog" aria-labelledby="qs-title">
+        <div class="modal-content" style="max-width: min(680px, 95vw);">
+            <div class="modal-header">
+                <div class="header-text-group">
+                    <h2 id="qs-title">
+                        <span class="pipeline-icon-anchor">
+                            <svg class="cam-icon icon-cnc" width="24" height="24"><use href="#icon-cnc"></use></svg>
+                        </span>
+                        Start a Project
+                    </h2>
+                    <span class="modal-subtitle">Load vector or mesh design files</span>
+                </div>
+                <button class="modal-close" data-modal-close aria-label="Close">
+                    <svg class="cam-icon" width="20" height="20"><use href="#icon-close"></use></svg>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="viewport-warning viewport-warning--caution" id="quickstart-viewport-warning">
+                    <svg class="cam-icon" width="24" height="24"><use href="#icon-warning"></use></svg>
+                    <div class="viewport-warning-content">
+                        <strong>This tool recommends/requires a wider screen. UI may be harder to use or fully broken.</strong>
+                        <span> If possible, rotate your device or switch to a larger screen.</span>
+                    </div>
+                </div>
+
+                <div class="quickstart-content">
+                    <div class="quickstart-example-row">
+                        <label for="pcb-example-select">Load example:</label>
+                        <select id="pcb-example-select" class="example-select"></select>
+                        <button class="btn btn--secondary" id="load-example-btn" aria-label="Load selected example project">Load</button>
+                    </div>
+
+                    <div class="quickstart-upload-section">
+                        <p>Drop your design file below to begin:</p>
+
+                        <div class="quickstart-upload-grid quickstart-upload-grid--single" id="quickstart-upload-grid">
+                            <div class="quickstart-drop-zone" data-op-type="unassigned" id="qs-unassigned-zone" role="button" tabindex="0" aria-label="Upload Vector or Mesh File. Click or drag file here.">
+                                <svg class="cam-icon" width="32" height="32" style="margin-bottom: 8px; color: var(--color-text-secondary);"><use href="#icon-image"></use></svg>
+                                <span class="zone-label" aria-hidden="true" style="font-size: 1.1rem; font-weight: 500;">Design File</span>
+                                <span class="zone-types" aria-hidden="true">.svg, .stl</span>
+                                <span class="zone-hint" aria-hidden="true" style="margin-top: 4px;">Click or drop</span>
+                                <span class="zone-file"></span>
+                                <input type="file" accept=".svg,.stl" hidden>
+                            </div>
+                        </div>
+
+                        <button class="btn btn--primary btn--block" id="process-quickstart-files-btn" disabled aria-label="Process uploaded files and open workspace">Process Files</button>
+
+                        <p class="quickstart-canvas-hint">Note: You can also drag files directly onto the workspace canvas. Open <strong>Stock Setup</strong> in the right sidebar to configure your material size.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer quickstart-footer">
+                <button class="btn btn--secondary" id="quickstart-back-btn" aria-label="Return to Welcome modal">Back</button>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="dont-show-quickstart">
+                    <span>Don't show this again</span>
+                </label>
+                <button class="btn btn--secondary" id="start-empty-btn" aria-label="Close modal and start with empty workspace">Start Empty</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SUPPORT MODAL -->
+    <div id="support-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Support EasyShape5000</h2>
+                <button class="modal-close" id="support-close" aria-label="Close">
+                    <svg class="cam-icon" width="20" height="20"><use href="#icon-close"></use></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="support-content">
+                    <p class="support-intro">This project is free and open-source. Your support helps cover development time, hosting costs, and test hardware.</p>
+                    <div class="support-options">
+                        <div class="support-card support-card--sponsorship">
+                            <h3>
+                                <svg class="cam-icon" width="24" height="24"><use href="#icon-op-sponsor"></use></svg>
+                                Become a Sponsor
+                            </h3>
+                            <p>Gain visibility with your logo on the welcome screen, documentation, and repository.</p>
+                            <div class="support-email-container">
+                                <span class="support-email-hint" aria-hidden="true">Click to copy email</span>
+                                <button class="support-email-btn" id="support-email-copy" type="button" aria-label="Copy sponsor email address to clipboard">
+                                    <span id="support-email-text">sponsor@eltryus.design</span>
+                                    <svg class="cam-icon" width="14" height="14"><use href="#icon-copy"></use></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="support-card support-card--kofi">
+                            <h3>
+                                <svg class="cam-icon" width="18" height="18"><use href="#icon-heart"></use></svg>
+                                Support the Project
+                            </h3>
+                            <p>Individual contributions directly fund the project's infrastructure and development time.</p>
+                            <div style="margin-top: auto;">
+                                <a href="https://ko-fi.com/eltryus" target="_blank" class="btn btn--kofi" draggable="false">Support on Ko-fi</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn--secondary" id="support-back-btn">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HELP MODAL -->
+    <div id="help-modal" class="modal" role="dialog" aria-labelledby="help-title">
+        <div class="modal-content modal--help">
+            <div class="modal-header">
+                <h2 id="help-title">Workflow & Keyboard Shortcuts</h2>
+                <button class="modal-close" data-modal-close aria-label="Close">
+                    <svg class="cam-icon" width="20" height="20"><use href="#icon-close"></use></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="help-content">
+                    <section class="help-section">
+                        <h3>Workflow</h3>
+                        <div class="workflow-steps">
+                            <div class="workflow-step"><span class="step-number">1</span><div class="step-content"><strong>Import SVG</strong><p>Load your design from Illustrator, Inkscape, or Affinity Designer</p></div></div>
+                            <div class="workflow-step"><span class="step-number">2</span><div class="step-content"><strong>Assign Operations</strong><p>Select paths and assign Profile, Pocket, Drill, or Engrave</p></div></div>
+                            <div class="workflow-step"><span class="step-number">3</span><div class="step-content"><strong>Set Parameters</strong><p>Configure tool, depth, feeds, and strategy for each operation</p></div></div>
+                            <div class="workflow-step"><span class="step-number">4</span><div class="step-content"><strong>Export G-code</strong><p>Generate and download machine-ready files</p></div></div>
+                        </div>
+                    </section>
+                    <section class="help-section">
+                        <h3>Keyboard Shortcuts</h3>
+                        <div class="shortcut-group">
+                            <h4>General</h4>
+                            <div class="shortcut-list">
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span class="shortcut-desc">Undo</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></span><span class="shortcut-desc">Redo</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>A</kbd></span><span class="shortcut-desc">Select all</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>G</kbd></span><span class="shortcut-desc">Group selection</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>Delete</kbd></span><span class="shortcut-desc">Delete selection</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>Esc</kbd></span><span class="shortcut-desc">Deselect / Close modal</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>I</kbd></span><span class="shortcut-desc">Import SVG</span></div>
+                            </div>
+                        </div>
+                        <div class="shortcut-group">
+                            <h4>View</h4>
+                            <div class="shortcut-list">
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>F</kbd> / <kbd>Home</kbd></span><span class="shortcut-desc">Fit to view</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>+</kbd> / <kbd>-</kbd></span><span class="shortcut-desc">Zoom in / out</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>G</kbd></span><span class="shortcut-desc">Toggle grid</span></div>
+                                <div class="shortcut-item"><span class="shortcut-keys"><kbd>F6</kbd></span><span class="shortcut-desc">Cycle focus zones</span></div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn--primary" data-modal-close>Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXPORT MANAGER MODAL -->
+    <div id="exporter-manager-modal" class="modal" role="dialog" aria-labelledby="exporter-title">
+        <div class="modal-content modal--exporter">
+            <div class="modal-header">
+                <h2 id="exporter-title">Operations & Export Manager</h2>
+                <button class="modal-close" id="exporter-close" aria-label="Close">
+                    <svg class="cam-icon" width="20" height="20"><use href="#icon-close"></use></svg>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="gcode-options">
+                    <h3>Select Operations to Process</h3>
+                    <p class="help-text">Check to include. Drag to reorder processing sequence.</p>
+                    <div class="operation-order" id="exporter-operation-order"></div>
+
+                    <div id="exporter-shared-options">
+                        <div class="property-field field-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="exporter-single-file">
+                                <span>Export as single file (combines operations)</span>
+                            </label>
+                        </div>
+                        <div class="property-field field-group">
+                            <label for="exporter-filename">Base Project Name</label>
+                            <input type="text" id="exporter-filename" value="shape-output" placeholder="shape-output">
+                        </div>
+                    </div>
+
+                    <div id="exporter-cnc-options">
+                        <h3>CNC Output Options</h3>
+                        <div class="property-field field-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="exporter-include-comments" checked>
+                                <span>Include operation comments</span>
+                            </label>
+                        </div>
+                        <div class="property-field field-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="exporter-tool-changes" disabled>
+                                <span>Insert tool change commands</span>
+                            </label>
+                        </div>
+                        <div class="property-field field-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="exporter-optimize-paths" checked>
+                                <span>Optimize toolpaths (Experimental)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="exporter-preview" id="exporter-cnc-preview">
+                    <h3>G-code Preview</h3>
+                    <div class="property-field" id="exporter-operation-selector" style="display: none;">
+                        <label for="exporter-preview-select">Previewing:</label>
+                        <select id="exporter-preview-select"></select>
+                    </div>
+                    <div class="preview-stats" id="exporter-preview-stats">
+                        <span>Lines: <strong id="exporter-line-count">0</strong></span>
+                        <span>Operations: <strong id="exporter-op-count">0</strong></span>
+                        <span>Est. Time: <strong id="exporter-est-time">--:--</strong></span>
+                        <span>Distance: <strong id="exporter-distance">0mm</strong></span>
+                    </div>
+                    <div class="preview-text-container">
+                        <textarea id="exporter-preview-text" readonly rows="15" placeholder="G-code preview will appear here..." aria-label="G-code output preview"></textarea>
+                        <button id="exporter-copy-btn" class="btn btn--icon btn--compact btn-copy-floating" title="Copy to clipboard" aria-label="Copy to clipboard">
+                            <svg class="cam-icon icon-copy" width="14" height="14"><use href="#icon-copy"></use></svg>
+                            <svg class="cam-icon icon-check" width="14" height="14"><use href="#icon-check"></use></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer exporter-footer">
+                <button class="btn btn--secondary" id="exporter-cancel-btn" aria-label="Cancel and close modal">Cancel</button>
+                <div class="exporter-actions">
+                    <button class="btn btn--secondary" id="exporter-calculate-btn" aria-label="Generate G-code preview">Calculate Toolpaths</button>
+                    <button class="btn btn--primary" id="exporter-execute-btn" aria-label="Export selected files">Export Files</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WARNING / CONFIRMATION MODAL -->
+    <div id="warning-modal" class="modal" role="dialog">
+        <div class="modal-content modal-warning">
+            <div class="modal-header">
+                <h2 class="warning-title">Warning</h2>
+                <button class="modal-close" data-modal-close aria-label="Close">
+                    <svg class="cam-icon" width="20" height="20"><use href="#icon-close"></use></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-body"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn--secondary warning-cancel">Cancel</button>
+                <button class="btn btn--primary warning-confirm">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file inputs -->
+    <input type="file" id="file-input-hidden" hidden>
+
+    <!-- SCRIPTS -->
+    <script defer src="../config.js"></script>
+    <script defer src="../themes/theme-loader.js"></script>
+    <script defer src="../language/language-manager.js"></script>
+    <script defer src="../geometry/clipper2z.js"></script>
+    <script defer src="../geometry/geometry-processor.js"></script>
+    <script defer src="../geometry/geometry-curve-registry.js"></script>
+    <script defer src="../geometry/geometry-arc-reconstructor.js"></script>
+    <script defer src="../geometry/geometry-clipper-wrapper.js"></script>
+    <script defer src="../geometry/geometry-utils.js"></script>
+    <!-- <script defer src="../geometry/geometry-utils-vcarve.js"></script> -->
+    <!-- <script defer src="../geometry/geometry-utils-heightmap.js"></script> -->
+    <!-- <script defer src="../geometry/geometry-utils-relief.js"></script> -->
+    <script defer src="../geometry/geometry-offsetter.js"></script>
+    <script defer src="../parsers/primitives.js"></script>
+    <script defer src="../parsers/parser-core.js"></script>
+    <script defer src="../parsers/parser-svg.js"></script>
+    <!-- <script defer src="../parsers/parser-stl.js"></script> -->
+    <script defer src="../parsers/parser-plotter.js"></script>
+    <script defer src="../renderer/renderer-core.js"></script>
+    <script defer src="../renderer/renderer-primitives.js"></script>
+    <script defer src="../renderer/renderer-overlay.js"></script>
+    <script defer src="../renderer/renderer-layer.js"></script>
+    <script defer src="../ui/tool-library.js"></script>
+    <script defer src="../ui/ui-tooltip.js"></script>
+    <script defer src="../ui/ui-parameter-manager.js"></script>
+    <script defer src="../ui/ui-status-manager.js"></script>
+    <script defer src="../ui/ui-machine-settings.js"></script>
+    <script defer src="../ui/ui-controls.js"></script>
+    <script defer src="../ui/ui-base-app.js"></script>
+    <script defer src="../ui/ui-base-operation-panel.js"></script>
+    <script defer src="../ui/ui-modal-manager.js"></script>
+    <script defer src="../toolpath/toolpath-primitives.js"></script>
+    <script defer src="../toolpath/toolpath-optimizer.js"></script>
+    <script defer src="../toolpath/toolpath-machine-processor.js"></script>
+    <script defer src="../toolpath/toolpath-tab-planner.js"></script>
+    <script defer src="../toolpath/toolpath-geometry-translator.js"></script>
+    <script defer src="../export/processors/base-processor.js"></script>
+    <script defer src="../operations/base-operation-handler.js"></script>
+    <script defer src="../operations/offset-operation-handler.js"></script>
+    <script defer src="../operations/drill-operation-handler.js"></script>
+    <!-- <script defer src="../operations/shape-vcarve-handler.js"></script> -->
+    <!-- <script defer src="../operations/shape-relief-handler.js"></script> -->
+    <script defer src="../operations/shape-profile-handler.js"></script>
+    <script defer src="../operations/shape-pocket-handler.js"></script>
+    <script defer src="../operations/shape-drill-handler.js"></script>
+    <!-- <script defer src="../operations/shape-engrave-handler.js"></script> -->
+    <!-- <script defer src="../operations/shape-pattern-handler.js"></script> -->
+    <script defer src="../export/processors/grbl-processor.js"></script>
+    <script defer src="../export/processors/makera-processor.js"></script>
+    <script defer src="../export/processors/grblHAL-processor.js"></script>
+    <script defer src="../export/processors/roland-processor.js"></script>
+    <script defer src="../export/processors/uccnc-processor.js"></script>
+    <script defer src="../export/processors/marlin-processor.js"></script>
+    <script defer src="../export/processors/mach3-processor.js"></script>
+    <script defer src="../export/processors/linuxcnc-processor.js"></script>
+    <script defer src="../export/gcode-generator.js"></script>
+    <script defer src="../export/graphics-exporter.js"></script>
+    <script defer src="../utils/transform-math.js"></script>
+    <script defer src="../utils/coordinate-system.js"></script>
+    <script defer src="../utils/canvas-exporter.js"></script>
+    <script defer src="../cam-controller.js"></script>
+    <script defer src="../cam-core.js"></script>
+    <script defer src="../input/input-manager.js"></script>
+    <script defer src="../input/tool-controller.js"></script>
+    <script defer src="../input/tools-common.js"></script>
+    <script defer src="../input/canvas-readout.js"></script>
+    <script defer src="../input/command-manager.js"></script>
+    <script defer src="../input/tools-interactive.js"></script>
+    <script defer src="../input/keyboard-manager.js"></script>
+
+    <script defer src="ui-nav-scene-panel.js"></script>
+    <script defer src="ui-shape-buckets-panel.js"></script>
+    <script defer src="ui-shape-operation-panel.js"></script>
+    <script defer src="ui-core-shape.js"></script>
+    <script defer src="cam-easyshape5000.js"></script>
+
+    <!-- Bootstrap -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('EasyShape5000 v1.0.0');
+            const loadingText = document.getElementById('loading-text');
+            const loadingProgress = document.getElementById('loading-progress');
+            if (loadingText) loadingText.textContent = 'Ready';
+            if (loadingProgress) {
+                loadingProgress.textContent = '100%';
+                loadingProgress.setAttribute('aria-valuenow', 100);
+            }
+            if (typeof window.startShapeApp === 'function') {
+                window.startShapeApp().catch(err => {
+                    console.error('Fatal startup error:', err);
+                    if (loadingText) loadingText.textContent = 'Startup failed. See console.';
+                });
+            } else {
+                console.error('Fatal: startShapeApp() not found');
+                if (loadingText) loadingText.textContent = 'Fatal Error: App failed to load';
+            }
+        });
+    </script>
+</body>
+</html>
