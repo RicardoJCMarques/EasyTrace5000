@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const PRECISION = C.precision.coordinate;
     const formatConfig = C.formats.gerber;
 
@@ -132,7 +116,6 @@
                 linesProcessed: 0,
                 objectsCreated: 0,
                 coordinatesParsed: 0,
-                invalidCoordinates: 0,
                 commandsProcessed: 0
             };
         }
@@ -216,7 +199,7 @@
                         params: {
                             code: code,
                             shape: this.getApertureShape(shapeChar),
-                            parameters: this._parseApertureParameters(paramStr)
+                            parameters: this.parseApertureParameters(paramStr)
                         },
                         line: lineNumber
                     };
@@ -235,7 +218,7 @@
                                 code: code,
                                 shape: 'macro',
                                 macroName: macroName,
-                                variables: this._parseApertureParameters(paramStr)
+                                variables: this.parseApertureParameters(paramStr)
                             },
                             line: lineNumber
                         };
@@ -335,7 +318,7 @@
             return { type: 'UNKNOWN', params: { content: block }, line: lineNumber };
         }
 
-        _parseApertureParameters(paramStr) {
+        parseApertureParameters(paramStr) {
             if (!paramStr || paramStr.trim() === '') return [];
             return paramStr.split('X').map(p => {
                 const val = parseFloat(p);
@@ -1077,11 +1060,6 @@
                 this.stats.coordinatesParsed++;
             }
 
-            if (this.validateCoordinates(newPos)) {
-                this.updateCoordinateRange(newPos);
-                this.coordinateValidation.validCoordinates++;
-            }
-
             return newPos;
         }
 
@@ -1121,7 +1099,7 @@
             // RELAXED GATE: The dot-product threshold is now configurable via cosAngleGate. The original code used 0 (catches only >90° reversals).
             // A positive value like 0.25 catches shallower zigzags (~75°+) that KiCad's polygon approximation routinely produces. The perpendicular deviation test still protects intentional sharp features.
             const spikeTolerance = PRECISION * 4;
-            const { points: cleaned, removed: spikesRemoved } = this._removeSpikeVertices(deduped, spikeTolerance);
+            const { points: cleaned, removed: spikesRemoved } = this.removeSpikeVertices(deduped, spikeTolerance);
 
             if (spikesRemoved > 0) {
                 this.debug(`Region spike removal: ${deduped.length} → ${cleaned.length} points (${spikesRemoved} spikes removed)`);
@@ -1138,7 +1116,7 @@
             // A simplification tolerance of 0.005–0.01mm is invisible on copper but eliminates thousands of noise vertices that otherwise get amplified into sawtooth artifacts by the Clipper offset pipeline.
             const rdpTolerance = C.precision.rdpSimplification;
 
-            const simplified = this._simplifyRDP(cleaned, rdpTolerance);
+            const simplified = this.simplifyRDP(cleaned, rdpTolerance);
 
             if (simplified.length < 3) {
                 this.warnings.push(`Region collapsed to ${simplified.length} points after RDP simplification`);
@@ -1214,7 +1192,7 @@
          * @param {number} tolerance - Max perpendicular deviation in mm.
          * @returns {Array<{x:number, y:number}>} Simplified polyline.
          */
-        _simplifyRDP(points, tolerance) {
+        simplifyRDP(points, tolerance) {
             const n = points.length;
             if (n <= 3) return points;
 
@@ -1311,7 +1289,7 @@
          * @param {number} tolerance - Max perpendicular deviation in mm (from coordinate precision).
          * @returns {{ points: Array, removed: number }}
          */
-        _removeSpikeVertices(points, tolerance) {
+        removeSpikeVertices(points, tolerance) {
             if (points.length <= 4) return { points, removed: 0 };
 
             const tolSq = tolerance * tolerance;

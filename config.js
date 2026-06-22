@@ -4,25 +4,9 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 /*
@@ -35,7 +19,7 @@
  *   config.*()       — Helper methods (root level, read from both sections).
  */
 
-window.PCBCAMConfig = {
+window.CAMConfig = {
 
     // ╔═══════════════════════════════════════════════════════════════════════╗
     // ║  CONSTANTS                                                            ║
@@ -66,22 +50,8 @@ window.PCBCAMConfig = {
         // GEOMETRY ENGINE
         // ====================================================================
         geometry: {
-            clipperScale: 10000,        // Integer scale factor for Clipper2 WASM. 1/10000 = 0.1µm resolution. // REVIEW - Best way to handle scale when including other CAM tools beyond EasyTrace5000 with larger objects? 
-            maxCoordinate: 1000,        // Maximum valid coordinate magnitude (mm). Beyond this = suspicious.
-
-            // REVIEW - Min and Max are dead code? metadataPacking is hardcoded in the wrapper, worth connecting?
-            clipper: {
-                minScale: 1000,
-                maxScale: 1000000,
-                metadataPacking: {      // Bit layout for Z-metadata encoding in Clipper2 integer coordinates.
-                    curveIdBits: 24,
-                    segmentIndexBits: 31,
-                    clockwiseBit: 1,
-                    reservedBits: 8
-                }
-            },
-
             segments: {                 // Tessellation quality. Tuned for visual fidelity at PCB scale.
+                // REVIEW - these should all be dynamic in terms of size, arcs are either reconstructed (needs highest tessellation values) or segments are simplified. Tessellation is temporary.
                 targetLength: 0.01,
                 minCircle: 256,
                 maxCircle: 2048,
@@ -101,21 +71,17 @@ window.PCBCAMConfig = {
             },
 
             arcReconstruction: {
+                // REVIEW - Are these necessary? These may be pure truths that aren't meant to be reviewd themselves or edited in any capacity?
                 minArcPoints: 2,
                 maxGapPoints: 1,
-                minCirclePoints: 4,
-                smallCircleRadiusThreshold: 1.0,  // REVIEW - Tesselation has it's own defaults?
-                smallCircleSegments: 16,  // REVIEW - Tesselation has it's own defaults?
-                defaultCircleSegments: 48,  // REVIEW - Tesselation has it's own defaults?
-                fullCircleThreshold: 0.99   // Fraction of 2π above which an arc group is treated as a complete circle. // REVIEW - Dead code? needing 100% of points is working fine?
+                minCirclePoints: 4
             },
 
             curveRegistry: {
                 hashPrecision: 1000
             },
 
-            edgeKeyDecimals: 3,
-            fillRule: 'nonzero' // REVIEW - Dead code? Not Connected? Should it be?
+            edgeKeyDecimals: 3
         },
 
         // ====================================================================
@@ -232,53 +198,25 @@ window.PCBCAMConfig = {
         },
 
         // ====================================================================
-        // LASER PROFILE DEFINITIONS
-        // ====================================================================
-        // REVIEW - Dead code? Worth reviving? Too granular, HTML is fine?
-        // laserProfiles: {
-        //     uv: {
-        //         label: 'UV Laser',
-        //         description: 'Direct copper ablation, stencil cutting, drilling, board cutout',
-        //         laserClass: 'cold'
-        //     },
-        //     fiber: {
-        //         label: 'Fiber Laser',
-        //         description: 'Copper ablation, stencil cutting, selective reflow soldering',
-        //         laserClass: 'hot'
-        //     }
-        // },
-
-        // ====================================================================
         // STORAGE KEYS
         // ====================================================================
         storageKeys: {
-            theme: 'pcbcam-theme',
-            hideWelcome: 'pcbcam-hide-welcome',
-            settings: 'pcbcam-settings',
-            pipeline: 'pcbcam-pipeline'
-        },
+        // Shared across all apps on this domain
+        theme: 'cam-theme',
+        machine: 'cam-machine-settings',
 
-        // ====================================================================
-        // PERFORMANCE: ENGINE-LEVEL
-        // Parameters that would crash the app or cause infinite loops if
-        // corrupted by a bad settings import. Keep frozen.
-        // ====================================================================
-        // performance: {
-        //     REVIEW - Useless?
-        //     wasm: {
-        //         memoryLimit: 256,
-        //         stackSize: 1024 * 1024,
-        //         enableSIMD: true,
-        //         enableThreads: true
-        //     },
-        //     REVIEW - Useless?
-        //         batching: {
-        //         maxPrimitivesPerBatch: 2000,
-        //         fusionBatchSize: 200,
-        //         renderBatchSize: 1000,
-        //         parseChunkSize: 10000
-        //     }
-        // },
+        // App-specific — call with app name from profile
+        // e.g. storageKeys.forApp('easyshape5000').parameters
+        forApp: function(appName) {
+            const prefix = appName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return {
+                settings: `${prefix}-settings`,
+                parameters: `${prefix}-parameters`,
+                pipeline: `${prefix}-pipeline`,
+                hideWelcome: `${prefix}-hide-welcome`
+            };
+        },
+    },
 
         // ====================================================================
         // UI SCHEMA
@@ -286,77 +224,6 @@ window.PCBCAMConfig = {
         // icon mappings, static text. These define UI structure, not preferences.
         // ====================================================================
         ui: {
-            validation: {
-                toolDiameter: { min: 0.01, max: 10, step: 0.01 },
-                feedRate: { min: 1, max: 5000, step: 1 },
-                spindleSpeed: { min: 100, max: 30000, step: 1 },
-                spindleDwell: { min: 0, max: 60, step: 0.5 },
-                plungeRate: { min: 1, max: 2000, step: 1 },
-                passes: { min: 1, max: 30, step: 1 },
-                stepOver: { min: 10, max: 99, step: 5 },
-                cutDepth: { min: -10, max: 0, step: 0.001 },
-                depthPerPass: { min: 0.001, max: 5, step: 0.001 },
-                peckDepth: { min: 0, max: 5, step: 0.01 },
-                dwellTime: { min: 0, max: 10, step: 0.1 },
-                retractHeight: { min: 0, max: 10, step: 0.01 },
-                tabs: { min: 0, max: 12, step: 1 },
-                tabWidth: { min: 0.5, max: 10, step: 0.1 },
-                tabHeight: { min: 0.1, max: 5, step: 0.1 },
-                travelZ: { min: 0, max: 50, step: 0.1 },
-                safeZ: { min: 0, max: 50, step: 0.1 },
-                laserSpotSize: { min: 0.01, max: 1.0, step: 0.01 },
-                laserIsolationWidth: { min: 0.05, max: 2.5, step: 0.01 },
-                laserStepOver: { min: 10, max: 99, step: 5 },
-                laserLinesPerCm: { min: 1, max: 1000, step: 1 },
-                laserLinesPerInch: { min: 5, max: 2540, step: 5 },
-                laserHatchAngle: { min: 0, max: 180, step: 5 },
-                laserExportPadding: { min: 0, max: 10, step: 0.5 },
-                maxAutoPasses: 500 // Arbitrary limit - can/should be changed after testing // Could this affect laser offsets?
-            },
-
-            parameterOptions: {
-                direction: [
-                    { value: 'climb', label: 'Climb' },
-                    { value: 'conventional', label: 'Conventional' }
-                ],
-                entryType: [
-                    { value: 'plunge', label: 'Plunge' },
-                    // { value: 'ramp', label: 'Ramp' }, // Needs more developement - not currently viable
-                    { value: 'helix', label: 'Helix' }
-                ],
-                cannedCycle: [
-                    { value: 'none', label: 'None (G0 + G1)' },
-                    { value: 'G81', label: 'G81 - Simple Drill' },
-                    { value: 'G82', label: 'G82 - Dwell' },
-                    { value: 'G83', label: 'G83 - Peck' },
-                    { value: 'G73', label: 'G73 - Peck (Stepped)' }
-                ],
-                cutSide: [
-                    { value: 'outside', label: 'Outside' },
-                    { value: 'inside', label: 'Inside' },
-                    { value: 'on', label: 'On Line' }
-                ],
-                workOffset: [
-                    { value: 'G54', label: 'G54' },
-                    { value: 'G55', label: 'G55' },
-                    { value: 'G56', label: 'G56' }
-                ],
-                laserClearStrategy: [
-                    { value: 'filled', label: 'Filled Polygon — Laser software controls fill' },
-                    { value: 'offset', label: 'Offset Paths — Concentric, streak-proof' },
-                    { value: 'hatch', label: 'Parallel Scan — Directional coverage' }
-                ],
-                laserCutSide: [
-                    { value: 'outside', label: 'Outside (Kerf outward)' },
-                    { value: 'inside', label: 'Inside (Kerf inward)' },
-                    { value: 'on', label: 'On Line (No compensation)' }
-                ],
-                laserExportFormat: [
-                    { value: 'svg', label: 'SVG — Vector for LightBurn, RDWorks, LaserGRBL' },
-                    { value: 'png', label: 'PNG — Raster image import' }
-                ]
-            },
-
             operationPanel: {
                 categories: {
                     tool: 'Tool Selection',
@@ -379,17 +246,6 @@ window.PCBCAMConfig = {
                     fontFamily: 'monospace',
                     fontSize: '11px'
                 }
-            },
-
-            icons: {
-                treeWarning: '⚠️',
-                offsetCombined: '⇔️',
-                offsetPass: '↔️',
-                preview: '👁️',
-                toolpath: '🔧',
-                defaultGeometry: '📊',
-                modalDragHandle: '☰',
-                tooltipTrigger: '?'
             },
 
             text: {
@@ -417,108 +273,6 @@ window.PCBCAMConfig = {
     // ╚═══════════════════════════════════════════════════════════════════════╝
     defaults: {
 
-        // ====================================================================
-        // OPERATIONS
-        // ====================================================================
-        operations: {
-            isolation: {
-                name: 'Isolation Routing',
-                extensions: ['.gbr', '.ger', '.gtl', '.gbl', '.svg'],
-                defaultTool: 'em_0.2mm_flat',
-                cutting: {
-                    cutDepth: -0.04,
-                    depthPerPass: 0.04,
-                    feedRate: 100,
-                    plungeRate: 50,
-                    spindleSpeed: 10000
-                },
-                defaultSettings: {
-                    passes: 3,
-                    stepOver: 50,
-                    multiDepth: false,
-                    entryType: 'plunge'
-                }
-            },
-            drill: {
-                name: 'Drilling',
-                extensions: ['.drl', '.xln', '.txt', '.drill', '.exc', '.svg'],
-                defaultTool: 'drill_1.0mm',
-                cutting: {
-                    cutDepth: -1.8,
-                    depthPerPass: 0.5,
-                    feedRate: 50,
-                    plungeRate: 25,
-                    spindleSpeed: 10000
-                },
-                strategy: {
-                    minMillingMargin: 0.05,
-                    minMillingFeatureSize: 0.01
-                },
-                defaultSettings: {
-                    millHoles: true,
-                    multiDepth: true,
-                    cannedCycle: 'none',
-                    peckDepth: 0,
-                    dwellTime: 0,
-                    retractHeight: 0.5,
-                    entryType: 'helix'
-                }
-            },
-            clearing: {
-                name: 'Copper Clearing',
-                extensions: ['.gbr', '.ger', '.gpl', '.gp1', '.gnd', '.svg'],
-                defaultTool: 'em_0.8mm_flat',
-                cutting: {
-                    cutDepth: -0.1,
-                    depthPerPass: 0.1,
-                    feedRate: 200,
-                    plungeRate: 50,
-                    spindleSpeed: 10000
-                },
-                defaultSettings: {
-                    passes: 4,
-                    stepOver: 50,
-                    multiDepth: false,
-                    entryType: 'plunge'
-                }
-            },
-            cutout: {
-                name: 'Board Cutout',
-                extensions: ['.gbr', '.gko', '.gm1', '.outline', '.mill', '.svg'],
-                defaultTool: 'em_1.0mm_flat',
-                cutting: {
-                    cutDepth: -1.8,
-                    depthPerPass: 0.3,
-                    feedRate: 150,
-                    plungeRate: 50,
-                    spindleSpeed: 10000
-                },
-                defaultSettings: {
-                    passes: 1,
-                    stepOver: 100,
-                    tabs: 0,
-                    tabWidth: 0,
-                    tabHeight: 0,
-                    multiDepth: true,
-                    entryType: 'plunge',
-                    cutSide: 'outside'
-                }
-            },
-            stencil: {
-                name: 'Solder Stencil',
-                extensions: ['.gtp', '.gbp', '.gts', '.gbs', '.gbr', '.ger', '.svg'],
-                defaultTool: null,
-                cutting: null,
-                defaultSettings: {
-                    stencilOffset: -0.08,
-                    stencilIgnoreRegions: true,
-                    stencilExcludeDrillPads: true,
-                    stencilAddRegHoles: false,
-                    stencilRegDiameter: 3.0,
-                    stencilRegMargin: 5.0
-                }
-            }
-        },
 
         // ====================================================================
         // MACHINE
@@ -607,9 +361,11 @@ window.PCBCAMConfig = {
             colorPerPass: false,
 
             // Active profile key — drives structural SVG decisions
+            // REVIEW - isn't this pulled from profile.json?
             activeProfile: 'generic',
 
             // Profile definitions — each represents a laser control software target
+            // REVIEW - Is it worth splitting these like "post-processors"? Maybe adding them to the profile-trace.json?
             profiles: {
                 generic: {
                     label: 'Generic (Very Experimental)',
@@ -700,14 +456,6 @@ window.PCBCAMConfig = {
                 stencil:   '#860694'
             },
 
-            // Strategy Definitions
-            // REVIEW - Dead code, worth reviving?
-            // strategies: {
-            //     filled: { label: 'Filled Polygon', requiresPaths: false, svgOnly: false },
-            //     offset: { label: 'Offset Paths', requiresPaths: true,  svgOnly: true },
-            //     hatch:  { label: 'Hatch', requiresPaths: true,  svgOnly: true, hasAngle: true }
-            // },
-
             // Operation-Specific Overrides
             operations: {
                 isolation: { laserIsolationWidth: 0.4, laserStepOver: 10, laserClearStrategy: 'offset', laserHatchAngle: 0 },
@@ -754,8 +502,6 @@ window.PCBCAMConfig = {
         // ====================================================================
         toolpath: {
             generation: {
-                defaultFeedRate: 150,
-                rapidClearance: 0.1,
                 entry: {
                     helix: {
                         radiusFactor: 0.4,
@@ -783,11 +529,6 @@ window.PCBCAMConfig = {
                     zCostFactor: 1.5,
                     baseCost: 10000
                 },
-                // REVIEW - dead code?
-                // staydown: {
-                //     toleranceFactor: 0.1,       // Factor of toolDiameter for staydown margin.
-                //     improvementThreshold: 0.7
-                // },
                 simplification: {
                     minArcLength: 0.01,
                     curveToleranceFactor: 100.0,
@@ -888,7 +629,7 @@ window.PCBCAMConfig = {
             grid: {
                 enabled: true,
                 minPixelSpacing: 40,
-                steps: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100]
+                steps: [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
             }
         },
 
@@ -903,16 +644,14 @@ window.PCBCAMConfig = {
                 modalAnimationDuration: 300,
                 inputDebounceDelay: 300,
                 renderThrottle: 16,
-                //  autoSaveInterval: 30000, // REVIEW - Dead code?
                 propertyDebounce: 500
             },
 
             tooltips: {
                 enabled: true,
                 positionPadding: 8,
-                // REVIEW - Possibly disconnected, should it be?
-                delayShow: 500,
-                delayHide: 100
+                delayShow: 300,
+                delayHide: 150
             },
 
             visualization: {
@@ -922,31 +661,6 @@ window.PCBCAMConfig = {
                 }
             }
         },
-
-        // ====================================================================
-        // PERFORMANCE TUNING
-        // ====================================================================
-        // performance: {
-        //     REVIEW - Useless?
-        //     cache: {
-        //         enableGeometryCache: true,
-        //         enableToolpathCache: true,
-        //         maxCacheSize: 100,
-        //         cacheTimeout: 300000
-        //     },
-        //     REVIEW - Useless?
-        //     optimization: {
-        //         simplifyThreshold: 10000,
-        //         decimateThreshold: 0.01,
-        //         mergeThreshold: 0.001
-        //     },
-        //     REVIEW - Useless?
-        //     debounce: {
-        //         propertyChanges: 300,
-        //         treeSelection: 100,
-        //         canvasInteraction: 16
-        //     }
-        // },
 
         // ====================================================================
         // DEBUG & DEVELOPMENT
@@ -984,7 +698,7 @@ window.PCBCAMConfig = {
             },
             validation: {
                 validateGeometry: true,
-                validateCoordinates: true,
+                validateCoordinates: true, // REVIEW - Dead code?
                 warnOnInvalidData: true,
                 // REVIEW - Disconnected? Worth connecting?
                 validatePolarity: true,
@@ -996,7 +710,7 @@ window.PCBCAMConfig = {
 
     // ╔═══════════════════════════════════════════════════════════════════════╗
     // ║  HELPER METHODS                                                       ║
-    // ║  Use explicit PCBCAMConfig reference instead of 'this' to prevent     ║
+    // ║  Use explicit CAMConfig reference instead of 'this' to prevent        ║
     // ║  context loss if a module destructures the method off the object.     ║
     // ╚═══════════════════════════════════════════════════════════════════════╝
 
@@ -1022,4 +736,4 @@ window.PCBCAMConfig = {
             deepFreeze(value);
         }
     }
-})((typeof globalThis !== 'undefined' ? globalThis : window).PCBCAMConfig.constants);
+})((typeof globalThis !== 'undefined' ? globalThis : window).CAMConfig.constants);

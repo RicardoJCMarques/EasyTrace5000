@@ -4,32 +4,13 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
-
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
 
     class LayerRenderer {
         constructor(canvasId, core) {
@@ -38,21 +19,21 @@
                 throw new Error(`Canvas element '${canvasId}' not found`);
             }
 
-            this.core = new RendererCore(this.canvas);
-            this.pcbCore = core;
+            // RendererCore reads scene.transform via getters - pass it now
+            // so origin/rotation/mirror are correct on the first paint.
+            this.core = new RendererCore(this.canvas, core ? core.scene : null);
+            this.appCore = core;
 
             this.primitiveRenderer = new PrimitiveRenderer(this.core);
             this.overlayRenderer = new OverlayRenderer(this.core);
-            this.interactionHandler = new InteractionHandler(this.core, this);
 
             this.debugPrimitives = [];
             this.debugPrimitivesScreen = [];
-            this._renderQueued = false;
-            this._renderHandle = null;
+            this.renderQueued = false;
+            this.renderHandle = null;
 
             this.core.resizeCanvas();
             this.core.zoomFit(); // Enforce default origin placement in canvas
-            this.interactionHandler.init();
         }
 
         // Property accessors
@@ -69,10 +50,6 @@
             this.render();
         }
 
-        setCoordinateSystem(coordinateSystem) {
-            this.core.setCoordinateSystem(coordinateSystem);
-        }
-
         addLayer(name, primitives, options = {}) {
             this.core.addLayer(name, primitives, options);
         }
@@ -85,73 +62,112 @@
             this.core.clearLayers();
         }
 
+        /**
+         * Updates a layer's world matrix and bounds without rebuilding any
+         * primitives or render cache entries. Called from drag-move handlers
+         * to avoid the cost of clearLayers() + addLayer() per mousemove tick.
+         *
+         * The per-primitive renderCache.entries[*].bounds stay in LOCAL space
+         * (they describe the primitive's local-frame bbox). The renderer's
+         * per-layer inverse-transform of viewBounds (see renderVisibleLayers
+         * below) compensates so viewport culling stays correct.
+         *
+         * @param {string} layerName   Layer key (e.g. `shape_${shape.id}`)
+         * @param {object} newMatrix   Affine matrix {a,b,c,d,e,f}
+         * @param {object} [newBounds] Optional world-space AABB. If omitted,
+         *                             the cached bounds stay as-is.
+         */
+        updateLayerTransform(layerName, newMatrix, newBounds) {
+            const layer = this.core.layers.get(layerName);
+            if (!layer) return false;
+            layer.transform = newMatrix;
+            if (newBounds) {
+                layer.bounds = newBounds;
+                if (layer.renderCache) layer.renderCache.bounds = newBounds;
+            }
+            this.core.calculateOverallBounds();
+            return true;
+        }
+
         // ========================================================================
         // Main Render Entry Point
         // ========================================================================
 
         render() {
-            if (this._renderQueued) return;
-            this._renderQueued = true;
-            this._renderHandle = requestAnimationFrame(() => {
-                this._renderQueued = false;
-                this._actualRender();
+            if (this.renderQueued) return;
+            this.renderQueued = true;
+            this.renderHandle = requestAnimationFrame(() => {
+                this.renderQueued = false;
+                this.actualRender();
             });
         }
 
-        _actualRender() {
+        actualRender() {
             const startTime = this.core.beginRender();
             this.core.clearCanvas();
             this.debugPrimitives = [];
             this.core.setupTransform();
             this.ctx.save();
 
-            // Apply transforms in order: Mirror → Rotation
-            const hasMirror = this.core.mirrorX || this.core.mirrorY;
-            const hasRotation = this.core.currentRotation !== 0 && this.core.rotationCenter;
-
-            if (hasMirror) {
-                const mc = this.core.mirrorCenter;
-                this.ctx.translate(mc.x, mc.y);
-                this.ctx.scale(
-                    this.core.mirrorX ? -1 : 1,
-                    this.core.mirrorY ? -1 : 1
-                );
-                this.ctx.translate(-mc.x, -mc.y);
-            }
-
-            if (hasRotation) {
-                const isMirrored = (this.core.mirrorX ? 1 : 0) ^ (this.core.mirrorY ? 1 : 0);
-                const effectiveAngle = isMirrored ? -this.core.currentRotation : this.core.currentRotation;
-
-                this.ctx.translate(this.core.rotationCenter.x, this.core.rotationCenter.y);
-                this.ctx.rotate((effectiveAngle * Math.PI) / 180);
-                this.ctx.translate(-this.core.rotationCenter.x, -this.core.rotationCenter.y);
+            // Apply the global workspace transform as a single matrix.
+            // Composition order, mirror pivots, and the mirror-XOR-rotation
+            // sign rule are all baked into Scene.getWorkspaceMatrix() -
+            // the renderer no longer reimplements any transform math.
+            const scene = this.core.scene;
+            if (scene) {
+                const wm = scene.getWorkspaceMatrix();
+                if (!TransformMath.isIdentity(wm)) {
+                    this.ctx.transform(wm.a, wm.b, wm.c, wm.d, wm.e, wm.f);
+                }
             }
 
             // Render geometry using hybrid approach
             if (this.options.showWireframe) {
-                this._renderWireframeMode();
+                this.renderWireframeMode();
             } else {
-                this._renderVisibleLayers();
+                this.renderVisibleLayers();
             }
 
-            // Debug overlay
+            // Debug overlay - re-collect from all visible layers to bypass LOD culling.
+            // Per-point viewport culling still happens inside renderDebugOverlayWorld.
+            // Primitives from transformed layers (EasyShape per-shape layers) are
+            // snapshot-transformed into world space so debug dots track the geometry.
+            if (this.options.debugPoints || this.options.debugArcs) {
+                this.debugPrimitives = [];
+                this.layers.forEach(layer => {
+                    if (!layer.visible || !layer.renderCache?.entries) return;
+                    const m = layer.transform || null;
+                    for (const entry of layer.renderCache.entries) {
+                        if (this.shouldCollectDebug(entry.primitive)) {
+                            if (m && typeof GeometryUtils !== 'undefined') {
+                                const world = GeometryUtils.transformPrimitive(entry.primitive, m);
+                                if (world) this.debugPrimitives.push(world);
+                            } else {
+                                this.debugPrimitives.push(entry.primitive);
+                            }
+                        }
+                    }
+                });
+            }
+
             if ((this.options.debugPoints || this.options.debugArcs) && 
                 this.debugPrimitives.length > 0) {
-                this._renderDebugOverlayWorld();
+                this.renderDebugOverlayWorld();
             }
 
-            if (this.options.showPreprocessedOffsets && this.pcbCore?.operations) {
+            if (this.core.options.showPreprocessedOffsets) {
                 this.ctx.save();
-                this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+                this.ctx.strokeStyle = this.core.colors.debug.preprocessedStroke; 
+                this.ctx.fillStyle = this.core.colors.debug.preprocessedFill; 
+
                 const fc = this.core.frameCache;
                 const uiScale = this.core.devicePixelRatio || 1;
                 this.ctx.lineWidth = Math.max(1.0 * fc.invScale, fc.minWorldWidth) * uiScale;
 
-                for (const op of this.pcbCore.operations) {
-                    if (op._debugStrokes) {
-                        for (const stroke of op._debugStrokes) {
-                            this.primitiveRenderer._drawPrimitivePath(stroke);
+                for (const op of this.appCore.operations) {
+                    if (op.debugStrokes) {
+                        for (const stroke of op.debugStrokes) {
+                            this.primitiveRenderer.drawPrimitivePath(stroke);
                             this.ctx.stroke();
                         }
                     }
@@ -166,6 +182,16 @@
             if (this.options.showBounds) this.overlayRenderer.renderBounds();
             if (this.options.showOrigin) this.overlayRenderer.renderOrigin();
 
+            // Interaction overlay (marquee box, selection bounds, drag handles).
+            // World-space - drawn before resetTransform so the tool can reason
+            // in mm. EasyTrace never sets this hook, so the call is a no-op
+            // there. The callback receives the canvas 2D context and the
+            // renderer core (useful for view-scale-aware line widths via
+            // core.frameCache.invScale).
+            if (typeof this.onRenderOverlay === 'function') {
+                this.onRenderOverlay(this.ctx, this.core);
+            }
+
             // Screen-space overlays
             this.core.resetTransform();
             if (this.options.showRulers) this.overlayRenderer.renderRulers();
@@ -179,8 +205,8 @@
         // Hybrid Rendering Pipeline
         // ========================================================================
 
-        _renderVisibleLayers() {
-            const orderedLayers = this._getOrderedLayers();
+        renderVisibleLayers() {
+            const orderedLayers = this.getOrderedLayers();
 
             // Per-type copper source layer counts for multi-file transparency
             const copperSourceCounts = { isolation: 0, clearing: 0 };
@@ -192,126 +218,93 @@
                 }
             }
 
+            // Save the world-space view bounds once. Swap them out per-layer
+            // when a layer has its own transform (drag-moved shapes), so the
+            // type-specific renderers' viewport-culling tests compare against
+            // bounds in the same coordinate frame as entry.bounds (local).
+            const worldViewBounds = this.core.frameCache.viewBounds;
+
             for (const layer of orderedLayers) {
                 if (!layer.visible) continue;
+
+                // Centralized layer-level culling (always world space) // REVIEW - Double check this is the best way to do this
+                const layerBounds = layer.bounds;
+                if (layerBounds && !this.core.boundsIntersect(layerBounds, worldViewBounds)) {
+                    this.core.renderStats.primitives += layer.primitives.length;
+                    this.core.renderStats.skippedPrimitives += layer.primitives.length;
+                    continue;
+                }
 
                 const isStencil = layer.type === 'stencil' || layer.operationType === 'stencil';
                 const isStencilSource = isStencil && !layer.isOffset && !layer.isPreview && layer.type !== 'offset' && layer.type !== 'preview';
                 const isStencilGenerated = isStencil && !isStencilSource;
 
-                // Determine layer transparency
-                let layerAlpha = 1.0;
-                if (isStencilSource) {
-                    layerAlpha = 0.25;
-                } else if (isStencilGenerated) {
-                    layerAlpha = 0.35;
-                } else if (copperSourceCounts[layer.type] > 1) {
-                    layerAlpha = 0.70;
-                }
-
-                if (layerAlpha < 1.0) {
+                // EasyShape5000: per-layer world transform. EasyTrace5000
+                // layers have no transform so this branch is skipped entirely
+                // (no save/restore cost).
+                const hasLayerTransform = !!layer.transform;
+                if (hasLayerTransform) {
                     this.ctx.save();
-                    this.ctx.globalAlpha = layerAlpha;
+                    const m = layer.transform;
+                    this.ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+
+                    // Transform view bounds into this layer's local frame so
+                    // viewport culling works. EasyTrace5000 never reaches
+                    // this branch because hasLayerTransform is false there.
+                    const inv = TransformMath.invert(m);
+                    if (inv) {
+                        this.core.frameCache.viewBounds =
+                            TransformMath.transformBounds(inv, worldViewBounds);
+                    }
                 }
 
                 // Dispatch to renderer
                 if (layer.isHatch) {
-                    this._renderHatchLayerBatched(layer);
+                    this.renderHatchLayerBatched(layer);
                 } else if (isStencilSource) {
-                    this._renderStencilSourceImmediate(layer);
+                    this.renderStencilSourceImmediate(layer);
                 } else if (isStencilGenerated) {
-                    this._renderStencilGeneratedImmediate(layer);
+                    this.renderStencilGeneratedImmediate(layer);
                 } else if (layer.metadata?.strategy === 'filled') {
-                    this._renderFilledLayerImmediate(layer);
+                    this.renderFilledLayerImmediate(layer);
                 } else if (layer.isOffset || layer.type === 'offset') {
-                    this._renderOffsetLayerImmediate(layer);
+                    this.renderOffsetLayerImmediate(layer);
                 } else if (layer.isPreview || layer.type === 'preview') {
-                    this._renderPreviewLayerImmediate(layer);
+                    this.renderPreviewLayerImmediate(layer);
                 } else {
-                    this._renderSourceLayerImmediate(layer);
+                    this.renderSourceLayerImmediate(layer);
                 }
 
-                if (layerAlpha < 1.0) {
+                if (hasLayerTransform) {
                     this.ctx.restore();
+                    // Restore world-space view bounds for subsequent layers.
+                    this.core.frameCache.viewBounds = worldViewBounds;
                 }
             }
         }
 
-        _getOrderedLayers() {
-            const buckets = { 
-                cutout: [], 
-                otherSource: [], 
-                drill: [],
-                fused: [],
-                laserFill: [],
-                offset: [],
-                stencil: [],
-                preview: [] 
-            };
-
+        getOrderedLayers() {
+            // Dumb numeric paint-order sort. Semantic ordering (drills last,
+            // stencil on top, source under offsets, etc.) is encoded by each
+            // app as zIndex when it adds the layer. Array#sort is stable in all
+            // current engines, so equal-zIndex layers keep Map insertion order
+            // (i.e. document order).
+            const layers = [];
             this.layers.forEach((layer) => {
-                if (!layer.visible) return;
-                const strategy = layer.metadata?.strategy;
-
-                // Route all stencil geometry (source + offset) into a dedicated top-layer bucket
-                if (layer.type === 'stencil' || layer.operationType === 'stencil') {
-                    buckets.stencil.push(layer);
-                    return;
-                }
-
-                switch (layer.type) {
-                    case 'cutout':  buckets.cutout.push(layer); break;
-                    case 'drill':   buckets.drill.push(layer); break;
-                    case 'offset':
-                        if (layer.isHatch || strategy === 'filled') {
-                            buckets.laserFill.push(layer);
-                        } else {
-                            buckets.offset.push(layer);
-                        }
-                        break;
-                    case 'preview': buckets.preview.push(layer); break;
-                    case 'fused':   buckets.fused.push(layer); break;
-                    default:        buckets.otherSource.push(layer); break;
-                }
+                if (layer.visible) layers.push(layer);
             });
-
-            // Sort drills to render last within processed layers
-            const sortDrillsLast = (a, b) => {
-                const drillA = a.operationType === 'drill' || a.type === 'drill';
-                const drillB = b.operationType === 'drill' || b.type === 'drill';
-                return drillA === drillB ? 0 : (drillA ? 1 : -1);
-            };
-            buckets.offset.sort(sortDrillsLast);
-            buckets.preview.sort(sortDrillsLast);
-
-            return [
-                ...buckets.cutout,
-                ...buckets.otherSource,
-                ...buckets.drill,
-                ...buckets.fused,
-                ...buckets.laserFill,
-                ...buckets.offset,
-                ...buckets.stencil,
-                ...buckets.preview
-            ];
+            layers.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+            return layers;
         }
 
         // ========================================================================
         // OFFSET: Immediate Mode
         // ========================================================================
 
-        _renderOffsetLayerImmediate(layer) {
+        renderOffsetLayerImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const displayBounds = layer.bounds;
 
-            // Layer-Level Bounds Check
-            if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
-                this.core.renderStats.primitives += layer.primitives.length;
-                this.core.renderStats.skippedPrimitives += layer.primitives.length;
-                return;
-            }
-
-            const offsetColor = this.core.getLayerColorSettings(layer);
+            const offsetColor = this.options.resolveLayerColor ? this.options.resolveLayerColor(layer) : (layer.color);
 
             // Buckets for z-ordering
             const standardGeometry = [];
@@ -338,7 +331,7 @@
                 }
 
                 const prim = entry.primitive;
-                if (!this.core.shouldRenderPrimitive(prim, layer.type)) {
+                if (this.options.primitiveFilter && !this.options.primitiveFilter(prim, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     continue;
                 }
@@ -346,7 +339,7 @@
                 this.core.renderStats.renderedPrimitives++;
 
                 // Collect debug primitives
-                if (this._shouldCollectDebug(prim)) {
+                if (this.shouldCollectDebug(prim)) {
                     this.debugPrimitives.push(prim);
                 }
 
@@ -384,8 +377,8 @@
             if (this.core.options.showPreprocessedOffsets) {
                 this.ctx.save();
                 // Use a bright cyan wireframe to stand out against standard geometry
-                this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)'; 
-                this.ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';   
+                this.ctx.strokeStyle = '#00FFFF'; 
+                this.ctx.fillStyle = '#0A3333'; 
 
                 const fc = this.core.frameCache;
                 this.ctx.lineWidth = Math.max(1.0 * fc.invScale, fc.minWorldWidth);
@@ -394,13 +387,13 @@
                 const drawnStrokes = new Set();
 
                 for (const entry of entries) {
-                    const debugStrokes = entry.primitive.properties?._preprocessedStrokes;
+                    const debugStrokes = entry.primitive.properties?.preprocessedStrokes;
                     if (debugStrokes) {
                         for (const stroke of debugStrokes) {
                             if (!drawnStrokes.has(stroke)) {
                                 drawnStrokes.add(stroke);
                                 // Bypass normal rendering to force wireframe-style drawing
-                                this.primitiveRenderer._drawPrimitivePath(stroke);
+                                this.primitiveRenderer.drawPrimitivePath(stroke);
                                 this.ctx.fill('evenodd');
                                 this.ctx.stroke();
                             }
@@ -412,21 +405,13 @@
         }
 
         // ========================================================================
-        // STENCIL SOURCE: Ghost fill overlay (no strokes)
+        // STENCIL SOURCE: Ghost fill overlay
         // ========================================================================
 
-        _renderStencilSourceImmediate(layer) {
+        renderStencilSourceImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const displayBounds = layer.bounds;
 
-            // Layer-Level Bounds Check
-            if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
-                this.core.renderStats.primitives += layer.primitives.length;
-                this.core.renderStats.skippedPrimitives += layer.primitives.length;
-                return;
-            }
-
-            const stencilColor = this.core.getLayerColorSettings(layer);
+            const stencilColor = this.options.resolveLayerColor ? this.options.resolveLayerColor(layer) : (layer.color);
             this.ctx.fillStyle = stencilColor;
 
             const entries = layer.renderCache.entries;
@@ -448,13 +433,15 @@
 
                 this.core.renderStats.renderedPrimitives++;
 
-                if (this._shouldCollectDebug(entry.primitive)) {
+                if (this.shouldCollectDebug(entry.primitive)) {
                     this.debugPrimitives.push(entry.primitive);
                 }
 
-                // Fill only — pure ghost overlay, no outlines
-                this.primitiveRenderer._drawPrimitivePath(entry.primitive);
+                this.primitiveRenderer.drawPrimitivePath(entry.primitive);
+                this.ctx.save();
+                this.ctx.globalAlpha = 0.45; // Keep alpha so only 1 theme color is needed
                 this.ctx.fill('evenodd');
+                this.ctx.restore();
 
                 this.core.renderStats.drawCalls++;
             }
@@ -464,18 +451,10 @@
         // STENCIL GENERATED: Fill + stroke outlines (aperture cutouts)
         // ========================================================================
 
-        _renderStencilGeneratedImmediate(layer) {
+        renderStencilGeneratedImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const displayBounds = layer.bounds;
 
-            // Layer-Level Bounds Check
-            if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
-                this.core.renderStats.primitives += layer.primitives.length;
-                this.core.renderStats.skippedPrimitives += layer.primitives.length;
-                return;
-            }
-
-            const stencilColor = this.core.getLayerColorSettings(layer);
+            const stencilColor = this.options.resolveLayerColor ? this.options.resolveLayerColor(layer) : (layer.color);
             const fc = this.core.frameCache;
             const strokeWidth = Math.max(2.0 * fc.invScale, fc.minWorldWidth);
 
@@ -505,12 +484,12 @@
 
                 this.core.renderStats.renderedPrimitives++;
 
-                if (this._shouldCollectDebug(entry.primitive)) {
+                if (this.shouldCollectDebug(entry.primitive)) {
                     this.debugPrimitives.push(entry.primitive);
                 }
 
                 // Fill + stroke: shows aperture area with crisp boundary
-                this.primitiveRenderer._drawPrimitivePath(entry.primitive);
+                this.primitiveRenderer.drawPrimitivePath(entry.primitive);
                 this.ctx.fill('evenodd');
                 this.ctx.stroke();
 
@@ -522,16 +501,8 @@
         // FILLED (Laser): Immediate Mode
         // ========================================================================
 
-        _renderFilledLayerImmediate(layer) {
+        renderFilledLayerImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const displayBounds = layer.bounds;
-
-            // Layer-Level Bounds Check
-            if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
-                this.core.renderStats.primitives += layer.primitives.length;
-                this.core.renderStats.skippedPrimitives += layer.primitives.length;
-                return;
-            }
 
             // Resolve colors from theme with fallback
             const fillColor = this.core.colors.geometry?.laser?.filled || this.core.colors.geometry.preview;
@@ -558,16 +529,16 @@
                 }
 
                 const prim = entry.primitive;
-                if (!this.core.shouldRenderPrimitive(prim, layer.type)) {
+                if (this.options.primitiveFilter && !this.options.primitiveFilter(prim, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     continue;
                 }
 
                 this.core.renderStats.renderedPrimitives++;
 
-                // Build the path once — _drawPrimitivePath calls beginPath() internally.
+                // Build the path once - drawPrimitivePath calls beginPath() internally.
                 // Multi-contour paths with holes render correctly via evenodd fill rule since outer and hole contours have opposite winding from Clipper output.
-                this.primitiveRenderer._drawPrimitivePath(prim);
+                this.primitiveRenderer.drawPrimitivePath(prim);
 
                 // Solid fill to show ablation zone
                 this.ctx.save();
@@ -576,7 +547,7 @@
                 this.ctx.restore();
 
                 // Debug collection
-                if (this._shouldCollectDebug(prim)) {
+                if (this.shouldCollectDebug(prim)) {
                     this.debugPrimitives.push(prim);
                 }
 
@@ -591,16 +562,8 @@
         /**
          * Renders laser hatch lines using a single batched draw call.
          */
-        _renderHatchLayerBatched(layer) {
+        renderHatchLayerBatched(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const displayBounds = layer.bounds;
-
-            // Layer-Level Bounds Check
-            if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
-                this.core.renderStats.primitives += layer.primitives.length;
-                this.core.renderStats.skippedPrimitives += layer.primitives.length;
-                return;
-            }
 
             // REVIEW THIS LOGIC - IF THE HATCH PATTERN LINES ALL HAVE THE SAME SIZE THEY WILL NEVER, REALISTICALLY, GO SUB-PIXEL
             // Layer-level LOD: if the entire hatch region is sub-pixel, skip it.
@@ -618,8 +581,7 @@
                 }
             }*/
 
-            // Resolve color through the standard path (currently 'on' -> yellow)
-            const hatchColor = this.core.getLayerColorSettings(layer);
+            const hatchColor = this.options.resolveLayerColor ? this.options.resolveLayerColor(layer) : (layer.color);
 
             // Use the same screen-pixel-based stroke width as standard offsets.
             // Hatch metadata carries toolDiameter for future export use, but rendering uses a zoom-invariant stroke like all other offset geometry.
@@ -643,7 +605,7 @@
             for (const entry of entries) {
                 this.core.renderStats.primitives++;
 
-                // Viewport culling still applies per-primitive — lines off-screen are cheap to skip and the check is just 4 comparisons.
+                // Viewport culling still applies per-primitive - lines off-screen are cheap to skip and the check is just 4 comparisons.
                 if (!this.core.boundsIntersect(entry.bounds, viewBounds)) {
                     this.core.renderStats.skippedPrimitives++;
                     this.core.renderStats.culledViewport++;
@@ -679,18 +641,10 @@
         // ========================================================================
 
 
-        _renderPreviewLayerImmediate(layer) {
+        renderPreviewLayerImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const displayBounds = layer.bounds;
 
-            // Layer-Level Bounds Check
-            if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
-                this.core.renderStats.primitives += layer.primitives.length;
-                this.core.renderStats.skippedPrimitives += layer.primitives.length;
-                return;
-            }
-
-            const previewColor = this.core.getLayerColorSettings(layer);
+            const previewColor = this.options.resolveLayerColor ? this.options.resolveLayerColor(layer) : (layer.color);
             const minWidth = this.core.frameCache.minWorldWidth;
 
             // Set Base State
@@ -720,14 +674,14 @@
                 }
 
                 const prim = entry.primitive;
-                if (!this.core.shouldRenderPrimitive(prim, layer.type)) {
+                if (this.options.primitiveFilter && !this.options.primitiveFilter(prim, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     continue;
                 }
 
                 this.core.renderStats.renderedPrimitives++;
 
-                if (this._shouldCollectDebug(prim)) {
+                if (this.shouldCollectDebug(prim)) {
                     this.debugPrimitives.push(prim);
                 }
 
@@ -758,14 +712,14 @@
                     // Standard Stroke (Fast Path)
                     const toolDia = layer.metadata?.toolDiameter || 
                                     prim.properties?.toolDiameter || 
-                                    this._getToolDiameterForPrimitive(prim);
+                                    this.getToolDiameterForPrimitive(prim);
 
                     if (toolDia !== currentDiameter) {
                         this.ctx.lineWidth = Math.max(toolDia, minWidth);
                         currentDiameter = toolDia;
                     }
 
-                    this.primitiveRenderer._drawPrimitivePath(prim);
+                    this.primitiveRenderer.drawPrimitivePath(prim);
                     this.ctx.stroke();
                 }
 
@@ -777,22 +731,11 @@
         // SOURCE: Immediate Mode
         // ========================================================================
 
-        _renderSourceLayerImmediate(layer) {
+        renderSourceLayerImmediate(layer) {
             const viewBounds = this.core.frameCache.viewBounds;
-            const displayBounds = layer.bounds;
 
-            // Layer-Level Bounds Check
-            if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
-                this.core.renderStats.primitives += layer.primitives.length;
-                this.core.renderStats.skippedPrimitives += layer.primitives.length;
-                return;
-            }
-
-            // Determine Base Color
-            let layerColor = this.core.getLayerColorSettings(layer);
-            if (this.options.blackAndWhite) {
-                layerColor = layer.type === 'cutout' ? this.core.colors.bw.black : this.core.colors.bw.white;
-            }
+            // Determine Base Color.
+            let layerColor = this.options.resolveLayerColor ? this.options.resolveLayerColor(layer) : (layer.color);
 
             // Set Base Context State
             this.ctx.fillStyle = layerColor;
@@ -822,7 +765,7 @@
                 }
 
                 const prim = entry.primitive;
-                if (!this.core.shouldRenderPrimitive(prim, layer.type)) {
+                if (this.options.primitiveFilter && !this.options.primitiveFilter(prim, layer.type)) {
                     this.core.renderStats.skippedPrimitives++;
                     continue;
                 }
@@ -830,7 +773,7 @@
                 this.core.renderStats.renderedPrimitives++;
 
                 // Debug Collection
-                if (this._shouldCollectDebug(prim)) {
+                if (this.shouldCollectDebug(prim)) {
                     this.debugPrimitives.push(prim);
                 }
 
@@ -860,7 +803,7 @@
                 } 
                 else {
                     // Standard Geometry
-                    this.primitiveRenderer._drawPrimitivePath(prim);
+                    this.primitiveRenderer.drawPrimitivePath(prim);
 
                     if (isStroke) {
                         this.ctx.stroke();
@@ -884,7 +827,7 @@
         // Wireframe: Immediate Mode
         // ========================================================================
 
-        _renderWireframeMode() {
+        renderWireframeMode() {
             const viewBounds = this.core.frameCache.viewBounds;
 
             // Set Wireframe State Once
@@ -895,15 +838,6 @@
 
             this.layers.forEach(layer => {
                 if (!layer.visible) return;
-
-                const displayBounds = layer.bounds;
-
-                // Layer-Level Bounds Check
-                if (displayBounds && !this.core.boundsIntersect(displayBounds, viewBounds)) {
-                    this.core.renderStats.primitives += layer.primitives.length;
-                    this.core.renderStats.skippedPrimitives += layer.primitives.length;
-                    return;
-                }
 
                 const entries = layer.renderCache.entries;
 
@@ -916,7 +850,7 @@
                     }
 
                     const prim = entry.primitive;
-                    if (!this.core.shouldRenderPrimitive(prim, layer.type)) {
+                    if (this.options.primitiveFilter && !this.options.primitiveFilter(prim, layer.type)) {
                         this.core.renderStats.skippedPrimitives++;
                         continue;
                     }
@@ -924,10 +858,10 @@
                     this.core.renderStats.renderedPrimitives++;
 
                     // Direct Immediate Draw
-                    this.primitiveRenderer._drawPrimitivePath(prim);
+                    this.primitiveRenderer.drawPrimitivePath(prim);
                     this.ctx.stroke();
 
-                    if (this._shouldCollectDebug(prim)) {
+                    if (this.shouldCollectDebug(prim)) {
                         this.debugPrimitives.push(prim);
                     }
                     this.core.renderStats.drawCalls++;
@@ -939,7 +873,7 @@
         // Debug Overlay
         // ========================================================================
 
-        _shouldCollectDebug(primitive) {
+        shouldCollectDebug(primitive) {
             if (!this.options.debugPoints && !this.options.debugArcs) return false;
             if (primitive.type === 'circle') return true;
             if (primitive.type === 'arc') return true;
@@ -948,7 +882,7 @@
         }
 
         // ========================================================================
-        // Debug Overlay — World Space (same transform as geometry)
+        // Debug Overlay - World Space (same transform as geometry)
         // ========================================================================
 
         /**
@@ -963,7 +897,7 @@
          * Batching: single beginPath/fill for all points, single beginPath/stroke for arcs.
          * Viewport culling: individual regenerated points are skipped if outside view bounds.
          */
-        _renderDebugOverlayWorld() {
+        renderDebugOverlayWorld() {
             const fc = this.core.frameCache;
             const uiScale = this.core.devicePixelRatio || 1;
             const arcStrokeWidth = 2 * fc.invScale * uiScale;
@@ -1137,10 +1071,10 @@
         // Utility Methods
         // ========================================================================
 
-        _getToolDiameterForPrimitive(primitive) {
+        getToolDiameterForPrimitive(primitive) {
             const opId = primitive.properties?.operationId;
-            if (!opId || !this.pcbCore?.operations) return null;
-            const operation = this.pcbCore.operations.find(op => op.id === opId);
+            if (!opId || !this.appCore?.operations) return null;
+            const operation = this.appCore.operations.find(op => op.id === opId);
             const diameterStr = operation?.settings?.toolDiameter;
             if (diameterStr !== undefined) {
                 const diameter = parseFloat(diameterStr);
@@ -1150,11 +1084,8 @@
         }
 
         destroy() {
-            if (this.interactionHandler) {
-                this.interactionHandler.destroy();
-            }
-            if (this._renderHandle) {
-                cancelAnimationFrame(this._renderHandle);
+            if (this.renderHandle) {
+                cancelAnimationFrame(this.renderHandle);
             }
         }
     }

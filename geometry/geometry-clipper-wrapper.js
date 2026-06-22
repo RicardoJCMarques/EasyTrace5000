@@ -4,42 +4,22 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- * 
- * This module interfaces with the Clipper2 library (Angus Johnson) via WASM (Erik Som).
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
-    const scale = C.geometry.clipperScale;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const debugState = D.debug;
 
     class ClipperWrapper {
         constructor(options = {}) {
-            this.options = {
-                ...options
-            };
+            this.options = { ...options };
+            this.scale = options.clipper2scale;
 
             this.clipper2 = null;
             this.initialized = false;
@@ -158,7 +138,7 @@
                 paths.forEach(path => {
                     if (path.contours && path.contours.length > 0) {
                         path.contours.forEach(contour => {
-                            const clipperPath = this._jsPathToClipper(contour.points);
+                            const clipperPath = this.jsPathToClipper(contour.points);
                             if (clipperPath) {
                                 input.push_back(clipperPath);
                                 objects.push(clipperPath);
@@ -168,7 +148,7 @@
                         const pPath = GeometryUtils.primitiveToPath(path);
                         if (pPath && pPath.contours) {
                             pPath.contours.forEach(contour => {
-                                const clipperPath = this._jsPathToClipper(contour.points);
+                                const clipperPath = this.jsPathToClipper(contour.points);
                                 if (clipperPath) {
                                     input.push_back(clipperPath);
                                     objects.push(clipperPath);
@@ -192,10 +172,10 @@
                     return [];
                 }
 
-                return this._polyTreeToJS(solution);
+                return this.polyTreeToJS(solution);
 
             } finally {
-                this._cleanup(objects);
+                this.cleanup(objects);
             }
         }
 
@@ -216,7 +196,7 @@
                     pathsArray.forEach(path => {
                         if (path.contours && path.contours.length > 0) {
                             path.contours.forEach(contour => {
-                                const clipperPath = this._jsPathToClipper(contour.points);
+                                const clipperPath = this.jsPathToClipper(contour.points);
                                 if (clipperPath) {
                                     clipperPathsObj.push_back(clipperPath);
                                     objects.push(clipperPath);
@@ -226,7 +206,7 @@
                             const pPath = GeometryUtils.primitiveToPath(path);
                             if (pPath && pPath.contours) {
                                 pPath.contours.forEach(contour => {
-                                    const clipperPath = this._jsPathToClipper(contour.points);
+                                    const clipperPath = this.jsPathToClipper(contour.points);
                                     if (clipperPath) {
                                         clipperPathsObj.push_back(clipperPath);
                                         objects.push(clipperPath);
@@ -255,15 +235,15 @@
                     return [];
                 }
 
-                return this._polyTreeToJS(solution);
+                return this.polyTreeToJS(solution);
 
             } finally {
-                this._cleanup(objects);
+                this.cleanup(objects);
             }
         }
 
         // Convert JS path to Clipper Path64 with metadata packing
-        _jsPathToClipper(points) {
+        jsPathToClipper(points) {
             const { Path64, Point64 } = this.clipper2;
 
             if (!points || points.length < 3) return null;
@@ -271,19 +251,35 @@
             const path = new Path64();
 
             try {
+                // Pre-resolve curve windings once per contour instead of one
+                // registry Map lookup per point.
+                const reg = window.globalCurveRegistry;
+                const windingCache = new Map();
                 const getClockwiseForCurve = (curveId) => {
-                    if (window.globalCurveRegistry) {
-                        const curve = window.globalCurveRegistry.getCurve(curveId);
-                        return curve ? (curve.clockwise === true) : false;
+                    let cw = windingCache.get(curveId);
+                    if (cw === undefined) {
+                        const curve = reg ? reg.getCurve(curveId) : null;
+                        cw = curve ? (curve.clockwise === true) : false;
+                        windingCache.set(curveId, cw);
                     }
-                    return false;
+                    return cw;
                 };
 
                 // Winding is trusted from upstream (parser enforces outer=CCW, hole=CW in Y-up).
                 for (let i = 0; i < points.length; i++) {
                     const p = points[i];
-                    const x = BigInt(Math.round(p.x * scale));
-                    const y = BigInt(Math.round(p.y * scale));
+
+                    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+                        console.error(
+                            `[ClipperWrapper] NaN/Infinite coordinate at point ${i}/${points.length}: ` +
+                            `(${p.x}, ${p.y}). Scale=${this.scale}. Skipping entire contour.`
+                        );
+                        if (path && typeof path.delete === 'function') path.delete();
+                        return null;
+                    }
+
+                    const x = BigInt(Math.round(p.x * this.scale));
+                    const y = BigInt(Math.round(p.y * this.scale));
 
                     let z = BigInt(0);
                     if (this.supportsZ && p.curveId !== undefined &&
@@ -307,7 +303,7 @@
         }
 
         // Convert Clipper PolyTree to JS primitives with metadata unpacking
-        _polyTreeToJS(polyNode) {
+        polyTreeToJS(polyNode) {
             const primitives = [];
 
             // Process each root node (top-level polygon)
@@ -324,8 +320,8 @@
                 for (let j = 0; j < rootPoly.size(); j++) {
                     const pt = rootPoly.get(j);
                     const point = {
-                        x: Number(pt.x) / scale,
-                        y: Number(pt.y) / scale
+                        x: Number(pt.x) / this.scale,
+                        y: Number(pt.y) / this.scale
                     };
 
                     if (this.supportsZ && pt.z !== undefined) {
@@ -357,8 +353,8 @@
                     for (let k = 0; k < poly.size(); k++) {
                         const pt = poly.get(k);
                         const point = {
-                            x: Number(pt.x) / scale,
-                            y: Number(pt.y) / scale
+                            x: Number(pt.x) / this.scale,
+                            y: Number(pt.y) / this.scale
                         };
 
                         // Extract metadata for ALL contours
@@ -446,7 +442,7 @@
         }
 
         // Clean up WASM objects
-        _cleanup(objects) {
+        cleanup(objects) {
             objects.forEach(obj => {
                 try {
                     if (obj && typeof obj.delete === 'function' && !obj.isDeleted()) {
@@ -458,23 +454,12 @@
             });
         }
 
-        // Debug logging
-        debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[ClipperWrapper] ${message}`, data);
-                } else {
-                    console.log(`[ClipperWrapper] ${message}`);
-                }
-            }
-        }
-
         // Get capabilities
         getCapabilities() {
             return {
                 initialized: this.initialized,
                 supportsZ: this.supportsZ,
-                scale: scale,
+                scale: this.scale,
                 metadataPacking: {
                     curveIdBits: Number(this.metadataPacking.curveIdBits),
                     segmentIndexBits: Number(this.metadataPacking.segmentIndexBits),
@@ -484,6 +469,13 @@
                     maxSegmentIndex: Number(this.bitMasks.segmentIndex)
                 }
             };
+        }
+
+        // Debug logging
+        debug(message, data = null) {
+            if (!debugState.enabled) return;
+            data ? console.log(`[ClipperWrapper] ${message}`, data)
+                 : console.log(`[ClipperWrapper] ${message}`);
         }
     }
 

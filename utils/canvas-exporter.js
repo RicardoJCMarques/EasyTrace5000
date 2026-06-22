@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const debugState = D.debug;
 
     class CanvasExporter {
@@ -53,7 +37,7 @@
         /**
          * Get all drill-related colors with fallbacks
          */
-        _getColors() {
+       getColors() {
             const src = this.core.colors?.source || {};
             const geo = this.core.colors?.geometry || {};
             const prim = this.core.colors?.primitives || {};
@@ -90,8 +74,8 @@
         /**
          * Get status color based on tool relation
          */
-        _getStatusColor(toolRelation) {
-            const colors = this._getColors();
+        getStatusColor(toolRelation) {
+            const colors = this.getColors();
             switch (toolRelation) {
                 case 'oversized': return colors.statusError;
                 case 'undersized': return colors.statusWarn;
@@ -102,17 +86,17 @@
         /**
          * Determine geometry and mark colors for drill-related primitives
          */
-        _getDrillElementColors(primitive, layer) {
+        getDrillElementColors(primitive, layer) {
             const props = primitive.properties || {};
             const toolRelation = props.toolRelation || 'exact';
-            const colors = this._getColors();
+            const colors = this.getColors();
 
             const isPreview = layer.isPreview || layer.type === 'preview';
             const isOffset = layer.isOffset || layer.type === 'offset';
             const isSourceDrill = layer.type === 'drill' && !isOffset && !isPreview;
 
             const isPeck = props.role === 'peck_mark' || props.isToolPeckMark;
-            const statusColor = this._getStatusColor(toolRelation);
+            const statusColor = this.getStatusColor(toolRelation);
 
             let geometryColor, geometryFill, markColor;
 
@@ -160,34 +144,39 @@
             const bounds = this.core.bounds;
 
             if (!bounds || !isFinite(bounds.width)) {
-                if (window.pcbcam?.ui) window.pcbcam.ui.updateStatus('No content to export', 'warning');
+                // Use the core's controller/UI reference instead of a hardcoded global
+                // REVIEW - What's happening here?
+                if (this.core.appProfile) {
+                    console.warn('No content to export');
+                }
                 return null;
             }
 
-            const svg = this._createSVGRoot(bounds, exportConfig);
-            if (exportConfig.includeMetadata) svg.appendChild(this._createExportComment());
-            if (exportConfig.embedStyles) svg.appendChild(this._createDefs());
+            const svg = this.createSVGRoot(bounds, exportConfig);
+            // Unconditionally append the canvas export comment
+            svg.appendChild(this.createExportComment());
+            // REVIEW - is the if (exportConfig.embedStyles) check doing anything or can it be removed?
+            if (exportConfig.embedStyles) svg.appendChild(this.createDefs());
 
-            const mainGroup = this._createMainGroup(exportConfig);
+            const mainGroup = this.createMainGroup(exportConfig);
             svg.appendChild(mainGroup);
 
-            return this._serializeAndDownload(svg, filename);
+            return this.serializeAndDownload(svg, filename);
         }
 
-        _createExportComment() {
+        createExportComment() {
             const vo = this.core.options;
-            return document.createComment(`
-EasyTrace5000 | ${new Date().toISOString()}
-Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry ? 'Fused' : 'Source'}
-`);
+            const appName = this.core.appProfile.meta.app || 'EasyCAM5000';
+            const commentText = ` ${appName} Canvas Export | ${new Date().toLocaleString()} \n Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry ? 'Fused' : 'Source'} `;
+            return document.createComment(commentText);
         }
 
-        _createSVGRoot(bounds, config) {
+        createSVGRoot(bounds, config) {
             const svg = document.createElementNS(this.svgNS, 'svg');
             const p = config.padding;
             const w = bounds.width + p * 2;
             const h = bounds.height + p * 2;
-            const fmt = (n) => this._formatNumber(n, config.decimals);
+            const fmt = (n) => this.formatNumber(n, config.decimals);
 
             svg.setAttribute('xmlns', this.svgNS);
             svg.setAttribute('width', `${fmt(w)}mm`);
@@ -200,10 +189,10 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             return svg;
         }
 
-        _createDefs() {
+        createDefs() {
             const defs = document.createElementNS(this.svgNS, 'defs');
             const style = document.createElementNS(this.svgNS, 'style');
-            const colors = this._getColors();
+            const colors = this.getColors();
 
             const src = this.core.colors?.source || {};
             const isBW = this.core.options.blackAndWhite;
@@ -236,12 +225,12 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             return defs;
         }
 
-        _createMainGroup(config) {
+        createMainGroup(config) {
             const mainGroup = document.createElementNS(this.svgNS, 'g');
             mainGroup.setAttribute('id', 'pcb-layers');
 
             const viewState = this.core.getViewState();
-            const fmt = (n) => this._formatNumber(n, config.decimals);
+            const fmt = (n) => this.formatNumber(n, config.decimals);
             let transform = 'scale(1,-1)';
 
             if (viewState.rotation !== 0) {
@@ -250,17 +239,17 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             }
 
             mainGroup.setAttribute('transform', transform);
-            this._exportVisibleLayers(mainGroup, config);
+            this.exportVisibleLayers(mainGroup, config);
             return mainGroup;
         }
 
         // Layer Export
-        _exportVisibleLayers(parentGroup, config) {
+        exportVisibleLayers(parentGroup, config) {
             const visibleLayers = this.core.getVisibleLayers();
             const order = ['cutout', 'source', 'fused', 'preprocessed', 'clearing', 'isolation', 'drill', 'offset', 'preview'];
 
             const sortedLayers = Array.from(visibleLayers.entries())
-                .filter(([name, layer]) => this._shouldExportLayer(layer))
+                .filter(([name, layer]) => this.shouldExportLayer(layer))
                 .sort((a, b) => {
                     const getScore = (l) => {
                         if (l.isPreview) return 100;
@@ -276,11 +265,11 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
                 layerGroup.setAttribute('id', name);
                 layerGroup.classList.add('lg');
 
-                this._applyGroupClass(layerGroup, layer);
+                this.applyGroupClass(layerGroup, layer);
 
                 // Export each primitive via dispatcher
                 layer.primitives.forEach(primitive => {
-                    const el = this._primitiveToSVG(primitive, layer, config);
+                    const el = this.primitiveToSVG(primitive, layer, config);
                     if (el) layerGroup.appendChild(el);
                 });
 
@@ -289,7 +278,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         // Visibility helper
-        _shouldExportLayer(layer) {
+        shouldExportLayer(layer) {
             const opts = this.core.options;
             
             if (layer.type === 'offset' && !opts.showOffsets) return false;
@@ -301,7 +290,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         // Group styling
-        _applyGroupClass(group, layer) {
+        applyGroupClass(group, layer) {
             if (this.core.options.showWireframe) return;
 
             const isDrillOperation = layer.operationType === 'drill' || layer.type === 'drill';
@@ -321,38 +310,38 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         // Primitive Rendering
-        _primitiveToSVG(primitive, layer, config) {
+        primitiveToSVG(primitive, layer, config) {
             const props = primitive.properties || {};
             const role = props.role;
 
             // Dispatch by role (mirrors renderer logic)
             if (role === 'peck_mark' || props.isToolPeckMark) {
-                return this._exportPeckMark(primitive, layer, config);
+                return this.exportPeckMark(primitive, layer, config);
             }
 
             if (role === 'drill_hole') {
-                return this._exportSourceDrillHole(primitive, layer, config);
+                return this.exportSourceDrillHole(primitive, layer, config);
             }
 
             if (role === 'drill_slot') {
-                return this._exportSourceDrillSlot(primitive, layer, config);
+                return this.exportSourceDrillSlot(primitive, layer, config);
             }
 
             if (role === 'drill_milling_path' || props.isCenterlinePath) {
-                return this._exportMillingPath(primitive, layer, config);
+                return this.exportMillingPath(primitive, layer, config);
             }
 
             // Standard geometry fallback
-            return this._exportStandardGeometry(primitive, layer, config);
+            return this.exportStandardGeometry(primitive, layer, config);
         }
 
         // Peck Mark Handler
-        _exportPeckMark(primitive, layer, config) {
+        exportPeckMark(primitive, layer, config) {
             const prec = config.decimals;
-            const fmt = (n) => this._formatNumber(n, prec);
+            const fmt = (n) => this.formatNumber(n, prec);
             const props = primitive.properties || {};
 
-            const { geometryColor, geometryFill, markColor } = this._getDrillElementColors(primitive, layer);
+            const { geometryColor, geometryFill, markColor } = this.getDrillElementColors(primitive, layer);
 
             const isPreview = layer.isPreview || layer.type === 'preview';
 
@@ -373,7 +362,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
             // Crosshair - scale to geometry
             const markSize = Math.min(0.5, primitive.radius * 0.4);
-            group.appendChild(this._createCrosshair(primitive.center, markSize, prec, markColor));
+            group.appendChild(this.createCrosshair(primitive.center, markSize, prec, markColor));
 
             // Reduced Plunge Ring (dashed)
             if (props.reducedPlunge) {
@@ -382,7 +371,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
                 ring.setAttribute('cy', fmt(primitive.center.y));
                 ring.setAttribute('r', fmt(primitive.radius * 0.8));
                 ring.setAttribute('fill', 'none');
-                ring.setAttribute('stroke', this._getColors().statusWarn);
+                ring.setAttribute('stroke', this.getColors().statusWarn);
                 ring.setAttribute('stroke-width', fmt(baseStroke * 0.5));
                 ring.setAttribute('stroke-dasharray', `${fmt(0.1)} ${fmt(0.1)}`);
                 group.appendChild(ring);
@@ -392,10 +381,10 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         // Source Drill Hole Handler
-        _exportSourceDrillHole(primitive, layer, config) {
+        exportSourceDrillHole(primitive, layer, config) {
             const prec = config.decimals;
-            const fmt = (n) => this._formatNumber(n, prec);
-            const colors = this._getColors();
+            const fmt = (n) => this.formatNumber(n, prec);
+            const colors = this.getColors();
 
             const group = document.createElementNS(this.svgNS, 'g');
 
@@ -411,17 +400,17 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
             // Crosshair
             const markSize = Math.min(0.5, primitive.radius * 0.6);
-            group.appendChild(this._createCrosshair(primitive.center, markSize, prec, colors.drillSource));
+            group.appendChild(this.createCrosshair(primitive.center, markSize, prec, colors.drillSource));
 
             return group;
         }
 
         // Source Drill Slot Handler
-        _exportSourceDrillSlot(primitive, layer, config) {
+        exportSourceDrillSlot(primitive, layer, config) {
             const prec = config.decimals;
-            const fmt = (n) => this._formatNumber(n, prec);
+            const fmt = (n) => this.formatNumber(n, prec);
             const props = primitive.properties || {};
-            const colors = this._getColors();
+            const colors = this.getColors();
             const slot = props.originalSlot;
 
             if (!slot) return null;
@@ -438,7 +427,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             const px = radius * Math.cos(angle + Math.PI / 2);
             const py = radius * Math.sin(angle + Math.PI / 2);
 
-            // Use large=0, sweep=1 to match working _obroundToD logic
+            // Use large=0, sweep=1 to match working obroundToD logic
             const d = [
                 `M${fmt(slot.start.x + px)} ${fmt(slot.start.y + py)}`,
                 `A${fmt(radius)} ${fmt(radius)} 0 0 1 ${fmt(slot.start.x - px)} ${fmt(slot.start.y - py)}`,
@@ -456,20 +445,20 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
             // Crosshairs at endpoints
             const markSize = Math.min(0.5, radius * 0.6);
-            group.appendChild(this._createCrosshair(slot.start, markSize, prec, colors.drillSource));
-            group.appendChild(this._createCrosshair(slot.end, markSize, prec, colors.drillSource));
+            group.appendChild(this.createCrosshair(slot.start, markSize, prec, colors.drillSource));
+            group.appendChild(this.createCrosshair(slot.end, markSize, prec, colors.drillSource));
 
             return group;
         }
 
         // Milling Path Handler
-        _exportMillingPath(primitive, layer, config) {
+        exportMillingPath(primitive, layer, config) {
             const prec = config.decimals;
-            const fmt = (n) => this._formatNumber(n, prec);
+            const fmt = (n) => this.formatNumber(n, prec);
             const props = primitive.properties || {};
 
             // Get Unified Colors
-            const { geometryColor, geometryFill, markColor } = this._getDrillElementColors(primitive, layer);
+            const { geometryColor, geometryFill, markColor } = this.getDrillElementColors(primitive, layer);
 
             // State Flags
             const isPreview = layer.isPreview || layer.type === 'preview';
@@ -488,7 +477,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
             } else if (primitive.type === 'obround') {
                 mainEl = document.createElementNS(this.svgNS, 'path');
-                mainEl.setAttribute('d', this._obroundToD(primitive, prec));
+                mainEl.setAttribute('d', this.obroundToD(primitive, prec));
 
             } else if (isCenterline && primitive.contours?.[0]?.points?.length >= 2) {
                 // Special case: Centerline slot body
@@ -528,7 +517,7 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
             } else {
                 // Fallback for complex paths
-                const pathData = this._buildPathData(primitive, prec, config);
+                const pathData = this.buildPathData(primitive, prec, config);
                 if (pathData) {
                     mainEl = document.createElementNS(this.svgNS, 'path');
                     mainEl.setAttribute('d', pathData);
@@ -565,24 +554,24 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
             // Add center marks
             if (props.originalSlot) {
-                group.appendChild(this._createCrosshair(props.originalSlot.start, 0.5, prec, markColor));
-                group.appendChild(this._createCrosshair(props.originalSlot.end, 0.5, prec, markColor));
+                group.appendChild(this.createCrosshair(props.originalSlot.start, 0.5, prec, markColor));
+                group.appendChild(this.createCrosshair(props.originalSlot.end, 0.5, prec, markColor));
             } else if (primitive.center) {
-                group.appendChild(this._createCrosshair(primitive.center, 0.5, prec, markColor));
+                group.appendChild(this.createCrosshair(primitive.center, 0.5, prec, markColor));
             } else if (isCenterline) {
                 // Fallback for centerline path endpoints
                 const pts = primitive.contours[0].points;
-                group.appendChild(this._createCrosshair(pts[0], 0.5, prec, markColor));
-                group.appendChild(this._createCrosshair(pts[pts.length-1], 0.5, prec, markColor));
+                group.appendChild(this.createCrosshair(pts[0], 0.5, prec, markColor));
+                group.appendChild(this.createCrosshair(pts[pts.length-1], 0.5, prec, markColor));
             }
 
             return group;
         }
 
         // Standard Geometry Handler
-        _exportStandardGeometry(primitive, layer, config) {
+        exportStandardGeometry(primitive, layer, config) {
             const prec = config.decimals;
-            const fmt = (n) => this._formatNumber(n, prec);
+            const fmt = (n) => this.formatNumber(n, prec);
             const props = primitive.properties || {};
 
             let el = null;
@@ -606,14 +595,14 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
                 case 'obround':
                     el = document.createElementNS(this.svgNS, 'path');
-                    el.setAttribute('d', this._obroundToD(primitive, prec));
+                    el.setAttribute('d', this.obroundToD(primitive, prec));
                     break;
 
                 case 'path':
                 case 'arc':
                 case 'bezier': 
                     el = document.createElementNS(this.svgNS, 'path');
-                    const pathData = this._buildPathData(primitive, prec, config);
+                    const pathData = this.buildPathData(primitive, prec, config);
                     if (!pathData) return null;
                     el.setAttribute('d', pathData);
                     if (primitive.contours?.some(c => c.isHole)) {
@@ -633,15 +622,15 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             if (isPreview) {
                 const toolDia = props.toolDiameter || layer.metadata?.toolDiameter || 0.1;
                 el.setAttribute('fill', 'none');
-                el.setAttribute('stroke', this._getColors().preview);
+                el.setAttribute('stroke', this.getColors().preview);
                 el.setAttribute('stroke-width', fmt(toolDia));
                 el.setAttribute('stroke-linecap', 'round');
                 el.setAttribute('stroke-linejoin', 'round');
 
             } else if (isOffset) {
                 const offsetColor = layer.offsetType === 'internal' 
-                    ? this._getColors().offsetInternal 
-                    : this._getColors().offsetExternal;
+                    ? this.getColors().offsetInternal 
+                    : this.getColors().offsetExternal;
                 el.setAttribute('fill', 'none');
                 el.setAttribute('stroke', offsetColor);
                 el.setAttribute('stroke-width', fmt(0.025));
@@ -663,10 +652,10 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         // Helper to separate creation from styling
-        _styleStandardElement(el, primitive, layer, config) {
-            const fmt = (n) => this._formatNumber(n, config.decimals);
+        styleStandardElement(el, primitive, layer, config) {
+            const fmt = (n) => this.formatNumber(n, config.decimals);
             const props = primitive.properties || {};
-            const colors = this._getColors();
+            const colors = this.getColors();
 
             if (layer.isPreview || layer.type === 'preview') {
                 // Preview Mode: Use tool diameter width
@@ -711,9 +700,9 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         // Decorations (Crosshairs)
-        _createCrosshair(pt, size, prec, color) {
+        createCrosshair(pt, size, prec, color) {
             const path = document.createElementNS(this.svgNS, 'path');
-            const fmt = (n) => this._formatNumber(n, prec);
+            const fmt = (n) => this.formatNumber(n, prec);
 
             path.setAttribute('d', `M${fmt(pt.x - size)} ${fmt(pt.y)}L${fmt(pt.x + size)} ${fmt(pt.y)}M${fmt(pt.x)} ${fmt(pt.y - size)}L${fmt(pt.x)} ${fmt(pt.y + size)}`);
             path.setAttribute('fill', 'none');
@@ -724,18 +713,18 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
         }
 
         // Path Data Building
-        _buildPathData(prim, prec, config) {
-            if (prim.type === 'obround' && config.preserveArcs) return this._obroundToD(prim, prec);
-            if (prim.type === 'arc' && config.preserveArcs) return this._arcToD(prim, prec);
+        buildPathData(prim, prec, config) {
+            if (prim.type === 'obround' && config.preserveArcs) return this.obroundToD(prim, prec);
+            if (prim.type === 'arc' && config.preserveArcs) return this.arcToD(prim, prec);
             if (!prim.contours?.length) return '';
 
             return prim.contours.map(c => {
-                if (config.preserveArcs && c.arcSegments?.length) return this._contourArcsToD(c, prec);
-                return this._contourPointsToD(c.points, prec);
+                if (config.preserveArcs && c.arcSegments?.length) return this.contourArcsToD(c, prec);
+                return this.contourPointsToD(c.points, prec);
             }).join('');
         }
 
-        _contourPointsToD(points, prec) {
+        contourPointsToD(points, prec) {
             if (!points || points.length < 2) return '';
 
             const optimized = [points[0]];
@@ -750,27 +739,27 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
             let cx = optimized[0].x;
             let cy = optimized[0].y;
-            let d = `M${this._formatNumber(cx, prec)} ${this._formatNumber(cy, prec)}`;
+            let d = `M${this.formatNumber(cx, prec)} ${this.formatNumber(cy, prec)}`;
 
             for (let i = 1; i < optimized.length; i++) {
                 const px = optimized[i].x;
                 const py = optimized[i].y;
-                const sDx = this._formatNumber(px - cx, prec);
-                const sDy = this._formatNumber(py - cy, prec);
+                const sDx = this.formatNumber(px - cx, prec);
+                const sDy = this.formatNumber(py - cy, prec);
                 d += `l${sDx}${sDy.startsWith('-') ? '' : ' '}${sDy}`;
                 cx = px; cy = py;
             }
             return d + 'Z';
         }
 
-        _contourArcsToD(contour, prec) {
+        contourArcsToD(contour, prec) {
             const pts = contour.points;
             const arcs = contour.arcSegments || [];
             if (!pts?.length) return '';
 
             let cx = pts[0].x;
             let cy = pts[0].y;
-            let d = `M${this._formatNumber(cx, prec)} ${this._formatNumber(cy, prec)}`;
+            let d = `M${this.formatNumber(cx, prec)} ${this.formatNumber(cy, prec)}`;
 
             const sortedArcs = [...arcs].sort((a, b) => a.startIndex - b.startIndex);
             let currentIdx = 0;
@@ -778,8 +767,8 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             const appendRelLine = (tx, ty) => {
                 const dx = tx - cx;
                 const dy = ty - cy;
-                const sDx = this._formatNumber(dx, prec);
-                const sDy = this._formatNumber(dy, prec);
+                const sDx = this.formatNumber(dx, prec);
+                const sDy = this.formatNumber(dy, prec);
                 const sep = sDy.startsWith('-') ? '' : ' ';
                 d += `l${sDx}${sep}${sDy}`;
                 cx = tx; cy = ty;
@@ -803,9 +792,9 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
                 const large = Math.abs(span) > Math.PI ? 1 : 0;
                 const sweep = arc.clockwise ? 0 : 1;
 
-                const rx = this._formatNumber(arc.radius, prec);
-                const ex = this._formatNumber(end.x, prec);
-                const ey = this._formatNumber(end.y, prec);
+                const rx = this.formatNumber(arc.radius, prec);
+                const ex = this.formatNumber(end.x, prec);
+                const ey = this.formatNumber(end.y, prec);
 
                 d += `A${rx} ${rx} 0 ${large} ${sweep} ${ex} ${ey}`;
 
@@ -824,8 +813,8 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             return d + 'Z';
         }
 
-        _arcToD(prim, prec) {
-            const f = (n) => this._formatNumber(n, prec);
+        arcToD(prim, prec) {
+            const f = (n) => this.formatNumber(n, prec);
             const sx = prim.center.x + prim.radius * Math.cos(prim.startAngle);
             const sy = prim.center.y + prim.radius * Math.sin(prim.startAngle);
             const ex = prim.center.x + prim.radius * Math.cos(prim.endAngle);
@@ -841,8 +830,8 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
             return `M${f(sx)} ${f(sy)} A${f(prim.radius)} ${f(prim.radius)} 0 ${large} ${sweep} ${f(ex)} ${f(ey)}`;
         }
 
-        _obroundToD(prim, prec) {
-            const fmt = (n) => this._formatNumber(n, prec);
+        obroundToD(prim, prec) {
+            const fmt = (n) => this.formatNumber(n, prec);
             const { x, y } = prim.position;
             const w = prim.width;
             const h = prim.height;
@@ -868,14 +857,14 @@ Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry 
 
         // Utilities
 
-        _serializeAndDownload(svg, filename) {
+        serializeAndDownload(svg, filename) {
             const serializer = new XMLSerializer();
             const svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + serializer.serializeToString(svg);
             this.downloadSVG(svgString, filename);
             return svgString;
         }
 
-        _formatNumber(value, precision) {
+        formatNumber(value, precision) {
             const s = parseFloat(value.toFixed(precision)).toString();
             return s.startsWith('0.') ? s.substring(1) : (s.startsWith('-0.') ? '-' + s.substring(2) : s);
         }

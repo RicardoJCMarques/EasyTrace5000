@@ -8,7 +8,7 @@
     "copyright": "Copyright (C) 2025-2026 Eltryus - Ricardo Marques"
   },
 
-  "version": "0.1",
+  "version": "0.9",
   
   "id": "dark",
   "colors": {
@@ -46,7 +46,7 @@
       "drill": "#4488ff",
       "clearing": "#44ff88",
       "cutout": "#ff00ff",
-      "stencil": "#6d0079",
+      "stencil": "#90177d",
       "toolpath": "#00ffff"
     },
     "canvas": {
@@ -64,7 +64,8 @@
         "drill": "#4488ff",
         "clearing": "#44ff88",
         "cutout": "#333333",
-        "stencil": "#6d0079"
+        "unassigned": "#228b9d",
+        "stencil": "#90177d"
       },
       "offset": {
         "external": "#a60000",
@@ -97,7 +98,9 @@
       "points": "#ff00ff",
       "arcs": "#00ffff",
       "wireframe": "#00aa00",
-      "bounds": "#ff0000"
+      "bounds": "#ff0000",
+      "preprocessed-stroke": "#00ffff",
+      "preprocessed-fill": "#0a3333"
     },
     "bw":{
       "black": "#000000",

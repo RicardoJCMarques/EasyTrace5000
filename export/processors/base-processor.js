@@ -4,31 +4,15 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const PRECISION = window.PCBCAMConfig.constants.precision.coordinate;
+    const PRECISION = window.CAMConfig.constants.precision.coordinate;
 
     class BasePostProcessor {
         constructor(name, config = {}) {
@@ -147,7 +131,7 @@
             let startCode = options.startCode;
 
             // Replace placeholders
-            const toolNum = options.toolNumber;
+            const toolNum = options.toolNumber ?? 1;
             startCode = startCode.replace(/{toolNumber}/g, toolNum);
 
             // Conditionally add coolant/vacuum commands
@@ -211,7 +195,7 @@
             const lines = [];
 
             if (speed > 0) {
-                lines.push(this.appendComment(`M3 S${speed}`, c.spindleStart, options));
+                lines.push(this.appendComment(`M3 S${this.formatSpindle(targetSpeed)}`, c.spindleStart, options));
                 if (dwell > 0) {
                     lines.push(this.appendComment(`G4 P${this.formatDwell(dwell)}`, c.spindleDwell, options));
                 }
@@ -291,7 +275,7 @@
         */
 
         // Base formatter that safely strips trailing zeros and handles -0
-        _formatNumberSafe(value, precision, scale = 1.0) {
+        formatNumberSafe(value, precision, scale = 1.0) {
             if (value == null) return ''; // Catches null and undefined
 
             const scaled = value * scale;
@@ -302,15 +286,15 @@
         }
 
         formatCoordinate(value) { 
-            return this._formatNumberSafe(value, this.config.coordinateDecimals, this.outputScale); 
+            return this.formatNumberSafe(value, this.config.coordinateDecimals, this.outputScale); 
         }
 
         formatFeed(value) { 
-            return this._formatNumberSafe(value, this.config.feedDecimals, this.outputScale); 
+            return this.formatNumberSafe(value, this.config.feedDecimals, this.outputScale); 
         }
 
         formatSpindle(value) { 
-            return this._formatNumberSafe(value, this.config.spindleDecimals); 
+            return this.formatNumberSafe(value, this.config.spindleDecimals); 
         }
 
         /**
@@ -327,7 +311,7 @@
             }
 
             const gCommand = cmd.type === 'ARC_CW' ? 'G2' : 'G3';
-            const isFullCircle = this._isFullCircle(cmd);
+            const isFullCircle = this.isFullCircle(cmd);
 
             // Determine if G-code command output is needed 
             const needsGCode = !this.config.modalCommands || 
@@ -412,7 +396,7 @@
             return code;
         }
 
-        _isFullCircle(cmd) {
+        isFullCircle(cmd) {
             if (!cmd.i && !cmd.j) return false;
 
             const targetX = (cmd.x !== null && cmd.x !== undefined) ? cmd.x : this.currentPosition.x;
@@ -701,7 +685,8 @@
             const errors = [];
 
              // Grab limits from the options context passed by the generator
-            const maxFeed = options.maxFeed || this.config.maxFeedRate;
+            const maxFeed = options.maxFeed || this.descriptor.limits.maxRapidRate;
+            // REVIEW - double check maxSafeDepth is wired properly, there's a limit on the parameter manager that may not let this trip. It could be made a per app value?
             const maxSafeDepth = options.maxSafeDepth;
 
             // Universal Feed Rate Check
@@ -711,10 +696,10 @@
                 }
             }
 
-            // Critical Z-Plunge Check (Catch runaway math errors)
+            // Critical Z-Plunge Check (Catch possibly dangerous plunges) // REVIEW - maxSafeDepth may need to be set per app.
             if ((cmd.type === 'LINEAR' || cmd.type === 'PLUNGE') && cmd.z !== null && cmd.z !== undefined) {
-                if (cmd.z < maxSafeDepth) {
-                    errors.push(`CRITICAL: Commanded Z depth (${cmd.z.toFixed(3)}mm) exceeds maximum safe cutting depth (${maxSafeDepth}mm).`);
+                if (typeof maxSafeDepth === 'number' && cmd.z < maxSafeDepth) {
+                    warnings.push(`Commanded Z depth (${cmd.z.toFixed(3)}mm) exceeds the machine's configured max safe depth (${maxSafeDepth}mm). Verify your stock thickness and Z-zero.`);
                 }
             }
 
@@ -725,13 +710,6 @@
             this.currentPosition = { x: 0, y: 0, z: 0 };
             this.currentFeed = null;
             this.currentSpindle = 0;
-            this.modalState = {
-                motionMode: null,
-                coordinateMode: 'G90',
-                units: 'G21',
-                plane: 'G17',
-                feedRateMode: 'G94'
-            };
             // Canned cycle modal state — tracks last-emitted parameters
             this.cannedState = {
                 cycleType: null,
@@ -740,6 +718,13 @@
                 q: null,
                 f: null,
                 dwell: null
+            };
+            this.modalState = {
+                motionMode: null,
+                coordinateMode: 'G90',
+                units: 'G21',
+                plane: 'G17',
+                feedRateMode: 'G94'
             };
         }
     }

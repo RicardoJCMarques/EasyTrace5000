@@ -1,28 +1,12 @@
 /*!
- * @file        theme.css
+ * @file        css/theme.css
  * @description Theme application layer - applies theme tokens as CSS variables
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
  /**
@@ -71,7 +55,7 @@
     --color-operation-drill: #4488ff;
     --color-operation-clearing: #44ff88;
     --color-operation-cutout: #ff00ff;
-    --color-operation-stencil: #DA6651;
+    --color-operation-stencil: #90177d;
     --color-operation-toolpath: #00ffff;
 
     /* Canvas Colors */
@@ -88,13 +72,16 @@
     --color-debug-arcs: #00ffff;
     --color-debug-wireframe: #00aa00;
     --color-debug-bounds: #ff0000;
+    --color-debug-preprocessed-stroke: #00ffff;
+    --color-debug-preprocessed-fill: #0a3333;
 
     /* Geometry Colors */
     --color-geometry-source-isolation: #ff8844;
     --color-geometry-source-drill: #4488ff;
     --color-geometry-source-clearing: #44ff88;
     --color-geometry-source-cutout: #333333;
-    --color-geometry-source-stencil: #6d0079;
+    --color-geometry-source-unassigned: #228b9d;
+    --color-geometry-source-stencil: #90177d;
     --color-geometry-offset-external: #a60000;
     --color-geometry-offset-internal: #00a600;
     --color-geometry-offset-on: #bcbc02;
@@ -139,32 +126,6 @@
     --color-interaction-sponsorship: #6366f1;
     --color-interaction-sponsorship-text: #e9d5ff;
     --color-interaction-kofi: #42d6aa;
-}
-
-/* ============================================================================
-   THEME TOGGLE BUTTON
-   ============================================================================ */
-
-/* Dark theme (default): Show sun icon */
-.theme-toggle .sun-icon {
-    opacity: 1;
-    transform: rotate(0deg) scale(1);
-}
-
-.theme-toggle .moon-icon {
-    opacity: 0;
-    transform: rotate(-180deg) scale(0.8);
-}
-
-/* Light theme: Show moon icon */
-[data-theme="light"] .theme-toggle .sun-icon {
-    opacity: 0;
-    transform: rotate(180deg) scale(0.8);
-}
-
-[data-theme="light"] .theme-toggle .moon-icon {
-    opacity: 1;
-    transform: rotate(0deg) scale(1);
 }
 
 /* ============================================================================

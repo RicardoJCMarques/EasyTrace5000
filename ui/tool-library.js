@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const debugState = D.debug;
 
     class ToolLibrary {
@@ -43,7 +27,8 @@
             this.loadError = null;
         }
 
-        async init() {
+        async init(appProfile = null) {
+            this.appProfile = appProfile;
             if (this.isLoaded) return true;
 
             // PROD: Use the array injected by build.js
@@ -184,9 +169,9 @@
 
         getDefaultToolForOperation(operationType) {
             // Try to get default from config
-            const opConfig = D.operations?.[operationType];
-            if (opConfig?.defaultTool) {
-                const tool = this.getTool(opConfig.defaultTool);
+            const defaultId = this.appProfile.defaultTools?.[operationType];
+            if (defaultId) {
+                const tool = this.getTool(defaultId);
                 if (tool) return tool;
             }
 
@@ -248,13 +233,6 @@
             };
         }
 
-        debug(message, data = null) {
-            // does this work?
-            if (this.ui && this.ui.debug) {
-                this.ui.debug(`[ToolLibrary] ${message}`, data);
-            }
-        }
-
         logToolStats() {
             if (debugState.enabled) {
                 console.log('[ToolLibrary] Statistics:');
@@ -277,6 +255,15 @@
                 isLoaded: this.isLoaded,
                 loadError: this.loadError
             };
+        }
+
+        debug(message, data = null) {
+            if (!D.debug.enabled) return;
+            if (data !== null) {
+                console.log(`[ToolLibrary] ${message}`, data);
+            } else {
+                console.log(`[ToolLibrary] ${message}`);
+            }
         }
     }
 

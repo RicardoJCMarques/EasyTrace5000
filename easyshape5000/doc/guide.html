@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <!--!
+        @file        easyshape5000/doc/guide.html
+        @description EasyShape5000 Workflow Guide
+        @author      Eltryus - Ricardo Marques
+        @copyright   2025-2026 Eltryus - Ricardo Marques
+        @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+
+        SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+        SPDX-License-Identifier: AGPL-3.0-or-later
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EasyShape5000 | Workflow Guide</title>
+
+    <meta name="description" content="Step-by-step guide to using EasyShape5000 for CNC routing. Import SVGs, assign operations, generate toolpaths, and export G-code.">
+    <meta name="author" content="Eltryus">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#0f0f0f">
+
+    <link rel="canonical" href="https://cam.eltryus.design/easyshape5000/doc/guide">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://cam.eltryus.design/easyshape5000/doc/guide">
+    <meta property="og:title" content="EasyShape5000 | Workflow Guide">
+    <meta property="og:description" content="From SVG to G-code: a complete walkthrough of EasyShape5000's CNC routing workflow.">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-preview-shape.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="EasyShape5000">
+    <meta property="og:locale" content="en_US">
+
+    <link rel="icon" type="image/png" href="../../images/favicon/favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="../../images/favicon/favicon.svg">
+    <link rel="shortcut icon" href="../../images/favicon/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="../../images/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="../../images/favicon/site.webmanifest">
+
+    <link rel="stylesheet" href="../../css/base.css">
+    <link rel="stylesheet" href="../../css/components.css">
+    <link rel="stylesheet" href="../../css/theme.css">
+    <link rel="stylesheet" href="../../css/doc.css">
+
+    <script type="application/ld+json">
+    [
+        {
+            "@context": "https://schema.org",
+            "@type": "TechArticle",
+            "headline": "EasyShape5000 Workflow Guide",
+            "description": "Step-by-step guide to CNC routing with EasyShape5000.",
+            "url": "https://cam.eltryus.design/easyshape5000/doc/guide",
+            "author": { "@type": "Organization", "name": "Eltryus" },
+            "datePublished": "2026-06-17",
+            "dateModified": "2026-06-17"
+        },
+        {
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+                { "@type": "ListItem", "position": 1, "name": "Eltryus CAM Suite", "item": "https://cam.eltryus.design/" },
+                { "@type": "ListItem", "position": 2, "name": "EasyShape5000", "item": "https://cam.eltryus.design/easyshape5000/" },
+                { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easyshape5000/doc/" },
+                { "@type": "ListItem", "position": 4, "name": "Workflow Guide", "item": "https://cam.eltryus.design/easyshape5000/doc/guide" }
+            ]
+        }
+    ]
+    </script>
+</head>
+<body>
+    <a href="#doc-content" class="skip-link">Skip to Main Content</a>
+
+    <header class="doc-header">
+        <div class="doc-brand"><a href="/" aria-label="Eltryus CAM Suite Homepage">EasyShape5000</a></div>
+        <button class="doc-menu-toggle" aria-label="Toggle Navigation Menu" aria-expanded="false">
+            <svg class="icon-menu" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+        <nav class="doc-nav" aria-label="Main Navigation">
+            <a href="/" draggable="false">← Home</a>
+            <a href="/easyshape5000/" draggable="false">Launch App</a>
+            <span class="separator" aria-hidden="true"></span>
+            <a href="./" draggable="false">Docs</a>
+            <a href="guide" class="active" draggable="false" aria-current="page">Workflow Guide</a>
+            <a href="/easytrace5000/doc/accessibility" draggable="false">Accessibility</a>
+            <span class="separator" aria-hidden="true"></span>
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a>
+            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle between light and dark theme">
+                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            </button>
+        </nav>
+    </header>
+
+    <div class="doc-wrapper has-sidebar">
+        <nav class="doc-sidebar" id="toc">
+            <h2>Contents <span class="doc-badge doc-badge--stable">v1.0</span></h2>
+            <ol>
+                <li><a href="#interface" draggable="false">Interface Overview</a></li>
+                <li>
+                    <a href="#workflow" draggable="false">The Workflow</a>
+                    <ol>
+                        <li><a href="#workflow-import" draggable="false">Importing SVGs</a></li>
+                        <li><a href="#workflow-scene" draggable="false">The Scene Tree</a></li>
+                        <li><a href="#workflow-assign" draggable="false">Assigning Operations</a></li>
+                        <li><a href="#workflow-generate" draggable="false">Generating Geometry</a></li>
+                        <li><a href="#workflow-preview" draggable="false">Generating Preview</a></li>
+                        <li><a href="#workflow-export" draggable="false">Exporting G-code</a></li>
+                    </ol>
+                </li>
+                <li>
+                    <a href="#operations" draggable="false">Operation Types</a>
+                    <ol>
+                        <li><a href="#op-profile" draggable="false">Profile Cut</a></li>
+                        <li><a href="#op-pocket" draggable="false">Pocket Clearing</a></li>
+                        <li><a href="#op-drill" draggable="false">Drilling</a></li>
+                    </ol>
+                </li>
+                <li><a href="#scene-management" draggable="false">Scene Management</a></li>
+                <li><a href="#transforms" draggable="false">Shape Transforms</a></li>
+                <li><a href="#machine-settings" draggable="false">Machine Settings</a></li>
+                <li><a href="#export-manager" draggable="false">The Export Manager</a></li>
+                <li><a href="#tips" draggable="false">Tips & Limitations</a></li>
+            </ol>
+        </nav>
+
+        <main id="doc-content" class="doc-main">
+
+            <section class="hero hero--compact">
+                <h1>EasyShape5000 — Workflow Guide</h1>
+                <p class="tagline">From SVG design to G-code for your CNC router</p>
+            </section>
+
+            <!-- Interface Overview -->
+            <section id="interface">
+                <h2>Interface Overview</h2>
+                <p>The interface mirrors EasyTrace5000's layout but adds scene-graph capabilities. A central canvas with two sidebars — the left for the scene tree and operations list, the right for shape properties and operation parameters.</p>
+
+                <figure>
+                    <svg viewBox="0 0 800 500" style="width:100%;max-width:800px;background:var(--color-canvas-background, #0f0f0f);border-radius:8px;">
+                        <rect x="0" y="0" width="800" height="40" fill="#2a2a2a"/>
+                        <text x="400" y="25" fill="#888" font-size="12" text-anchor="middle">1. TOOLBAR (Actions, Zoom, Theme)</text>
+                        <rect x="0" y="250" width="200" height="210" fill="#222222"/>
+                        <text x="100" y="130" fill="#888" font-size="12" text-anchor="middle">2. OPERATIONS</text>
+                        <text x="100" y="150" fill="#666" font-size="10" text-anchor="middle">(Buckets: Geo → Offset → Preview)</text>
+                        <rect x="0" y="40" width="200" height="210" fill="#252525"/>
+                        <text x="100" y="350" fill="#888" font-size="12" text-anchor="middle">3. SCENE TREE</text>
+                        <text x="100" y="370" fill="#666" font-size="10" text-anchor="middle">(Groups, Shapes, Lock/Hide)</text>
+                        <rect x="200" y="40" width="400" height="420" fill="#1a1a1a"/>
+                        <text x="400" y="240" fill="#888" font-size="12" text-anchor="middle">4. CANVAS</text>
+                        <text x="400" y="260" fill="#666" font-size="10" text-anchor="middle">(Select, Move, Marquee, Zoom)</text>
+                        <line x1="250" y1="100" x2="250" y2="400" stroke="#333" stroke-dasharray="4"/>
+                        <line x1="350" y1="100" x2="350" y2="400" stroke="#333" stroke-dasharray="4"/>
+                        <line x1="450" y1="100" x2="450" y2="400" stroke="#333" stroke-dasharray="4"/>
+                        <line x1="550" y1="100" x2="550" y2="400" stroke="#333" stroke-dasharray="4"/>
+                        <rect x="600" y="40" width="200" height="210" fill="#252525"/>
+                        <text x="700" y="130" fill="#888" font-size="12" text-anchor="middle">5. SHAPE INSPECTOR</text>
+                        <text x="700" y="150" fill="#666" font-size="10" text-anchor="middle">(Position, Rotation, Scale, Mirror)</text>
+                        <rect x="600" y="250" width="200" height="210" fill="#222222"/>
+                        <text x="700" y="350" fill="#888" font-size="12" text-anchor="middle">6. OPERATION PANEL</text>
+                        <text x="700" y="370" fill="#666" font-size="10" text-anchor="middle">(Parameters, Generate, Export)</text>
+                        <rect x="0" y="460" width="800" height="40" fill="#2a2a2a"/>
+                        <text x="400" y="485" fill="#888" font-size="12" text-anchor="middle">7. STATUS BAR & COORDINATES</text>
+                    </svg>
+                    <figcaption>The EasyShape5000 interface: (1) Toolbar, (2) Scene Tree, (3) Operations List, (4) Canvas, (5) Shape Inspector, (6) Operation Parameters, (7) Status Bar</figcaption>
+                </figure>
+
+                <p>The left sidebar is split into two panels. The <strong>Scene Tree</strong> shows the hierarchical structure of your imported SVG — groups and individual shapes with lock, visibility, and delete controls. Below it, the <strong>Operations List</strong> shows each assigned operation as a bucket with three stages: Geometry, Offsets, and Preview.</p>
+                <p>The right sidebar adapts to your selection. When a shape is selected, the top shows its <strong>transform inspector</strong> (position, rotation, scale, mirror). Below, the <strong>operation panel</strong> shows parameters for the assigned operation type, or the operation type selector if nothing is assigned yet.</p>
+            </section>
+
+            <!-- Workflow -->
+            <section id="workflow">
+                <h2>The Workflow</h2>
+                <p>EasyShape5000 follows a per-shape workflow: import a design, select shapes, assign operations, generate, and export — all non-destructively.</p>
+
+                <h3 id="workflow-import">1. Importing SVGs</h3>
+                <p>Drag and drop an SVG file onto the canvas, or use <strong>Actions → Import SVG</strong>. The file's group hierarchy is preserved: SVG <code>&lt;g&gt;</code> elements become groups in the scene tree, paths and shapes become selectable nodes.</p>
+                <p>Each shape's geometry is stored in its original coordinate space. Transforms (move, rotate, scale) are applied non-destructively — the source geometry is never modified. The world-space position used for G-code export is computed by multiplying the parent chain's affine matrices.</p>
+
+                <h3 id="workflow-scene">2. The Scene Tree</h3>
+                <p>The scene tree (left sidebar, top) shows every shape and group in your workspace. Each row has controls for:</p>
+                <dl>
+                    <dt>Visibility (eye icon)</dt>
+                    <dd>Hides the shape from the canvas. Hidden shapes are excluded from marquee selection and export.</dd>
+                    <dt>Lock (padlock icon)</dt>
+                    <dd>Prevents the shape from being moved, rotated, or deleted. Locked shapes can still be selected (so you can unlock them) but cannot be mutated.</dd>
+                    <dt>Delete (trash icon)</dt>
+                    <dd>Removes the shape from the scene. Undoable with <kbd>Ctrl+Z</kbd>.</dd>
+                </dl>
+                <p>Groups can be collapsed, and locking a group locks all its children. Use <kbd>Ctrl+G</kbd> to group selected shapes and <kbd>Ctrl+Shift+G</kbd> to ungroup. When ungrouping, the group's transform is folded into each child so their visual position is preserved.</p>
+
+                <h3 id="workflow-assign">3. Assigning Operations</h3>
+                <p>Select one or more shapes, then choose an operation type from the tabs on the right sidebar (Profile, Pocket, Drill, etc.). The operation panel appears with default parameters pulled from the active tool in the tool library.</p>
+                <p>Multi-selection: if you select shapes with different operation types, the panel shows parameters for the anchor shape's type and notes the mixed selection. Changes apply only to shapes of the matching type.</p>
+
+                <h3 id="workflow-generate">4. Generating Geometry</h3>
+                <p>Click the <strong>Generate</strong> button (e.g. "Generate Profile Path") in the operation panel. The geometry engine uses Clipper2 (WebAssembly) to compute offset paths, pocket passes, or drill strategies.</p>
+                <p>Generated geometry appears in the Operations List (left sidebar, bottom) as a bucket with stage nodes. Click a stage node to view its parameters or re-generate. If you change parameters after generating, the bucket is marked as invalidated until you regenerate.</p>
+
+                <h3 id="workflow-preview">5. Generating Preview</h3>
+                <p>After offsets are generated, click <strong>Generate Preview</strong>. This creates a tool-reach simulation — the offset paths stroked at the tool's diameter — showing exactly what material will be removed. The preview is visual only; no G-code is generated yet.</p>
+                <p>The preview stage also sets the Z-axis parameters (cut depth, multi-pass depth, entry strategy). These feed into the toolpath optimizer during export.</p>
+
+                <h3 id="workflow-export">6. Exporting G-code</h3>
+                <p>Click <strong>Export Manager</strong> (the button at the machine stage, or use the toolbar). The export modal opens with a summary of all operations that have reached the preview stage. From here you can:</p>
+                <ol>
+                    <li>Select your post-processor (GRBL, Marlin, LinuxCNC, etc.)</li>
+                    <li>Click <strong>Calculate Toolpaths</strong> to run the optimization pipeline (staydown clustering, path ordering, segment simplification)</li>
+                    <li>Review the G-code preview in the text area</li>
+                    <li>Click <strong>Export Files</strong> to download</li>
+                </ol>
+                <p>Operations using different tools must be exported as separate files — automatic tool change (M6) is not yet supported.</p>
+            </section>
+
+            <!-- Operation Types -->
+            <section id="operations">
+                <h2>Operation Types</h2>
+
+                <h3 id="op-profile">Profile Cut</h3>
+                <p>A profile cut traces the boundary of a closed shape at a configured offset distance. The standard operation for cutting parts out of sheet material.</p>
+                <dl>
+                    <dt>Cut Side</dt>
+                    <dd><strong>Outside:</strong> tool path runs outside the shape boundary (the shape is the part you keep). <strong>Inside:</strong> tool path runs inside (you keep the surrounding material). <strong>On:</strong> tool center follows the path exactly (no offset compensation).</dd>
+                    <dt>Nesting Detection</dt>
+                    <dd>When enabled, inner shapes are automatically detected as holes. A rectangle with a circle inside produces an outer cut and an inner cut with reversed winding — the circle becomes a raised island.</dd>
+                    <dt>Holding Tabs</dt>
+                    <dd>Optional bridges that keep the part attached to the stock during cutting. Configured by count, width, and height. The machine processor inserts Z-lifts at tab positions during G-code generation.</dd>
+                </dl>
+                <p>Profile cuts require closed geometry. Open paths will trigger a warning — close them in your SVG editor before importing.</p>
+
+                <h3 id="op-pocket">Pocket Clearing</h3>
+                <p>Pocket clearing removes all material inside a closed shape using concentric inward offset passes. The tool spirals inward from the boundary until no clearable area remains.</p>
+                <dl>
+                    <dt>Stepover</dt>
+                    <dd>The percentage of the tool diameter used as the distance between passes. Lower stepover = smoother floor finish but more passes. 40-60% is typical for wood.</dd>
+                    <dt>Nesting Detection</dt>
+                    <dd>Same as profile: inner shapes become islands that the pocket cuts around rather than through.</dd>
+                </dl>
+                <p>Pocket operations always use internal offsets. If the tool diameter is too large for the shape, no paths are generated — reduce the tool size or enlarge the design.</p>
+
+                <h3 id="op-drill">Drilling</h3>
+                <p>Drilling converts SVG circles (and obround shapes) into drill holes or milled slots. The handler automatically classifies each primitive:</p>
+                <dl>
+                    <dt>Holes (circles)</dt>
+                    <dd>If the circle diameter is within 0.1mm of the tool diameter, a peck cycle is used. If the circle is larger, a helical or plunge-mill strategy clears the oversized hole.</dd>
+                    <dt>Slots (obrounds)</dt>
+                    <dd>Obround shapes are converted into milled slot paths — the tool follows the slot's centerline with width compensation.</dd>
+                    <dt>Peck Depth</dt>
+                    <dd>For peck drilling, controls how deep each peck goes before retracting to clear chips. Shallower pecks are safer for deep holes.</dd>
+                </dl>
+            </section>
+
+            <!-- Scene Management -->
+            <section id="scene-management">
+                <h2>Scene Management</h2>
+                <p>The scene is a tree of groups and shapes with full undo/redo. Every structural mutation (move, group, delete, assign operation) is recorded as a command and can be reversed.</p>
+                <dl>
+                    <dt>Grouping</dt>
+                    <dd>Select 2+ items, press <kbd>Ctrl+G</kbd>. A new group node is inserted at the position of the first selected item. The group inherits no transform — children keep their positions.</dd>
+                    <dt>Ungrouping</dt>
+                    <dd>Select a group, press <kbd>Ctrl+Shift+G</kbd>. Children are moved to the group's parent. The group's transform is composited into each child (via matrix multiplication and TRS decomposition) so their visual position doesn't change.</dd>
+                    <dt>Drag-move</dt>
+                    <dd>Click and drag on the canvas to move selected shapes. The delta is projected into each node's parent coordinate space so movement is correct even inside rotated or scaled groups. The move is recorded on mouse-up.</dd>
+                    <dt>Multi-selection</dt>
+                    <dd>Shift-click to toggle, Ctrl-click to add, or drag a marquee rectangle. Alt-click bypasses group selection to pick the individual leaf shape.</dd>
+                </dl>
+            </section>
+
+            <!-- Transforms -->
+            <section id="transforms">
+                <h2>Shape Transforms</h2>
+                <p>Each shape (and group) has a local TRS transform: translation (X/Y), rotation (degrees), and scale (uniform, with independent mirror on X/Y). The right sidebar's transform inspector shows the values for the selected shape.</p>
+                <dl>
+                    <dt>Position (X / Y)</dt>
+                    <dd>Relative nudge fields. Enter a value and press Enter to move the shape by that amount. The fields reset to 0 after each commit — they represent a delta, not an absolute position.</dd>
+                    <dt>Rotation</dt>
+                    <dd>Absolute rotation in degrees. Rotates around the shape's geometric center (or a pinned pivot if set by a prior rotation). Click the reset button to return to 0° and release the pinned pivot.</dd>
+                    <dt>Scale</dt>
+                    <dd>Uniform scale factor. 1.0 = original size, 2.0 = double. The mirror checkboxes flip the shape on the X or Y axis independently — they toggle the sign of scaleX or scaleY without changing the magnitude.</dd>
+                </dl>
+                <p>All transforms are non-destructive. The world-space position for rendering and G-code export is computed by multiplying the parent chain's affine matrices — the same math in TransformMath.js used throughout the application.</p>
+            </section>
+
+            <!-- Machine Settings -->
+            <section id="machine-settings">
+                <h2>Machine Settings</h2>
+                <p>Machine parameters are configured in the right sidebar's collapsible Machine Settings panel and in the per-operation parameter forms. These values directly affect the generated G-code.</p>
+
+                <h3>Global Machine Parameters</h3>
+                <dl>
+                    <dt>Safe Z Height (typical: 5-15mm)</dt>
+                    <dd>The Z height the tool retracts to when moving between cuts (rapid moves). Must be above all clamps and workholding.</dd>
+                    <dt>Travel Z Height (typical: 2-5mm)</dt>
+                    <dd>A lower retract height used for short hops between nearby cuts (staydown optimization). Faster than retracting to safe Z for every move.</dd>
+                </dl>
+
+                <h3>Per-Operation Parameters</h3>
+                <dl>
+                    <dt>Tool Selection</dt>
+                    <dd>Selects the cutting tool from the tool library. The tool's diameter is used to compute offset distances. V-bits use their tip diameter.</dd>
+                    <dt>Cut Depth (total depth, mm)</dt>
+                    <dd>How deep to cut in total. For multi-pass operations, this is divided by the depth-per-pass value.</dd>
+                    <dt>Depth per Pass (mm)</dt>
+                    <dd>Maximum material removed per Z-level pass. The machine processor automatically generates multiple depth levels when cut depth exceeds this value.</dd>
+                    <dt>Feed Rate (mm/min)</dt>
+                    <dd>Horizontal cutting speed. Higher = faster but rougher. Depends on material, tool, and machine rigidity.</dd>
+                    <dt>Plunge Rate (mm/min)</dt>
+                    <dd>Vertical entry speed when the tool descends into material. Usually 30-50% of the feed rate.</dd>
+                    <dt>Spindle Speed (RPM)</dt>
+                    <dd>Rotation speed of the spindle. CNC routers typically run 10,000-24,000 RPM depending on material and tool diameter.</dd>
+                </dl>
+            </section>
+
+            <!-- Export Manager -->
+            <section id="export-manager">
+                <h2>The Export Manager</h2>
+                <p>The Export Manager is a modal that opens when you reach the export stage. It coordinates the final translation from geometry into machine-ready G-code.</p>
+
+                <h3>Workflow Inside the Export Manager</h3>
+                <ol>
+                    <li><strong>Review operations:</strong> The left panel lists all export-ready operations with their type, tool, and pass count.</li>
+                    <li><strong>Select post-processor:</strong> Choose your machine's dialect (GRBL, Marlin, etc.) from the dropdown. This affects G-code header format, spindle commands, and coordinate conventions.</li>
+                    <li><strong>Calculate Toolpaths:</strong> Click the button to run the three-stage optimization pipeline:
+                        <ul>
+                            <li><strong>Geometry Translation:</strong> converts offset primitives into toolpath plans with entry/exit points</li>
+                            <li><strong>Toolpath Optimization:</strong> staydown clustering, nearest-neighbor path ordering, collinear segment simplification</li>
+                            <li><strong>Machine Processing:</strong> injects rapids, plunges, retracts, multi-depth passes, tab Z-lifts, and spindle commands</li>
+                        </ul>
+                    </li>
+                    <li><strong>Preview:</strong> The generated G-code appears in the text preview with line count, operation count, estimated time, and total travel distance.</li>
+                    <li><strong>Export:</strong> Click Export Files to download. The filename includes the operation type and post-processor.</li>
+                </ol>
+
+                <h3>Post-Processor Notes</h3>
+                <p><strong>GRBL</strong> is the only post-processor tested on real hardware. All others (grblHAL, Marlin, LinuxCNC, Mach3, UCCNC, Makera, Roland RML) generate syntactically correct output but are considered experimental. Always dry-run G-code on your controller before cutting material.</p>
+            </section>
+
+            <!-- Tips & Limitations -->
+            <section id="tips">
+                <h2>Tips & Current Limitations</h2>
+
+                <div class="callout callout--info">
+                    <h3>SVG Preparation</h3>
+                    <p>For best results, prepare your SVG in Inkscape, Illustrator, or Figma:</p>
+                    <ul>
+                        <li>Convert text to paths before export.</li>
+                        <li>Close all paths used for profile or pocket operations.</li>
+                        <li>Use circles (not ellipses) for drill holes.</li>
+                        <li>Set document units to millimeters.</li>
+                        <li>Avoid clipping masks and SVG clones — neither is imported.</li>
+                        <li>Flatten transforms in Inkscape (Extensions → Generate from Path → Flatten Beziers) if shapes import at unexpected positions.</li>
+                    </ul>
+                </div>
+
+                <h3>Best Practices</h3>
+
+                <h4>Start with the Built-in Example</h4>
+                <p>Load the Mesa example from the welcome screen and walk through the complete workflow before processing your own files. This helps you understand what to expect at each stage.</p>
+
+                <h4>Check Tool Diameter vs Shape Size</h4>
+                <p>If pocket or profile generation returns zero paths, the tool is too large for the shape. Either reduce the tool diameter in the tool library or scale up your design.</p>
+
+                <h4>Operation Order for Multi-Tool Jobs</h4>
+                <p>When your design uses multiple tools, plan the cut order:</p>
+                <ol>
+                    <li>Pockets and internal features (while stock is rigid)</li>
+                    <li>Drilling</li>
+                    <li>Profile cuts last (parts may shift once cut free)</li>
+                </ol>
+                <p>Each tool change requires a separate export file.</p>
+
+                <h3>Common Issues</h3>
+
+                <h4>Canvas is Blank or Black</h4>
+                <p><strong>Cause:</strong> Browser GPU compositing issue (common on laptops with dual GPUs).</p>
+                <p><strong>Solution:</strong> Close and restart the browser. The canvas should render correctly on reload.</p>
+
+                <h4>"Open Paths Detected" Warning</h4>
+                <p><strong>Cause:</strong> Profile and pocket operations require closed shapes. Your SVG has paths that don't form closed loops.</p>
+                <p><strong>Solution:</strong> Open the SVG in your vector editor and close the paths (Join nodes, or use Path → Close Path). Re-import.</p>
+
+                <h4>Shapes Import at Wrong Position</h4>
+                <p><strong>Cause:</strong> SVG transforms (translate, rotate, matrix) on parent elements can cause unexpected placement.</p>
+                <p><strong>Solution:</strong> In Inkscape, select all and use Edit → Paste In Place after flattening transforms. In Figma, export with "Flatten" enabled.</p>
+
+                <h4>Offset Generation Takes a Long Time</h4>
+                <p><strong>Cause:</strong> Boolean operations on complex geometry (many points, many passes) are computationally intensive.</p>
+                <p><strong>Solution:</strong> Reduce the number of passes, increase stepover, or simplify the SVG geometry before import.</p>
+
+                <h3>Current Limitations (v1.0)</h3>
+                <dl>
+                    <dt>No laser pipeline</dt>
+                    <dd>CNC G-code export only. Laser/vector export is planned.</dd>
+                    <dt>No tool change commands</dt>
+                    <dd>Operations using different tools must be exported as separate G-code files.</dd>
+                    <dt>Engraving, V-Carve, Pattern, and 3D Relief</dt>
+                    <dd>Listed in the UI but not yet functional. Engraving and pattern generation are coming shortly; v-carve and 3D relief require the planned 3D preview system.</dd>
+                    <dt>Bézier offsetting</dt>
+                    <dd>Bézier curves from SVGs are interpolated into line segments before offsetting. True analytic Bézier offsetting is not yet supported.</dd>
+                    <dt>Touch pinch-to-zoom</dt>
+                    <dd>Two-finger pinch zoom works during pan but is not available on the default select tool. Known gap.</dd>
+                    <dt>No undo for operation assignment changes</dt>
+                    <dd>Operation assignment is undoable via Ctrl+Z, but parameter edits within the operation panel are not individually tracked in the undo stack.</dd>
+                </dl>
+            </section>
+
+        </main>
+    </div>
+
+    <footer class="doc-footer" aria-label="Footer">
+        <p>
+            <a href="#doc-content" draggable="false">Back to Top</a> |
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a> |
+            <a href="/#support" draggable="false">Support Development</a> |
+            <a href="../../LICENSE" target="_blank" draggable="false">AGPLv3 Licensed</a>
+        </p>
+    </footer>
+
+    <script defer src="../../themes/theme-loader.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const themeBtn = document.getElementById('theme-toggle');
+            if (themeBtn && window.ThemeLoader) {
+                themeBtn.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+            }
+            const menuBtn = document.querySelector('.doc-menu-toggle');
+            const nav = document.querySelector('.doc-nav');
+            if (menuBtn && nav) {
+                menuBtn.addEventListener('click', () => {
+                    const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                    menuBtn.setAttribute('aria-expanded', !isExpanded);
+                    nav.classList.toggle('is-open');
+                });
+            }
+        });
+    </script>
+</body>
+</html>

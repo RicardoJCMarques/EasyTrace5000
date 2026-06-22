@@ -1,28 +1,12 @@
 /*!
- * @file        modals.css
+ * @file        css/modals.css
  * @description Modal system - base structure and specific modal layouts
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 /* ============================================================================
@@ -329,6 +313,60 @@
 }
 
 /* ============================================================================
+   MODAL NOTICES - REVIEW as layout-shared and modals may have a lot of overlap now
+   ============================================================================ */
+
+.modal-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius);
+    margin-bottom: var(--modal-gap);
+    line-height: var(--line-height-base);
+}
+
+/* Icon is a bare <svg class="cam-icon"> child in the markup, not a wrapper */
+.modal-notice > .cam-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.modal-notice-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Readable sizes — deliberately NOT the xs/sm used by the mobile viewport warnings */
+.modal-notice-content strong {
+    font-size: var(--font-size-lg);   /* 15px */
+}
+
+.modal-notice-content span {
+    font-size: var(--font-size-base); /* 14px */
+    color: var(--color-text-primary); /* keep body text high-contrast, not tinted */
+}
+
+/* Info variant */
+.modal-notice--info {
+    border: 1px solid var(--color-info);
+}
+.modal-notice--info > .cam-icon,
+.modal-notice--info strong {
+    color: var(--color-info);
+}
+
+/* Caution variant */
+.modal-notice--caution {
+    border: 1px solid var(--color-warning);
+}
+.modal-notice--caution > .cam-icon,
+.modal-notice--caution strong {
+    color: var(--color-warning);
+}
+
+/* ============================================================================
    QUICKSTART MODAL
    ============================================================================ */
 
@@ -425,6 +463,10 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: var(--spacing-md);
+}
+
+.quickstart-upload-grid--single {
+    grid-template-columns: 1fr;
 }
 
 .quickstart-drop-zone {

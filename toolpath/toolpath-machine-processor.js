@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const debugState = D.debug;
 
     class MachineProcessor {
@@ -49,15 +33,12 @@
                 return { plans: [], endPos: initialPos };
             }
 
+            // Reset all per-batch transient state
             this.context = context;
-
-            // Clearance above Z0 to switch from G0 to G1.
-            // This saves time compared to plunging from Travel Z.
-            this.FEED_HEIGHT = this.context.machine.feedHeight;
-            const machineReadyPlans = [];
-
-            // Initialize current position.
+            this.FEED_HEIGHT = context.machine.feedHeight;
             this.currentPosition = { ...initialPos };
+
+            const machineReadyPlans = [];
 
             this.debug(`Starting Batch. Initial Pos: Z${this.currentPosition.z.toFixed(3)}`, this.currentPosition);
 
@@ -192,6 +173,21 @@
                     continue;
                 }
 
+                // 3D contour macro (V-Carve, Relief): every command
+                // carries its own Z. Handles its own approach/plunge/
+                // retract — bypasses the 2.5D depth-pass machinery.
+                if (planMetadata.is3DContour) {
+                    this.debug(`Processing 3D Contour ${i + 1}/${toolpathPlans.length}`);
+                    const contourPlan = this.process3DContourPlan(plan);
+                    machineReadyPlans.push(contourPlan);
+                    this.currentPosition = {
+                        x: planMetadata.exitPoint?.x ?? this.currentPosition.x,
+                        y: planMetadata.exitPoint?.y ?? this.currentPosition.y,
+                        z: this.context.machine.travelZ
+                    };
+                    continue;
+                }
+
                 // Connection Move Logic
                 const linkType = planMetadata.optimization?.linkType || 'rapid';
                 let isMultiDepthPlunge = false;
@@ -239,24 +235,25 @@
                     );
                     connectionPlan.metadata.type = 'staydown_link';
                 } else { 
-                // Rapid Link or Retract if needed
-                if (this.currentPosition.z < this.context.machine.travelZ) {
-                    connectionPlan.addRapid(null, null, this.context.machine.travelZ);
-                    this.currentPosition.z = this.context.machine.travelZ;
+                    // Rapid Link or Retract if needed
+                    if (this.currentPosition.z < this.context.machine.travelZ) {
+                        connectionPlan.addRapid(null, null, this.context.machine.travelZ);
+                        this.currentPosition.z = this.context.machine.travelZ;
+                    }
+
+                    // Move XY - only if not already at target position
+                    const atTargetXY = Math.hypot(
+                        planMetadata.entryPoint.x - this.currentPosition.x,
+                        planMetadata.entryPoint.y - this.currentPosition.y
+                    ) < 0.01;
+
+                    if (!atTargetXY) {
+                        connectionPlan.addRapid(planMetadata.entryPoint.x, planMetadata.entryPoint.y, null);
+                    }
+
+                    connectionPlan.metadata.type = 'rapid_link';
                 }
 
-                // Move XY - only if not already at target position
-                const atTargetXY = Math.hypot(
-                    planMetadata.entryPoint.x - this.currentPosition.x,
-                    planMetadata.entryPoint.y - this.currentPosition.y
-                ) < 0.01;
-
-                if (!atTargetXY) {
-                    connectionPlan.addRapid(planMetadata.entryPoint.x, planMetadata.entryPoint.y, null);
-                }
-
-                connectionPlan.metadata.type = 'rapid_link';
-            }
                 machineReadyPlans.push(connectionPlan);
 
                 this.currentPosition.x = planMetadata.entryPoint.x;
@@ -349,6 +346,37 @@
             return { plans: machineReadyPlans, endPos: this.currentPosition };
         }
 
+        /**
+         * Complete machining sequence for one 3D contour plan (V-Carve
+         * chain, relief raster): retract → rapid XY to entry → rapid to
+         * feed height → plunge to the chain's first-point Z → pass the
+         * commands through VERBATIM (each carries its own Z) → retract.
+         */
+        process3DContourPlan(purePlan) {
+            const meta = purePlan.metadata;
+            const machinePlan = new ToolpathPlan(purePlan.operationId);
+            Object.assign(machinePlan.metadata, meta);
+
+            const entry = meta.optimization?.optimizedEntryPoint || meta.entryPoint;
+            const plungeRate = meta.plungeRate || this.context.cutting.plungeRate;
+
+            if (this.currentPosition.z < this.context.machine.travelZ) {
+                machinePlan.addRapid(null, null, this.context.machine.travelZ);
+            }
+            machinePlan.addRapid(entry.x, entry.y, null);
+            if (this.context.machine.travelZ > this.FEED_HEIGHT) {
+                machinePlan.addRapid(null, null, this.FEED_HEIGHT);
+            }
+            machinePlan.addLinear(null, null, entry.z, plungeRate);
+
+            for (const cmd of purePlan.commands) {
+                machinePlan.addCommand({ ...cmd });
+            }
+
+            machinePlan.addRetract(this.context.machine.travelZ);
+            return machinePlan;
+        }
+
         generateEntryMove(plan, planMetadata, entryType) {
             const cutDepth = planMetadata.entryPoint.z;
             const entryPoint = planMetadata.entryPoint;
@@ -382,7 +410,7 @@
                 return;
             }
 
-            const arcCW = this._determineWinding(plan.metadata.context);
+            const arcCW = this.determineWinding(plan.metadata.context);
             const angleDir = arcCW ? -1 : 1;
 
             const toolDiameter = this.context.tool.diameter;
@@ -460,8 +488,7 @@
 
             // Check if current post-processor supports canned cycles
             const postProcessorName = planContext.gcode.postProcessor;
-            const processorInfo = window.pcbcam.gcodeGenerator.getProcessorInfo(postProcessorName);
-            const supportsCanned = processorInfo?.capabilities?.supportsCannedCycles;
+            const supportsCanned = planContext.gcode.supportsCannedCycles;
 
             if (this.currentPosition.z < machine.travelZ) {
                 machinePlan.addRapid(null, null, machine.travelZ);
@@ -537,7 +564,7 @@
             // Feed Height
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
 
-            const arcCW = this._determineWinding(purePlan.metadata.context);
+            const arcCW = this.determineWinding(purePlan.metadata.context);
 
             if (primitiveType === 'obround') {
                 this.generateSlotHelix(machinePlan, purePlan, arcCW);
@@ -657,7 +684,7 @@
             const minHelixDia = this.context.config.entry?.drilling?.minHelixDiameter || 0;
             const useHelix = entryType === 'helix' && (innerRing.radius * 2) >= minHelixDia;
 
-            const arcCW = this._determineWinding(purePlan.metadata.context);
+            const arcCW = this.determineWinding(purePlan.metadata.context);
 
             machinePlan.addRapid(initialEntryX, initialEntryY, this.context.machine.travelZ);
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
@@ -667,15 +694,15 @@
             const finalDepth = depthLevels[depthLevels.length - 1];
             if (rings.length === 1 && useHelix) {
                 // Update currentAngle with wherever the helix stops
-                currentAngle = this._helixDownRing(machinePlan, innerRing, currentAngle, 0, finalDepth, feedRate, toolDiameter, arcCW);
-                this._fullCircleAtDepth(machinePlan, innerRing, currentAngle, finalDepth, feedRate, arcCW);
+                currentAngle = this.helixDownRing(machinePlan, innerRing, currentAngle, 0, finalDepth, feedRate, toolDiameter, arcCW);
+                this.fullCircleAtDepth(machinePlan, innerRing, currentAngle, finalDepth, feedRate, arcCW);
 
             } else {
                 for (let d = 0; d < depthLevels.length; d++) {
                     const targetZ = depthLevels[d];
                     if (useHelix) {
                         // Update currentAngle with wherever the helix stops
-                        currentAngle = this._helixDownRing(machinePlan, innerRing, currentAngle, currentZ, targetZ, feedRate, toolDiameter, arcCW);
+                        currentAngle = this.helixDownRing(machinePlan, innerRing, currentAngle, currentZ, targetZ, feedRate, toolDiameter, arcCW);
                     } else {
                         // Dynamically calculate the plunge point based on current angle
                         const plungeX = center.x + innerRing.radius * Math.cos(currentAngle);
@@ -693,7 +720,7 @@
                         }
 
                         // Run the 360 clear starting exactly from the current angle
-                        this._fullCircleAtDepth(machinePlan, ring, currentAngle, targetZ, feedRate);
+                        this.fullCircleAtDepth(machinePlan, ring, currentAngle, targetZ, feedRate);
                     }
                     if (rings.length > 1 && d < depthLevels.length - 1) {
                         // Return to the inner ring exactly along the current angle
@@ -718,7 +745,7 @@
          * Helical descent along a single ring between two Z levels.
          * Called once per depth stage, NOT once for the full hole depth.
          */
-        _helixDownRing(machinePlan, ring, startAngle, fromZ, toZ, feedRate, toolDiameter, arcCW) {
+        helixDownRing(machinePlan, ring, startAngle, fromZ, toZ, feedRate, toolDiameter, arcCW) {
             const center = ring.center;
             const radius = ring.radius;
 
@@ -761,7 +788,7 @@
         /**
          * Single full-circle cleanup pass on a ring at a given depth.
          */
-        _fullCircleAtDepth(machinePlan, ring, startAngle, depth, feedRate, arcCW) {
+        fullCircleAtDepth(machinePlan, ring, startAngle, depth, feedRate, arcCW) {
             const center = ring.center;
             const radius = ring.radius;
 
@@ -791,7 +818,7 @@
             const toolDiameter = purePlan.metadata.toolDiameter;
 
             const innerRing = rings[0];
-            const arcCW = this._determineWinding(purePlan.metadata.context);
+            const arcCW = this.determineWinding(purePlan.metadata.context);
 
             // Plunge exactly where the toolpath begins to avoid flat travel cuts
             const innerEntry = arcCW ? innerRing.pB : innerRing.pC;
@@ -812,14 +839,14 @@
 
             // Single-ring shortcut
             if (rings.length === 1 && useHelix) {
-                this._helixDownObround(machinePlan, innerRing, 0, finalDepth, plungeRate, feedRate, toolDiameter, arcCW);
-                this._obroundLoopAtDepth(machinePlan, innerRing, finalDepth, feedRate, arcCW);
+                this.helixDownObround(machinePlan, innerRing, 0, finalDepth, plungeRate, feedRate, toolDiameter, arcCW);
+                this.obroundLoopAtDepth(machinePlan, innerRing, finalDepth, feedRate, arcCW);
             } else {
                 // Multi-ring depth-staged loop
                 for (let d = 0; d < depthLevels.length; d++) {
                     const targetZ = depthLevels[d];
                     if (useHelix) {
-                        this._helixDownObround(machinePlan, innerRing, currentZ, targetZ, plungeRate, feedRate, toolDiameter, arcCW);
+                        this.helixDownObround(machinePlan, innerRing, currentZ, targetZ, plungeRate, feedRate, toolDiameter, arcCW);
                     } else {
                         machinePlan.addLinear(innerEntry.x, innerEntry.y, targetZ, plungeRate);
                     }
@@ -831,7 +858,7 @@
                             const ringTransition = arcCW ? ring.pC : ring.pB;
                             machinePlan.addLinear(ringTransition.x, ringTransition.y, targetZ, feedRate);
                         }
-                        this._obroundLoopAtDepth(machinePlan, ring, targetZ, feedRate, arcCW);
+                        this.obroundLoopAtDepth(machinePlan, ring, targetZ, feedRate, arcCW);
                     }
 
                     if (rings.length > 1 && d < depthLevels.length - 1) {
@@ -851,7 +878,7 @@
          * Helical descent along an obround ring between two Z levels.
          * Z change is distributed across the two cap arcs; linear segments stay flat.
          */
-        _helixDownObround(machinePlan, ring, fromZ, toZ, plungeRate, feedRate, toolDiameter, arcCW) {
+        helixDownObround(machinePlan, ring, fromZ, toZ, plungeRate, feedRate, toolDiameter, arcCW) {
             const deltaZ = Math.abs(toZ - fromZ);
             if (deltaZ < 1e-6) return;
 
@@ -900,7 +927,7 @@
          * Single full obround cleanup loop at constant depth.
          * CW order: A → D → C(arc) → B → A(arc)
          */
-        _obroundLoopAtDepth(machinePlan, ring, depth, feedRate, arcCW) {
+        obroundLoopAtDepth(machinePlan, ring, depth, feedRate, arcCW) {
             const pA = ring.pA, pB = ring.pB, pC = ring.pC, pD = ring.pD;
             const cStart = ring.startCapCenter, cEnd = ring.endCapCenter;
 
@@ -977,7 +1004,7 @@
             machinePlan.addRetract(this.context.machine.travelZ);
         }
 
-        _determineWinding(ctx) {
+        determineWinding(ctx) {
             // Drill macros are mirror-agnostic since the geometry translator naturally handles point swapping during mirroring.
             const isClimb = true; // Enforced until UI supports conventional routing
             return isClimb; // Climb milling an internal pocket translates to CW (true)
@@ -1026,12 +1053,9 @@
         }
 
         debug(message, data = null) {
-            // Prefer the Global UI Logger (Sends to Status Panel + Console)
-            if (window.pcbcam && window.pcbcam.ui && window.pcbcam.ui.debug) {
-                // Pass the tag as part of the message so UI formats it correctly
-                window.pcbcam.ui.debug(`[MachineProcessor] ${message}`, data);
-                return;
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[MachineProcessor] ${message}`, data)
+                 : console.log(`[MachineProcessor] ${message}`);
         }
     }
 

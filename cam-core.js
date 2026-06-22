@@ -4,41 +4,25 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const EPSILON = C.precision.epsilon;
     const PRECISION = C.precision.coordinate;
-    const opsConfig = D.operations;
     const debugState = D.debug;
 
-    class PCBCamCore {
+    class CamCore {
         constructor(options = {}) {
             // Core data
             this.operations = [];
+            this.operationIndex = new Map();
             this.nextOperationId = 1;
 
             // Toolpath management
@@ -61,20 +45,9 @@
 
             // Initialize fileTypes from config
             this.fileTypes = {};
-            Object.keys(opsConfig).forEach(type => {
-                const op = opsConfig[type];
-                if (op) {
-                    this.fileTypes[type] = {
-                        extensions: op.extensions || [],
-                        description: op.name || `Files for ${type} operation`,
-                        icon: op.icon || '📄',
-                        color: op.color || '#888888' // Review - color and icon/emoji
-                    };
-                }
-            });
 
-            // Settings
-            this.settings = this.loadSettings();
+            // Settings — populated by controller via loadSettings(storageKey)
+            this.settings = JSON.parse(JSON.stringify(D));
 
             // Statistics
             this.stats = {
@@ -89,22 +62,58 @@
                 toolpaths: 0
             };
 
-            // Coordinate system
-            this.coordinateSystem = null;
+            // Parser registry — populated by app controllers
+            this.parsers = new Map();
+
+            // Universal workspace state
+            // Scene owns the geometry tree, selection, the global workspace
+            // transform (origin/rotation/mirror), spatial queries (pick,
+            // marquee, viewport), AND coordinate-space conversions.
+            // sceneInteraction is kept as an alias so existing call sites
+            // (tools, readouts, buildToolContext) work unchanged.
+            this.scene = (typeof Scene !== 'undefined') ? new Scene() : null;
+            this.sceneInteraction = this.scene;
+            this.stock = null;
+
+            // Pipeline type: 'cnc' | 'laser' | 'hybrid'
+            // Set by the application controller via setPipelineType().
+            // Core methods use this instead of reaching to window globals.
+            this.pipelineType = 'cnc';
+
+            // Initialise scene with an empty 100×100 board so the renderer
+            // has something to fit on before any geometry loads.
+            if (this.scene) this.scene.initializeEmptyBoardBounds();
 
             // Geometry processors
             this.geometryProcessor = null;
             this.geometryOffsetter = null;
             this.processorInitialized = false;
             this.initializationPromise = null;
+        }
 
-            this.initializeProcessors();
+        /**
+         * Sets up allowed file extensions and UI colors based on the App Profile.
+         */
+        setFileTypes(fileTypesConfig) {
+            this.fileTypes = {};
+            if (!fileTypesConfig) return;
+
+            Object.keys(fileTypesConfig).forEach(type => {
+                const op = fileTypesConfig[type];
+                if (op) {
+                    this.fileTypes[type] = {
+                        extensions: op.extensions || [],
+                        description: op.description || `Files for ${type} operation`,
+                        icon: op.icon || 'icon-file',
+                        color: op.color || '#888888'
+                    };
+                }
+            });
         }
 
         /**
          * Handler Registry
          */
-
         registerHandler(type, handler) {
             this.handlers.set(type, handler);
             this.debug(`Registered handler for '${type}': ${handler.constructor.name}`);
@@ -121,7 +130,6 @@
         /**
          * Processor Initialization
          */
-
         async initializeProcessors() {
             if (this.isInitializing || this.isInitialized) {
                 console.log('Processors already initializing or initialized');
@@ -133,8 +141,16 @@
 
             // Initialize GeometryProcessor
             if (typeof GeometryProcessor !== 'undefined') {
+                const scale = this.appProfile.clipper2scale;
+                if (!scale || !Number.isFinite(scale)) {
+                    console.error(`[Core] clipper2scale is invalid (${scale}). Check that the app profile loaded correctly.`);
+                    this.isInitializing = false;
+                    return false;
+                }
+
                 this.geometryProcessor = new GeometryProcessor({
-                    preserveOriginals: true
+                    preserveOriginals: true,
+                    clipper2scale: scale
                 });
 
                 // Initialize GeometryOffsetter
@@ -213,8 +229,39 @@
             this.debug('Tool library set');
         }
 
+        /**
+         * Registers a parser for a file extension.
+         * @param {string} extension - e.g. '.svg', '.drl', '.gbr'
+         * @param {Object} parser - Must have a .parse(content) method
+         */
+        registerParser(extension, parser) {
+            this.parsers.set(extension.toLowerCase(), parser);
+            this.debug(`Registered parser for ${extension}: ${parser.constructor.name}`);
+        }
+
+        getParser(fileName) {
+            const ext = this.getFileExtension(fileName);
+            return this.parsers.get(ext) || null;
+        }
+
+        /**
+         * Sets the active pipeline type. Called by the application
+         * controller during initialization and pipeline switches.
+         * Core methods read this.pipelineType instead of window globals.
+         */
+        setPipelineType(type) {
+            if (!['cnc', 'laser', 'hybrid'].includes(type)) {
+                console.warn(`[Core] Invalid pipeline type: ${type}, defaulting to 'cnc'`);
+                type = 'cnc';
+            }
+            this.pipelineType = type;
+            this.debug(`Pipeline type set: ${type}`);
+        }
+
+        // REVIEW - This seems redundant? Processor is/should always initialize and if it doesn't it'll crash something else?
         async ensureProcessorReady() {
             if (!this.processorInitialized && this.initializationPromise) {
+                // REVIEW - logging?.wasmOperations doesn't exist?
                 if (debugState.logging?.wasmOperations) {
                     console.log('Waiting for Clipper2...');
                 }
@@ -230,11 +277,12 @@
          * Settings
          */
 
-        loadSettings() {
+        loadSettings(storageKey) {
+            this.settingsStorageKey  = storageKey;
             const defaults = JSON.parse(JSON.stringify(D));
 
             try {
-                const raw = localStorage.getItem(C.storageKeys.settings);
+                const raw = localStorage.getItem(this.settingsStorageKey );
                 if (!raw) return defaults;
 
                 const saved = JSON.parse(raw);
@@ -254,34 +302,8 @@
                     delete saved.laser.profiles; 
                 }
 
-                // Deep Merge Utility
-                const isObject = item => (item && typeof item === 'object' && !Array.isArray(item));
-                const mergeDeep = (target, ...sources) => {
-                    if (!sources.length) return target;
-                    const source = sources.shift();
-                    if (isObject(target) && isObject(source)) {
-                        for (const key in source) {
-                            if (isObject(source[key])) {
-                                if (!target[key]) Object.assign(target, { [key]: {} });
-                                mergeDeep(target[key], source[key]);
-                            } else {
-                                Object.assign(target, { [key]: source[key] });
-                            }
-                        }
-                    }
-                    return mergeDeep(target, ...sources);
-                };
-
                 // Safely deep merge saved settings over defaults
                 const mergedSettings = mergeDeep({}, defaults, saved);
-
-                // Handle specific legacy fallbacks REVIEW - Is this still necessary?
-                if (saved.gcode?.startCode !== undefined && mergedSettings.gcode.userStartCode === undefined) {
-                    mergedSettings.gcode.userStartCode = saved.gcode.startCode;
-                }
-                if (saved.gcode?.endCode !== undefined && mergedSettings.gcode.userEndCode === undefined) {
-                    mergedSettings.gcode.userEndCode = saved.gcode.endCode;
-                }
 
                 return mergedSettings;
             } catch (error) {
@@ -292,7 +314,7 @@
 
         saveSettings() {
             try {
-                localStorage.setItem('pcbcam-settings', JSON.stringify(this.settings));
+                localStorage.setItem(this.settingsStorageKey , JSON.stringify(this.settings));
             } catch (error) {
                 console.warn('Error saving settings:', error);
             }
@@ -313,21 +335,29 @@
          * Operation CRUD
          */
 
-        createOperation(operationType, file) {
-            const opConfig = opsConfig[operationType] || opsConfig.isolation;
+        /**
+         * Creates a new operation.
+         * @param {string} operationType - 'isolation', 'clearing', 'profile', 'pocket', etc.
+         * @param {Object} source - Either a File object or { label: string }
+         * @returns {Object} The created operation, registered in core.operations[]
+         */
+        createOperation(operationType, source) {
             const fileType = this.fileTypes[operationType];
+
+            // Detect source type: File object vs shape descriptor
+            const isFile = source instanceof File || (source && source.size !== undefined && source.lastModified !== undefined);
 
             const operation = {
                 id: `op_${this.nextOperationId++}`,
                 type: operationType,
                 file: {
-                    name: file.name,
+                    name: isFile ? source.name : (source?.label || operationType),
                     content: null,
-                    size: file.size,
-                    lastModified: file.lastModified
+                    size: isFile ? source.size : 0,
+                    lastModified: isFile ? source.lastModified : Date.now()
                 },
                 parsed: null,
-                primitives: null,
+                primitives: isFile ? null : [],
                 bounds: null,
                 error: null,
                 warnings: null,
@@ -347,7 +377,7 @@
             };
 
             this.operations.push(operation);
-
+            this.indexOperation(operation);
             return operation;
         }
 
@@ -355,29 +385,47 @@
             const index = this.operations.findIndex(op => op.id === operationId);
             if (index === -1) return false;
 
+            this.unindexOperation(operationId);
             this.operations.splice(index, 1);
             this.toolpaths.delete(operationId);
 
             this.updateStatistics();
-            this.updateCoordinateSystem();
+            this.updateBoardBounds();
 
             return true;
         }
 
         resetOperationState(operationId) {
-            const operation = this.operations.find(op => op.id === operationId);
+            const operation = this.getOperation(operationId);
             if (!operation) return false;
 
             operation.offsets = [];
             operation.preview = null;
             operation.exportReady = false;
             delete operation.exportMetadata;
-            operation._debugStrokes = [];
+            operation.debugStrokes = [];
             
             operation.isInvalidated = false;
             operation.invalidatedReason = null;
 
             return true;
+        }
+
+        /**
+         * O(1) operation lookup by ID. Returns undefined if not found.
+         */
+        getOperation(id) {
+            return this.operationIndex.get(id);
+        }
+
+        /** Call whenever an operation is added to the array. */
+        indexOperation(operation) {
+            this.operationIndex.set(operation.id, operation);
+        }
+
+        /** Call whenever an operation is removed from the array. */
+        unindexOperation(operationId) {
+            this.operationIndex.delete(operationId);
         }
 
         /**
@@ -389,7 +437,7 @@
          * @returns {boolean} success
          */
         generateCNCPreview(operationId) {
-            const operation = this.operations.find(op => op.id === operationId);
+            const operation = this.getOperation(operationId);
             if (!operation) return false;
 
             if (!operation.offsets || operation.offsets.length === 0) {
@@ -433,7 +481,7 @@
          * Marks the operation as not-export-ready without deleting data.
          */
         invalidateOperationState(operationId) {
-            const operation = this.operations.find(op => op.id === operationId);
+            const operation = this.getOperation(operationId);
             if (!operation) return false;
 
             operation.exportReady = false;
@@ -447,7 +495,7 @@
          * Called by UI when user clicks a trash icon on an offset/preview node.
          */
         deleteOperationGeometry(operationId, geometryType) {
-            const operation = this.operations.find(op => op.id === operationId);
+            const operation = this.getOperation(operationId);
             if (!operation) return false;
 
             if (geometryType === 'offsets_combined') {
@@ -470,30 +518,15 @@
 
         async parseOperation(operation) {
             try {
+                // REVIEW - this check never passes? This doesn't exist any more?
                 if (debugState.logging?.parseOperations) {
                     console.log(`Parsing ${operation.file.name}...`);
                 }
 
                 let parseResult;
-                const fileName = operation.file.name.toLowerCase();
+                const parser = this.getParser(operation.file.name);
 
-                if (fileName.endsWith('.svg')) {
-                    if (typeof SVGParser === 'undefined') {
-                        throw new Error('SVG parser not available');
-                    }
-                    const parser = new SVGParser();
-                    parseResult = parser.parse(operation.file.content);
-                } else if (operation.type === 'drill') {
-                    if (typeof ExcellonParser === 'undefined') {
-                        throw new Error('Excellon parser not available');
-                    }
-                    const parser = new ExcellonParser();
-                    parseResult = parser.parse(operation.file.content);
-                } else {
-                    if (typeof GerberParser === 'undefined') {
-                        throw new Error('Gerber parser not available');
-                    }
-                    const parser = new GerberParser();
+                if (parser) {
                     parseResult = parser.parse(operation.file.content);
                 }
 
@@ -606,6 +639,7 @@
                 this.updateStatistics();
                 operation.processed = true;
 
+                // REVIEW - this check never passes? This doesn't exist any more?
                 if (debugState.logging?.parseOperations) {
                     console.log(`Parsed ${operation.file.name}: ${operation.primitives.length} primitives`);
                 }
@@ -719,14 +753,6 @@
                             console.warn(`Primitive ${index} invalid bounds:`, bounds);
                         }
                         return;
-                    }
-
-                    if (debugState.validation?.validateCoordinates) {
-                        const maxCoord = C.geometry.maxCoordinate;
-                        if (Math.abs(bounds.minX) > maxCoord || Math.abs(bounds.minY) > maxCoord ||
-                            Math.abs(bounds.maxX) > maxCoord || Math.abs(bounds.maxY) > maxCoord) {
-                            console.warn(`Primitive ${index} exceeds max coordinate ${maxCoord}`);
-                        }
                     }
 
                     validPrimitives.push(primitive);
@@ -908,104 +934,11 @@
         }
 
         /*
-         * UNUSED FOR NOW
-         * Generates the full-board clearance polygon for copper clearing operations.
-         * This is fundamentally different from isolation clearance:
-         * - Isolation: expandedCopper − originalCopper = halo around traces
-         * - Clearing: boardBounds − copperFootprint = all unused copper area
-         *
-         * @param {Object} operation - The operation with parsed primitives.
-         * @param {number} padding - Extra padding beyond board bounds in mm.
-         * @returns {Array<PathPrimitive>} Raw polygon clearance zone.
+         * TO-DO
+         * Generates the full-board clearance polygon to remove all unused copper - requires a cutout file for an outer-edge. Implement a dedicated operation handler extension to trace-cutout?
          */
         /*
-        async _generateBoardClearance(operation, padding = 1.0) {
-            await this.ensureProcessorReady();
-
-            if (!operation.primitives || operation.primitives.length === 0) return [];
-
-            this.debug(`=== BOARD CLEARANCE GENERATION: padding=${padding.toFixed(3)}mm ===`);
-
-            // Board boundary rectangle
-            // Use coordinateSystem bounds if available, otherwise compute from all operations
-            let bounds = this.coordinateSystem?.boardBounds;
-            if (!bounds) {
-                // Fallback: compute bounds from all loaded operations
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                for (const op of this.operations) {
-                    if (op.bounds) {
-                        minX = Math.min(minX, op.bounds.minX);
-                        minY = Math.min(minY, op.bounds.minY);
-                        maxX = Math.max(maxX, op.bounds.maxX);
-                        maxY = Math.max(maxY, op.bounds.maxY);
-                    }
-                }
-                if (!isFinite(minX)) {
-                    this.debug('No valid bounds found for board clearance');
-                    return [];
-                }
-                bounds = { minX, minY, maxX, maxY };
-            }
-
-            // Create a rectangle primitive representing the board + padding
-            const boardRect = new PathPrimitive([{
-                points: [
-                    { x: bounds.minX - padding, y: bounds.minY - padding },
-                    { x: bounds.maxX + padding, y: bounds.minY - padding },
-                    { x: bounds.maxX + padding, y: bounds.maxY + padding },
-                    { x: bounds.minX - padding, y: bounds.maxY + padding },
-                    { x: bounds.minX - padding, y: bounds.minY - padding }
-                ],
-                isHole: false,
-                nestingLevel: 0,
-                parentId: null,
-                arcSegments: [],
-                curveIds: []
-            }], {
-                polarity: 'dark',
-                operationType: 'clearing',
-                operationId: operation.id
-            });
-
-            // Copper footprint from ALL copper operations
-            // Clearing removes copper that ISN'T traces/pads/regions.
-            // Gather primitives from isolation + clearing operations.
-            const copperPrimitives = [];
-            for (const op of this.operations) {
-                if ((op.type === 'isolation' || op.type === 'clearing') &&
-                    op.primitives && op.primitives.length > 0) {
-                    copperPrimitives.push(...op.primitives);
-                }
-            }
-
-            if (copperPrimitives.length === 0) {
-                this.debug('No copper primitives found — returning full board as clearance');
-                return [boardRect];
-            }
-
-            // Fuse copper without arc reconstruction (raw polygons for clean boolean)
-            this.geometryProcessor.clearProcessorCache();
-            const copperFootprint = await this.geometryProcessor.fuseGeometry(
-                copperPrimitives,
-                { enableArcReconstruction: false }
-            );
-
-            if (copperFootprint.length === 0) {
-                this.debug('Fusion produced no copper footprint — returning full board');
-                return [boardRect];
-            }
-
-            this.debug(`Board boundary: ${(bounds.maxX - bounds.minX).toFixed(1)} × ${(bounds.maxY - bounds.minY).toFixed(1)}mm + ${padding}mm padding`);
-            this.debug(`Copper footprint: ${copperFootprint.length} polygon(s)`);
-
-            // Boolean difference: board − copper
-            const clearanceZone = await this.geometryProcessor.difference([boardRect], copperFootprint);
-
-            this.debug(`Board clearance: ${clearanceZone.length} polygon(s)`);
-            this.debug(`=== BOARD CLEARANCE COMPLETE ===`);
-
-            return clearanceZone;
-        }
+        async generateUnusedCopperPolygon() {}
         */
 
         /**
@@ -1093,8 +1026,7 @@
          * @returns {Object} Strategy object ready for any handler
          */
         compileOperationParams(operation, params) {
-            const pipelineType = window.pcbcam?.pipelineState?.type || 'cnc';
-            const isLaser = pipelineType === 'laser' || pipelineType === 'hybrid';
+            const isLaser = this.pipelineType === 'laser' || this.pipelineType === 'hybrid';
             const exportFormat = isLaser ? this.settings.laser.exportFormat : null;
             const isPNG = exportFormat === 'png';
 
@@ -1126,7 +1058,7 @@
                     }
                 }
             } else {
-                stepOver = params.stepOver;
+                stepOver = params.stepOver !== undefined ? params.stepOver : params.drillStepOver;
             }
 
             // Clear strategy
@@ -1142,6 +1074,12 @@
             let combineOffsets = false;
 
             switch (operation.type) {
+                case 'drill':
+                    passes = 1;
+                    cutSide = isLaser ? (params.laserCutSide || 'inside') : 'inside';
+                    break;
+
+                // EasyTrace5000 operation types
                 case 'isolation':
                     if (isLaser) {
                         targetWidth = params.laserIsolationWidth || 0.4;
@@ -1154,7 +1092,7 @@
                 case 'clearing':
                     combineOffsets = true;
                     // No targetWidth — handler loop runs until geometry collapses.
-                    passes = C.ui.validation.maxAutoPasses || 500;
+                    passes = 500;
                     break;
 
                 case 'cutout':
@@ -1162,9 +1100,27 @@
                     cutSide = isLaser ? (params.laserCutSide || 'outside') : (params.cutSide || 'outside');
                     break;
 
-                case 'drill':
+                // EasyShape5000 operation types
+                case 'profile':
                     passes = 1;
-                    cutSide = isLaser ? (params.laserCutSide || 'inside') : 'inside';
+                    cutSide = params.cutSide || 'outside';
+                    break;
+
+                case 'pocket':
+                    combineOffsets = true;
+                    passes = 500;
+                    break;
+
+                case 'engrave': // Not wired
+                    passes = 1;
+                    cutSide = 'on';
+                    break;
+
+                case 'vcarve': // Not wired
+                case 'relief': // Not wired
+                    // Depth comes from the generated 3D geometry, not pass distances. No cutSide, no stepOver, single logical pass.
+                    passes = 1;
+                    combineOffsets = false;
                     break;
             }
 
@@ -1187,7 +1143,7 @@
         /**
          * Calculates the final Z-depth levels for a toolpath.
          */
-        _calculateDepthLevels(cutDepth, depthPerPass, multiDepth) {
+        calculateDepthLevels(cutDepth, depthPerPass, multiDepth) {
             // Ensure cutDepth is negative
             const finalDepth = Math.abs(cutDepth) * -1;
             const step = Math.abs(depthPerPass);
@@ -1214,22 +1170,45 @@
         }
 
         /**
-         * Returns the current coordinate-system transforms in a standard format.
-         * Single source of truth for buildToolpathContext and laser/stencil export.
+         * Returns the current workspace transform from the scene.
          */
         getTransforms() {
-            const boardCenter = this.coordinateSystem?.boardBounds ? {
-                x: this.coordinateSystem.boardBounds.centerX,
-                y: this.coordinateSystem.boardBounds.centerY
-            } : { x: 0, y: 0 };
+            if (!this.scene) {
+                return {
+                    origin: { x: 0, y: 0 }, rotation: 0, rotationCenter: null,
+                    mirrorX: false, mirrorY: false, mirrorCenter: { x: 0, y: 0 },
+                    matrix: TransformMath.identity(),
+                    machineMatrix: TransformMath.identity(),
+                    machineIsIdentity: true,
+                    windingFlipped: false
+                };
+            }
+            const t = this.scene.transform;
+
+            // Workspace matrix (rotation + mirror, NO origin) — still published
+            // separately because GraphicsExporter composes origin itself.
+            const wsMatrix = TransformMath.clone(this.scene.getWorkspaceMatrix());
+
+            // The machine matrix: T(−origin) x workspace. The only transform
+            // the toolpath pipeline applies, once, in GeometryTranslator.
+            // GCodeGenerator no longer subtracts origin.
+            const machineMatrix = TransformMath.multiply(
+                TransformMath.translation(-t.origin.x, -t.origin.y),
+                wsMatrix
+            );
 
             return {
-                origin: this.coordinateSystem?.getOriginPosition() || { x: 0, y: 0 },
-                rotation: this.coordinateSystem?.currentRotation || 0,
-                rotationCenter: this.coordinateSystem?.rotationCenter || null,
-                mirrorX: this.coordinateSystem?.mirrorX || false,
-                mirrorY: this.coordinateSystem?.mirrorY || false,
-                mirrorCenter: boardCenter
+                origin: { ...t.origin },
+                rotation: t.rotation,
+                rotationCenter: { ...t.rotationCenter },
+                mirrorX: t.mirrorX,
+                mirrorY: t.mirrorY,
+                mirrorCenter: { ...t.mirrorCenter },
+                // Derived, cloned so frozen contexts can't share the cache:
+                matrix: wsMatrix,
+                machineMatrix: machineMatrix,
+                machineIsIdentity: TransformMath.isIdentity(machineMatrix),
+                windingFlipped: this.scene.windingFlipped()
             };
         }
 
@@ -1242,7 +1221,7 @@
          * operation type names for geometric decisions.
          */
         buildToolpathContext(operationId, parameterManager) {
-            const operation = this.operations.find(op => op.id === operationId);
+            const operation = this.getOperation(operationId);
             if (!operation) {
                 throw new Error(`Operation ${operationId} not found.`);
             }
@@ -1250,9 +1229,27 @@
             // Get all parameters from manager
             const params = parameterManager.getAllParameters(operationId);
 
+            // Drill milling aliases — JSON can't have duplicate keys with different
+            // conditionals, so EasyShape's profile uses prefixed names (drillMultiDepth,
+            // drillDepthPerPass, drillEntryType) for drill-specific depth params that
+            // share names with profile/pocket params. Map them to the standard names
+            // the pipeline expects. EasyTrace's profile doesn't need this (its drill
+            // params use unique categories, not duplicate keys).
+            // REVIEW - Review if there's a better approach to this - there's already a new per app/operation input defaults override?
+            if (operation.type === 'drill' && params.millHoles) {
+                if (params.drillMultiDepth !== undefined && params.multiDepth === undefined)
+                    params.multiDepth = params.drillMultiDepth;
+                if (params.drillDepthPerPass !== undefined && params.depthPerPass === undefined)
+                    params.depthPerPass = params.drillDepthPerPass;
+                if (params.drillEntryType !== undefined && params.entryType === undefined)
+                    params.entryType = params.drillEntryType;
+            }
+
             // Get global settings
             const machine = this.settings.machine;
             const gcode = this.settings.gcode;
+
+            const processorInfo = this.gcodeGenerator?.getProcessorInfo(gcode.postProcessor);
 
             // Compute derived values
             const offsetDistances = (operation.offsets || []).map(o => o.distance);
@@ -1260,7 +1257,7 @@
             // Transform Values
             const transforms = this.getTransforms();
 
-            const depthLevels = this._calculateDepthLevels(
+            const depthLevels = this.calculateDepthLevels(
                 params.cutDepth,
                 params.depthPerPass,
                 params.multiDepth,
@@ -1269,8 +1266,7 @@
 
             // Laser context (null for CNC pipeline)
             let laserContext = null;
-            const controller = window.pcbcam;
-            if (controller && (controller.pipelineState.type === 'laser' || controller.pipelineState.type === 'hybrid')) {
+            if (this.pipelineType === 'laser' || this.pipelineType === 'hybrid') {
                 const laserMachine = this.settings.laser;
                 const strategy = this.compileOperationParams(operation, params);
 
@@ -1301,19 +1297,17 @@
 
                 // Global Settings
                 machine: {
-                    ...machine,
                     safeZ: machine.heights.safeZ,
                     travelZ: machine.heights.travelZ,
-                    probeZ: machine.heights.probeZ,
-                    homeZ: machine.heights.homeZ,
                     feedHeight: machine.heights.feedHeight,
-                    rapidFeed: machine.speeds.rapidFeed,
-                    probeFeed: machine.speeds.probeFeed,
-                    maxFeed: machine.speeds.maxFeed,
-                    maxAcceleration: machine.speeds.maxAcceleration
+                    rapidFeedRate: machine.speeds.rapidFeedRate,
+                    maxFeedRate: machine.speeds.maxFeedRate,
+                    spindleSpeed: machine.speeds.spindleSpeed,
                 },
                 // Processor-specific settings (Roland, Makera, etc.)
-                gcode: { ...gcode },
+                gcode: { ...gcode,
+                    supportsCannedCycles: processorInfo?.capabilities?.supportsCannedCycles
+                },
 
                 // Processor-specific settings (Roland, Makera, etc.)
                 processorSettings: { ...(this.settings.processorSettings || {}) },
@@ -1348,6 +1342,13 @@
                         tabWidth: params.tabWidth,
                         tabHeight: params.tabHeight,
                         cutSide: params.cutSide
+                    },
+                    vcarve: {
+                        vbitAngle: params.vbitAngle,
+                        vcarveMaxDepth: params.vcarveMaxDepth,
+                        vcarveStartDepth: params.vcarveStartDepth,
+                        vcarveFlatDepth: params.vcarveFlatDepth,
+                        useVcarveClearingTool: params.useVcarveClearingTool
                     }
                 },
 
@@ -1361,8 +1362,9 @@
                 transforms: transforms,
 
                 // Config References
+                // REVIEW - Are these still relevant? Do they still need to be linked like this?
                 config: {
-                    entry: D.toolpath.generation?.entry,
+                    entry: D.toolpath.generation.entry,
                     tabs: D.toolpath.tabs,
                     optimization: D.gcode.optimization,
                     precision: PRECISION,
@@ -1372,6 +1374,15 @@
                 // Laser-specific (only populated in laser/hybrid pipeline)
                 laser: laserContext
             };
+
+            if (this.settings.gcode.postProcessor === 'roland') {
+                this.preprocessRolandContext(context, operation);
+            }
+
+            // Prevent accidental mutation by downstream pipeline stages.
+            // TODO [METADATA-BLOAT] — Deep-freeze nested objects or replace
+            // plan.metadata.context references with explicit field copies.
+            Object.freeze(context);
 
             return context;
         }
@@ -1433,9 +1444,30 @@
                 .reduce((sum, data) => sum + (data.paths?.length || 0), 0);
         }
 
-        updateCoordinateSystem() {
-            if (this.coordinateSystem) {
-                this.coordinateSystem.analyzeCoordinateSystem(this.operations);
+        /**
+         * Recomputes scene.boardBounds from the aggregate of all operation
+         * bounds. Called after every operation parse/removal. EasyShape
+         * doesn't populate operations, so it calls
+         * scene.recomputeBoardBoundsFromShapes() instead.
+         * REVIEW - This may need to go into one of the unique modules then?
+         */
+        updateBoardBounds() {
+            if (!this.scene) return;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let hasData = false;
+            for (const op of this.operations) {
+                if (op.bounds) {
+                    if (op.bounds.minX < minX) minX = op.bounds.minX;
+                    if (op.bounds.minY < minY) minY = op.bounds.minY;
+                    if (op.bounds.maxX > maxX) maxX = op.bounds.maxX;
+                    if (op.bounds.maxY > maxY) maxY = op.bounds.maxY;
+                    hasData = true;
+                }
+            }
+            if (hasData) {
+                this.scene.setBoardBounds({ minX, minY, maxX, maxY });
+            } else {
+                this.scene.initializeEmptyBoardBounds();
             }
         }
 
@@ -1574,6 +1606,7 @@
                 safeZ: this.settings.machine.heights.safeZ,
                 travelZ: this.settings.machine.heights.travelZ,
                 maxSafeDepth: this.settings.machine.heights.maxSafeDepth,
+                maxFeed: this.settings.machine.speeds.maxFeedRate,
                 coolant: this.settings.machine.coolant,
                 vacuum: this.settings.machine.vacuum,
                 rolandModel: rolandSettings.rolandModel,
@@ -1586,11 +1619,11 @@
             const results = {};
 
             if (intent.singleFile) {
-                const result = await this._runCNCPipeline(intent.operationIds, intent.optimize !== false, genOptions, parameterManager);
+                const result = await this.runCNCPipeline(intent.operationIds, intent.optimize !== false, genOptions, parameterManager);
                 results['__combined__'] = result;
             } else {
                 for (const opId of intent.operationIds) {
-                    const op = this.operations.find(o => o.id === opId);
+                    const op = this.getOperation(opId);
                     if (!op) continue;
 
                     if (!op.preview || !op.preview.ready) {
@@ -1601,8 +1634,8 @@
                     const isDrill = op.type === 'drill';
                     const shouldSplitDrill = isDrill && intent.splitDrills;
 
-                    if (shouldSplitDrill && typeof DrillOperationHandler !== 'undefined') {
-                        const { milledPrimitives, peckGroups } = DrillOperationHandler.groupPrimitivesByDiameter(op);
+                    if (shouldSplitDrill && typeof DrillHandler !== 'undefined') {
+                        const { milledPrimitives, peckGroups } = DrillHandler.groupPrimitivesByDiameter(op);
 
                         const runWithPrimitives = async (primitives, resultKey, label) => {
                             const savedPreview = op.preview;
@@ -1610,7 +1643,7 @@
                             op.preview = { ...savedPreview, primitives, ready: true };
                             op.offsets = [{ ...savedOffsets[0], primitives }];
                             try {
-                                const result = await this._runCNCPipeline([op.id], intent.optimize !== false, genOptions, parameterManager);
+                                const result = await this.runCNCPipeline([op.id], intent.optimize !== false, genOptions, parameterManager);
                                 if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
                                     results[resultKey] = { ...result, label };
                                 }
@@ -1629,7 +1662,7 @@
                                 `drill ${group.diameter}mm: ${op.file.name} (${group.primitives.length} holes)`);
                         }
                     } else {
-                        const result = await this._runCNCPipeline([op.id], intent.optimize !== false, genOptions, parameterManager);
+                        const result = await this.runCNCPipeline([op.id], intent.optimize !== false, genOptions, parameterManager);
                         if (result?.gcode && !result.gcode.startsWith('; Generation Failed')) {
                             results[opId] = { ...result, label: `${op.type}: ${op.file.name}` };
                         }
@@ -1643,12 +1676,12 @@
         /**
          * Internal: buildContext → executePipeline → generate G-code → metrics.
          */
-        async _runCNCPipeline(operationIds, optimize, genOptions, parameterManager) {
+        async runCNCPipeline(operationIds, optimize, genOptions, parameterManager) {
             const operationContextPairs = [];
 
             for (const opId of operationIds) {
                 try {
-                    const operation = this.operations.find(o => o.id === opId);
+                    const operation = this.getOperation(opId);
                     if (!operation) throw new Error(`Operation ${opId} not found.`);
 
                     if (parameterManager.hasUnsavedChanges(opId)) {
@@ -1656,11 +1689,6 @@
                     }
 
                     const ctx = this.buildToolpathContext(opId, parameterManager);
-
-                    if (genOptions.postProcessor === 'roland') {
-                        this._preprocessRolandContext(ctx, operation);
-                    }
-
                     operationContextPairs.push({ operation, context: ctx });
                 } catch (error) {
                     console.warn(`Skipping operation ${opId}: ${error.message}`);
@@ -1689,7 +1717,7 @@
          * Roland-specific context preprocessing.
          * Enforces machine-safe settings based on the selected Roland profile.
          */
-        _preprocessRolandContext(ctx, operation) {
+        preprocessRolandContext(ctx, operation) {
             const rolandSettings = ctx.processorSettings?.roland || {};
             const rolandModel = rolandSettings.rolandModel;
 
@@ -1752,7 +1780,7 @@
             const isWebKit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
 
             // CNC
-            const cncOps = (intent.cncOperationIds || []).map(id => this.operations.find(o => o.id === id)).filter(Boolean);
+            const cncOps = (intent.cncOperationIds || []).map(id => this.getOperation(id)).filter(Boolean);
             if (cncOps.length > 0) {
                 const processorInfo = this.gcodeGenerator.getProcessorInfo(this.settings.gcode.postProcessor);
                 const cncExt = processorInfo.fileExtension;
@@ -1808,7 +1836,7 @@
             }
 
             // Laser
-            const laserOps = (intent.laserOperationIds || []).map(id => this.operations.find(o => o.id === id)).filter(Boolean);
+            const laserOps = (intent.laserOperationIds || []).map(id => this.getOperation(id)).filter(Boolean);
             if (laserOps.length > 0) {
                 const unready = laserOps.filter(op => !op.offsets || op.offsets.length === 0);
                 if (unready.length > 0) {
@@ -1821,6 +1849,7 @@
                         format: laserSettings.exportFormat,
                         dpi: laserSettings.exportDPI,
                         padding: intent.laserPadding ?? laserSettings.exportPadding,
+                        includeComments: intent.includeComments,
                         singleFile: intent.singleFile,
                         baseName: intent.baseName,
                         layerColors: laserSettings.layerColors,
@@ -1840,7 +1869,7 @@
             }
 
             // Stencil
-            const stencilOps = (intent.stencilOperationIds || []).map(id => this.operations.find(o => o.id === id)).filter(Boolean);
+            const stencilOps = (intent.stencilOperationIds || []).map(id => this.getOperation(id)).filter(Boolean);
             if (stencilOps.length > 0) {
                 const unready = stencilOps.filter(op => !op.offsets || op.offsets.length === 0);
                 if (unready.length > 0) {
@@ -1850,6 +1879,7 @@
                         layerColors: { stencil: '#000000' },
                         format: 'svg',
                         padding: intent.stencilPadding ?? 5.0,
+                        includeComments: intent.includeComments,
                         singleFile: intent.singleFile,
                         baseName: intent.baseName + '-stencil',
                         heatManagement: 'off',
@@ -1940,14 +1970,26 @@
                 dpi,
                 padding,
                 transforms,
-                bounds: this.coordinateSystem?.boardBounds,
+                bounds: this.scene?.boardBounds,
                 heatManagement: exportOverrides.heatManagement ?? ((laserSettings.heatManagement !== 'off' && format !== 'png') ? laserSettings.heatManagement : 'off'),
                 reverseCutOrder: exportOverrides.reverseCutOrder ?? laserSettings.reverseCutOrder ?? false,
                 svgGrouping: exportOverrides.svgGrouping ?? laserSettings.svgGrouping ?? 'layer',
                 colorPerPass: exportOverrides.colorPerPass ?? laserSettings.colorPerPass ?? false,
                 palette: exportOverrides.palette ?? activeProfile.palette ?? null,
-                paletteLumping: exportOverrides.paletteLumping ?? activeProfile.paletteLumping ?? false
+                paletteLumping: exportOverrides.paletteLumping ?? activeProfile.paletteLumping ?? false,
+                includeComments: exportOverrides.includeComments
             };
+
+            if (exportOverrides.includeComments) {
+                commonOptions.commentBlock = commonOptions.commentBlock || [];
+                const appName = this.appProfile.meta.app;
+                commonOptions.commentBlock.push(`${appName} SVG Export`);
+                commonOptions.commentBlock.push(`Date: ${new Date().toLocaleString()}`);
+                commonOptions.commentBlock.push(`Operations (${operations.length}):`);
+                operations.forEach(op => {
+                    commonOptions.commentBlock.push(`  - ${op.type}: ${op.file.name}`);
+                });
+            }
 
             const layerColors = exportOverrides.layerColors || laserSettings.layerColors || {};
 
@@ -2080,5 +2122,31 @@
         }
     }
 
-    window.PCBCamCore = PCBCamCore;
+    // Internal Utilities
+
+    /**
+     * Deep-merges one or more source objects into target.
+     * Arrays are replaced, not concatenated. Pure utility — no class dependency.
+     */
+    function mergeDeep(target, ...sources) {
+        for (const source of sources) {
+            for (const key of Object.keys(source)) {
+                if (
+                    source[key] &&
+                    typeof source[key] === 'object' &&
+                    !Array.isArray(source[key]) &&
+                    target[key] &&
+                    typeof target[key] === 'object' &&
+                    !Array.isArray(target[key])
+                ) {
+                    mergeDeep(target[key], source[key]);
+                } else {
+                    target[key] = source[key];
+                }
+            }
+        }
+        return target;
+    }
+
+    window.CamCore = CamCore;
 })();

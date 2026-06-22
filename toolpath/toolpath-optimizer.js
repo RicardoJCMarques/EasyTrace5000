@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const EPSILON = C.precision.epsilon;
     const PRECISION = C.precision.coordinate;
     const debugState = D.debug;
@@ -63,6 +47,15 @@
          * Main optimization entry - returns ordered metadata array
          */
         optimize(pureGeometryPlans, startPos) {
+
+            // REVIEW - 3D toolpath skip, just a safeguard that could be moved/removed in the future with other guarantees they never reach the optimizer.
+            for (const plan of pureGeometryPlans) {
+                const m = plan.metadata;
+                m.skipReentry = m.isPeckMark || m.isDrillMilling || m.isCenterlinePath || m.is3DContour;
+                m.skipSimplify = m.is3DContour;
+                m.skipStaydown = m.is3DContour;
+            }
+
             const startTime = performance.now();
             this.resetStats();
             this.stats.originalPathCount = pureGeometryPlans?.length || 0;
@@ -206,7 +199,7 @@
             // Pre-calculate Bounding Boxes for all plans
             plans.forEach(plan => {
                 if (!plan.metadata.boundingBox) {
-                    this.calculatePlanBounds(plan);
+                    plan.computeBounds();
                 }
             });
 
@@ -315,26 +308,6 @@
                 sampled.push(points[idx]);
             }
             return sampled;
-        }
-
-        /**
-         * Helper to calculate Bounding Box if missing
-         */
-        calculatePlanBounds(plan) {
-            let minX = Infinity, minY = Infinity;
-            let maxX = -Infinity, maxY = -Infinity;
-
-            for (const cmd of plan.commands) {
-                if (cmd.x !== null) {
-                    minX = Math.min(minX, cmd.x);
-                    maxX = Math.max(maxX, cmd.x);
-                }
-                if (cmd.y !== null) {
-                    minY = Math.min(minY, cmd.y);
-                    maxY = Math.max(maxY, cmd.y);
-                }
-            }
-            plan.metadata.boundingBox = { minX, minY, maxX, maxY };
         }
 
         /**
@@ -724,6 +697,7 @@
         /**
          * Rotate circle entry to closest point
          */
+        // REVIEW - Not that this seems to be wired up properly yet but does it keep correct winding post-rotation? Only entry-point should move.
         rotateCircleEntry(plan, fromPos) {
             const center = plan.metadata.center;
             const radius = plan.metadata.radius;
@@ -737,7 +711,7 @@
             const dy = fromPos.y - center.y;
             const distToCenter = Math.sqrt(dx * dx + dy * dy);
 
-            if (distToCenter < 1e-6) return;
+            if (distToCenter < PRECISION) return;
 
             const newEntryX = center.x + (dx / distToCenter) * radius;
             const newEntryY = center.y + (dy / distToCenter) * radius;
@@ -1038,13 +1012,9 @@
         }
 
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[Optimizer] ${message}`, data);
-                } else {
-                    console.log(`[Optimizer] ${message}`);
-                }
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[Optimizer] ${message}`, data)
+                 : console.log(`[Optimizer] ${message}`);
         }
     }
 

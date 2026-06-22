@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const primitivesConfig = C.renderer.primitives;
     const debugState = D.debug;
 
@@ -150,7 +134,7 @@
                 const radius = toolDiameter / 2;
 
                 const toolRelation = primitive.properties.toolRelation || 'exact';
-                const lineColor = this._getStatusColor(toolRelation, color);
+                const lineColor = this.getStatusColor(toolRelation, color);
 
                 this.ctx.strokeStyle = lineColor;
                 this.ctx.lineWidth = lineWidth;
@@ -173,15 +157,15 @@
                 this.ctx.stroke();
 
                 // Crosshairs
-                this._renderCenterMarks(start, markSize, lineColor);
-                this._renderCenterMarks(end, markSize, lineColor);
+                this.renderCenterMarks(start, markSize, lineColor);
+                this.renderCenterMarks(end, markSize, lineColor);
                 return;
             }
 
             // Undersized Milling Path
             if (primitive.properties?.role === 'drill_milling_path') {
                 const toolRelation = primitive.properties.toolRelation || 'exact';
-                const statusColor = this._getStatusColor(toolRelation, color);
+                const statusColor = this.getStatusColor(toolRelation, color);
 
                 this.ctx.strokeStyle = statusColor;
                 this.ctx.lineWidth = lineWidth;
@@ -189,15 +173,15 @@
                 this.ctx.lineJoin = 'round';
                 this.ctx.setLineDash([]);
 
-                this._drawPrimitivePath(primitive);
+                this.drawPrimitivePath(primitive);
                 this.ctx.stroke();
 
                 if (primitive.properties?.originalSlot) {
                     const slot = primitive.properties.originalSlot;
-                    this._renderCenterMarks(slot.start, markSize, statusColor);
-                    this._renderCenterMarks(slot.end, markSize, statusColor);
+                    this.renderCenterMarks(slot.start, markSize, statusColor);
+                    this.renderCenterMarks(slot.end, markSize, statusColor);
                 } else if (primitive.center) {
-                    this._renderCenterMarks(primitive.center, markSize, statusColor);
+                    this.renderCenterMarks(primitive.center, markSize, statusColor);
                 }
                 return;
             }
@@ -215,13 +199,13 @@
             this.ctx.lineJoin = 'round';
             this.ctx.setLineDash([]);
 
-            this._drawPrimitivePath(primitive);
+            this.drawPrimitivePath(primitive);
             this.ctx.stroke();
 
             if (primitive.properties?.originalSlot) {
                 const slot = primitive.properties.originalSlot;
-                this._renderCenterMarks(slot.start, markSize, strokeColor);
-                this._renderCenterMarks(slot.end, markSize, strokeColor);
+                this.renderCenterMarks(slot.start, markSize, strokeColor);
+                this.renderCenterMarks(slot.end, markSize, strokeColor);
             }
         }
 
@@ -253,7 +237,7 @@
             this.ctx.lineJoin = 'round';
             this.ctx.setLineDash([]);
 
-            this._drawPrimitivePath(primitive);
+            this.drawPrimitivePath(primitive);
             this.ctx.stroke();
 
             // Yellow center marks for undersized drill ops
@@ -263,10 +247,10 @@
 
                 if (primitive.properties?.originalSlot) {
                     const slot = primitive.properties.originalSlot;
-                    this._renderCenterMarks(slot.start, markSize, warnColor);
-                    this._renderCenterMarks(slot.end, markSize, warnColor);
+                    this.renderCenterMarks(slot.start, markSize, warnColor);
+                    this.renderCenterMarks(slot.end, markSize, warnColor);
                 } else if (primitive.center) {
-                    this._renderCenterMarks(primitive.center, markSize, warnColor);
+                    this.renderCenterMarks(primitive.center, markSize, warnColor);
                 }
             }
 
@@ -289,7 +273,7 @@
                 const markRatio = this.cfg.mark.drillRatio;
                 const maxMarkSize = this.cfg.mark.drillSize;
                 const markSize = Math.min(maxMarkSize, r * markRatio);
-                this._renderCenterMarks(primitive.center, markSize, color);
+                this.renderCenterMarks(primitive.center, markSize, color);
 
             } else if (primitive.properties.role === 'drill_slot') {
                 const slot = primitive.properties.originalSlot;
@@ -311,8 +295,8 @@
                 const markRatio = this.cfg.mark.drillRatio;
                 const maxMarkSize = this.cfg.mark.drillSize;
                 const markSize = Math.min(maxMarkSize, radius * markRatio);
-                this._renderCenterMarks(slot.start, markSize, color);
-                this._renderCenterMarks(slot.end, markSize, color);
+                this.renderCenterMarks(slot.start, markSize, color);
+                this.renderCenterMarks(slot.end, markSize, color);
             }
         }
 
@@ -323,7 +307,7 @@
             const reducedPlunge = primitive.properties?.reducedPlunge;
             const isPreview = context.layer?.isPreview;
 
-            const baseColor = this._getStatusColor(toolRelation, this.core.colors.primitives.peckMarkGood);
+            const baseColor = this.getStatusColor(toolRelation, this.core.colors.primitives.peckMarkGood);
             const fc = this.core.frameCache;
             const strokeWidth = Math.max(this.cfg.stroke.peckMark * fc.invScale, fc.minWorldWidth);
 
@@ -341,7 +325,7 @@
                 this.ctx.stroke();
 
                 const markSize = Math.min(0.5, radius * 0.4);
-                this._renderCenterMarks(center, markSize, '#FFFFFF');
+                this.renderCenterMarks(center, markSize, '#FFFFFF');
 
                 if (reducedPlunge) {
                     this.ctx.strokeStyle = this.core.colors.primitives.peckMarkSlow;
@@ -367,7 +351,7 @@
             const markRatio = this.cfg.mark.peckRatio;
             const maxMarkSize = this.cfg.mark.peckSize;
             const markSize = Math.min(maxMarkSize, radius * markRatio);
-            this._renderCenterMarks(center, markSize, baseColor);
+            this.renderCenterMarks(center, markSize, baseColor);
 
             if (reducedPlunge) {
                 this.ctx.strokeStyle = this.core.colors.primitives.peckMarkSlow;
@@ -387,7 +371,7 @@
             const radius = toolDiameter / 2;
 
             const toolRelation = primitive.properties.toolRelation || 'exact';
-            const baseColor = this._getStatusColor(toolRelation, this.core.colors.primitives.peckMarkGood);
+            const baseColor = this.getStatusColor(toolRelation, this.core.colors.primitives.peckMarkGood);
 
             const dx = p2.x - p1.x;
             const dy = p2.y - p1.y;
@@ -410,8 +394,8 @@
             this.ctx.stroke();
 
             const markSize = Math.min(0.5, radius * 0.5);
-            this._renderCenterMarks(p1, markSize, '#FFFFFF');
-            this._renderCenterMarks(p2, markSize, '#FFFFFF');
+            this.renderCenterMarks(p1, markSize, '#FFFFFF');
+            this.renderCenterMarks(p2, markSize, '#FFFFFF');
 
             this.ctx.beginPath();
             this.ctx.moveTo(p1.x, p1.y);
@@ -427,7 +411,7 @@
         // Helper Methods
         // ========================================================================
 
-        _getStatusColor(toolRelation, defaultColor) {
+        getStatusColor(toolRelation, defaultColor) {
             const primColors = this.core.colors.primitives;
             switch (toolRelation) {
                 case 'oversized': return primColors.peckMarkError;
@@ -437,7 +421,7 @@
             }
         }
 
-        _renderCenterMarks(center, markSize, color) {
+        renderCenterMarks(center, markSize, color) {
             const fc = this.core.frameCache;
             const lineWidth = Math.max(this.cfg.stroke.centerMark * fc.invScale, fc.minWorldWidth);
 
@@ -453,7 +437,76 @@
             this.ctx.restore();
         }
 
-        _drawPrimitivePath(primitive) {
+        /**
+         * Lazily builds and caches a Path2D for a primitive in its LOCAL frame.
+         * Primitives are immutable once built, so the cache never needs
+         * invalidation. Callers apply any world transform on the ctx before
+         * fill/stroke. Used by selection highlighting to avoid re-walking
+         * contours into the canvas path on every pan/zoom frame.
+         */
+        getPath2D(primitive) {
+            if (primitive._path2DCache) return primitive._path2DCache;
+            const path = new Path2D();
+            const P = primitive;
+
+            if (P.type === 'path') {
+                if (P.contours) {
+                    for (const contour of P.contours) {
+                        if (!contour.points || contour.points.length === 0) continue;
+                        const arcs = (contour.arcSegments || []).slice().sort((a, b) => a.startIndex - b.startIndex);
+                        if (arcs.length > 0) {
+                            let idx = 0;
+                            path.moveTo(contour.points[0].x, contour.points[0].y);
+                            for (const arc of arcs) {
+                                for (let i = idx + 1; i <= arc.startIndex; i++) path.lineTo(contour.points[i].x, contour.points[i].y);
+                                if (arc.sweepAngle !== undefined) {
+                                    path.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.startAngle + arc.sweepAngle, arc.sweepAngle < 0);
+                                } else {
+                                    path.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
+                                }
+                                idx = arc.endIndex;
+                            }
+                            if (idx !== 0 || arcs.length === 0) {
+                                for (let i = idx + 1; i < contour.points.length; i++) path.lineTo(contour.points[i].x, contour.points[i].y);
+                            }
+                        } else {
+                            contour.points.forEach((p, i) => i === 0 ? path.moveTo(p.x, p.y) : path.lineTo(p.x, p.y));
+                        }
+                        if (P.closed !== false) path.closePath();
+                    }
+                }
+            } else if (P.type === 'circle') {
+                path.arc(P.center.x, P.center.y, P.radius, 0, Math.PI * 2);
+                path.closePath();
+            } else if (P.type === 'rectangle') {
+                path.rect(P.position.x, P.position.y, P.width, P.height);
+            } else if (P.type === 'arc') {
+                path.arc(P.center.x, P.center.y, P.radius, P.startAngle, P.endAngle, P.clockwise);
+            } else if (P.type === 'obround') {
+                // Highlight ignores obround rotation (rare for shapes); the main
+                // renderer still honors it. Good enough for a selection glow.
+                const x = P.position.x, y = P.position.y, w = P.width, h = P.height, r = Math.min(w, h) / 2;
+                if (w > h) {
+                    path.moveTo(x + r, y);
+                    path.lineTo(x + w - r, y);
+                    path.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+                    path.lineTo(x + r, y + h);
+                    path.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2);
+                } else {
+                    path.moveTo(x + w, y + r);
+                    path.lineTo(x + w, y + h - r);
+                    path.arc(x + r, y + h - r, r, 0, Math.PI);
+                    path.lineTo(x, y + r);
+                    path.arc(x + r, y + r, r, Math.PI, 0);
+                }
+                path.closePath();
+            }
+
+            primitive._path2DCache = path;
+            return path;
+        }
+
+        drawPrimitivePath(primitive) {
             this.ctx.beginPath();
 
             if (primitive.type === 'path') {
@@ -550,25 +603,25 @@
             if (primitive.type !== 'path') {
                 switch (primitive.type) {
                     case 'circle':
-                        this._renderCircle(primitive, fillColor, strokeColor);
+                        this.renderCircle(primitive, fillColor, strokeColor);
                         break;
                     case 'rectangle':
-                        this._renderRectangle(primitive, fillColor, strokeColor);
+                        this.renderRectangle(primitive, fillColor, strokeColor);
                         break;
                     case 'arc':
-                        this._renderArc(primitive, fillColor, strokeColor);
+                        this.renderArc(primitive, fillColor, strokeColor);
                         break;
                     case 'obround':
-                        this._renderObround(primitive, fillColor, strokeColor);
+                        this.renderObround(primitive, fillColor, strokeColor);
                         break;
                 }
                 return;
             }
 
-            this._renderPath(primitive, fillColor, strokeColor, isPreprocessed);
+            this.renderPath(primitive, fillColor, strokeColor, isPreprocessed);
         }
 
-        _renderPath(primitive, fillColor, strokeColor, isPreprocessed) {
+        renderPath(primitive, fillColor, strokeColor, isPreprocessed) {
             const shouldFill = (primitive.properties?.fill !== false && !primitive.properties?.stroke) || isPreprocessed;
             const shouldStroke = primitive.properties?.stroke === true && !isPreprocessed;
 
@@ -634,7 +687,7 @@
             }
         }
 
-        _renderCircle(primitive, fillColor, strokeColor) {
+        renderCircle(primitive, fillColor, strokeColor) {
             this.ctx.beginPath();
             this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius, 0, Math.PI * 2);
 
@@ -650,7 +703,7 @@
             }
         }
 
-        _renderRectangle(primitive, fillColor, strokeColor) {
+        renderRectangle(primitive, fillColor, strokeColor) {
             if (primitive.properties?.fill !== false) {
                 this.ctx.fillStyle = fillColor;
                 this.ctx.fillRect(primitive.position.x, primitive.position.y, primitive.width, primitive.height);
@@ -663,7 +716,7 @@
             }
         }
 
-        _renderArc(primitive, fillColor, strokeColor) {
+        renderArc(primitive, fillColor, strokeColor) {
             this.ctx.beginPath();
             this.ctx.arc(primitive.center.x, primitive.center.y, primitive.radius,
                 primitive.startAngle, primitive.endAngle, primitive.clockwise);
@@ -679,7 +732,7 @@
             this.ctx.stroke();
         }
 
-        _renderObround(primitive, fillColor, strokeColor) {
+        renderObround(primitive, fillColor, strokeColor) {
             const x = primitive.position.x;
             const y = primitive.position.y;
             const w = primitive.width;
@@ -766,16 +819,15 @@
             this.ctx.setLineDash([]);
 
             // The helper calls beginPath() internally
-            this._drawPrimitivePath(primitive);
+            this.drawPrimitivePath(primitive);
 
             this.ctx.stroke();
         }
 
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) console.log(`[Primitives] ${message}`, data);
-                else console.log(`[Primitives] ${message}`);
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[PrimitiveRenderer] ${message}`, data)
+                 : console.log(`[PrimitiveRenderer] ${message}`);
         }
     }
 

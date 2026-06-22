@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const PRECISION = C.precision.coordinate;
     const debugState = D.debug;
     const validationConfig = debugState.validation;
@@ -52,14 +36,11 @@
                 linesProcessed: 0,
                 objectsCreated: 0,
                 coordinatesParsed: 0,
-                invalidCoordinates: 0,
                 commandsProcessed: 0
             };
 
             // Coordinate validation
             this.coordinateValidation = {
-                validCoordinates: 0,
-                invalidCoordinates: 0,
                 coordinateRange: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
                 suspiciousCoordinates: []
             };
@@ -109,38 +90,6 @@
             }
 
             return negative ? -coord : coord;
-        }
-
-        validateCoordinates(coordinates, lineNumber = 0) {
-            // Check for finite values
-            if (!Number.isFinite(coordinates.x) || !Number.isFinite(coordinates.y)) {
-                this.errors.push(`Non-finite coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
-                this.coordinateValidation.invalidCoordinates++;
-                return false;
-            }
-
-            // Check for reasonable coordinate ranges
-            const maxCoordinate = C.geometry.maxCoordinate;
-            if (validationConfig.validateCoordinates && 
-                (Math.abs(coordinates.x) > maxCoordinate || Math.abs(coordinates.y) > maxCoordinate)) {
-                this.coordinateValidation.suspiciousCoordinates.push({
-                    line: lineNumber,
-                    coordinates: { ...coordinates },
-                    reason: 'coordinates_too_large'
-                });
-                this.warnings.push(`Large coordinates at line ${lineNumber}: (${coordinates.x.toFixed(3)}, ${coordinates.y.toFixed(3)})`);
-            }
-
-            // Check precision
-            const xRounded = Math.round(coordinates.x / PRECISION) * PRECISION;
-            const yRounded = Math.round(coordinates.y / PRECISION) * PRECISION;
-
-            if (Math.abs(coordinates.x - xRounded) > PRECISION * 0.1 || 
-                Math.abs(coordinates.y - yRounded) > PRECISION * 0.1) {
-                this.debug(`High precision coordinates at line ${lineNumber}: (${coordinates.x}, ${coordinates.y})`);
-            }
-
-            return true;
         }
 
         updateCoordinateRange(coordinates) {
@@ -340,13 +289,9 @@
 
         // Logging utilities
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[Parser] ${message}`, data);
-                } else {
-                    console.log(`[Parser] ${message}`);
-                }
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[ParserCore] ${message}`, data)
+                 : console.log(`[ParserCore] ${message}`);
         }
 
         logStatistics() {
@@ -357,12 +302,6 @@
             this.debug(`  Objects created: ${this.stats.objectsCreated}`);
             this.debug(`  Commands processed: ${this.stats.commandsProcessed}`);
             this.debug(`  Coordinates parsed: ${this.stats.coordinatesParsed}`);
-            this.debug(`  Invalid coordinates: ${this.stats.invalidCoordinates}`);
-
-            if (this.coordinateValidation.validCoordinates > 0) {
-                const range = this.coordinateValidation.coordinateRange;
-                this.debug(`  Coordinate range: (${range.minX.toFixed(3)}, ${range.minY.toFixed(3)}) to (${range.maxX.toFixed(3)}, ${range.maxY.toFixed(3)})`);
-            }
         }
     }
 

@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const renderingOptions = D.rendering.defaultOptions;
     const canvasConfig = D.rendering.canvas;
     const debugState = D.debug;
@@ -45,7 +29,7 @@
     };
 
     class RendererCore {
-        constructor(canvas) {
+        constructor(canvas, scene = null) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d', { 
                 alpha: C.renderer.context.alpha,
@@ -63,16 +47,11 @@
             this.lastMousePos = null;
             this.originIncludedInFit = false;
 
-            // Origin and rotation state
-            this.originPosition = { x: 0, y: 0 };
-            this.currentRotation = 0;
-            this.rotationCenter = { x: 0, y: 0 };
-            this.rotation = { angle: 0, center: { x: 0, y: 0 } };
-
-            // Mirror state
-            this.mirrorX = false;
-            this.mirrorY = false;
-            this.mirrorCenter = { x: 0, y: 0 };
+            // Scene reference for transform data
+            // All origin/rotation/mirror state lives on scene.transform.
+            // The getters below delegate to it. Renderer never caches.
+            // REVIEW - Would it make sense for rendering to cache it some way or are there other caches at play now?
+            this.scene = scene;
 
             // Bounds
             this.bounds = null;
@@ -107,18 +86,21 @@
                 debugArcs: renderingOptions.debugArcs,
                 showToolPreview: renderingOptions.showToolPreview,
                 theme: renderingOptions.theme,
-                showStats: renderingOptions.showStats
+                showStats: renderingOptions.showStats,
+                primitiveFilter: null
             };
 
             // LOD threshold (screen pixels)
             this.lodThreshold = C.renderer.lodThreshold || 0.5;
 
             // Color schemes
+            // Geometry colors are managed by the UI via options.resolveLayerColor, 
+            // but structural colors (canvas, grid, rulers) are handled here.
             this.colors = {};
-            this._updateThemeColors();
+            this.updateThemeColors();
 
             window.addEventListener('themechange', () => {
-                this._updateThemeColors();
+                this.updateThemeColors();
                 this.renderStats.lastSignificantChange = 'theme-changed';
             });
 
@@ -142,9 +124,42 @@
                 viewBounds: null
             };
 
-            this.coordinateSystem = null;
             this.rendererType = 'canvas2d';
             this.lastMouseCanvasPos = { x: 0, y: 0 };
+        }
+
+        updateThemeColors() {
+            const rootStyle = getComputedStyle(document.documentElement);
+            const read = (varName, fallback) => rootStyle.getPropertyValue(varName).trim() || fallback;
+
+            this.colors = {
+                canvas: {
+                    background: read('--color-canvas-background', '#0f0f0f'),
+                    grid: read('--color-canvas-grid', '#333333'),
+                    origin: read('--color-canvas-origin', '#ffffff'),
+                    originOutline: read('--color-canvas-originOutline', '#000000'),
+                    bounds: read('--color-canvas-bounds', '#555555'),
+                    ruler: read('--color-canvas-ruler', '#444444'),
+                    rulerText: read('--color-canvas-rulerText', '#888888')
+                },
+                primitives: {
+                    offsetInternal: read('--color-primitive-offsetInternal', '#00aa00'),
+                    offsetExternal: read('--color-primitive-offsetExternal', '#ff0000'),
+                    peckMarkGood: read('--color-primitive-peckMarkGood', '#16d329'),
+                    peckMarkWarn: read('--color-primitive-peckMarkWarn', '#d2cb00'),
+                    peckMarkError: read('--color-primitive-peckMarkError', '#ff0000'),
+                    peckMarkSlow: read('--color-primitive-peckMarkSlow', '#ff5e00'),
+                    reconstructed: read('--color-primitive-reconstructed', '#00ffff'),
+                    reconstructedPath: read('--color-primitive-reconstructedPath', '#ffff00')
+                },
+                debug: {
+                    wireframe: read('--color-debug-wireframe', '#00ff00'),
+                    points: read('--color-debug-points', '#ff00ff'),
+                    arcs: read('--color-debug-arcs', '#00ffff'),
+                    preprocessedStroke: read('--color-debug-preprocessed-stroke', '#00ffff'),
+                    preprocessedFill: read('--color-debug-preprocessed-fill', '#0a3333')
+                }
+            };
         }
 
         // ========================================================================
@@ -168,13 +183,15 @@
                 offsetType: options.offsetType,
                 distance: options.distance,
                 metadata: options.metadata,
-                bounds: this.calculateLayerBounds(primitives),
-                // Lightweight cache
+                isStock: options.isStock || false,
+                zIndex: options.zIndex ?? 0,
+                bounds: options.bounds || this.calculateLayerBounds(primitives),
+                transform: options.transform || null,
                 renderCache: null
             };
 
             this.layers.set(name, layer);
-            this._buildLayerBoundsCache(layer);
+            this.buildLayerBoundsCache(layer);
             this.calculateOverallBounds();
             this.renderStats.lastSignificantChange = 'layer-added';
         }
@@ -183,7 +200,7 @@
          * Builds lightweight bounds cache for culling
          * cache bounds for fast culling, but don't pay the Path2D allocation cost.
          */
-        _buildLayerBoundsCache(layer) {
+        buildLayerBoundsCache(layer) {
             if (!layer.primitives || layer.primitives.length === 0) {
                 layer.renderCache = { entries: [], bounds: null, valid: true };
                 return;
@@ -192,6 +209,20 @@
             const entries = [];
             // Cache global layer tool diameter if available
             const layerToolDia = layer.metadata?.toolDiameter || 0;
+
+            // EasyShape layers carry a world transform. Extract its scale
+            // magnitude so LOD culling reflects on-screen size, not local size.
+            // A 0.5mm primitive on a layer scaled 100x is 50mm on screen and
+            // must not be culled when zoomed out. EasyTrace layers have no
+            // transform → scaleMag stays 1 (no behavior change).
+            let scaleMag = 1;
+            if (layer.transform) {
+                const m = layer.transform;
+                scaleMag = Math.max(
+                    Math.hypot(m.a, m.b),
+                    Math.hypot(m.c, m.d)
+                ) || 1;
+            }
 
             for (const prim of layer.primitives) {
                 let bounds;
@@ -228,9 +259,13 @@
                 }
 
                 // Apply Inflation - If Infinity, screenSize becomes Infinity (always passes LOD)
+                // Multiply the geometric span by the layer's scale magnitude so
+                // LOD reflects true on-screen size. Inflation (tool diameter,
+                // stroke width) is already in world units, so it is added AFTER
+                // scaling the local span.
                 const screenSize = (inflation === Infinity) 
                     ? Infinity 
-                    : Math.max(width, height) + inflation;
+                    : (Math.max(width, height) * scaleMag) + inflation;
 
                 entries.push({
                     primitive: prim,
@@ -256,7 +291,7 @@
         rebuildLayerCache(layerName) {
             const layer = this.layers.get(layerName);
             if (layer) {
-                this._buildLayerBoundsCache(layer);
+                this.buildLayerBoundsCache(layer);
             }
         }
 
@@ -321,33 +356,6 @@
             const dpr = this.devicePixelRatio || 1;
             const screenSizeCSS = (screenSize * viewScale) / dpr;
             return screenSizeCSS >= threshold;
-        }
-
-        /**
-         * Visibility check based on primitive properties and render options.
-         */
-        shouldRenderPrimitive(primitive, layerType) {
-            if (primitive.properties?.isFused) return true;
-
-            const role = primitive.properties?.role;
-            if (role === 'drill_slot' || role === 'drill_milling_path' || role === 'peck_mark') {
-                return true;
-            }
-
-            if (primitive.properties?.isCutout || layerType === 'cutout') {
-                return this.options.showCutouts;
-            }
-            if (primitive.properties?.isRegion) {
-                return this.options.showRegions;
-            }
-            if (primitive.properties?.isPad || primitive.properties?.isFlash) {
-                return this.options.showPads;
-            }
-            if (primitive.properties?.isTrace || primitive.properties?.stroke) {
-                return this.options.showTraces;
-            }
-
-            return true;
         }
 
         // ========================================================================
@@ -423,7 +431,7 @@
             return { minX, minY, maxX, maxY };
         }
 
-        calculateOverallBounds() {
+        calculateOverallBounds(ignoreStock = false) {
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
             let hasContent = false;
@@ -431,6 +439,7 @@
             this.layers.forEach((layer) => {
                 if (!layer.primitives || layer.primitives.length === 0) return;
                 if (!layer.visible) return;
+                if (ignoreStock && layer.isStock) return;
 
                 const b = layer.bounds;
                 if (b) {
@@ -462,31 +471,40 @@
         // ========================================================================
 
         zoomFit(includeOrigin = false) {
+            // Force layout update synchronously before calculating zoom math
+            this.resizeCanvas();
+
+            const hasStock = Array.from(this.layers.values()).some(l => l.isStock && l.visible);
+            
+            // Always recalculate to ensure bounds aren't stale
+            this.calculateOverallBounds(hasStock);
+
             if (!this.overallBounds) {
-                const emptyConfig = C.renderer.emptyCanvas;
-                this.viewScale = emptyConfig.defaultScale;
-                const canvasX = this.canvas.width * emptyConfig.originMarginLeft;
-                const canvasY = this.canvas.height * (1 - emptyConfig.originMarginBottom);
-                this.viewOffset = { x: canvasX, y: canvasY };
-                return;
+                // No content (only stock or empty) — restore full bounds so we
+                // still frame the bed instead of showing nothing.
+                if (hasStock) this.calculateOverallBounds(false);
+                if (!this.overallBounds) {
+                    const emptyConfig = C.renderer.emptyCanvas;
+                    this.viewScale = emptyConfig.defaultScale;
+                    const canvasX = this.canvas.width * emptyConfig.originMarginLeft;
+                    const canvasY = this.canvas.height * (1 - emptyConfig.originMarginBottom);
+                    this.viewOffset = { x: canvasX, y: canvasY };
+                    return;
+                }
             }
 
-            // Use wider padding only if origin placement checked AND not fitted
-            const useWidePadding = includeOrigin && !this.originIncludedInFit;
-            const fitPadding = useWidePadding 
-                ? C.renderer.zoom.fitPaddingWithOrigin 
-                : C.renderer.zoom.fitPadding;
+            // Use the standard tight padding unconditionally so it fills 
+            // the viewport properly on the very first click.
+            const fitPadding = C.renderer.zoom.fitPadding;
 
             let bounds = { ...this.overallBounds };
 
-            // Transform bounds to visual space if mirrored
-            if (this.mirrorX || this.mirrorY) {
-                bounds = this._getVisualBounds(bounds);
-            }
-
-            // Transform bounds to visual space if rotated
-            if (this.currentRotation !== 0 && this.rotationCenter) {
-                bounds = this._getRotatedFitBounds(bounds);
+            // Transform bounds to visual space (forward workspace transform).
+            if (this.scene) {
+                const wm = this.scene.getWorkspaceMatrix();
+                if (!TransformMath.isIdentity(wm)) {
+                    bounds = TransformMath.transformBounds(wm, bounds);
+                }
             }
 
             // Shift the effective canvas area inward by the ruler size so geometry isn't hidden behind them
@@ -507,7 +525,10 @@
                 bounds.centerX = (bounds.minX + bounds.maxX) / 2;
                 bounds.centerY = (bounds.minY + bounds.maxY) / 2;
 
+                // Track state for debugging/readout if needed, but don't use it to toggle padding
                 this.originIncludedInFit = true;
+            } else {
+                this.originIncludedInFit = false;
             }
 
             // Recalculate derived values if not already set
@@ -535,79 +556,6 @@
             this.viewOffset = {
                 x: rulerSize + availableWidth / 2 - bounds.centerX * this.viewScale,
                 y: rulerSize + availableHeight / 2 + bounds.centerY * this.viewScale
-            };
-        }
-
-        /**
-         * Returns bounds in visual space after mirror transform.
-         */
-        _getVisualBounds(bounds) {
-            const cx = this.mirrorCenter.x;
-            const cy = this.mirrorCenter.y;
-
-            let { minX, maxX, minY, maxY } = bounds;
-
-            if (this.mirrorX) {
-                const newMinX = 2 * cx - maxX;
-                const newMaxX = 2 * cx - minX;
-                minX = newMinX;
-                maxX = newMaxX;
-            }
-
-            if (this.mirrorY) {
-                const newMinY = 2 * cy - maxY;
-                const newMaxY = 2 * cy - minY;
-                minY = newMinY;
-                maxY = newMaxY;
-            }
-
-            return {
-                minX, minY, maxX, maxY,
-                width: maxX - minX,
-                height: maxY - minY,
-                centerX: (minX + maxX) / 2,
-                centerY: (minY + maxY) / 2
-            };
-        }
-
-        /**
-         * Forward-rotates bounds into visual space for zoom-to-fit calculation.
-         */
-        _getRotatedFitBounds(bounds) {
-            const corners = [
-                { x: bounds.minX, y: bounds.minY },
-                { x: bounds.maxX, y: bounds.minY },
-                { x: bounds.maxX, y: bounds.maxY },
-                { x: bounds.minX, y: bounds.maxY }
-            ];
-
-            const c = this.rotationCenter;
-            const isMirrored = (this.mirrorX ? 1 : 0) ^ (this.mirrorY ? 1 : 0);
-            const effectiveAngle = isMirrored ? -this.currentRotation : this.currentRotation;
-            const rad = (effectiveAngle * Math.PI) / 180;
-            const cos = Math.cos(rad);
-            const sin = Math.sin(rad);
-
-            let minX = Infinity, minY = Infinity;
-            let maxX = -Infinity, maxY = -Infinity;
-
-            for (const pt of corners) {
-                const dx = pt.x - c.x;
-                const dy = pt.y - c.y;
-                const rx = c.x + (dx * cos - dy * sin);
-                const ry = c.y + (dx * sin + dy * cos);
-                minX = Math.min(minX, rx);
-                minY = Math.min(minY, ry);
-                maxX = Math.max(maxX, rx);
-                maxY = Math.max(maxY, ry);
-            }
-
-            return {
-                minX, minY, maxX, maxY,
-                width: maxX - minX,
-                height: maxY - minY,
-                centerX: (minX + maxX) / 2,
-                centerY: (minY + maxY) / 2
             };
         }
 
@@ -648,8 +596,19 @@
             const rect = container.getBoundingClientRect();
             const dpr = window.devicePixelRatio || 1;
 
-            this.canvas.width = rect.width * dpr;
-            this.canvas.height = rect.height * dpr;
+            const newWidth = rect.width * dpr;
+            const newHeight = rect.height * dpr;
+
+            // Keep geometry anchored to the center during CSS transitions/resizes
+            if (this.canvas.width > 0 && this.canvas.height > 0 && this.viewOffset) {
+                const dw = newWidth - this.canvas.width;
+                const dh = newHeight - this.canvas.height;
+                this.viewOffset.x += dw / 2;
+                this.viewOffset.y += dh / 2;
+            }
+
+            this.canvas.width = newWidth;
+            this.canvas.height = newHeight;
             this.canvas.style.width = rect.width + 'px';
             this.canvas.style.height = rect.height + 'px';
 
@@ -691,50 +650,36 @@
             }
         }
 
-        setCoordinateSystem(coordinateSystem) {
-            this.coordinateSystem = coordinateSystem;
-        }
+        setScene(scene) { this.scene = scene; }
 
         // ========================================================================
         // Origin, Rotation and Mirroring
         // ========================================================================
+        // No more setX methods. Mutation happens on scene; the renderer
+        // pulls the current values each frame via these getters. UI code
+        // calls scene.setOrigin / setRotation / setMirrorX/Y and adds a
+        // transform listener that calls renderer.render().
 
-        setOriginPosition(x, y) {
-            this.originPosition.x = x;
-            this.originPosition.y = y;
+        get originPosition() {
+            return this.scene ? this.scene.transform.origin : { x: 0, y: 0 };
+        }
+        get currentRotation() {
+            return this.scene ? this.scene.transform.rotation : 0;
+        }
+        get rotationCenter() {
+            return this.scene ? this.scene.transform.rotationCenter : { x: 0, y: 0 };
+        }
+        get mirrorX() {
+            return this.scene ? this.scene.transform.mirrorX : false;
+        }
+        get mirrorY() {
+            return this.scene ? this.scene.transform.mirrorY : false;
+        }
+        get mirrorCenter() {
+            return this.scene ? this.scene.transform.mirrorCenter : { x: 0, y: 0 };
         }
 
-        getOriginPosition() {
-            return { ...this.originPosition };
-        }
-
-        setRotation(angle, center) {
-            this.currentRotation = angle || 0;
-            this.rotation = { angle: angle || 0, center: center || { x: 0, y: 0 } };
-            if (center) {
-                this.rotationCenter.x = center.x;
-                this.rotationCenter.y = center.y;
-            }
-        }
-
-        applyRotationTransform() {
-            if (!this.rotation || this.rotation.angle === 0) return;
-            const c = this.rotation.center;
-            const rad = (this.rotation.angle * Math.PI) / 180;
-            this.ctx.translate(c.x, c.y);
-            this.ctx.rotate(rad);
-            this.ctx.translate(-c.x, -c.y);
-        }
-
-        setMirror(mirrorX, mirrorY, center) {
-            this.mirrorX = mirrorX || false;
-            this.mirrorY = mirrorY || false;
-            if (center) {
-                this.mirrorCenter.x = center.x;
-                this.mirrorCenter.y = center.y;
-            }
-        }
-
+        getOriginPosition() { return { ...this.originPosition }; }
         getMirrorState() {
             return {
                 mirrorX: this.mirrorX,
@@ -744,134 +689,25 @@
         }
 
         // ========================================================================
-        // Color & Theme
-        // ========================================================================
-
-        _updateThemeColors() {
-            const rootStyle = getComputedStyle(document.documentElement);
-            const read = (varName) => rootStyle.getPropertyValue(varName).trim();
-
-            this.colors = {
-                source: {
-                    isolation: read('--color-geometry-source-isolation'),
-                    drill: read('--color-geometry-source-drill'),
-                    clearing: read('--color-geometry-source-clearing'),
-                    cutout: read('--color-geometry-source-cutout'),
-                    stencil: read('--color-geometry-source-stencil'),
-                    fused: read('--color-geometry-source-isolation')
-                },
-                operations: {
-                    isolation: read('--color-operation-isolation'),
-                    drill: read('--color-operation-drill'),
-                    clearing: read('--color-operation-clearing'),
-                    cutout: read('--color-operation-cutout'),
-                    stencil: read('--color-operation-stencil')
-                },
-                canvas: {
-                    background: read('--color-canvas-background'),
-                    grid: read('--color-canvas-grid'),
-                    origin: read('--color-canvas-origin'),
-                    originOutline: read('--color-canvas-origin-outline'),
-                    bounds: read('--color-canvas-bounds'),
-                    ruler: read('--color-canvas-ruler'),
-                    rulerText: read('--color-canvas-ruler-text')
-                },
-                geometry: {
-                    offset: {
-                        external: read('--color-geometry-offset-external'),
-                        internal: read('--color-geometry-offset-internal'),
-                        on: read('--color-geometry-offset-on')
-                    },
-                    preview: read('--color-geometry-preview'),
-                    laser: {
-                        filled: read('--color-geometry-laser-filled')
-                    }
-                },
-                primitives: {
-                    offsetInternal: read('--color-primitive-offset-internal'),
-                    offsetExternal: read('--color-primitive-offset-external'),
-                    peckMarkGood: read('--color-primitive-peck-mark-good'), 
-                    peckMarkWarn: read('--color-primitive-peck-mark-warn'),
-                    peckMarkError: read('--color-primitive-peck-mark-error'),
-                    peckMarkSlow: read('--color-primitive-peck-mark-slow'),
-                    reconstructed: read('--color-primitive-reconstructed'),
-                    reconstructedPath: read('--color-primitive-reconstructed-path'),
-                    debugLabel: read('--color-primitive-debug-label'),
-                    debugLabelStroke: read('--color-primitive-debug-label-stroke')
-                },
-                debug: {
-                    wireframe: read('--color-debug-wireframe'),
-                    bounds: read('--color-debug-bounds'),
-                    points: read('--color-debug-points'),
-                    arcs: read('--color-debug-arcs')
-                },
-                bw: {
-                    black: read('--color-bw-black'),
-                    white: read('--color-bw-white')
-                }
-            };
-        }
-
-        getLayerColorSettings(layer) {
-            const geo = this.colors.geometry;
-            const src = this.colors.source;
-
-            switch (layer.type) {
-                case 'isolation': return src.isolation;
-                case 'clearing':  return src.clearing;
-                case 'drill':     return src.drill;
-                case 'cutout':    return src.cutout;
-                case 'stencil':   return src.stencil;
-                case 'fused':     return src.fused;
-                case 'offset':
-                    // Stencil offsets use the stencil color, not the generic offset palette
-                    if (layer.operationType === 'stencil') {
-                        return src.stencil;
-                    }
-                    switch (layer.offsetType) { 
-                        case 'external': return geo.offset.external;
-                        case 'internal': return geo.offset.internal;
-                        case 'on':       return geo.offset.on;
-                    }
-                    return '#FF0000';
-                case 'preview':
-                    return geo.preview;
-                default: 
-                    return src.isolation;
-            }
-        }
-
-        // ========================================================================
         // View State
         // ========================================================================
 
+        /**
+         * View state is camera state only (pan + zoom). Rotation lives on
+         * scene.transform; the old getViewState returned both but that
+         * conflated "where am I looking" with "what is the workspace doing".
+         */
         getViewState() {
             return {
                 offset: { ...this.viewOffset },
                 scale: this.viewScale,
-                bounds: this.bounds ? { ...this.bounds } : null,
-                rotation: this.currentRotation,
-                transform: this.getTransformMatrix()
+                bounds: this.bounds ? { ...this.bounds } : null
             };
         }
 
         setViewState(state) {
             if (state.offset) this.viewOffset = { ...state.offset };
             if (state.scale !== undefined) this.viewScale = state.scale;
-            if (state.rotation !== undefined) this.currentRotation = state.rotation;
-        }
-
-        getTransformMatrix() {
-            if (this.currentRotation === 0 && 
-                this.originPosition.x === 0 && 
-                this.originPosition.y === 0) {
-                return null;
-            }
-            return {
-                originOffset: { ...this.originPosition },
-                rotation: this.currentRotation,
-                rotationCenter: { ...this.rotationCenter }
-            };
         }
 
         // ========================================================================
@@ -894,87 +730,20 @@
             // Get view bounds in screen-world space
             let viewBounds = this.getViewBounds();
 
-            // Transform view bounds to source-geometry space if mirrored
-            // This makes culling work correctly without per-primitive transforms
-            if (this.mirrorX || this.mirrorY) {
-                viewBounds = this._transformBoundsForMirror(viewBounds);
-            }
-
-            if (this.currentRotation !== 0 && this.rotationCenter) {
-                viewBounds = this._transformBoundsForRotation(viewBounds);
+            // Transform view bounds into source-geometry space (inverse of
+            // the global workspace transform) so culling compares like-for-
+            // like. Single matrix op replaces the mirror+rotation passes.
+            if (this.scene) {
+                const inv = this.scene.getWorkspaceInverse();
+                if (!TransformMath.isIdentity(inv)) {
+                    viewBounds = TransformMath.transformBounds(inv, viewBounds);
+                }
             }
 
             this.frameCache.viewBounds = viewBounds;
 
             this.clearCanvas();
             return performance.now();
-        }
-
-        /**
-         * Transforms view bounds into source-geometry space by applying inverse rotation.
-         */
-        _transformBoundsForRotation(bounds) {
-            const corners = [
-                { x: bounds.minX, y: bounds.minY },
-                { x: bounds.maxX, y: bounds.minY },
-                { x: bounds.maxX, y: bounds.maxY },
-                { x: bounds.minX, y: bounds.maxY }
-            ];
-
-            const c = this.rotationCenter;
-            // Align with effectiveAngle logic used in _actualRender
-            const isMirrored = (this.mirrorX ? 1 : 0) ^ (this.mirrorY ? 1 : 0);
-            const effectiveAngle = isMirrored ? -this.currentRotation : this.currentRotation;
-
-            // Inverse rotation to map the view bounds backwards
-            const rad = (-effectiveAngle * Math.PI) / 180;
-            const cos = Math.cos(rad);
-            const sin = Math.sin(rad);
-
-            let minX = Infinity, minY = Infinity;
-            let maxX = -Infinity, maxY = -Infinity;
-
-            for (const pt of corners) {
-                const dx = pt.x - c.x;
-                const dy = pt.y - c.y;
-                const rx = c.x + (dx * cos - dy * sin);
-                const ry = c.y + (dx * sin + dy * cos);
-
-                minX = Math.min(minX, rx);
-                minY = Math.min(minY, ry);
-                maxX = Math.max(maxX, rx);
-                maxY = Math.max(maxY, ry);
-            }
-
-            return { minX, minY, maxX, maxY };
-        }
-
-        /**
-         * Transforms view bounds into source-geometry space by applying inverse mirror.
-         */
-        _transformBoundsForMirror(bounds) {
-            const cx = this.mirrorCenter.x;
-            const cy = this.mirrorCenter.y;
-
-            let { minX, maxX, minY, maxY } = bounds;
-
-            if (this.mirrorX) {
-                // Reflect across vertical line x = cx
-                const newMinX = 2 * cx - maxX;
-                const newMaxX = 2 * cx - minX;
-                minX = newMinX;
-                maxX = newMaxX;
-            }
-
-            if (this.mirrorY) {
-                // Reflect across horizontal line y = cy
-                const newMinY = 2 * cy - maxY;
-                const newMaxY = 2 * cy - minY;
-                minY = newMinY;
-                maxY = newMaxY;
-            }
-
-            return { minX, minY, maxX, maxY };
         }
 
         endRender(startTime) {

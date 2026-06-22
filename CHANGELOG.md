@@ -4,6 +4,32 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-06-22
+
+### Added
+- **EasyShape5000 Launch:** [Initial TEST release of EasyTrace5000's 2.5-3D CNC Routing sister app.](https://cam.eltryus.design/easyshape5000/) Same foundational systems but with it's own dedicated UI and operations. 
+- **Generation Feedback:** The spinner overlay now gives feedback on pass number so ongoing operations are more clearly either doing work or have indeed crashed.
+- **Helper Button:** New explicit button next to the theme button that opens the F1 Helper Modal.
+
+### Fixed
+- **Improved Bezier Plotting:** Some CAD programs lazily export regular arcs and linear segments as beziers; sometimes these can be infered back instead of getting automatically tessellated (better quality offsets).
+- **Add OP Files:** The + buttons to manually add files, through the file explorer, to individual operation are working again. [#19](https://github.com/RicardoJCMarques/EasyTrace5000/issues/19)
+- **Laser Drilling:** Geometry is now correctly offset instead of generating a laser dot sized circle. [#20](https://github.com/RicardoJCMarques/EasyTrace5000/issues/20)
+
+### Changed
+- **Huge Backend Refactor:** With EasyShape5000 sharing most foundational sub-systems, it was necessary to split unique code blocks from all the shared ones. There shouldn't be any major changes to UI flow in EasyTrace5000. Included some explicit UI warnings.
+ **Coordinate Rework:** Coordinates and transforms are now stored in matrices and there's a new scene manager (mostly because of EasyShape5000).
+ **Transform Inputs:** Rotation and Scale (EasyShape5000) are now absolute and will always and explicitly show the value from default instead of being relative and reset to 0 on Apply.
+ - **SVG Icons:** All icons have been extracted and now live as individual .svg files that are bundled into a sprite with the [build-sprite.js](https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/.github/scripts/build-sprite.js) script.
+- **Clipper2 WASM Test Page:** Spun off the test page developed during initial testing of the WASM version of Clipper2. It's now a split repo at [Clipper2-WASM-Example](https://github.com/RicardoJCMarques/Clipper2-WASM-Example).
+
+### Known Problems
+- **No Examples in EasyShape5000:** I can't include the examples I've been using because of licensing stuff I don't feel like dealing with right now lol. I'll add something later.
+- **"Toolpath Optimizations":** Some optimizations that made sense in EasyTrace5000 are quite awful in EasyShape5000. To be reviewed ASAP.
+- **Themes & Colors:** Most transparency was removed from all rendering layers which caused colors to shift. Some things may look a bit off in the near future.
+- **Symmetric Arc Beziers:** Some centers seem to be snapping to a grid with less precision than they need (possibly not enough decimal points) which can distort small arcs in EasyTrace5000 (previously these arcs were just tessellated).
+
+
 ## [1.3.3] - 2026-05-15
 
 ### Fixed

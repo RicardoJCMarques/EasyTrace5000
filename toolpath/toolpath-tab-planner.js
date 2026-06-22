@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const PRECISION = C.precision.coordinate;
 
     /**
@@ -52,16 +36,16 @@
 
             if (tabCount <= 0 || !geometrySource.points) return [];
 
-            const totalLength = this._calculateTotalLength(geometrySource);
+            const totalLength = this.calculateTotalLength(geometrySource);
             if (totalLength <= PRECISION || totalLength < tabWidth * tabCount) {
                 return [];
             }
 
             // Calculate Tab Distance Ranges {start, end}
-            const tabRanges = this._calculateTabRanges(geometrySource, tabCount, tabWidth, totalLength);
+            const tabRanges = this.calculateTabRanges(geometrySource, tabCount, tabWidth, totalLength);
 
             // Split Geometry using Tab Ranges (with transforms for correct G-code output)
-            const motionCommands = this._splitGeometryByRanges(geometrySource, tabRanges, context.cutting.feedRate, context.transforms);
+            const motionCommands = this.splitGeometryByRanges(geometrySource, tabRanges, context.cutting.feedRate, context.transforms);
 
             return motionCommands;
         }
@@ -69,12 +53,21 @@
         /**
          * Determine tab locations along the path perimeter.
          */
-        _calculateTabRanges(geometrySource, tabCount, tabWidth, totalLength) {
+        // TODO [TAB-BOUNDARY-WRAP] — When a tab wraps around the contour seam,
+        // handleBoundary splits it into two sub-tabs. But the overlap check in the
+        // equidistant placement loop runs BEFORE wrappedTabs are pushed into placedTabs,
+        // so subsequent proposals don't see the split segments.
+
+        // TODO [TAB-SPATIAL-DISTRIBUTION] — Priority 1 placement centers tabs on the
+        // longest straight segments (sorted by length, not spatial position). Two adjacent
+        // long segments get tabs back-to-back. Consider a minimum angular/distance
+        // separation constraint between Priority 1 tabs.
+        calculateTabRanges(geometrySource, tabCount, tabWidth, totalLength) {
             const tabHalfWidth = tabWidth / 2;
             let remainingTabs = tabCount;
             const placedTabs = [];
 
-            const segments = this._mapSegmentsToDistance(geometrySource);
+            const segments = this.mapSegmentsToDistance(geometrySource);
 
             // Find qualifying straight segments (linear and long enough)
             const straightSegments = segments
@@ -110,7 +103,7 @@
                     );
 
                     if (!overlaps) {
-                        const wrappedTabs = this._handleBoundary(
+                        const wrappedTabs = this.handleBoundary(
                             { start: proposedStart, end: proposedEnd },
                             totalLength
                         );
@@ -128,7 +121,7 @@
         /**
          * Create new MotionCommand segments, splitting existing ones where a tab starts or ends.
          */
-        _splitGeometryByRanges(geometrySource, tabRanges, feedRate, transforms) {
+        splitGeometryByRanges(geometrySource, tabRanges, feedRate, transforms) {
             const points = geometrySource.points;
             const arcMap = new Map();
             if (geometrySource.arcSegments) {
@@ -139,7 +132,7 @@
 
             const motionCommands = [];
             const numPoints = points.length;
-            const isPhysicallyClosed = this._isClosedPoints(points);
+            const isPhysicallyClosed = ToolpathPlan.isClosedPoints(points);
             const segmentsToProcess = isPhysicallyClosed ? numPoints - 1 : numPoints;
 
             let currentPos = { ...points[0] };
@@ -158,7 +151,7 @@
                 // Calculate Segment Length and Arc Center
                 let segData = null;
                 if (arc) {
-                    segData = this._getArcData(points[i], segmentEndPos, arc);
+                    segData = this.getArcData(points[i], segmentEndPos, arc);
                     segmentLength = segData.length;
                 } else {
                     segmentLength = Math.hypot(segmentEndPos.x - points[i].x, segmentEndPos.y - points[i].y);
@@ -193,11 +186,11 @@
 
                     // Calculate Split Position
                     const distAlongSegment = splitDistance - segmentStartDistance;
-                    const splitPos = this._getPointAlongSegment(points[i], segmentEndPos, arc, segData, distAlongSegment);
+                    const splitPos = this.getPointAlongSegment(points[i], segmentEndPos, arc, segData, distAlongSegment);
 
                     // Add the segment piece (from last split to current split)
                     if (splitDistance > lastSplitDistance + PRECISION) {
-                         const newCmd = this._createSegmentCommand(lastSplitPos, splitPos, arc, segData, feedRate, isInTab, transforms);
+                         const newCmd = this.createSegmentCommand(lastSplitPos, splitPos, arc, segData, feedRate, isInTab, transforms);
                          motionCommands.push(newCmd);
                     }
 
@@ -212,7 +205,7 @@
                 if (remainingLength > PRECISION) {
                     const isInTab = tabRanges.some(t => t.start <= lastSplitDistance + PRECISION && t.end >= segmentEndDistance - PRECISION);
 
-                    const finalCmd = this._createSegmentCommand(lastSplitPos, segmentEndPos, arc, segData, feedRate, isInTab, transforms);
+                    const finalCmd = this.createSegmentCommand(lastSplitPos, segmentEndPos, arc, segData, feedRate, isInTab, transforms);
                     motionCommands.push(finalCmd);
                 }
 
@@ -225,7 +218,7 @@
 
         // Geometric Utility Methods
 
-        _getArcData(startPoint, endPoint, arc) {
+        getArcData(startPoint, endPoint, arc) {
              const center = { x: arc.center.x, y: arc.center.y };
              const radius = Math.hypot(startPoint.x - center.x, startPoint.y - center.y);
              const startAngle = Math.atan2(startPoint.y - center.y, startPoint.x - center.x);
@@ -242,9 +235,16 @@
                      if (sweep < -PRECISION) sweep += 2 * Math.PI;
                  }
 
-                 // Full circle: start ≈ end produces sweep ≈ 0, force full revolution
+                // Full circle: start ≈ end produces sweep ≈ 0, force full revolution.
+                 // Guard against Clipper2 micro-arcs: only promote to a full circle
+                 // when the chord is ALSO collapsed. A tiny sweep with a real chord
+                 // is a fragmented micro-arc and must stay a micro-arc.
                  if (Math.abs(sweep) < PRECISION) {
-                     sweep = arc.clockwise ? -2 * Math.PI : 2 * Math.PI;
+                     const cdx = endPoint.x - startPoint.x;
+                     const cdy = endPoint.y - startPoint.y;
+                     if ((cdx * cdx + cdy * cdy) < PRECISION * PRECISION) {
+                         sweep = arc.clockwise ? -2 * Math.PI : 2 * Math.PI;
+                     }
                  }
              }
 
@@ -259,7 +259,7 @@
              };
         }
 
-        _getPointAlongSegment(startPoint, endPoint, arc, segData, distanceAlong) {
+        getPointAlongSegment(startPoint, endPoint, arc, segData, distanceAlong) {
             if (distanceAlong < PRECISION) return startPoint;
 
             if (!arc) {
@@ -286,7 +286,7 @@
             }
         }
 
-        _createSegmentCommand(startPos, endPos, arc, segData, feedRate, isTab, transforms) {
+        createSegmentCommand(startPos, endPos, arc, segData, feedRate, isTab, transforms) {
             let finalStart = startPos;
             let finalEnd = endPos;
             let finalCenter = arc ? segData.center : null;
@@ -301,8 +301,7 @@
                     finalCenter = this.translator.applyTransforms(segData.center, transforms);
 
                     // Handle winding flips caused by mirroring
-                    const flipped = (transforms.mirrorX ? 1 : 0) ^ (transforms.mirrorY ? 1 : 0);
-                    if (flipped) {
+                    if (transforms.windingFlipped) {
                         isClockwise = !isClockwise;
                     }
                 }
@@ -326,7 +325,7 @@
         /**
          * Clamps tab boundaries to (0, totalLength) and splits tabs that wrap around the seam.
          */
-        _handleBoundary(tab, totalLength) {
+        handleBoundary(tab, totalLength) {
             const newTabs = [];
 
             if (tab.start < 0) {
@@ -342,16 +341,7 @@
             return newTabs.filter(t => (t.end - t.start) > PRECISION);
         }
 
-        _isClosedPoints(points) {
-            if (!points || points.length < 2) return false;
-            const first = points[0];
-            const last = points[points.length - 1];
-            const dx = first.x - last.x;
-            const dy = first.y - last.y;
-            return (dx * dx + dy * dy) < (PRECISION * PRECISION);
-        }
-
-        _mapSegmentsToDistance(geometry) {
+        mapSegmentsToDistance(geometry) {
             const segments = [];
             const points = geometry.points;
             const arcMap = new Map();
@@ -362,7 +352,7 @@
             }
 
             const numPoints = points.length;
-            const isPhysicallyClosed = this._isClosedPoints(points);
+            const isPhysicallyClosed = ToolpathPlan.isClosedPoints(points);
             const segmentsToProcess = isPhysicallyClosed ? numPoints - 1 : numPoints;
             let currentDistance = 0;
 
@@ -377,7 +367,7 @@
 
                 if (arc) {
                     type = 'arc';
-                    const segData = this._getArcData(startPoint, endPoint, arc);
+                    const segData = this.getArcData(startPoint, endPoint, arc);
                     segmentLength = segData.length;
                 } else {
                     segmentLength = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
@@ -397,48 +387,11 @@
             return segments;
         }
 
-        _calculateTotalLength(geometry) {
-            let length = 0;
-            const points = geometry.points;
-            if (!points || points.length < 2) return 0;
-
-            const arcMap = new Map();
-            if (geometry.arcSegments) {
-                for (const arc of geometry.arcSegments) {
-                    arcMap.set(arc.startIndex, arc);
-                }
-            }
-
-            const numPoints = points.length;
-            const isPhysicallyClosed = this._isClosedPoints(points);
-            const segmentsToProcess = isPhysicallyClosed ? numPoints - 1 : numPoints;
-
-            for (let i = 0; i < segmentsToProcess; i++) {
-                const nextI = (i + 1) % numPoints;
-                const arc = arcMap.get(i);
-
-                if (arc && arc.endIndex === nextI) {
-                    let sweep = arc.endAngle - arc.startAngle;
-                    if (arc.clockwise) {
-                        if (sweep > PRECISION) sweep -= 2 * Math.PI;
-                    } else {
-                        if (sweep < -PRECISION) sweep += 2 * Math.PI;
-                    }
-
-                    const distToNext = Math.hypot(points[nextI].x - points[i].x, points[nextI].y - points[i].y);
-                    if (distToNext < PRECISION && Math.abs(sweep) < Math.PI * 0.5) {
-                        sweep = arc.clockwise ? -2 * Math.PI : 2 * Math.PI;
-                    }
-
-                    length += Math.abs(sweep * arc.radius);
-                } else {
-                    length += Math.hypot(
-                        points[nextI].x - points[i].x, 
-                        points[nextI].y - points[i].y
-                    );
-                }
-            }
-            return length;
+        // REVIEW - Why keep this with mapSegmentsToDistance? Merge?
+        calculateTotalLength(geometry) {
+            const segments = this.mapSegmentsToDistance(geometry);
+            if (segments.length === 0) return 0;
+            return segments[segments.length - 1].endDistance;
         }
     }
 

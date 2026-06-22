@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const debugState = D.debug;
 
     class GeometryProcessor {
@@ -40,7 +24,7 @@
             };
 
             // Initialize sub-modules
-            this.clipper = new ClipperWrapper();
+            this.clipper = new ClipperWrapper({ clipper2scale: this.options.clipper2scale });
             this.arcReconstructor = new ArcReconstructor();
 
             // Optional external resolver — set via setSelfIntersectionResolver()
@@ -122,15 +106,13 @@
             }
 
             // Preprocess primitives (convert to polygons with metadata)
-            const preprocessed = this._preprocessPrimitives(
+            const preprocessed = this.preprocessPrimitives(
                 this.cachedStates.originalPrimitives
             );
 
-            // Accumulate preprocessed geometry, don't replace it
-            if (!this.cachedStates.preprocessedGeometry) {
-                this.cachedStates.preprocessedGeometry = [];
-            }
-            this.cachedStates.preprocessedGeometry.push(...preprocessed);
+            // REVIEW? Replace — previous preprocessed state is stale once new
+            // primitives are fused. Prevents unbounded accumulation.
+            this.cachedStates.preprocessedGeometry = preprocessed;
 
             // Verify metadata propagation
             if (fusionOptions.enableArcReconstruction && debugState.enabled) {
@@ -138,7 +120,7 @@
             }
 
             // Perform boolean fusion
-            let fused = await this._performFusion(preprocessed);
+            let fused = await this.performFusion(preprocessed);
 
             // Verify metadata survival
             if (fusionOptions.enableArcReconstruction && debugState.enabled) {
@@ -201,16 +183,14 @@
             this.debug(`Input: ${primitives.length} primitives`);
 
             // Ensure all primitives have dark polarity for union
-            const darkPrimitives = primitives.map(p => {
-                const copy = { ...p };
-                if (!copy.properties) copy.properties = {};
-                copy.properties.polarity = 'dark';
-                return copy;
-            });
+            for (const p of primitives) {
+                if (!p.properties) p.properties = {};
+                p.properties.polarity = 'dark';
+            }
 
             try {
                 // Use Clipper union operation
-                const result = await this.clipper.union(darkPrimitives);
+                const result = await this.clipper.union(primitives);
 
                 // Count holes in result
                 let holesFound = 0;
@@ -340,12 +320,12 @@
         }
 
         // Preprocess primitives with curve ID preservation
-        _preprocessPrimitives(primitives) {
+        preprocessPrimitives(primitives) {
             const preprocessed = [];
             let strokeCount = 0;
 
             for (const primitive of primitives) {
-                if (!this._validatePrimitive(primitive)) continue;
+                if (!this.validatePrimitive(primitive)) continue;
 
                 const curveIds = primitive.curveIds || [];
 
@@ -442,7 +422,7 @@
         }
 
         // Perform boolean fusion
-        async _performFusion(primitives) {
+        async performFusion(primitives) {
             const darkPrimitives = [];
             const clearPrimitives = [];
 
@@ -507,7 +487,7 @@
             return finalPrimitives;
         }
 
-        _validatePrimitive(primitive) {
+        validatePrimitive(primitive) {
             if (!primitive) return false;
             if (!primitive.properties) {
                 primitive.properties = {};
@@ -521,7 +501,7 @@
             return true;
         }
 
-        _createPathPrimitive(contours, properties = {}) {
+        createPathPrimitive(contours, properties = {}) {
             if (typeof PathPrimitive !== 'undefined' && PathPrimitive) {
                 const primitive = new PathPrimitive(contours, properties);
 
@@ -577,13 +557,9 @@
         }
 
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[GeometryProcessor] ${message}`, data);
-                } else {
-                    console.log(`[GeometryProcessor] ${message}`);
-                }
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[GeometryProcessor] ${message}`, data)
+                 : console.log(`[GeometryProcessor] ${message}`);
         }
 
     }

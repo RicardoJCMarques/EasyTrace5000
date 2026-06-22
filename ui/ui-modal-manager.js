@@ -4,40 +4,23 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
- /*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const textConfig = C.ui.text;
-    const iconConfig = C.ui.icons;
     const storageKeys = C.storageKeys;
 
     class ModalManager {
-        constructor(controller) {
-            this.controller = controller;
-            this.ui = controller.ui;
+        constructor(ctrl) {
+            this.ctrl = ctrl;
+            this.ui = ctrl.ui;
             this.lang = this.ui.lang;
             this.activeModal = null;
             this.modalStack = [];
@@ -77,14 +60,6 @@
         }
 
         init() {
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && this.activeModal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.handleEscapeKey(); 
-                }
-            });
-
             // Click-outside handling with special cases
             Object.entries(this.modals).forEach(([name, modal]) => {
                 if (modal) {
@@ -108,10 +83,10 @@
                         outputFormat: D.laser.exportFormat,
                         layerColors: { ...(D.laser.layerColors) }
                     };
-                    this.controller.setPipeline('laser', laserConfig);
+                    this.ctrl.setPipeline('laser', laserConfig);
 
-                    if (this.ui.controls) {
-                        this.ui.controls.updatePipelineFieldVisibility();
+                    if (this.ui.machineSettings) {
+                        this.ui.machineSettings.updatePipelineFieldVisibility();
                     }
                 }
 
@@ -387,16 +362,12 @@
 
                 case 'quickstart':
                     // Quickstart -> go back to welcome
-                    this.closeModal();
-                    this.showModal('welcome');
+                    this.closeModal()
                     break;
-
                 case 'laserConfig':
                     // laserConfig -> go back to welcome
-                    this.closeModal();
-                    this.showModal('welcome');
+                    this.closeModal()
                     break;
-
                 case 'support':
                     // Support -> go back to previous (welcome if stacked, or just close)
                     if (this.modalStack.length > 0) {
@@ -405,6 +376,7 @@
                     } else {
                         // Opened standalone (e.g., from footer), just close
                         this.closeModal();
+                        this.showModal('welcome');
                     }
                     break;
 
@@ -414,6 +386,7 @@
                     break;
 
                 case 'warning':
+                    // Review - This check looks useless? Why is it checking for activeWarningCallbacks? Shouldn't it exist all the time? or is it checking a state to run the similarly named method?
                     if (this.activeWarningCallbacks?.onCancel) {
                         this.activeWarningCallbacks.onCancel();
                     }
@@ -451,10 +424,10 @@
                         outputFormat: D.laser.exportFormat,
                         layerColors: { ...(D.laser.layerColors) }
                     };
-                    this.controller.setPipeline('laser', laserConfig);
+                    this.ctrl.setPipeline('laser', laserConfig);
 
-                    if (this.ui.controls) {
-                        this.ui.controls.updatePipelineFieldVisibility();
+                    if (this.ui.machineSettings) {
+                        this.ui.machineSettings.updatePipelineFieldVisibility();
                     }
 
                     this.closeModal();
@@ -469,7 +442,7 @@
                     e.preventDefault();
 
                     // --- HYBRID LOCK ---
-                    this.ui.showStatus('Hybrid pipeline is currently locked for testing.', 'info');
+                    this.ui.setStatus('Hybrid pipeline is currently locked for testing.', 'info');
                     return; 
                     // -------------------
 
@@ -479,10 +452,10 @@
                         outputFormat: D.laser.exportFormat || 'svg',
                         layerColors: { ...(D.laser.layerColors || {}) }
                     };
-                    this.controller.setPipeline('hybrid', laserConfig);
+                    this.ctrl.setPipeline('hybrid', laserConfig);
 
-                    if (this.ui.controls) {
-                        this.ui.controls.updatePipelineFieldVisibility();
+                    if (this.ui.machineSettings) {
+                        this.ui.machineSettings.updatePipelineFieldVisibility();
                     }
 
                     this.closeModal();
@@ -495,8 +468,12 @@
             const backBtn = document.getElementById('laser-config-back-btn');
             if (backBtn) {
                 backBtn.onclick = () => {
-                    this.closeModal();
-                    this.showModal('welcome');
+                    if (this.modalStack.length > 0) {
+                        this.closeModal();
+                    } else {
+                        this.closeModal();
+                        this.showModal('welcome');
+                    }
                 };
             }
 
@@ -566,7 +543,12 @@
             const backBtn = document.getElementById('support-back-btn');
             if (backBtn) {
                 backBtn.onclick = () => {
-                    this.closeModal(); // Returns to welcome via stack
+                    if (this.modalStack.length > 0) {
+                        this.closeModal();
+                    } else {
+                        this.closeModal();
+                        this.showModal('welcome');
+                    }
                 };
             }
 
@@ -607,7 +589,7 @@
                 cncCard.onclick = (e) => {
                     e.preventDefault();
                     this.selectedPipeline = 'cnc';
-                    this.controller.setPipeline('cnc');
+                    this.ctrl.setPipeline('cnc');
                     this.closeModal();
 
                     const hideWelcome = localStorage.getItem(storageKeys.hideWelcome);
@@ -689,16 +671,18 @@
                 dontShowCheckbox.onchange = (e) => {
                     if (!e.target.checked) {
                         localStorage.removeItem(storageKeys.hideWelcome);
-                        this.ui.showStatus('Quickstart will show on next visit', 'info');
+                        this.ui.setStatus('Quickstart will show on next visit', 'info');
                     }
                 };
             }
 
             // Setup example dropdown
             const select = document.getElementById('pcb-example-select');
-            if (select && options.examples) {
+            const examples = options.examples || this.ctrl.getExamples(); 
+
+            if (select && examples) {
                 select.innerHTML = '';
-                Object.entries(options.examples).forEach(([key, example]) => {
+                Object.entries(examples).forEach(([key, example]) => {
                     const option = document.createElement('option');
                     option.value = key;
                     option.textContent = example.name;
@@ -714,8 +698,8 @@
             if (loadExampleBtn) {
                 loadExampleBtn.onclick = async () => {
                     const selectedExample = select?.value;
-                    if (selectedExample && this.controller.loadExample) {
-                        await this.controller.loadExample(selectedExample);
+                    if (selectedExample && this.ctrl.loadExample) {
+                        await this.ctrl.loadExample(selectedExample);
                         this.ui.renderer.core.zoomFit(true);
                     }
                     this.handleQuickstartClose();
@@ -742,11 +726,15 @@
             const backBtn = document.getElementById('quickstart-back-btn');
             if (backBtn) {
                 backBtn.onclick = () => {
-                    this.closeModal();
-                    if (this.selectedPipeline === 'laser') {
-                        this.showModal('laserConfig');
+                    if (this.modalStack.length > 0) {
+                        this.closeModal();
                     } else {
-                        this.showModal('welcome');
+                        this.closeModal();
+                        if (this.selectedPipeline === 'laser') {
+                            this.showModal('laserConfig');
+                        } else {
+                            this.showModal('welcome');
+                        }
                     }
                 };
             }
@@ -759,7 +747,7 @@
         }
 
         setupQuickstartDropZones() {
-            const opTypes = ['isolation', 'drill', 'clearing', 'cutout'];
+            const opTypes = ['isolation', 'drill', 'clearing', 'cutout', 'unassigned'];
 
             opTypes.forEach(opType => {
                 const zone = document.getElementById(`qs-${opType}-zone`);
@@ -820,9 +808,9 @@
         }
 
         handleQuickstartFile(file, opType, zone) {
-            const validation = this.controller.core?.validateFileType(file.name, opType);
+            const validation = this.ctrl.core?.validateFileType(file.name, opType);
             if (validation && !validation.valid) {
-                this.ui.showStatus(validation.message, 'error');
+                this.ui.setStatus(validation.message, 'error');
                 return;
             }
 
@@ -849,23 +837,16 @@
         async processQuickstartFiles() {
             for (const [type, file] of Object.entries(this.quickstartFiles)) {
                 if (file) {
-                    await this.controller.processFile(file, type);
+                    await this.ctrl.processFile(file, type);
                 }
             }
-
-            // Reset
-            this.quickstartFiles = {
-                isolation: null,
-                drill: null,
-                clearing: null,
-                cutout: null
-            };
-
-            if (this.ui?.renderer) {
-                setTimeout(() => {
-                    this.ui.renderer.core.zoomFit();
-                }, 100);
-            }
+            this.quickstartFiles = {};
+            
+            // Wait for DOM reflow
+            requestAnimationFrame(() => {
+                this.ui.renderer.core.zoomFit();
+                this.ui.renderer.render();
+            });
         }
 
         handleQuickstartClose() {
@@ -883,7 +864,7 @@
         updateProcessButton() {
             const processBtn = document.getElementById('process-files-btn');
             if (processBtn) {
-                const hasFiles = Object.values(this.controller.uploadedFiles).some(f => f !== null);
+                const hasFiles = Object.values(this.ctrl.uploadedFiles).some(f => f !== null);
                 processBtn.disabled = !hasFiles;
             }
         }
@@ -923,10 +904,10 @@
 
             // Check which operations actually exist in this job
             this.jobHasLaser = this.selectedOperations.some(
-                op => this.controller.isLaserExportForOperation(op.type)
+                op => this.ctrl.isLaserExportForOperation(op.type)
             );
             this.jobHasCNC = this.selectedOperations.some(
-                op => !this.controller.isLaserExportForOperation(op.type) && op.type !== 'stencil'
+                op => !this.ctrl.isLaserExportForOperation(op.type) && op.type !== 'stencil'
             );
             this.jobHasStencil = this.selectedOperations.some(
                 op => op.type === 'stencil'
@@ -977,7 +958,7 @@
 
             // Laser specific init (only if laser ops present)
             if (this.jobHasLaser) {
-                const laserSettings = this.controller.core.settings.laser;
+                const laserSettings = this.ctrl.core.settings.laser;
 
                 // Populate the per-job padding input from persisted settings
                 const paddingInput = document.getElementById('laser-exporter-padding');
@@ -997,7 +978,7 @@
             if (this.jobHasStencil) {
                 const stencilPaddingInput = document.getElementById('stencil-exporter-padding');
                 if (stencilPaddingInput) {
-                    const laserSettings = this.controller.core.settings.laser;
+                    const laserSettings = this.ctrl.core.settings.laser;
                     stencilPaddingInput.value = laserSettings.exportPadding ?? D.laser.exportPadding;
                 }
             }
@@ -1008,16 +989,16 @@
                 let ext = '.nc';
 
                 if (this.jobHasLaser && !this.jobHasCNC) {
-                    ext = this.controller.core.settings.laser.exportFormat === 'png' ? '.png' : '.svg';
+                    ext = this.ctrl.core.settings.laser.exportFormat === 'png' ? '.png' : '.svg';
                 } else if (this.jobHasStencil && !this.jobHasCNC && !this.jobHasLaser) {
                     ext = '.svg';
                 } else if (this.jobHasCNC) {
-                    const postProcessor = this.controller.core.settings.gcode.postProcessor;
-                    const processorInfo = this.controller.gcodeGenerator.getProcessorInfo(postProcessor);
+                    const postProcessor = this.ctrl.core.settings.gcode.postProcessor;
+                    const processorInfo = this.ctrl.gcodeGenerator.getProcessorInfo(postProcessor);
                     ext = processorInfo.fileExtension;
                 }
 
-                const defaultBaseName = this.controller.core.settings.export.defaultBaseName;
+                const defaultBaseName = this.ctrl.core.settings.export.defaultBaseName;
                 const currentName = filenameInput.value || defaultBaseName;
                 const baseName = currentName.replace(/\.[^/.]+$/, ''); // Strip old extension if present
                 filenameInput.value = `${baseName}${ext}`;
@@ -1040,18 +1021,19 @@
                 let routeBadge;
                 if (op.type === 'stencil') {
                     routeBadge = '<span class="exporter-route-badge exporter-route-badge--stencil">SVG</span>';
-                } else if (this.controller.isLaserExportForOperation(op.type)) {
-                    const laserFormat = (this.controller.core.settings.laser.exportFormat).toUpperCase();
+                } else if (this.ctrl.isLaserExportForOperation(op.type)) {
+                    const laserFormat = (this.ctrl.core.settings.laser.exportFormat).toUpperCase();
                     routeBadge = `<span class="exporter-route-badge exporter-route-badge--laser">${laserFormat}</span>`;
                 } else {
-                    const postProcessor = this.controller.core.settings.gcode.postProcessor;
-                    const processorInfo = window.pcbcam.gcodeGenerator.getProcessorInfo(postProcessor);
+                    const postProcessor = this.ctrl.core.settings.gcode.postProcessor;
+                    const processorInfo = this.ctrl.gcodeGenerator.getProcessorInfo(postProcessor);
                     const ext = (processorInfo?.fileExtension).replace('.', '').toUpperCase();
                     routeBadge = `<span class="exporter-route-badge exporter-route-badge--cnc">${ext}</span>`;
                 }
 
+                // REVIEW - Consider moving the operation drag-handler icon to the right so that there aren't shifts when toggling them on/off?
                 item.innerHTML = `
-                    <span class="tree-expand-icon drag-handle">${iconConfig.modalDragHandle}</span>
+                    <span class="tree-expand-icon drag-handle"><svg class="cam-icon" width="14" height="14"><use href="#icon-drag-handle"></use></svg></span>
                     <input type="checkbox" class="exporter-op-checkbox" id="exp-check-${op.id}" checked>
                     <label for="exp-check-${op.id}">
                         ${op.type}: ${op.file.name}
@@ -1098,7 +1080,7 @@
                         if (op) {
                             if (op.type === 'stencil') {
                                 hasCheckedStencil = true;
-                            } else if (this.controller.isLaserExportForOperation(op.type)) {
+                            } else if (this.ctrl.isLaserExportForOperation(op.type)) {
                                 hasCheckedLaser = true;
                             } else {
                                 hasCheckedCNC = true;
@@ -1164,7 +1146,7 @@
                     if (previewText && previewText.value && previewText.value !== textConfig.gcodePlaceholder) {
                         try {
                             await navigator.clipboard.writeText(previewText.value);
-                            this.ui.showStatus('G-code copied to clipboard!', 'success');
+                            this.ui.setStatus('G-code copied to clipboard!', 'success');
 
                             // Visual feedback via class toggle
                             copyBtn.classList.add('copy-success');
@@ -1175,10 +1157,10 @@
 
                         } catch (err) {
                             console.error('[UI-ModalManager] Failed to copy text:', err);
-                            this.ui.showStatus('Clipboard copy failed. Check browser permissions.', 'error');
+                            this.ui.setStatus('Clipboard copy failed. Check browser permissions.', 'error');
                         }
                     } else {
-                        this.ui.showStatus('No generated G-code to copy.', 'warning');
+                        this.ui.setStatus('No generated G-code to copy.', 'warning');
                     }
                 };
             }
@@ -1219,7 +1201,7 @@
 
                 // Safeguard: Did users uncheck everything?
                 if (activeOpIds.length === 0) {
-                    this.ui.showStatus('No operations selected for export.', 'warning');
+                    this.ui.setStatus('No operations selected for export.', 'warning');
                     return;
                 }
 
@@ -1228,10 +1210,10 @@
                 const stencilPaddingInput = document.getElementById('stencil-exporter-padding');
 
                 if (laserPaddingInput) {
-                    this.controller.core?.updateSettings('laser', { exportPadding: parseFloat(laserPaddingInput.value) });
+                    this.ctrl.core?.updateSettings('laser', { exportPadding: parseFloat(laserPaddingInput.value) });
                 }
 
-                const result = await this.controller.executeExports({
+                const result = await this.ctrl.executeExports({
                     operationIds: activeOpIds,
                     singleFile: document.getElementById('exporter-single-file')?.checked === true,
                     baseName: (document.getElementById('exporter-filename')?.value || 'pcb-output').replace(/\.[^/.]+$/, ''),
@@ -1245,14 +1227,14 @@
                 });
 
                 if (result.success) {
-                    this.ui.showStatus(result.message, 'success');
+                    this.ui.setStatus(result.message, 'success');
                     this.closeModal();
                 } else {
-                    this.ui.showStatus(result.message || 'Export produced no output.', 'warning');
+                    this.ui.setStatus(result.message || 'Export produced no output.', 'warning');
                 }
             } catch (error) {
                 console.error('[UI-ModalManager] Export failed:', error);
-                this.ui.showStatus('Export failed: ' + error.message, 'error');
+                this.ui.setStatus('Export failed: ' + error.message, 'error');
             } finally {
                 if (executeBtn) executeBtn.disabled = false;
                 // Hide the global wait spinner gracefully
@@ -1338,8 +1320,8 @@
             checkbox.id = `op-check-${operation.id}`;
 
             const dragHandle = document.createElement('span');
-            dragHandle.className = 'tree-expand-icon'; // Was 'drag-handle'
-            dragHandle.innerHTML = iconConfig.modalDragHandle;
+            dragHandle.className = 'tree-expand-icon';
+            dragHandle.innerHTML = `<svg class="cam-icon" width="14" height="14"><use href="#icon-drag-handle"></use></svg>`;
 
             const label = document.createElement('label');
             label.htmlFor = checkbox.id;
@@ -1444,7 +1426,7 @@
                         focused.setAttribute('aria-grabbed', 'false');
                         focused.classList.remove('is-grabbed');
                         grabbedItem = null;
-                        this.ui.showStatus('Item placed', 'info');
+                        this.ui.setStatus('Item placed', 'info');
                     } else {
                         // Grab - release any other grabbed item first
                         items.forEach(item => {
@@ -1454,7 +1436,7 @@
                         focused.setAttribute('aria-grabbed', 'true');
                         focused.classList.add('is-grabbed');
                         grabbedItem = focused;
-                        this.ui.showStatus('Item grabbed. Use Up/Down to move, Space to place.', 'info');
+                        this.ui.setStatus('Item grabbed. Use Up/Down to move, Space to place.', 'info');
                     }
                 }
 
@@ -1492,7 +1474,7 @@
                     focused.setAttribute('aria-grabbed', 'false');
                     focused.classList.remove('is-grabbed');
                     grabbedItem = null;
-                    this.ui.showStatus('Reorder cancelled', 'info');
+                    this.ui.setStatus('Reorder cancelled', 'info');
                 }
             });
         }
@@ -1528,7 +1510,7 @@
                         list.querySelectorAll('.file-node-content').forEach(item => {
                             const checkbox = item.querySelector('input[type="checkbox"]');
                             const op = this.selectedOperations.find(o => o.id === item.dataset.operationId);
-                            if (checkbox?.checked && !this.controller.isLaserExportForOperation(op.type) && op.type !== 'stencil') {
+                            if (checkbox?.checked && !this.ctrl.isLaserExportForOperation(op.type) && op.type !== 'stencil') {
                                 selectedItemIds.push(item.dataset.operationId);
                             }
                         });
@@ -1536,7 +1518,7 @@
                 }
 
                 if (selectedItemIds.length === 0) {
-                    this.ui.showStatus('No CNC operations selected for calculation', 'info');
+                    this.ui.setStatus('No CNC operations selected for calculation', 'info');
                     return;
                 }
 
@@ -1545,7 +1527,7 @@
                 const opsWithoutPreview = selectedOps.filter(op => !op.preview || !op.preview.ready);
                 if (opsWithoutPreview.length > 0) {
                     this.showPlaceholderPreview();
-                    this.ui.showStatus(`Operations missing Preview: ${opsWithoutPreview.map(o => o.file.name).join(', ')}. Please generate previews first.`, 'warning');
+                    this.ui.setStatus(`Operations missing Preview: ${opsWithoutPreview.map(o => o.file.name).join(', ')}. Please generate previews first.`, 'warning');
                     return;
                 }
 
@@ -1553,7 +1535,7 @@
                 const splitDrillsEl = document.getElementById('exporter-split-drills');
 
                 // Delegate to controller
-                const results = await this.controller.calculateToolpaths({
+                const results = await this.ctrl.calculateToolpaths({
                     operationIds: selectedItemIds,
                     singleFile: isSingleFile,
                     splitDrills: splitDrillsEl?.checked && !splitDrillsEl?.disabled,
@@ -1576,7 +1558,7 @@
                         if (el) el.textContent = combined.planCount;
                     } else {
                         this.showPlaceholderPreview();
-                        this.ui.showStatus('Calculation returned no G-code', 'warning');
+                        this.ui.setStatus('Calculation returned no G-code', 'warning');
                     }
                 } else {
                     for (const [key, result] of Object.entries(results)) {
@@ -1603,7 +1585,7 @@
             } catch (error) {
                 console.error('[UI-ModalManager] Orchestration failed:', error);
                 this.showPlaceholderPreview();
-                this.ui.showStatus(`Failed: ${error.message}`, 'error');
+                this.ui.setStatus(`Failed: ${error.message}`, 'error');
             } finally {
                 btn.textContent = originalText;
                 btn.disabled = false;
@@ -1617,7 +1599,7 @@
                 '[tabindex]:not([tabindex="-1"])';
 
             // Store for trap logic
-            this._currentModalFocusables = () => {
+            this.currentModalFocusables = () => {
                 return Array.from(modal.querySelectorAll(focusableSelector));
             };
 
@@ -1625,7 +1607,7 @@
             this.focusTrapListener = (e) => {
                 if (e.key !== 'Tab') return;
 
-                const focusables = this._currentModalFocusables();
+                const focusables = this.currentModalFocusables();
                 if (focusables.length === 0) return;
 
                 const first = focusables[0];
@@ -1665,7 +1647,7 @@
                 document.removeEventListener('keydown', this.focusTrapListener);
                 this.focusTrapListener = null;
             }
-            this._currentModalFocusables = null;
+            this.currentModalFocusables = null;
         }
 
         setupModalFieldNavigation(modal) {

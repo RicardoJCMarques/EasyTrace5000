@@ -4,32 +4,16 @@
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
- * @license     AGPL-3.0-or-later
- */
-
-/*
- * EasyTrace5000 - Advanced PCB Isolation CAM Workspace
- * Copyright (C) 2025-2026 Eltryus
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function() {
     'use strict';
 
-    const C = window.PCBCAMConfig.constants;
-    const D = window.PCBCAMConfig.defaults;
+    const C = window.CAMConfig.constants;
+    const D = window.CAMConfig.defaults;
     const gridConfig = D.rendering.grid;
     const canvasConfig = D.rendering.canvas;
     const overlayConfig = C.renderer.overlay;
@@ -52,7 +36,7 @@
 
             const uiScale = this.core.devicePixelRatio || 1;
             const fc = this.core.frameCache;
-            const step = this._calculateStepSize();
+            const step = this.calculateStepSize();
             if (step <= 0) return;
 
             const view = this.core.getViewBounds();
@@ -236,7 +220,7 @@
             this.ctx.stroke();
 
             // Calculate Layout
-            const stepWorld = this._calculateStepSize();
+            const stepWorld = this.calculateStepSize();
             const view = this.core.getViewBounds();
             const origin = this.core.getOriginPosition();
 
@@ -425,6 +409,8 @@
                 label = `${(niceLength * 1000).toFixed(0)}μm`;
             } else if (niceLength < 1) {
                 label = `${niceLength.toFixed(2)}mm`;
+            } else if (niceLength >= 1000) {
+                label = `${(niceLength / 1000).toFixed(2)}m`;
             } else {
                 label = `${niceLength}mm`;
             }
@@ -499,7 +485,7 @@
 
         // Helper Methods
 
-        _calculateStepSize() {
+        calculateStepSize() {
             const minPixelSize = gridConfig.minPixelSpacing;
             const possibleSteps = gridConfig.steps;
 
@@ -512,13 +498,9 @@
         }
 
         debug(message, data = null) {
-            if (debugState.enabled) {
-                if (data) {
-                    console.log(`[Primitives] ${message}`, data);
-                } else {
-                    console.log(`[Primitives] ${message}`);
-                }
-            }
+            if (!debugState.enabled) return;
+            data ? console.log(`[OverlayRenderer] ${message}`, data)
+                 : console.log(`[OverlayRenderer] ${message}`);
         }
     }
 
