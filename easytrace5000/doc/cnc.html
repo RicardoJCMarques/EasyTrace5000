@@ -26,10 +26,10 @@
     <meta property="og:url" content="https://cam.eltryus.design/easytrace5000/doc/cnc">
     <meta property="og:title" content="EasyTrace5000 | CNC Milling Guide">
     <meta property="og:description" content="Master PCB isolation routing: From Gerber files to machine-ready G-code.">
-    <meta property="og:image" content="https://cam.eltryus.design/images/social-preview.jpg">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-trace.jpg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:site_name" content="EasyTrace5000">
+    <meta property="og:site_name" content="Eltryus EasyCAM5000 Suite">
     <meta property="og:locale" content="en_US">
 
     <link rel="icon" type="image/png" href="../../images/favicon/favicon-96x96.png" sizes="96x96">
@@ -44,29 +44,35 @@
     <link rel="stylesheet" href="../../css/doc.css">
 
     <script type="application/ld+json">
-    [
+    {
+      "@context": "https://schema.org",
+      "@graph": [
         {
-            "@context": "https://schema.org",
             "@type": "TechArticle",
+            "@id": "https://cam.eltryus.design/easytrace5000/doc/cnc#article",
             "headline": "CNC Milling Guide for PCB Isolation Routing",
             "description": "Comprehensive guide on generating G-code for PCB manufacturing using EasyTrace5000.",
-            "image": "https://cam.eltryus.design/images/social-preview.jpg",
-            "author": { "@type": "Organization", "name": "Eltryus" },
-            "publisher": { "@type": "Organization", "name": "Eltryus" },
+            "image": "https://cam.eltryus.design/images/social-trace.jpg",
+            "url": "https://cam.eltryus.design/easytrace5000/doc/cnc",
+            "inLanguage": "en",
+            "isPartOf": { "@id": "https://cam.eltryus.design/easytrace5000/doc/#docs" },
+            "about": { "@id": "https://cam.eltryus.design/easytrace5000/#app" },
+            "author": { "@id": "https://www.eltryus.design/#organization" },
+            "publisher": { "@id": "https://www.eltryus.design/#organization" },
             "datePublished": "2025-01-16",
             "dateModified": "2026-03-02"
         },
         {
-            "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             "itemListElement": [
-                { "@type": "ListItem", "position": 1, "name": "Eltryus CAM Suite", "item": "https://cam.eltryus.design/" },
+                { "@type": "ListItem", "position": 1, "name": "Eltryus EasyCAM5000 Suite", "item": "https://cam.eltryus.design/" },
                 { "@type": "ListItem", "position": 2, "name": "EasyTrace5000", "item": "https://cam.eltryus.design/easytrace5000/" },
                 { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easytrace5000/doc/" },
                 { "@type": "ListItem", "position": 4, "name": "CNC Guide", "item": "https://cam.eltryus.design/easytrace5000/doc/cnc" }
             ]
         }
-    ]
+      ]
+    }
     </script>
 </head>
 <body>
@@ -99,13 +105,14 @@
             <a href="./" draggable="false" aria-label="Documentation Index">Docs</a>
             <a href="cnc" class="active" draggable="false" aria-current="page" aria-label="CNC Milling Guide">CNC Guide</a>
             <a href="laser" draggable="false" aria-label="Laser Processing Guide">Laser Guide</a>
+            <a href="operations" draggable="false" aria-label="Operation Reference">Operations</a>
+            <a href="parameters" draggable="false" aria-label="Parameter Reference">Parameters</a>
             <a href="accessibility" draggable="false" aria-label="Accessibility Statement">Accessibility</a>
             <span class="separator" aria-hidden="true"></span>
             <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
 
-            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle between light and dark theme">
-                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
             </button>
         </nav>
     </header>
@@ -299,7 +306,7 @@
                 <p>Click the eye icon to expand the visualization settings. Here you can toggle display elements (grid, rulers, wireframe), control layer visibility (traces, pads, drills, offsets, previews), and enable advanced debug features. See the <a href="#visualization" draggable="false">Visualization Options</a> section for details.</p>
 
                 <h4>Status Bar</h4>
-                <p>Shows status messages and progress for operations like file loading, offset generation, and export. Click the status bar to expand a log history showing recent messages—useful for troubleshooting.</p>
+                <p>Shows status messages and progress for operations like file loading, offset generation, and export. Click the status bar to expand a log history showing recent messages, it can be useful for troubleshooting.</p>
             </section>
 
             <!-- The workflow -->
@@ -440,7 +447,7 @@
                 <p>If your PCB needs to be rotated (perhaps to fit your stock material orientation), enter a rotation angle in degrees. Click <strong>Apply Rotation</strong> to rotate all geometry around its center. <strong>Reset Rotation</strong> returns to 0°.</p>
 
                 <h4>Why Origin Matters</h4>
-                <p>The origin you set here becomes (0,0) in your G-code output. Most CNC workflows involve homing the machine, then jogging to a known position on your stock and setting the work coordinate system origin there. Your origin setting in EasyTrace5000 should match that physical position—typically a corner or the center of the board.</p>
+                <p>The origin you set here becomes (0,0) in your G-code output. Most CNC workflows involve homing the machine, then jogging to a known position on your stock and setting the work coordinate system origin there. Your origin setting in EasyTrace5000 should match that physical position. Either a corner or the center of the board are predictable.</p>
 
                 <h3 id="workflow-machine">Stage 3: Machine Settings</h3>
                 <p>The Machine Settings panel contains global parameters that affect all G-code output.</p>
@@ -455,7 +462,7 @@
                 <p><strong>Safe Z:</strong> The height the tool moves to at program start/end and typicallyspindle is turned on/off.<br><strong>Travel Z:</strong> The height for rapid moves between cutting operations. This can be lower than Safe Z for faster operation, but must still clear any clamps and high points.</p>
 
                 <h3 id="workflow-offsets">Stage 4: Generating Offsets</h3>
-                <p>With files loaded and coordinates set, you're ready to generate the toolpath geometry. This stage focuses purely on 2D offset paths—no depth or Z-axis settings yet.</p>
+                <p>With files loaded and coordinates set, you're ready to generate the toolpath geometry. This stage focuses purely on 2D offset paths. No depth or Z-axis settings yet.</p>
 
                 <h4>Selecting an Operation</h4>
                 <p>Click on a source file in the Operations Tree (left sidebar). The Properties panel (right sidebar) will collapse the origin and machine sections and show that operation's parameters.</p>
@@ -526,7 +533,7 @@
                 <p>When you select an offset pass in the tree, the Properties panel shows depth and strategy settings:</p>
                 <dl>
                     <dt>Cut Depth</dt>
-                    <dd>Target Z depth below the surface. Enter as negative (e.g., -0.1mm) or positive—the system handles both.</dd>
+                    <dd>Target Z depth below the surface. Enter as negative (e.g., -0.1mm) or positive value.</dd>
                     <dt>Depth per Pass</dt>
                     <dd>When Multi-Depth is enabled, how much to cut per Z-level. Multiple passes reach the final depth incrementally.</dd>
                     <dt>Multi-Depth</dt>
@@ -546,7 +553,7 @@
                 </dl>
 
                 <h4>Preview vs. Offset</h4>
-                <p><strong>Offsets</strong> show the centerline path the tool will follow—where the spindle axis travels.<br><strong>Previews</strong> show the full width of the tool's cutting envelope—what material will be removed.</p>
+                <p><strong>Offsets</strong> show the centerline path the tool will follow, where the spindle moves through.<br><strong>Previews</strong> show the full width of the tool's cutting envelope, the material that will be removed.</p>
 
                 <figure>
                     <svg viewBox="0 0 700 300" style="width:100%;max-width:700px;background:#1a1a1a;border-radius:8px;">
@@ -804,7 +811,7 @@
                 <h4>Strategy Stage Parameters</h4>
                 <dl>
                     <dt>Cut Depth / Multi-Depth</dt>
-                    <dd>Same as isolation—configure depth per pass for thick copper.</dd>
+                    <dd>Same as isolation - configure depth per pass for thick copper.</dd>
                     <dt>Entry Type</dt>
                     <dd>Ramp or Helix recommended for pocket entry.</dd>
                 </dl>
@@ -855,7 +862,7 @@
                     <dt>Tab Width</dt>
                     <dd>Width of each tab in mm. 2-3mm usually sufficient.</dd>
                     <dt>Tab Height</dt>
-                    <dd>Material left in tab. 0.3-0.5mm—enough to hold but easy to remove.</dd>
+                    <dd>Material left in tab. 0.3-0.5mm (enough to hold but easy to remove).</dd>
                 </dl>
             </section>
 
@@ -908,7 +915,7 @@
             <!-- Visualization options -->
             <section id="visualization">
                 <h2>Visualization Options</h2>
-                <p>The Visualization panel (footer, left side—click the eye icon) controls what appears on the canvas. Most are development leftovers but fun to use.</p>
+                <p>The Visualization panel (left side, bottom of the page - click the eye icon) controls what appears on the canvas. Most are development leftovers but fun to use.</p>
 
                 <h3>Display Options</h3>
                 <dl>
@@ -1016,21 +1023,49 @@
     <script defer src="../../themes/theme-loader.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Theme Toggle Logic
+            // Load the SVG Sprite
+            fetch('../../images/icons/sprite.svg')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
+
+            // Theme toggle
             const themeBtn = document.getElementById('theme-toggle');
             if (themeBtn && window.ThemeLoader) {
-                themeBtn.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+                if (useEl) useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                });
             }
 
-            // Mobile Menu Logic
+            // Mobile menu toggle
             const menuBtn = document.querySelector('.doc-menu-toggle');
             const nav = document.querySelector('.doc-nav');
-
             if (menuBtn && nav) {
+                const useEl = menuBtn.querySelector('use');
                 menuBtn.addEventListener('click', () => {
                     const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
                     menuBtn.setAttribute('aria-expanded', !isExpanded);
                     nav.classList.toggle('is-open');
+
+                    if (useEl) useEl.setAttribute('href', !isExpanded ? '#icon-close' : '#icon-menu');
                 });
             }
         });

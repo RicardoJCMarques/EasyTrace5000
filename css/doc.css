@@ -62,7 +62,6 @@ h1, h2, h3, h4, h5, h6 {
 .doc-brand a {
     color: var(--color-text-primary);
     text-decoration: none;
-    transition: color 0.2s;
 }
 
 .doc-brand a:hover {
@@ -81,7 +80,6 @@ h1, h2, h3, h4, h5, h6 {
     font-size: var(--font-size-sm);
     padding: var(--spacing-xs) var(--spacing-md);
     border-radius: var(--radius);
-    transition: all 0.2s;
     font-weight: 500;
 }
 

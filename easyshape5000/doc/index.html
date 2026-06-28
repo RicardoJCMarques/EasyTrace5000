@@ -26,10 +26,10 @@
     <meta property="og:url" content="https://cam.eltryus.design/easyshape5000/doc/">
     <meta property="og:title" content="EasyShape5000 | Documentation">
     <meta property="og:description" content="Guides and reference for EasyShape5000 CNC router CAM workflows.">
-    <meta property="og:image" content="https://cam.eltryus.design/images/social-preview-shape.jpg">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-shape.jpg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:site_name" content="EasyShape5000">
+    <meta property="og:site_name" content="Eltryus EasyCAM5000 Suite">
     <meta property="og:locale" content="en_US">
 
     <link rel="icon" type="image/png" href="../../images/favicon/favicon-96x96.png" sizes="96x96">
@@ -44,28 +44,34 @@
     <link rel="stylesheet" href="../../css/doc.css">
 
     <script type="application/ld+json">
-    [
-        {
-            "@context": "https://schema.org",
-            "@type": "CollectionPage",
-            "headline": "EasyShape5000 Documentation",
-            "description": "Guides and reference for EasyShape5000 CNC router CAM workflows.",
-            "url": "https://cam.eltryus.design/easyshape5000/doc/",
-            "author": { "@type": "Organization", "name": "Eltryus" },
-            "publisher": { "@type": "Organization", "name": "Eltryus" },
-            "datePublished": "2026-06-17",
-            "dateModified": "2026-06-17"
-        },
-        {
-            "@context": "https://schema.org",
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-                { "@type": "ListItem", "position": 1, "name": "Eltryus CAM Suite", "item": "https://cam.eltryus.design/" },
-                { "@type": "ListItem", "position": 2, "name": "EasyShape5000", "item": "https://cam.eltryus.design/easyshape5000/" },
-                { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easyshape5000/doc/" }
-            ]
-        }
-    ]
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": "https://cam.eltryus.design/easyshape5000/doc/#docs",
+                "name": "EasyShape5000 Documentation",
+                "headline": "EasyShape5000 Documentation",
+                "description": "Guides and reference for EasyShape5000 CNC routing workflows: operations, parameters, and workflow.",
+                "url": "https://cam.eltryus.design/easyshape5000/doc/",
+                "inLanguage": "en",
+                "isPartOf": { "@id": "https://cam.eltryus.design/#website" },
+                "about": { "@id": "https://cam.eltryus.design/easyshape5000/#app" },
+                "author": { "@id": "https://www.eltryus.design/#organization" },
+                "publisher": { "@id": "https://www.eltryus.design/#organization" },
+                "datePublished": "2026-06-17",
+                "dateModified": "2026-06-17"
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    { "@type": "ListItem", "position": 1, "name": "Eltryus EasyCAM5000 Suite", "item": "https://cam.eltryus.design/" },
+                    { "@type": "ListItem", "position": 2, "name": "EasyShape5000", "item": "https://cam.eltryus.design/easyshape5000/" },
+                    { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easyshape5000/doc/" }
+                ]
+            }
+        ]
+    }
     </script>
 </head>
 <body>
@@ -83,12 +89,14 @@
             <span class="separator" aria-hidden="true"></span>
             <a href="./" class="active" draggable="false" aria-current="page">Docs</a>
             <a href="guide" draggable="false">Workflow Guide</a>
+            <a href="operations" draggable="false" aria-label="Operation Reference">Operations</a>
+            <a href="parameters" draggable="false" aria-label="Parameter Reference">Parameters</a>
             <a href="/easytrace5000/doc/accessibility" draggable="false">Accessibility</a>
             <span class="separator" aria-hidden="true"></span>
             <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a>
-            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle between light and dark theme">
-                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
             </button>
         </nav>
     </header>
@@ -98,7 +106,7 @@
 
             <section class="hero">
                 <h1>EasyShape5000 Documentation</h1>
-                <p class="tagline">Browser-based CAM for CNC routers — profile cuts, pockets, drilling, and engraving from SVG designs</p>
+                <p class="tagline">Browser-based CAM for CNC routers - profile cuts, pockets, drilling, and engraving from SVG designs</p>
                 <div class="hero-actions">
                     <a href="../" class="btn btn--primary" draggable="false">Launch Application</a>
                     <a href="guide" class="btn btn--secondary" draggable="false">Workflow Guide</a>
@@ -107,10 +115,10 @@
 
             <section id="introduction">
                 <h2>What is EasyShape5000?</h2>
-                <p>EasyShape5000 is an open-source, browser-based CAM tool for CNC routers. It takes SVG designs and generates G-code for common 2.5D operations — profile cuts, pocket clearing, drilling, and engraving. A simpler, browser-native alternative to tools like Easel or Carbide Create.</p>
+                <p>EasyShape5000 is an open-source, browser-based CAM tool for CNC routers. It takes SVG designs and generates G-code for common 2.5D operations - profile cuts, pocket clearing, drilling, and engraving. A simpler, browser-native alternative to tools like Easel or Carbide Create.</p>
                 <p>Like its sister app <a href="/easytrace5000/doc/" draggable="false">EasyTrace5000</a> (built for PCB fabrication), everything runs client-side. No installation, no cloud, no accounts. Your files stay on your machine.</p>
                 <div class="callout callout--info">
-                    <h3>v1.0 — First Release</h3>
+                    <h3>v0.9 - First Release</h3>
                     <p>Profile, pocket, and drill operations are working. Engraving and pattern generation are coming shortly. Advanced operations (v-carve, 3D relief) are planned for future releases with a dedicated 3D preview system. Report issues on <a href="https://github.com/RicardoJCMarques/EasyTrace5000/issues" target="_blank" draggable="false">GitHub</a>.</p>
                 </div>
             </section>
@@ -238,11 +246,11 @@
                 <div class="feature-grid">
                     <div class="feature-card">
                         <h3>Stable</h3>
-                        <p><strong>GRBL</strong> — tested on real hardware.</p>
+                        <p><strong>GRBL</strong> - Thoroughly tested.</p>
                     </div>
                     <div class="feature-card">
                         <h3>Experimental</h3>
-                        <p><strong>grblHAL, Marlin, LinuxCNC, Mach3, UCCNC, Makera, Roland RML.</strong> Syntactically correct but not verified on real machines. Always dry-run first.</p>
+                        <p><strong>grblHAL, Marlin, LinuxCNC, Mach3, UCCNC, Makera, Roland RML.</strong> No recent complaints. Always double check first just in case.</p>
                     </div>
                 </div>
             </section>
@@ -272,17 +280,49 @@
     <script defer src="../../themes/theme-loader.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Load the SVG Sprite
+            fetch('../../images/icons/sprite.svg')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
+
+            // Theme toggle
             const themeBtn = document.getElementById('theme-toggle');
             if (themeBtn && window.ThemeLoader) {
-                themeBtn.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+                if (useEl) useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                });
             }
+
+            // Mobile menu toggle
             const menuBtn = document.querySelector('.doc-menu-toggle');
             const nav = document.querySelector('.doc-nav');
             if (menuBtn && nav) {
+                const useEl = menuBtn.querySelector('use');
                 menuBtn.addEventListener('click', () => {
                     const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
                     menuBtn.setAttribute('aria-expanded', !isExpanded);
                     nav.classList.toggle('is-open');
+
+                    if (useEl) useEl.setAttribute('href', !isExpanded ? '#icon-close' : '#icon-menu');
                 });
             }
         });

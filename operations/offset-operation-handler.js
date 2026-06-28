@@ -130,7 +130,7 @@
 
             // Build the loop set for topology analysis. Closed analytic shapes
             // (circle / rectangle / obround) are converted to paths HERE so they
-            // participate in nesting detection — an SVG circle dropped inside a
+            // participate in nesting detection - an SVG circle dropped inside a
             // rectangle is the common EasyShape case. Anything without a usable
             // closed contour (open strokes, drill points) is set aside and
             // re-appended untouched.
@@ -158,7 +158,7 @@
                 if (loop && loop.type === 'path' && loop.contours?.length > 0) {
                     // Explode every contour into its own single-contour loop.
                     // classifyCutoutTopology only inspects contours[0], so a
-                    // compound path (outer + holes — re-fed from a previous
+                    // compound path (outer + holes - re-fed from a previous
                     // generation, or a native SVG compound path) would otherwise
                     // hide its holes from the classifier and the merge would drop
                     // them. Mirrors GeometryUtils.resolveCompoundContours.
@@ -206,7 +206,7 @@
                 }
             }
 
-            // Orphan holes (no parent) — keep as their original primitive
+            // Orphan holes (no parent) - keep as their original primitive
             for (const hole of holes) {
                 if (hole.parentIdx === null) merged.push(sourceOf.get(hole.loop) || hole.loop);
             }
@@ -233,7 +233,7 @@
             const passCount = operation.offsets?.length || 0;
 
             if (total === 0) {
-                return { success: false, message: 'No geometry generated — tool may be too large for features', status: 'warning' };
+                return { success: false, message: 'No geometry generated - tool may be too large for features', status: 'warning' };
             }
 
             if (opParams.isLaser) {
@@ -251,6 +251,95 @@
             }
 
             return { success: true, message: `Generated ${passCount} offset(s)`, status: 'success' };
+        }
+
+        /**
+         * Ensures every primitive in the operation has a dense sourceId.
+         * EasyShape stamps these upstream (OperationBucket.syncPrimitives).
+         * This is the universal fallback for EasyTrace and any pipeline
+         * that reaches generateGeometry without pre-stamped identity.
+         */
+        ensureSourceIds(primitives) {
+            if (!primitives || primitives.length === 0) return;
+
+            // Continue from the highest existing id so EasyShape's
+            // pre-stamped ids are never overwritten or duplicated.
+            let maxId = 0;
+            for (const prim of primitives) {
+                const id = prim.properties?.sourceId || 0;
+                if (id > maxId) maxId = id;
+            }
+
+            let stamped = 0;
+            for (const prim of primitives) {
+                if (prim.properties?.sourceId > 0) continue;
+                const id = ++maxId;
+                (prim.properties ||= {}).sourceId = id;
+                stamped++;
+            }
+
+            if (stamped > 0) {
+                this.debug(`ensureSourceIds: stamped ${stamped} primitive(s) (ids ${maxId - stamped + 1}..${maxId})`);
+            }
+        }
+
+        /**
+         * Pre-compute a centroid/bounds index from the operation's source
+         * primitives. Used by attributeShapeKey for fast spatial lookup.
+         */
+        buildSourceIndex(primitives) {
+            const index = [];
+            for (const prim of primitives) {
+                const id = prim.properties?.sourceId;
+                if (!id || id <= 0) continue;
+                const b = prim.getBounds();
+                if (!b) continue;
+                index.push({
+                    id,
+                    bounds: b,
+                    cx: (b.minX + b.maxX) / 2,
+                    cy: (b.minY + b.maxY) / 2
+                });
+            }
+            return index;
+        }
+
+        /**
+         * Geometric re-attribution: which source shape does this offset
+         * polygon belong to? Uses centroid proximity with a bounds-overlap
+         * prefilter. Works for internal offsets (output centroid is inside
+         * source), external offsets (output centroid is near source centroid),
+         * and merged unions (nearest source wins).
+         */
+        attributeShapeKey(poly, srcIndex) {
+            if (!srcIndex || srcIndex.length === 0) return -1;
+
+            // Circle primitives survive offset analytically
+            const pb = poly.getBounds ? poly.getBounds() : null;
+            if (!pb) return -1;
+
+            const cx = (pb.minX + pb.maxX) / 2;
+            const cy = (pb.minY + pb.maxY) / 2;
+
+            let bestId = -1;
+            let bestDistSq = Infinity;
+
+            for (const src of srcIndex) {
+                // Bounds overlap prefilter - fast reject
+                if (pb.maxX < src.bounds.minX || pb.minX > src.bounds.maxX ||
+                    pb.maxY < src.bounds.minY || pb.minY > src.bounds.maxY) continue;
+
+                const dx = cx - src.cx;
+                const dy = cy - src.cy;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestId = src.id;
+                }
+            }
+
+            return bestId;
         }
 
         preparePrimitivesForOffset(primitives) {
@@ -288,6 +377,11 @@
             if (!operation.primitives || operation.primitives.length === 0) {
                 return [];
             }
+
+            // Identity: stamp any untagged primitives and build spatial index
+            // for geometric shapeKey attribution after offset passes.
+            this.ensureSourceIds(operation.primitives);
+            const srcIndex = this.buildSourceIndex(operation.primitives);
 
             // Determine offset direction via hooks
             let isInternal = this.isInternalOffset(operation, settings);
@@ -390,9 +484,25 @@
                 const promises = group.map(p => this.offsetSinglePrimitive(p, dist));
                 const results = await Promise.all(promises);
                 const out = [];
-                for (const res of results) {
-                    if (Array.isArray(res)) out.push(...res);
-                    else if (res) out.push(res);
+                for (let gi = 0; gi < results.length; gi++) {
+                    const srcId = group[gi].properties?.sourceId ?? 0;   // carry source-shape identity
+                    const res = results[gi];
+                    const push = (r) => {
+                        if (!r) return;
+                        (r.properties ||= {}).sourceId = srcId;
+                        // Stamp every non-arc point so the Z channel carries identity through Clipper.
+                        if (srcId > 0 && r.contours) {
+                            for (const c of r.contours) {
+                                if (!c.points) continue;
+                                for (const pt of c.points) {
+                                    if (!pt.curveId || pt.curveId <= 0) pt.sourceId = srcId;
+                                }
+                            }
+                        }
+                        out.push(r);
+                    };
+                    if (Array.isArray(res)) res.forEach(push);
+                    else push(res);
                 }
                 return out;
             };
@@ -527,6 +637,7 @@
                     p.properties.offsetType = offsetType;
                     p.properties.thermalGroup = thermalGroup;
                     p.properties.hasAnalyticArcs = (p.type === 'circle') || (p.contours?.some(c => c.arcSegments?.length > 0));
+                    p.properties.shapeKey = this.attributeShapeKey(p, srcIndex);   // identity surviving the boolean union
                     return p;
                 });
 

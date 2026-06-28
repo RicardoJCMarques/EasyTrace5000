@@ -52,9 +52,6 @@
             console.log(`${appLabel} initializing...`);
 
             try {
-                // Asset Loading
-                await this.loadIconSprite();
-
                 // Core
                 this.initCore();
                 if (debugState.enabled && typeof TransformMath !== 'undefined') {
@@ -65,18 +62,17 @@
                 // Profile & Data
                 const pc = this.getProfileConfig();
                 const profileData = await this.loadProfile(pc.embeddedVar, pc.fetchPath);
-                if (profileData) this.applyProfileDefaults(profileData);
                 this.storageKeys = C.storageKeys.forApp(this.appProfile.meta.app);
                 await this.initToolLibrary();
                 this.languageManager = new LanguageManager();
                 await this.languageManager.load();
 
                 // Pipeline & Storage
-                this.onBeforePipeline();
                 this.initGCodeGenerator(this.languageManager);
                 this.initPipelineComponents();
-                this.core.settings = this.core.loadSettings(this.storageKeys.settings);
                 this.registerHandlers();
+                this.core.settings = this.core.loadSettings(this.storageKeys.settings, this.appProfile);
+                this.syncPipelineFromSettings();
 
                 // UI
                 this.ui = this.createUI();
@@ -142,15 +138,8 @@
         /** Extra core setup after initCore (scene refs, history, stock) */
         onCoreReady() {}
 
-        /** Apply profile data to core.settings (machine defaults, laser, stock) */
-        applyProfileDefaults(profileData) {
-            if (profileData.machineDefaults && this.core.settings) {
-                this.core.settings.machine = { ...this.core.settings.machine, ...profileData.machineDefaults };
-            }
-        }
-
-        /** Before pipeline init (e.g. restorePipeline for Trace) */
-        onBeforePipeline() {}
+        /** Apply non-settings profile data after the profile loads (e.g. stock) */
+        onProfileLoaded(profileData) {}
 
         /** After WASM loads (e.g. laser visibility) */
         onPostWASM() {}
@@ -247,32 +236,6 @@
         // Core Initialization
         // ════════════════════════════════════════════════════════════════
 
-        async loadIconSprite() {
-            // If already embedded, skip the fetch.
-            if (document.getElementById('cam-icon-sprite')) return;
-
-            try {
-                const response = await fetch('../images/icons/sprite.svg');
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const svgText = await response.text();
-
-                const div = document.createElement('div');
-                div.innerHTML = svgText;
-
-                const svg = div.querySelector('svg');
-                if (svg) {
-                    svg.id = 'cam-icon-sprite';
-                    svg.setAttribute('aria-hidden', 'true');
-                    // Render-safe hiding for shadow DOM inheritance
-                    svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
-                    document.body.insertBefore(svg, document.body.firstChild);
-                    this.debug('Dev-mode icon sprite loaded dynamically.');
-                }
-            } catch (err) {
-                console.warn('Failed to load dev-mode icon sprite:', err);
-            }
-        }
-
         initCore() {
             this.core = new CamCore();
             this.parameterManager = new ParameterManager(this.core);
@@ -346,28 +309,21 @@
 
         setPipeline(type, laserConfig = null) {
             this.pipelineState = { type, laser: laserConfig };
-            // Sync core so it never needs to reach back to window
-            if (this.core) this.core.setPipelineType(type);
-            const pipelineKey = this.storageKeys?.pipeline;
-            try { localStorage.setItem(pipelineKey, JSON.stringify(this.pipelineState)); }
-            catch (e) { /* ignore */ }
+            if (this.core) {
+                this.core.setPipelineType(type);
+                this.core.updateSettings('pipeline', { type, laser: laserConfig });
+            }
             this.debug(`Pipeline set: ${type}`, laserConfig);
             return this.pipelineState;
         }
 
-        restorePipeline() {
-            try {
-                const pipelineKey = this.storageKeys?.pipeline;
-                const saved = localStorage.getItem(pipelineKey);
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    if (['cnc', 'laser', 'hybrid'].includes(parsed.type)) {
-                        this.pipelineState = { type: parsed.type, laser: parsed.laser || null };
-                        this.debug('Restored pipeline state:', this.pipelineState);
-                        if (this.core) this.core.setPipelineType(this.pipelineState.type);
-                    }
-                }
-            } catch (e) { /* ignore, use defaults */ }
+        syncPipelineFromSettings() {
+            const saved = this.core?.settings?.pipeline;
+            if (saved && ['cnc', 'laser', 'hybrid'].includes(saved.type)) {
+                this.pipelineState = { type: saved.type, laser: saved.laser || null };
+                if (this.core) this.core.setPipelineType(saved.type);
+                this.debug('Restored pipeline from settings:', this.pipelineState);
+            }
         }
 
         isLaserPipeline() {

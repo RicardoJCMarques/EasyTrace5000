@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <!--!
+        @file        easytrace5000/doc/parameters.html
+        @description EasyTrace5000 Parameter Reference
+        @author      Eltryus - Ricardo Marques
+        @copyright   2025-2026 Eltryus - Ricardo Marques
+        @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+
+        SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+        SPDX-License-Identifier: AGPL-3.0-or-later
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EasyTrace5000 | Parameter Reference</title>
+    <meta name="description" content="Every EasyTrace5000 parameter: ranges, defaults, and what it does, grouped by Geometry, Strategy, Machine, and Laser.">
+    <meta name="author" content="Eltryus">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#1a1a1a">
+
+    <link rel="canonical" href="https://cam.eltryus.design/easytrace5000/doc/parameters">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://cam.eltryus.design/easytrace5000/doc/parameters">
+    <meta property="og:title" content="EasyTrace5000 | Parameter Reference">
+    <meta property="og:description" content="Every EasyTrace5000 parameter: ranges, defaults, and what it does, grouped by Geometry, Strategy, Machine, and Laser.">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-trace.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Eltryus EasyCAM5000 Suite">
+    <meta property="og:locale" content="en_US">
+
+    <link rel="icon" type="image/png" href="../../images/favicon/favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="../../images/favicon/favicon.svg">
+    <link rel="shortcut icon" href="../../images/favicon/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="../../images/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="../../images/favicon/site.webmanifest">
+
+    <link rel="stylesheet" href="../../css/base.css">
+    <link rel="stylesheet" href="../../css/components.css">
+    <link rel="stylesheet" href="../../css/theme.css">
+    <link rel="stylesheet" href="../../css/doc.css">
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "TechArticle",
+                "@id": "https://cam.eltryus.design/easytrace5000/doc/parameters#article",
+                "headline": "EasyTrace5000 Parameter Reference",
+                "description": "Every EasyTrace5000 parameter: ranges, defaults, and what it does, grouped by Geometry, Strategy, Machine, and Laser.",
+                "image": "https://cam.eltryus.design/images/social-trace.jpg",
+                "url": "https://cam.eltryus.design/easytrace5000/doc/parameters",
+                "inLanguage": "en",
+                "isPartOf": { "@id": "https://cam.eltryus.design/easytrace5000/doc/#docs" },
+                "about": { "@id": "https://cam.eltryus.design/easytrace5000/#app" },
+                "author": { "@id": "https://www.eltryus.design/#organization" },
+                "publisher": { "@id": "https://www.eltryus.design/#organization" },
+                "datePublished": "2025-01-16",
+                "dateModified": "2026-03-02"
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    { "@type": "ListItem", "position": 1, "name": "Eltryus EasyCAM5000 Suite", "item": "https://cam.eltryus.design/" },
+                    { "@type": "ListItem", "position": 2, "name": "EasyTrace5000", "item": "https://cam.eltryus.design/easytrace5000/" },
+                    { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easytrace5000/doc/" },
+                    { "@type": "ListItem", "position": 4, "name": "Parameters", "item": "https://cam.eltryus.design/easytrace5000/doc/parameters" }
+                ]
+            }
+        ]
+    }
+    </script>
+</head>
+<body>
+    <a href="#doc-content" class="skip-link">Skip to Main Content</a>
+
+    <header class="doc-header">
+        <div class="doc-brand">
+            <a href="/" aria-label="EasyTrace5000 Homepage">EasyTrace5000</a>
+        </div>
+
+        <button class="doc-menu-toggle" aria-label="Toggle Navigation Menu" aria-expanded="false">
+            <svg class="icon-menu" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+            <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <nav class="doc-nav" aria-label="Main Navigation">
+            <a href="/" draggable="false" aria-label="Return to Homepage">← Home</a>
+            <a href="/easytrace5000/" draggable="false" aria-label="Launch Workspace">Launch App</a>
+            <span class="separator" aria-hidden="true"></span>
+            <a href="./" draggable="false" aria-label="Documentation Index">Docs</a>
+            <a href="cnc" draggable="false" aria-label="CNC Milling Guide">CNC Guide</a>
+            <a href="laser" draggable="false" aria-label="Laser Processing Guide">Laser Guide</a>
+            <a href="operations" draggable="false" aria-label="Operation Reference">Operations</a>
+            <a href="parameters" class="active" draggable="false" aria-current="page" aria-label="Parameter Reference">Parameters</a>
+            <a href="accessibility" draggable="false" aria-label="Accessibility Statement">Accessibility</a>
+            <span class="separator" aria-hidden="true"></span>
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
+
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
+            </button>
+        </nav>
+    </header>
+
+    <div class="doc-wrapper has-sidebar">
+        <nav class="doc-sidebar" id="toc">
+            <h2>Contents <span class="doc-badge doc-badge--stable">Reference</span></h2>
+            <ol>
+                <li><a href="#geometry" draggable="false">Geometry Stage</a></li>
+                <li><a href="#strategy" draggable="false">Strategy Stage</a></li>
+                <li><a href="#machine" draggable="false">Machine (Feeds &amp; Speeds)</a></li>
+                <li><a href="#stencil" draggable="false">Stencil</a></li>
+                <li><a href="#laser" draggable="false">Laser Pipeline</a></li>
+            </ol>
+        </nav>
+
+        <main id="doc-content" class="doc-main">
+            <section class="hero hero--compact">
+                <h1>Parameter Reference</h1>
+                <p class="tagline">Ranges, defaults, and meaning for every EasyTrace5000 parameter</p>
+            </section>
+
+            <section id="intro">
+                <p>Parameters are grouped by the stage in which they appear. The same text shows in the app as a tooltip - hover the <strong>?</strong> icon beside any field. See the <a href="operations" draggable="false">Operation Reference</a> for which parameters matter to each operation.</p>
+            </section>
+
+            <section id="geometry">
+                <h2>Geometry Stage</h2>
+                <p>Set before <em>Generate Offsets</em>. These define the cut geometry.</p>
+                <table>
+                    <thead><tr><th>Parameter</th><th>Range</th><th>Default</th><th>Applies to</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>Tool Diameter</td><td>0.01–10 mm</td><td>-</td><td>all</td><td>The physical diameter of the cutting tool - the most critical value for accurate offsets.</td></tr>
+                        <tr><td>Number of Passes</td><td>1–30</td><td>3</td><td>isolation</td><td>Offset passes to create. More passes clear more copper but take longer.</td></tr>
+                        <tr><td>Step Over</td><td>10–99 %</td><td>50</td><td>isolation, clearing</td><td>Percentage of tool diameter overlapped each pass. 50% is a good default.</td></tr>
+                        <tr><td>Combine Passes</td><td>on/off</td><td>on</td><td>isolation</td><td>Merge all passes into one geometry. Simpler G-code, loses per-pass control.</td></tr>
+                        <tr><td>Mill Holes</td><td>on/off</td><td>on</td><td>drill</td><td>Mill circular paths inside holes larger than the tool; otherwise peck/drill at center.</td></tr>
+                        <tr><td>Mill Stepover</td><td>10–90 %</td><td>50</td><td>drill</td><td>Overlap on each concentric ring inside oversize holes (when Mill Holes is on).</td></tr>
+                        <tr><td>Cut Side</td><td>outside / inside / on</td><td>outside</td><td>cutout</td><td>Where the tool sits relative to the outline. Outside clears around the shape, inside within, on centers the tool.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="strategy">
+                <h2>Strategy Stage</h2>
+                <p>Set before <em>Generate Preview</em>. These define depth and motion.</p>
+                <table>
+                    <thead><tr><th>Parameter</th><th>Range</th><th>Default</th><th>Applies to</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>Cut Depth</td><td>-10–0 mm</td><td>-0.1</td><td>all</td><td>Final target depth relative to the surface (Z=0). Negative value.</td></tr>
+                        <tr><td>Multi-depth Cutting</td><td>on/off</td><td>on</td><td>all</td><td>Multiple passes at increasing depth for deep cuts. Reduces tool stress.</td></tr>
+                        <tr><td>Depth per Pass</td><td>0.001–5 mm</td><td>0.1</td><td>all (multi-depth)</td><td>Incremental depth of each pass. Smaller is gentler on the tool.</td></tr>
+                        <tr><td>Entry Type</td><td>plunge / helix</td><td>plunge</td><td>all</td><td>How the tool enters material. Plunge: straight down. Helix: spiral down.</td></tr>
+                        <tr><td>Canned Cycle</td><td>none / G81 / G82 / G83 / G73</td><td>none</td><td>drill</td><td>Pre-programmed drill cycle. G83 peck-drilling retracts to clear chips.</td></tr>
+                        <tr><td>Peck Depth</td><td>0–5 mm</td><td>0</td><td>drill</td><td>Depth to drill before retracting in peck drilling. Smaller = cleaner holes.</td></tr>
+                        <tr><td>Dwell Time</td><td>0–10 s</td><td>0</td><td>drill</td><td>Pause at hole bottom. Clears chips and reduces burrs.</td></tr>
+                        <tr><td>Retract Height</td><td>0–10 mm</td><td>0.5</td><td>drill</td><td>Height between holes. Clears the board while minimizing travel.</td></tr>
+                        <tr><td>Number of Tabs</td><td>0–12</td><td>0</td><td>cutout</td><td>Small uncut bridges that hold the board in place.</td></tr>
+                        <tr><td>Tab Width</td><td>0.5–10 mm</td><td>0</td><td>cutout</td><td>Length of each holding tab.</td></tr>
+                        <tr><td>Tab Height</td><td>0.1–5 mm</td><td>0</td><td>cutout</td><td>Tab thickness from the cut floor (−0.5 on a −1.8 cut leaves a 0.5 mm tab).</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="machine">
+                <h2>Machine - Feeds &amp; Speeds</h2>
+                <table>
+                    <thead><tr><th>Parameter</th><th>Range</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>Feed Rate</td><td>1–5000 mm/min</td><td>Speed while cutting.</td></tr>
+                        <tr><td>Plunge Rate</td><td>1–2000 mm/min</td><td>Speed descending into material. Usually slower than feed rate.</td></tr>
+                        <tr><td>Spindle Speed</td><td>100–30000 RPM</td><td>Spindle rotation. Higher speeds for smaller tools.</td></tr>
+                        <tr><td>Spindle Dwell</td><td>0–60 s</td><td>Wait for the spindle to reach speed. Essential for high-inertia spindles.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="stencil">
+                <h2>Stencil</h2>
+                <table>
+                    <thead><tr><th>Parameter</th><th>Range</th><th>Default</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>Aperture Offset</td><td>-1–1 mm</td><td>-0.05</td><td>Shrinks (−) or expands (+) apertures. −0.05 mm prevents solder bridging.</td></tr>
+                        <tr><td>Ignore Solid Regions</td><td>on/off</td><td>on</td><td>Ignore pours and traces; generate apertures only for component pads.</td></tr>
+                        <tr><td>Exclude Pads Over Drill Holes</td><td>on/off</td><td>on</td><td>Remove apertures over through-holes so paste won't fall in.</td></tr>
+                        <tr><td>Add Registration Holes</td><td>on/off</td><td>off</td><td>Four alignment holes outside the board for pinning the stencil.</td></tr>
+                        <tr><td>Registration Hole Diameter</td><td>0.5–10 mm</td><td>3.0</td><td>Diameter of the alignment pins/dowels.</td></tr>
+                        <tr><td>Registration Hole Margin</td><td>1–25 mm</td><td>5.0</td><td>Distance outside the board boundary to place the holes.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="laser">
+                <h2>Laser Pipeline <span class="doc-badge doc-badge--dev">Beta</span></h2>
+                <p>Laser geometry parameters. The spot size is read-only here - set it in Machine Settings.</p>
+                <table>
+                    <thead><tr><th>Parameter</th><th>Range</th><th>Default</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>Isolation Width</td><td>0.05–2.5 mm</td><td>0.3</td><td>Total width of copper to ablate around traces. Pass count is derived from this, the spot size, and step-over.</td></tr>
+                        <tr><td>Clearing Strategy</td><td>offset / filled / hatch</td><td>offset</td><td>How areas are filled. Offset is most streak-proof; filled hands the fill to your laser software; hatch is directional line coverage.</td></tr>
+                        <tr><td>Step Over</td><td>10–99 %</td><td>50</td><td>Overlap between adjacent laser paths. Lower (more overlap) removes copper better; reduce to ~30% if streaks appear.</td></tr>
+                        <tr><td>Hatch Base Angle</td><td>0–180°</td><td>45</td><td>Angle of hatch lines; cross-hatch adds a perpendicular set. 45° crosses both H and V traces.</td></tr>
+                        <tr><td>Cut Side</td><td>outside / inside / on</td><td>outside</td><td>Where the kerf falls relative to the outline (board stays full size / shrinks / shrinks by half-kerf).</td></tr>
+                    </tbody>
+                </table>
+            </section>
+        </main>
+
+        <footer class="doc-footer" aria-label="Footer">
+            <p>
+                <a href="#doc-content" draggable="false" aria-label="Scroll back to top">Back to Top</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a> |
+                <a href="/#support" draggable="false" aria-label="Support Development via Sponsorship">Support Development</a> |
+                <a href="../../LICENSE" target="_blank" draggable="false" aria-label="AGPLv3 License (opens in a new tab)">AGPLv3 Licensed</a>
+            </p>
+        </footer>
+    </div>
+
+    <script defer src="../../themes/theme-loader.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load the SVG Sprite
+            fetch('../../images/icons/sprite.svg')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
+
+            // Theme toggle
+            const themeBtn = document.getElementById('theme-toggle');
+            if (themeBtn && window.ThemeLoader) {
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+                if (useEl) useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                });
+            }
+
+            // Mobile menu toggle
+            const menuBtn = document.querySelector('.doc-menu-toggle');
+            const nav = document.querySelector('.doc-nav');
+            if (menuBtn && nav) {
+                const useEl = menuBtn.querySelector('use');
+                menuBtn.addEventListener('click', () => {
+                    const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                    menuBtn.setAttribute('aria-expanded', !isExpanded);
+                    nav.classList.toggle('is-open');
+
+                    if (useEl) useEl.setAttribute('href', !isExpanded ? '#icon-close' : '#icon-menu');
+                });
+            }
+        });
+    </script>
+</body>
+</html>

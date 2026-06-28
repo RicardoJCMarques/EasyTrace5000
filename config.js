@@ -12,11 +12,11 @@
 /*
  *
  * Architecture:
- *   config.constants — Frozen at runtime (Object.freeze). Algorithmic thresholds,
+ *   config.constants - Frozen at runtime (Object.freeze). Algorithmic thresholds,
  *                      format specs, engine limits, UI schema. Never saved or exported.
- *   config.defaults  — Factory-reset values for all user-facing settings. Cloned by
+ *   config.defaults  - Factory-reset values for all user-facing settings. Cloned by
  *                      SettingsManager on startup, overridable via JSON import.
- *   config.*()       — Helper methods (root level, read from both sections).
+ *   config.*()       - Helper methods (root level, read from both sections).
  */
 
 window.CAMConfig = {
@@ -205,7 +205,7 @@ window.CAMConfig = {
         theme: 'cam-theme',
         machine: 'cam-machine-settings',
 
-        // App-specific — call with app name from profile
+        // App-specific - call with app name from profile
         // e.g. storageKeys.forApp('easyshape5000').parameters
         forApp: function(appName) {
             const prefix = appName.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -269,7 +269,7 @@ window.CAMConfig = {
     // ║  Factory-reset values for all user-facing settings. SettingsManager   ║
     // ║  deep-clones this on startup, then merges localStorage and any        ║
     // ║  imported JSON over the clone. A bad value here produces suboptimal   ║
-    // ║  but recoverable results — it never crashes the engine.               ║
+    // ║  but recoverable results - it never crashes the engine.               ║
     // ╚═══════════════════════════════════════════════════════════════════════╝
     defaults: {
 
@@ -334,7 +334,6 @@ window.CAMConfig = {
                 pathOrdering: true,
                 segmentSimplification: true,
                 leadInOut: true,
-                zLevelGrouping: true,
                 rapidStrategy: 'adaptive',
                 shortTravelThreshold: 5.0,
                 reducedClearance: 1.0,
@@ -360,11 +359,11 @@ window.CAMConfig = {
             heatManagement: 'standard',
             colorPerPass: false,
 
-            // Active profile key — drives structural SVG decisions
+            // Active profile key - drives structural SVG decisions
             // REVIEW - isn't this pulled from profile.json?
             activeProfile: 'generic',
 
-            // Profile definitions — each represents a laser control software target
+            // Profile definitions - each represents a laser control software target
             // REVIEW - Is it worth splitting these like "post-processors"? Maybe adding them to the profile-trace.json?
             profiles: {
                 generic: {
@@ -447,7 +446,7 @@ window.CAMConfig = {
                 }
             },
 
-            // Runtime layer colors — synced from active profile on selection. // REVIEW - Should hatch have it's own dedicated color hardcoded here too?
+            // Runtime layer colors - synced from active profile on selection. // REVIEW - Should hatch have it's own dedicated color hardcoded here too?
             layerColors: {
                 isolation: '#ff0000',
                 drill:     '#0000ff',

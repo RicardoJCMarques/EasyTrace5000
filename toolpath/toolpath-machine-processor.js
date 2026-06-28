@@ -14,6 +14,7 @@
 
     const C = window.CAMConfig.constants;
     const D = window.CAMConfig.defaults;
+    const PRECISION = C.precision.coordinate;
     const debugState = D.debug;
 
     class MachineProcessor {
@@ -23,6 +24,17 @@
             this.context = null;
         }
 
+        /**
+         * Walks the optimizer's ordered plan list and expands each flat
+         * 2D plan through its depth levels. Drill macros, peck marks,
+         * 3D contours and centerline slots are dispatched to their
+         * existing dedicated handlers (unchanged).
+         *
+         * Standard contour plans carry metadata.depthLevels - an array
+         * of Z values from shallowest to deepest. For each depth the
+         * processor stamps the commands with that Z and handles tab
+         * Z-lifts when the plan carries tab metadata.
+         */
         processPlans(toolpathPlans, context, initialPos) {
             if (!toolpathPlans || toolpathPlans.length === 0) {
                 return { plans: [], endPos: initialPos };
@@ -39,9 +51,11 @@
             this.currentPosition = { ...initialPos };
 
             const machineReadyPlans = [];
+            const plungeRate = context.cutting.plungeRate;
 
             this.debug(`Starting Batch. Initial Pos: Z${this.currentPosition.z.toFixed(3)}`, this.currentPosition);
 
+            // Initial positioning
             const initPlan = new ToolpathPlan('init');
 
             // Use '<=' to force an explicit Safety Z retract at the start, even if the internal tracker thinks it's already there
@@ -55,74 +69,62 @@
                 const firstPlan = toolpathPlans[0];
                 // Use optimized point if available, otherwise raw entry
                 const startXY = firstPlan.metadata.optimization?.optimizedEntryPoint || firstPlan.metadata.entryPoint;
-
                 if (startXY) {
                     initPlan.addRapid(startXY.x, startXY.y, null); // Move XY, keep Z at Safe
                     this.currentPosition.x = startXY.x;
                     this.currentPosition.y = startXY.y;
                 }
             }
-
             machineReadyPlans.push(initPlan);
 
+            // Main plan loop
             for (let i = 0; i < toolpathPlans.length; i++) {
                 const plan = toolpathPlans[i];
-                const planMetadata = plan.metadata || {};
+                const meta = plan.metadata || {};
 
-                if (debugState.enabled && planMetadata.isTabbedPass) {
-                    const tabCmds = plan.commands.filter(c => c.metadata?.isTab === true).length;
-                    console.log(`[MachineProcessor] Received TABBED plan: ${tabCmds}/${plan.commands.length} tab commands`);
-                }
-
-                if (planMetadata.isPeckMark) {
+                // Special dispatch
+                if (meta.isPeckMark) {
                     this.debug(`Processing Peck Mark ${i+1}/${toolpathPlans.length}`);
-                    const peckPlan = this.processPeckMark(plan);
-                    machineReadyPlans.push(peckPlan);
+                    machineReadyPlans.push(this.processPeckMark(plan));
 
                     // Update the machine position tracker (processPeckMark ends with a retract to travelZ)
                     this.currentPosition = {
-                        x: planMetadata.entryPoint.x,
-                        y: planMetadata.entryPoint.y,
+                        x: meta.entryPoint.x,
+                        y: meta.entryPoint.y,
                         z: this.context.machine.travelZ
                     };
                     continue;
                 }
 
                 // Handle drill mill macro (complete hole-clearing sequence)
-                if (planMetadata.drillMillMacro) {
+                if (meta.drillMillMacro) {
                     this.debug(`Processing Drill Mill Macro ${i+1}/${toolpathPlans.length}`);
-                    const macroPlan = this.generateDrillMillMacro(plan);
-                    machineReadyPlans.push(macroPlan);
+                    machineReadyPlans.push(this.generateDrillMillMacro(plan));
                     this.currentPosition = {
-                        ...(planMetadata.entryPoint || { x: 0, y: 0 }),
+                        ...(meta.entryPoint || { x: 0, y: 0 }),
                         z: this.context.machine.travelZ
                     };
                     continue;
                 }
 
-                // Handle drill peck marks // This comment is confusing without a planMetadata.isPeckMark check
-                if (planMetadata.isDrillMilling) {
-                    const primitiveType = planMetadata.primitiveType;
-                    const useHelix = (planMetadata.entryType || 'plunge') === 'helix';
-
-                    if (useHelix && (primitiveType === 'circle' || primitiveType === 'obround')) {
-                        this.debug(`Processing Helix Mill ${primitiveType} ${i+1}/${toolpathPlans.length}`);
-                        const helixPlan = this.generateHelicalDrillMilling(plan);
-                        machineReadyPlans.push(helixPlan);
-                        this.currentPosition = { ...(planMetadata.exitPoint || {x:0, y:0}), z: this.context.machine.travelZ };
-                        continue; 
+                // Handle drill peck marks // REVIEW - This comment is confusing without a planMetadata.isPeckMark check
+                if (meta.isDrillMilling) {
+                    const useHelix = (meta.entryType || 'plunge') === 'helix';
+                    if (useHelix && (meta.primitiveType === 'circle' || meta.primitiveType === 'obround')) {
+                        this.debug(`Processing Helix Mill ${meta.primitiveType} ${i+1}/${toolpathPlans.length}`);
+                        machineReadyPlans.push(this.generateHelicalDrillMilling(plan));
+                        this.currentPosition = { ...(meta.exitPoint || {x:0, y:0}), z: this.context.machine.travelZ };
+                        continue;
                     }
                 }
 
                 // Handle centerline slots
-                if (planMetadata.isCenterlinePath && planMetadata.strategy?.zigzag) {
+                if (meta.isCenterlinePath && meta.strategy?.zigzag) {
                     this.debug(`Processing Centerline Slot (Macro) ${i+1}/${toolpathPlans.length}`);
-
                     const slotPlan = new ToolpathPlan(plan.operationId);
-                    Object.assign(slotPlan.metadata, planMetadata);
-
-                    const strategy = planMetadata.strategy;
-                    const startXY = planMetadata.entryPoint;
+                    Object.assign(slotPlan.metadata, meta);
+                    const strategy = meta.strategy;
+                    const startXY = meta.entryPoint;
                     const endXY = { x: plan.commands[0].x, y: plan.commands[0].y };
 
                     // Validate strategy parameters
@@ -136,8 +138,9 @@
                     slotPlan.addRapid(null, null, this.FEED_HEIGHT);
 
                     // Execute Zig-Zag Depth Loop
-                    const surfaceZ = 0; // Assume material surface at Z0
+                    const surfaceZ = startXY.z !== undefined ? startXY.z : 0; 
                     let currentZ = surfaceZ;
+
                     const finalZ = strategy.cutDepth; // Negative value
                     const stepZ = Math.abs(strategy.depthPerPass);
                     let goingForward = true;
@@ -163,10 +166,10 @@
                     slotPlan.addRetract(this.context.machine.travelZ);
 
                     // Update machine state
-                    this.currentPosition = { 
-                        x: goingForward ? startXY.x : endXY.x, 
-                        y: goingForward ? startXY.y : endXY.y, 
-                        z: this.context.machine.travelZ 
+                    this.currentPosition = {
+                        x: goingForward ? startXY.x : endXY.x,
+                        y: goingForward ? startXY.y : endXY.y,
+                        z: this.context.machine.travelZ
                     };
 
                     machineReadyPlans.push(slotPlan);
@@ -175,66 +178,34 @@
 
                 // 3D contour macro (V-Carve, Relief): every command
                 // carries its own Z. Handles its own approach/plunge/
-                // retract — bypasses the 2.5D depth-pass machinery.
-                if (planMetadata.is3DContour) {
+                // retract - bypasses the 2.5D depth-pass machinery.
+                if (meta.is3DContour) {
                     this.debug(`Processing 3D Contour ${i + 1}/${toolpathPlans.length}`);
-                    const contourPlan = this.process3DContourPlan(plan);
-                    machineReadyPlans.push(contourPlan);
+                    machineReadyPlans.push(this.process3DContourPlan(plan));
                     this.currentPosition = {
-                        x: planMetadata.exitPoint?.x ?? this.currentPosition.x,
-                        y: planMetadata.exitPoint?.y ?? this.currentPosition.y,
+                        x: meta.exitPoint?.x ?? this.currentPosition.x,
+                        y: meta.exitPoint?.y ?? this.currentPosition.y,
                         z: this.context.machine.travelZ
                     };
                     continue;
                 }
 
-                // Connection Move Logic
-                const linkType = planMetadata.optimization?.linkType || 'rapid';
-                let isMultiDepthPlunge = false;
+                // Standard contour with depth expansion
+                const linkType = meta.optimization?.linkType || 'rapid';
+                const depthLevels = meta.depthLevels || [meta.cutDepth || 0];
+                const entryPoint = meta.optimization?.optimizedEntryPoint || meta.entryPoint;
 
-                if (i > 0 && linkType === 'rapid') { 
-                    const prevPlan = toolpathPlans[i - 1];
-                    const prevMeta = prevPlan.metadata || {};
-
-                    const isSameOp = prevMeta.operationId === planMetadata.operationId;
-                    const currentDepth = typeof planMetadata.cutDepth === 'number' ? planMetadata.cutDepth : 0;
-                    const prevDepth = typeof prevMeta.cutDepth === 'number' ? prevMeta.cutDepth : 0;
-                    const isDeeper = currentDepth < prevDepth;
-
-                    const currentEntry = planMetadata.entryPoint || {x:0, y:0};
-                    const prevExit = this.currentPosition;
-                    const isSameXY = Math.hypot(currentEntry.x - prevExit.x, currentEntry.y - prevExit.y) < C.precision.coordinate;
-
-                    if (isSameOp && isDeeper && !planMetadata.isPeckMark && !planMetadata.isDrillMilling && isSameXY) {
-                         isMultiDepthPlunge = true;
-                    }
-                }
-
+                // Connection move to this plan's entry
                 const connectionPlan = new ToolpathPlan('connection');
-                if (isMultiDepthPlunge) {
-                    // Direct plunge (Z only)
-                    this.debug(`Link ${i}: Multi-Depth Plunge to ${planMetadata.entryPoint.z.toFixed(3)}`);
-                    connectionPlan.addLinear(
-                        planMetadata.entryPoint.x, 
-                        planMetadata.entryPoint.y, 
-                        planMetadata.entryPoint.z, 
-                        this.context.cutting.plungeRate 
-                    );
-                    connectionPlan.metadata.type = 'multidepth_plunge';
-                    this.currentPosition.z = planMetadata.entryPoint.z;
-                    this.currentPosition.x = planMetadata.entryPoint.x;
-                    this.currentPosition.y = planMetadata.entryPoint.y;
-                } else if (linkType === 'staydown') {
-                    // Staydown (XY only)
+
+                if (linkType === 'staydown') {
                     this.debug(`Link ${i}: Staydown move`);
                     connectionPlan.addLinear(
-                        planMetadata.entryPoint.x,
-                        planMetadata.entryPoint.y,
-                        undefined, 
-                        planMetadata.feedRate
+                        entryPoint.x, entryPoint.y, this.currentPosition.z,
+                        meta.feedRate
                     );
                     connectionPlan.metadata.type = 'staydown_link';
-                } else { 
+                } else {
                     // Rapid Link or Retract if needed
                     if (this.currentPosition.z < this.context.machine.travelZ) {
                         connectionPlan.addRapid(null, null, this.context.machine.travelZ);
@@ -243,104 +214,99 @@
 
                     // Move XY - only if not already at target position
                     const atTargetXY = Math.hypot(
-                        planMetadata.entryPoint.x - this.currentPosition.x,
-                        planMetadata.entryPoint.y - this.currentPosition.y
-                    ) < 0.01;
-
+                        entryPoint.x - this.currentPosition.x,
+                        entryPoint.y - this.currentPosition.y
+                    ) < PRECISION;
                     if (!atTargetXY) {
-                        connectionPlan.addRapid(planMetadata.entryPoint.x, planMetadata.entryPoint.y, null);
+                        connectionPlan.addRapid(entryPoint.x, entryPoint.y, null);
                     }
-
                     connectionPlan.metadata.type = 'rapid_link';
                 }
-
                 machineReadyPlans.push(connectionPlan);
+                this.currentPosition.x = entryPoint.x;
+                this.currentPosition.y = entryPoint.y;
 
-                this.currentPosition.x = planMetadata.entryPoint.x;
-                this.currentPosition.y = planMetadata.entryPoint.y;
+                // Depth expansion: iterate depthLevels
+                // Tab data (if present)
+                const isTabbedFeature = meta.isTabbedPass === true;
 
-                // Entry Move
-                if (linkType === 'rapid' && !isMultiDepthPlunge) {
-                    const entryPlan = new ToolpathPlan('entry');
-                    entryPlan.metadata.spindleSpeed = this.context.cutting.spindleSpeed;
-                    entryPlan.metadata.spindleDwell = this.context.cutting.spindleDwell;
-                    const entryType = planMetadata.entryType || 'plunge';
-                    this.generateEntryMove(entryPlan, planMetadata, entryType); 
-                    machineReadyPlans.push(entryPlan);
-                    this.currentPosition.z = planMetadata.entryPoint.z;
-                }
+                // Read the tab height setting directly from the machine context 
+                const tabTopZ = meta.tabTopZ;
 
-                // Execute cutting plan
-                const cuttingPlan = new ToolpathPlan(plan.operationId);
-                Object.assign(cuttingPlan.metadata, plan.metadata);
+                for (let di = 0; di < depthLevels.length; di++) {
+                    const depth = depthLevels[di];
+                    const isFirstDepth = (di === 0);
 
-                let currentPassDepth = this.currentPosition.z; 
-                const isTabbedPass = planMetadata.isTabbedPass === true;
-                const tabTopZ = planMetadata.tabTopZ; 
-                const plungeRate = this.context.cutting.plungeRate;
-
-                for (const cmd of plan.commands) {
-                    const requiresTabSequence = isTabbedPass && cmd.metadata?.isTab === true;
-
-                    if (requiresTabSequence) {
-                        // Tab Lift
-                        this.debug(`Generating Tab Lift to Z${tabTopZ}`);
-                        cuttingPlan.addLinear(null, null, tabTopZ, plungeRate);
-                        const tabMoveCmd = { ...cmd, z: tabTopZ };
-                        cuttingPlan.addCommand(tabMoveCmd);
-                        cuttingPlan.addLinear(null, null, currentPassDepth, plungeRate);
+                    if (isFirstDepth && linkType !== 'staydown') {
+                        const entryPlan = new ToolpathPlan('entry');
+                        entryPlan.metadata.spindleSpeed = this.context.cutting.spindleSpeed;
+                        entryPlan.metadata.spindleDwell = this.context.cutting.spindleDwell;
+                        const entryType = meta.entryType || 'plunge';
+                        const entryMeta = { ...meta, entryPoint: { ...entryPoint, z: depth } };
+                        this.generateEntryMove(entryPlan, entryMeta, entryType);
+                        machineReadyPlans.push(entryPlan);
+                        this.currentPosition.z = depth;
+                    } else if (isFirstDepth && linkType === 'staydown') {
+                        if (Math.abs(this.currentPosition.z - depth) > PRECISION) {
+                            const plungePlan = new ToolpathPlan('staydown_plunge');
+                            plungePlan.addLinear(null, null, depth, plungeRate);
+                            machineReadyPlans.push(plungePlan);
+                        }
+                        this.currentPosition.z = depth;
                     } else {
-                        // Normal Cut
-                        const cutCmd = { ...cmd, z: currentPassDepth }; 
-                        cuttingPlan.addCommand(cutCmd);
+                        const plungePlan = new ToolpathPlan('depth_plunge');
+                        plungePlan.addLinear(entryPoint.x, entryPoint.y, depth, plungeRate);
+                        machineReadyPlans.push(plungePlan);
+                        this.currentPosition.z = depth;
                     }
 
-                    if (cmd.x !== null) this.currentPosition.x = cmd.x;
-                    if (cmd.y !== null) this.currentPosition.y = cmd.y;
+                    const cuttingPlan = new ToolpathPlan(plan.operationId);
+                    Object.assign(cuttingPlan.metadata, meta);
+                    cuttingPlan.metadata.cutDepth = depth;
+
+                    const useTabs = isTabbedFeature && tabTopZ !== undefined &&
+                                    depth < tabTopZ - PRECISION;
+
+                    for (const cmd of plan.commands) {
+                        if (useTabs && cmd.metadata?.isTab === true) {
+                             // Tab Lift
+                            cuttingPlan.addLinear(null, null, tabTopZ, plungeRate);
+                            cuttingPlan.addCommand({ ...cmd, z: tabTopZ });
+                            cuttingPlan.addLinear(null, null, depth, plungeRate);
+                        } else {
+                            // Normal Cut
+                            cuttingPlan.addCommand({ ...cmd, z: depth });
+                        }
+
+                        if (cmd.x !== null) this.currentPosition.x = cmd.x;
+                        if (cmd.y !== null) this.currentPosition.y = cmd.y;
+                    }
+
+                    machineReadyPlans.push(cuttingPlan);
+                    this.currentPosition.z = depth;
                 }
 
-                machineReadyPlans.push(cuttingPlan);
-                this.currentPosition.z = currentPassDepth; 
-
-                // Retract Logic
+                // Retract logic
                 const isStayDownSource = (
                     i < toolpathPlans.length - 1 &&
                     toolpathPlans[i + 1]?.metadata?.optimization?.linkType === 'staydown'
                 );
 
-                let isNextMultiDepth = false;
-                if (i < toolpathPlans.length - 1) {
-                     const nextPlan = toolpathPlans[i + 1];
-                     const nextMeta = nextPlan.metadata || {};
-                     const isSameOp = nextMeta.operationId === planMetadata.operationId;
-                     const currentDepth = typeof planMetadata.cutDepth === 'number' ? planMetadata.cutDepth : 0;
-                     const nextDepth = typeof nextMeta.cutDepth === 'number' ? nextMeta.cutDepth : 0;
-                     const isDeeper = nextDepth < currentDepth;
-                     const nextEntry = nextMeta.entryPoint || {x:0, y:0, z:0};
-                     const currentExit = this.currentPosition;
-                     const isSameXY = Math.hypot(nextEntry.x - currentExit.x, nextEntry.y - currentExit.y) < 0.01;
-
-                     if (isSameOp && isDeeper && isSameXY && !nextMeta.isPeckMark && !nextMeta.isDrillMilling) {
-                         isNextMultiDepth = true;
-                     }
-                 }
-
-                if (!isStayDownSource && !isNextMultiDepth) {
+                if (!isStayDownSource) {
                     const retractPlan = new ToolpathPlan('retract');
                     retractPlan.addRetract(this.context.machine.travelZ);
                     machineReadyPlans.push(retractPlan);
                     this.currentPosition.z = this.context.machine.travelZ;
-                } else {
-                    this.currentPosition.z = currentPassDepth;
                 }
             }
 
             // Final Retract to Safe Z
             const finalPlan = new ToolpathPlan('final');
             if (this.currentPosition.z < this.context.machine.safeZ) {
-                 finalPlan.addRetract(this.context.machine.safeZ);
-                 this.currentPosition.z = this.context.machine.safeZ; 
-                 machineReadyPlans.push(finalPlan);
+                const finalPlan = new ToolpathPlan('final');
+                finalPlan.addRetract(this.context.machine.safeZ);
+                this.currentPosition.z = this.context.machine.safeZ;
+                machineReadyPlans.push(finalPlan);
             }
 
             return { plans: machineReadyPlans, endPos: this.currentPosition };
@@ -393,7 +359,7 @@
             // } else if (entryType === 'ramp') { 
             //     this.generateRampEntry(plan, planMetadata, cutDepth, plungeRate);
             } else {
-                // Standard Plunge from FEED_HEIGHT (1mm) down
+                // Default Plunge from FEED_HEIGHT (1mm) down
                 plan.addLinear(
                     entryPoint.x,
                     entryPoint.y,
@@ -579,13 +545,11 @@
             const center = purePlan.metadata.center;
             const radius = purePlan.metadata.radius;
 
-            const minHelixDia = this.context.config.entry?.drilling?.minHelixDiameter; // config value is DIAMETER, so check against radius * 2 (or threshold / 2)
+            const minHelixDia = this.context.config.entry?.drilling?.minHelixDiameter || 0; 
+            const targetDepth = purePlan.metadata.cutDepth;
+            const plungeRate = purePlan.metadata.plungeRate;
 
-            // If path diameter is less than threshold, it's degenerate -> Plunge/Ream
             if (!center || !radius || (radius * 2) < minHelixDia) {
-                const targetDepth = purePlan.metadata.cutDepth;
-                const plungeRate = purePlan.metadata.plungeRate;
-
                 if (center) {
                     machinePlan.addRapid(center.x, center.y, null);
                     machinePlan.addLinear(center.x, center.y, targetDepth, plungeRate);
@@ -594,56 +558,18 @@
                 return;
             }
 
-            const finalDepth = purePlan.metadata.cutDepth;
             const toolDiameter = purePlan.metadata.toolDiameter;
             const feedRate = purePlan.metadata.feedRate;
-            const plungeRate = purePlan.metadata.plungeRate;
-
-            const requestedPitch = Math.abs(purePlan.metadata.depthPerPass);
-            const maxPitchForTool = toolDiameter * 0.5;
-            const helixPitch = Math.min(requestedPitch, maxPitchForTool);
-            const revolutions = Math.max(2, Math.abs(finalDepth) / helixPitch);
-            const segmentsPerRev = 16;
-            const totalSegments = Math.ceil(revolutions * segmentsPerRev);
-
-            // Use the correctly transformed entry point as start position
             const startX = purePlan.metadata.entryPoint.x;
             const startY = purePlan.metadata.entryPoint.y;
-
-            // Calculate the starting angle from actual entry point position relative to center
-            // This ensures helix traces from wherever the transformed entry point landed
             const startAngle = Math.atan2(startY - center.y, startX - center.x);
 
             machinePlan.addRapid(startX, startY, null);
             machinePlan.addLinear(startX, startY, 0, plungeRate);
 
-            // Negative angleSpan = CW traversal, Positive = CCW
-            const angleSpan = revolutions * 2 * Math.PI * (arcCW ? -1 : 1);
-
-            let lastX = startX, lastY = startY;
-
-            for (let i = 1; i <= totalSegments; i++) {
-                const ratio = i / totalSegments;
-                const angle = startAngle + (ratio * angleSpan);
-                const z = ratio * finalDepth;
-
-                const x = center.x + radius * Math.cos(angle);
-                const y = center.y + radius * Math.sin(angle);
-
-                const i_val = center.x - lastX;
-                const j_val = center.y - lastY;
-
-                machinePlan.addArc(x, y, z, i_val, j_val, arcCW, feedRate);
-                lastX = x;
-                lastY = y;
-            }
-
-            machinePlan.addLinear(lastX, lastY, finalDepth, feedRate);
-
-            // Full circle cleanup pass at final depth
-            const i_center = center.x - lastX;
-            const j_center = center.y - lastY;
-            machinePlan.addArc(lastX, lastY, finalDepth, i_center, j_center, arcCW, feedRate);
+            const ring = { center, radius };
+            const finalAngle = this.helixDownRing(machinePlan, ring, startAngle, 0, targetDepth, feedRate, toolDiameter, arcCW);
+            this.fullCircleAtDepth(machinePlan, ring, finalAngle, targetDepth, feedRate, arcCW);
 
             machinePlan.addRetract(this.context.machine.travelZ);
         }
@@ -720,7 +646,7 @@
                         }
 
                         // Run the 360 clear starting exactly from the current angle
-                        this.fullCircleAtDepth(machinePlan, ring, currentAngle, targetZ, feedRate);
+                        this.fullCircleAtDepth(machinePlan, ring, currentAngle, targetZ, feedRate, arcCW);
                     }
                     if (rings.length > 1 && d < depthLevels.length - 1) {
                         // Return to the inner ring exactly along the current angle
@@ -755,9 +681,7 @@
             const requestedPitch = Math.abs(this.context.strategy.depthPerPass);
             const maxPitchForTool = toolDiameter * 0.5;
             const helixPitch = Math.min(requestedPitch, maxPitchForTool);
-
-            // Allow natural float revolutions!
-            const revolutions = Math.max(1, deltaZ / helixPitch); 
+            const revolutions = Math.max(1, Math.ceil(deltaZ / helixPitch));
             const segmentsPerRev = 16;
             const totalSegments = Math.ceil(revolutions * segmentsPerRev);
 
@@ -798,7 +722,8 @@
             const i_val = center.x - startX;
             const j_val = center.y - startY;
 
-            machinePlan.addArc(startX, startY, depth, i_val, j_val, arcCW, feedRate);
+            // Passing null for X and Y to force the post-processor to output a perfect 360° circle (G2 I... J...)
+            machinePlan.addArc(null, null, depth, i_val, j_val, arcCW, feedRate);
         }
 
         /**
@@ -954,52 +879,11 @@
             const plungeRate = purePlan.metadata.plungeRate;
 
             const entryPt = arcCW ? od.pB : od.pC;
-
-            // Move to Start of Helix Loop
             machinePlan.addRapid(entryPt.x, entryPt.y, null);
-
-            // Feed to Z0
             machinePlan.addLinear(entryPt.x, entryPt.y, 0, plungeRate);
 
-            const requestedPitch = Math.abs(purePlan.metadata.depthPerPass);
-            const helixPitch = Math.min(requestedPitch, toolDiameter * 0.5);
-            const depthPerHalfLoop = helixPitch * 0.5;
-
-            let currentZ = 0;
-
-            while (currentZ > finalDepth) {
-                let targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
-                if (!arcCW) { // CCW
-                    machinePlan.addArc(od.pD.x, od.pD.y, targetZ, od.endCapCenter.x - od.pC.x, od.endCapCenter.y - od.pC.y, false, feedRate);
-                    currentZ = targetZ;
-                    machinePlan.addLinear(od.pA.x, od.pA.y, currentZ, feedRate);
-                    targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
-                    machinePlan.addArc(od.pB.x, od.pB.y, targetZ, od.startCapCenter.x - od.pA.x, od.startCapCenter.y - od.pA.y, false, feedRate);
-                    currentZ = targetZ;
-                    machinePlan.addLinear(od.pC.x, od.pC.y, currentZ, feedRate);
-                } else { // CW
-                    machinePlan.addArc(od.pA.x, od.pA.y, targetZ, od.startCapCenter.x - od.pB.x, od.startCapCenter.y - od.pB.y, true, feedRate);
-                    currentZ = targetZ;
-                    machinePlan.addLinear(od.pD.x, od.pD.y, currentZ, feedRate);
-                    targetZ = Math.max(currentZ - depthPerHalfLoop, finalDepth);
-                    machinePlan.addArc(od.pC.x, od.pC.y, targetZ, od.endCapCenter.x - od.pD.x, od.endCapCenter.y - od.pD.y, true, feedRate);
-                    currentZ = targetZ;
-                    machinePlan.addLinear(od.pB.x, od.pB.y, currentZ, feedRate);
-                }
-            }
-
-            // Final flat loop at the bottom
-            if (!arcCW) { // CCW
-                machinePlan.addArc(od.pD.x, od.pD.y, finalDepth, od.endCapCenter.x - od.pC.x, od.endCapCenter.y - od.pC.y, false, feedRate);
-                machinePlan.addLinear(od.pA.x, od.pA.y, finalDepth, feedRate);
-                machinePlan.addArc(od.pB.x, od.pB.y, finalDepth, od.startCapCenter.x - od.pA.x, od.startCapCenter.y - od.pA.y, false, feedRate);
-                machinePlan.addLinear(od.pC.x, od.pC.y, finalDepth, feedRate);
-            } else { // CW
-                machinePlan.addArc(od.pA.x, od.pA.y, finalDepth, od.startCapCenter.x - od.pB.x, od.startCapCenter.y - od.pB.y, true, feedRate);
-                machinePlan.addLinear(od.pD.x, od.pD.y, finalDepth, feedRate);
-                machinePlan.addArc(od.pC.x, od.pC.y, finalDepth, od.endCapCenter.x - od.pD.x, od.endCapCenter.y - od.pD.y, true, feedRate);
-                machinePlan.addLinear(od.pB.x, od.pB.y, finalDepth, feedRate);
-            }
+            this.helixDownObround(machinePlan, od, 0, finalDepth, plungeRate, feedRate, toolDiameter, arcCW);
+            this.obroundLoopAtDepth(machinePlan, od, finalDepth, feedRate, arcCW);
 
             machinePlan.addRetract(this.context.machine.travelZ);
         }

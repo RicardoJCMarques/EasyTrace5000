@@ -1,5 +1,5 @@
 /*!
- * @file        operations/stencil-operation-handler.js
+ * @file        operations/trace-stencil-handler.js
  * @description Solder stencil aperture generation with drill pad exclusion
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques

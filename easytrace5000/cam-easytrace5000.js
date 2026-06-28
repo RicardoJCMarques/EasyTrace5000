@@ -1,6 +1,6 @@
 /*!
  * @file        cam-easytrace5000.js
- * @description EasyTrace5000 application controller — UI orchestration, file handling, export
+ * @description EasyTrace5000 application controller - UI orchestration, file handling, export
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
@@ -33,17 +33,6 @@
 
         getProfileConfig() {
             return { embeddedVar: 'EMBEDDED_PROFILE_TRACE', fetchPath: '../ui/profile-trace.json' };
-        }
-
-        applyProfileDefaults(profileData) {
-            super.applyProfileDefaults(profileData);
-            if (profileData.laserDefaults && this.core.settings) {
-                this.core.settings.laser = { ...this.core.settings.laser, ...profileData.laserDefaults };
-            }
-        }
-
-        onBeforePipeline() {
-            this.restorePipeline();
         }
 
         createUI() {
@@ -400,7 +389,7 @@
                         if (this.ui.navTreePanel) { const fn = this.ui.navTreePanel.getNodeByOperationId(operation.id); if (fn) this.ui.navTreePanel.updateFileGeometries(fn.id, operation); }
                         await this.ui.updateRendererAsync();
                         this.ui.setStatus('Cutout paths automatically closed.', 'success');
-                    } else { this.ui.setStatus('Cannot close — test with a higher tolerance first.', 'error'); }
+                    } else { this.ui.setStatus('Cannot close - test with a higher tolerance first.', 'error'); }
                 },
                 onCancel: () => {
                     delete operation.needsClosurePrompt; delete operation.closureInfo; delete operation.extractedLoops;

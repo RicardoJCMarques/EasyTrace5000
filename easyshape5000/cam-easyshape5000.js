@@ -1,6 +1,6 @@
 /*!
  * @file        easyshape5000/cam-easyshape5000.js
- * @description EasyShape5000 application controller — owns scene, history,
+ * @description EasyShape5000 application controller - owns scene, history,
  *              mutations, modals, and keyboard. Delegates all UI to EasyShapeUI.
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
@@ -46,12 +46,10 @@
             this.scene = this.core.scene;
             this.selection = this.scene.selection;
             this.sceneInteraction = this.core.sceneInteraction;
-            this.core.stock = { ...this.defaultStock };
             this.history = new CommandManager(this);
         }
 
-        applyProfileDefaults(profileData) {
-            super.applyProfileDefaults(profileData);
+        onProfileLoaded(profileData) {
             if (profileData.machineDefaults?.stock) {
                 this.core.stock = { ...profileData.machineDefaults.stock };
             }
@@ -161,7 +159,7 @@
 
         /**
          * Imports an STL as a relief operation. Bypasses ParserPlotter
-         * and the scene shape tree entirely — the mesh attaches to the
+         * and the scene shape tree entirely - the mesh attaches to the
          * operation, and ShapeReliefHandler slices it into a heightmap
          * on demand (so resolution params always take effect).
          */
@@ -298,7 +296,7 @@
                     if (this.hasLockedAncestor(n)) { blocked.push(id); return false; }
                     return true;
                 });
-                if (targetIds.length === 0) { this.ui.setStatus('Locked by parent — unlock the parent first', 'warning'); return; }
+                if (targetIds.length === 0) { this.ui.setStatus('Locked by parent - unlock the parent first', 'warning'); return; }
                 if (blocked.length > 0) this.ui.setStatus(`${blocked.length} item(s) skipped (locked by parent)`, 'info');
             }
 
@@ -591,11 +589,13 @@
                 if (xInput) xInput.value = (0).toFixed(decimals);
                 if (yInput) yInput.value = (0).toFixed(decimals);
                 this.ui.rebuildLayers(); this.ui.zoomFit();
+                this.core.saveSettings();
                 this.ui.setStatus('Stock settings and origin applied', 'success');
             };
 
             const resetStock = () => {
                 this.core.stock = { ...this.defaultStock };
+                this.core.saveSettings();
                 const stockW = document.getElementById('stock-width');
                 const stockH = document.getElementById('stock-height');
                 const stockT = document.getElementById('stock-thickness');

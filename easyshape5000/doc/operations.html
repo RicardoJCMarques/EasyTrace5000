@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <!--!
+        @file        easyshape5000/doc/operations.html
+        @description EasyShape5000 Operation Reference
+        @author      Eltryus - Ricardo Marques
+        @copyright   2025-2026 Eltryus - Ricardo Marques
+        @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
+
+        SPDX-FileCopyrightText: 2025-2026 Eltryus - Ricardo Marques
+        SPDX-License-Identifier: AGPL-3.0-or-later
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EasyShape5000 | Operation Reference</title>
+    <meta name="description" content="EasyShape5000 operations: profile cut, pocket clearing, drilling, plus planned engraving, pattern, v-carve, and 3D relief.">
+    <meta name="author" content="Eltryus">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#1a1a1a">
+
+    <link rel="canonical" href="https://cam.eltryus.design/easyshape5000/doc/operations">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://cam.eltryus.design/easyshape5000/doc/operations">
+    <meta property="og:title" content="EasyShape5000 | Operations Guide">
+    <meta property="og:description" content="A guide to EasyShape5000's operations.">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-preview-shape.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Eltryus EasyCAM5000 Suite">
+    <meta property="og:locale" content="en_US">
+
+    <link rel="icon" type="image/png" href="../../images/favicon/favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="../../images/favicon/favicon.svg">
+    <link rel="shortcut icon" href="../../images/favicon/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="../../images/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="../../images/favicon/site.webmanifest">
+
+    <link rel="stylesheet" href="../../css/base.css">
+    <link rel="stylesheet" href="../../css/components.css">
+    <link rel="stylesheet" href="../../css/theme.css">
+    <link rel="stylesheet" href="../../css/doc.css">
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "TechArticle",
+                "@id": "https://cam.eltryus.design/easyshape5000/doc/operations#article",
+                "headline": "EasyShape5000 Operation Reference",
+                "description": "EasyShape5000 operations: profile cut, pocket clearing, drilling, plus planned engraving, pattern, v-carve, and 3D relief.",
+                "image": "https://cam.eltryus.design/images/social-shape.jpg",
+                "url": "https://cam.eltryus.design/easyshape5000/doc/operations",
+                "inLanguage": "en",
+                "isPartOf": { "@id": "https://cam.eltryus.design/easyshape5000/doc/#docs" },
+                "about": { "@id": "https://cam.eltryus.design/easyshape5000/#app" },
+                "author": { "@id": "https://www.eltryus.design/#organization" },
+                "publisher": { "@id": "https://www.eltryus.design/#organization" },
+                "datePublished": "2026-06-17",
+                "dateModified": "2026-06-17"
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    { "@type": "ListItem", "position": 1, "name": "Eltryus EasyCAM5000 Suite", "item": "https://cam.eltryus.design/" },
+                    { "@type": "ListItem", "position": 2, "name": "EasyShape5000", "item": "https://cam.eltryus.design/easyshape5000/" },
+                    { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easyshape5000/doc/" },
+                    { "@type": "ListItem", "position": 4, "name": "Operations", "item": "https://cam.eltryus.design/easyshape5000/doc/operations" }
+                ]
+            }
+        ]
+    }
+    </script>
+</head>
+<body>
+    <a href="#doc-content" class="skip-link">Skip to Main Content</a>
+
+    <header class="doc-header">
+        <div class="doc-brand">
+            <a href="/" aria-label="EasyShape5000 Homepage">EasyShape5000</a>
+        </div>
+
+        <button class="doc-menu-toggle" aria-label="Toggle Navigation Menu" aria-expanded="false">
+            <svg class="icon-menu" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+            <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+
+        <nav class="doc-nav" aria-label="Main Navigation">
+            <a href="/" draggable="false" aria-label="Return to Homepage">← Home</a>
+            <a href="/easyshape5000/" draggable="false" aria-label="Launch Workspace">Launch App</a>
+            <span class="separator" aria-hidden="true"></span>
+            <a href="./" draggable="false" aria-label="Documentation Index">Docs</a>
+            <a href="guide" draggable="false" aria-label="Workflow Guide">Workflow Guide</a>
+            <a href="operations" class="active" draggable="false" aria-current="page" aria-label="Operation Reference">Operations</a>
+            <a href="parameters" draggable="false" aria-label="Parameter Reference">Parameters</a>
+            <a href="/easytrace5000/doc/accessibility" draggable="false" aria-label="Accessibility Statement">Accessibility</a>
+            <span class="separator" aria-hidden="true"></span>
+            <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
+
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
+            </button>
+        </nav>
+    </header>
+
+    <div class="doc-wrapper has-sidebar">
+        <nav class="doc-sidebar" id="toc">
+            <h2>Contents <span class="doc-badge doc-badge--stable">v1.0</span></h2>
+            <ol>
+                <li><a href="#overview" draggable="false">Overview</a></li>
+                <li><a href="#op-profile" draggable="false">Profile Cut</a></li>
+                <li><a href="#op-pocket" draggable="false">Pocket Clearing</a></li>
+                <li><a href="#op-drill" draggable="false">Drilling</a></li>
+                <li><a href="#planned" draggable="false">Planned Operations</a>
+                    <ol>
+                        <li><a href="#op-engrave" draggable="false">Engraving</a></li>
+                        <li><a href="#op-pattern" draggable="false">Pattern Generator</a></li>
+                        <li><a href="#op-vcarve" draggable="false">V-Carve</a></li>
+                        <li><a href="#op-relief" draggable="false">3D Relief</a></li>
+                    </ol>
+                </li>
+            </ol>
+        </nav>
+
+        <main id="doc-content" class="doc-main">
+            <section class="hero hero--compact">
+                <h1>Operation Reference</h1>
+                <p class="tagline">What each EasyShape5000 operation does, and what's coming</p>
+            </section>
+
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>EasyShape assigns operations <strong>per shape</strong>. Select one or more shapes in the scene tree or on the canvas, drop them into an operation bucket, set parameters, and generate geometry. Operations are independent and fully undoable. All shapes must be <strong>closed paths</strong> - open paths trigger a warning. Every parameter named here is documented on the <a href="parameters" draggable="false">Parameter Reference</a>.</p>
+                <div class="callout callout--info">
+                    <p>Three operations are functional in v1.0 (profile, pocket, drill). The rest are scaffolded and shown below for transparency - their parameters exist in the UI but they don't yet produce toolpaths.</p>
+                </div>
+            </section>
+
+            <section id="op-profile">
+                <h2><svg class="cam-icon" width="22" height="22" aria-hidden="true"><use href="#icon-op-profile"></use></svg> Profile Cut <span class="doc-badge doc-badge--stable">Stable</span></h2>
+                <p>Cuts along a shape's contour. <strong>Cut side</strong> chooses outside (part stays full size), inside (cut within the boundary), or on-path (tool centered on the line). Each shape produces a single offset pass; <strong>holding tabs</strong> can leave bridges so parts don't break free on the last depth pass.</p>
+                <p><strong>Use it for:</strong> cutting parts out, interior windows, and centerline scoring.</p>
+                <p><strong>Key parameters:</strong> cut side; detect nested holes; tabs (count, width, height); depth and entry settings on the strategy stage.</p>
+            </section>
+
+            <section id="op-pocket">
+                <h2><svg class="cam-icon" width="22" height="22" aria-hidden="true"><use href="#icon-op-pocket"></use></svg> Pocket Clearing <span class="doc-badge doc-badge--stable">Stable</span></h2>
+                <p>Clears the entire interior of a shape to a set depth using <strong>concentric inward offsets</strong> spaced by step-over. Shapes nested inside the boundary are treated as islands (holes) and left standing. A raster/zig-zag strategy is planned but not yet implemented.</p>
+                <p><strong>Use it for:</strong> recesses, inlay cavities, and surfacing bounded regions.</p>
+                <p><strong>Key parameters:</strong> step-over; clearing strategy (concentric offsets); optional finishing pass + finish step-over; depth and entry settings.</p>
+            </section>
+
+            <section id="op-drill">
+                <h2><svg class="cam-icon" width="22" height="22" aria-hidden="true"><use href="#icon-op-drilling"></use></svg> Drilling <span class="doc-badge doc-badge--stable">Stable</span></h2>
+                <p>Treats circles and obround slots as holes and selects peck/plunge or circular milling automatically, depending on hole size versus tool. Uses the same engine as EasyTrace; the only difference is that shapes arrive one at a time rather than as a batch file.</p>
+                <p><strong>Use it for:</strong> mounting holes, dowel holes, and slots.</p>
+                <p><strong>Key parameters:</strong> mill oversize holes + mill step-over; canned cycle, peck depth, dwell, retract height; optional spot drill (+ spot depth).</p>
+            </section>
+
+            <section id="planned">
+                <h2>Planned Operations <span class="doc-badge doc-badge--dev">In Development</span></h2>
+                <p>These operations are part of the roadmap. Parameters are present in the interface, but the handlers are not yet active.</p>
+            </section>
+
+            <section id="op-engrave">
+                <h3><svg class="cam-icon" width="20" height="20" aria-hidden="true"><use href="#icon-op-engrave"></use></svg> Engraving <span class="doc-badge doc-badge--dev">Planned</span></h3>
+                <p>Follow-the-path cutting at a fixed shallow depth. Path mode will offer on-path (centerline) or tool-compensated inside/outside, with an optional multi-pass at the same depth for hard materials.</p>
+            </section>
+
+            <section id="op-pattern">
+                <h3><svg class="cam-icon" width="20" height="20" aria-hidden="true"><use href="#icon-group"></use></svg> Pattern Generator <span class="doc-badge doc-badge--dev">Planned</span></h3>
+                <p>Repeats a shape across a layout: rectangular grid, hexagonal, radial array (with optional rotate-to-face-outward), or linear array, with mirroring options. A geometry-only operation - it multiplies shapes before the cutting operations run.</p>
+            </section>
+
+            <section id="op-vcarve">
+                <h3><svg class="cam-icon" width="20" height="20" aria-hidden="true"><use href="#icon-op-vcarve"></use></svg> V-Carve <span class="doc-badge doc-badge--dev">Planned</span></h3>
+                <p>Variable-depth carving with a V-bit, where cut width tracks the bit's included angle and the medial axis of each shape. Wide flats beyond the bit's reach can be roughed with a separate flat end mill before the V-bit finishes the edges.</p>
+                <p>Of the planned operations this is the furthest along - its full parameter set (bit angle, max/start depth, flat-area depth, clearing tool) already exists in the interface.</p>
+            </section>
+
+            <section id="op-relief">
+                <h3><svg class="cam-icon" width="20" height="20" aria-hidden="true"><use href="#icon-image"></use></svg> 3D Relief <span class="doc-badge doc-badge--dev">Planned</span></h3>
+                <p>Height-driven 3D machining: a grayscale height-map or an imported STL drives Z depth across the surface. This is the earliest-stage operation - it depends on the STL parser and a 3D preview system that aren't finished yet, so no parameters are exposed.</p>
+                <div class="callout callout--info">
+                    <p>3D relief, v-carve, and engraving are tracked on the suite <a href="../../README.md" draggable="false">roadmap</a>. This page will gain working sections as each lands.</p>
+                </div>
+            </section>
+        </main>
+
+        <footer class="doc-footer" aria-label="Footer">
+            <p>
+                <a href="#doc-content" draggable="false" aria-label="Scroll back to top">Back to Top</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a> |
+                <a href="/#support" draggable="false" aria-label="Support Development via Sponsorship">Support Development</a> |
+                <a href="../../LICENSE" target="_blank" draggable="false" aria-label="AGPLv3 License (opens in a new tab)">AGPLv3 Licensed</a>
+            </p>
+        </footer>
+    </div>
+
+    <script defer src="../../themes/theme-loader.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load the SVG Sprite
+            fetch('../../images/icons/sprite.svg')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
+
+            // Theme toggle
+            const themeBtn = document.getElementById('theme-toggle');
+            if (themeBtn && window.ThemeLoader) {
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+                if (useEl) useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                });
+            }
+
+            // Mobile menu toggle
+            const menuBtn = document.querySelector('.doc-menu-toggle');
+            const nav = document.querySelector('.doc-nav');
+            if (menuBtn && nav) {
+                const useEl = menuBtn.querySelector('use');
+                menuBtn.addEventListener('click', () => {
+                    const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                    menuBtn.setAttribute('aria-expanded', !isExpanded);
+                    nav.classList.toggle('is-open');
+
+                    if (useEl) useEl.setAttribute('href', !isExpanded ? '#icon-close' : '#icon-menu');
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -90,21 +90,43 @@
         }
 
         // Pack metadata into 64-bit Z coordinate
+        // REVIEW - Metadata packing comments need improvement
         packMetadata(curveId, segmentIndex, clockwise = false, reserved = 0) {
-            if (!curveId || curveId === 0) return BigInt(0);
+            // Allow reserved-only packing (sourceId) on non-arc points, which have no curveId.
+            // // REVIEW - this doesn't make sense? Metadata packing could also be, CurveID is necessary for arc-reconstruction but non arc points don't need it?
+            if ((!curveId || curveId === 0) && (!reserved || reserved === 0)) return BigInt(0);
 
-            const packedCurveId = BigInt(curveId) & this.bitMasks.curveId;
+            const packedCurveId = BigInt(curveId || 0) & this.bitMasks.curveId;
             const packedSegmentIndex = BigInt(segmentIndex || 0) & this.bitMasks.segmentIndex;
             const packedClockwise = clockwise ? 1n : 0n;
-            const packedReserved = BigInt(reserved) & this.bitMasks.reserved;
+            const packedReserved = BigInt(reserved || 0) & this.bitMasks.reserved;
 
-            // Pack: reserved(8) | clockwise(1) | segmentIndex(31) | curveId(24)
-            const z = packedCurveId | 
-                     (packedSegmentIndex << 24n) | 
+            const z = packedCurveId |
+                     (packedSegmentIndex << 24n) |
                      (packedClockwise << 55n) |
                      (packedReserved << 56n);
 
             return z;
+        }
+
+        /**
+         * Pack a source-shape identity into a Z word for non-arc points.
+         * Uses bits 24-55 (32-bit), with bits 0-23 forced to zero so that
+         * unpackMetadata sees curveId=0 and knows this is identity, not arc data.
+         */
+        // REVIEW - the current system may not need this but stayDown clusters probably need this.
+        // Same shapeID if far appart by the offset distance (not just point distance) should be stayDown compatible, it would allow enough precision for more stayDown moves when explicit points are diagonally distant.
+        packSourceId(sourceId) {
+            if (!sourceId) return BigInt(0);
+            return (BigInt(sourceId) & 0xFFFFFFFFn) << 24n;
+        }
+
+        /**
+         * Recover sourceId from a Z word. Only valid when curveId = 0.
+         */
+        unpackSourceId(z) {
+            if (!z || z === 0n) return 0;
+            return Number((BigInt(z) >> 24n) & 0xFFFFFFFFn);
         }
 
         // Unpack metadata from 64-bit Z coordinate
@@ -134,11 +156,11 @@
                 const input = new Paths64();
                 objects.push(input);
 
-                // Convert JS paths to Clipper paths — process ALL contours
+                // Convert JS paths to Clipper paths - process ALL contours
                 paths.forEach(path => {
                     if (path.contours && path.contours.length > 0) {
                         path.contours.forEach(contour => {
-                            const clipperPath = this.jsPathToClipper(contour.points);
+                            const clipperPath = this.jsPathToClipper(contour.points, path.properties?.sourceId || 0);
                             if (clipperPath) {
                                 input.push_back(clipperPath);
                                 objects.push(clipperPath);
@@ -148,7 +170,7 @@
                         const pPath = GeometryUtils.primitiveToPath(path);
                         if (pPath && pPath.contours) {
                             pPath.contours.forEach(contour => {
-                                const clipperPath = this.jsPathToClipper(contour.points);
+                                const clipperPath = this.jsPathToClipper(contour.points, path.properties?.sourceId || 0);
                                 if (clipperPath) {
                                     input.push_back(clipperPath);
                                     objects.push(clipperPath);
@@ -191,12 +213,12 @@
                 const clips = new Paths64();
                 objects.push(subjects, clips);
 
-                // Winding is trusted from upstream — outer=CCW (+1), hole=CW (-1) in Y-up.
+                // Winding is trusted from upstream - outer=CCW (+1), hole=CW (-1) in Y-up.
                 const addAllContours = (pathsArray, clipperPathsObj) => {
                     pathsArray.forEach(path => {
                         if (path.contours && path.contours.length > 0) {
                             path.contours.forEach(contour => {
-                                const clipperPath = this.jsPathToClipper(contour.points);
+                                const clipperPath = this.jsPathToClipper(contour.points, path.properties?.sourceId || 0);
                                 if (clipperPath) {
                                     clipperPathsObj.push_back(clipperPath);
                                     objects.push(clipperPath);
@@ -206,7 +228,7 @@
                             const pPath = GeometryUtils.primitiveToPath(path);
                             if (pPath && pPath.contours) {
                                 pPath.contours.forEach(contour => {
-                                    const clipperPath = this.jsPathToClipper(contour.points);
+                                    const clipperPath = this.jsPathToClipper(contour.points, path.properties?.sourceId || 0);
                                     if (clipperPath) {
                                         clipperPathsObj.push_back(clipperPath);
                                         objects.push(clipperPath);
@@ -282,10 +304,13 @@
                     const y = BigInt(Math.round(p.y * this.scale));
 
                     let z = BigInt(0);
-                    if (this.supportsZ && p.curveId !== undefined &&
-                        p.curveId !== null && p.curveId > 0) {
-                        const curveClockwise = getClockwiseForCurve(p.curveId);
-                        z = this.packMetadata(p.curveId, p.segmentIndex || 0, curveClockwise, 0);
+                    if (this.supportsZ) {
+                        if (p.curveId !== undefined && p.curveId !== null && p.curveId > 0) {
+                            const curveClockwise = getClockwiseForCurve(p.curveId);
+                            z = this.packMetadata(p.curveId, p.segmentIndex || 0, curveClockwise, 0);
+                        } else if (p.sourceId > 0) {
+                            z = this.packSourceId(p.sourceId);
+                        }
                     }
 
                     const point = new Point64(x, y, z);
@@ -333,6 +358,9 @@
                                 point.segmentIndex = metadata.segmentIndex;
                                 point.clockwise = metadata.clockwise;
                                 curveIds.add(metadata.curveId);
+                            } else {
+                                const sid = this.unpackSourceId(z);
+                                if (sid > 0) point.sourceId = sid;
                             }
                         }
                     }
@@ -367,6 +395,9 @@
                                     point.segmentIndex = metadata.segmentIndex;
                                     point.clockwise = metadata.clockwise;
                                     contourCurveIds.add(metadata.curveId);
+                                } else {
+                                    const sid = this.unpackSourceId(z);
+                                    if (sid > 0) point.sourceId = sid;
                                 }
                             }
                         }

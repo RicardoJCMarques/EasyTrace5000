@@ -55,17 +55,39 @@
                     if (primitiveOrPrimitives) {
                         const primArray = Array.isArray(primitiveOrPrimitives) ? 
                             primitiveOrPrimitives : [primitiveOrPrimitives];
+
+                        // Implicit grouping for split shapes
+                        // If one parser object (like an "i" or "j" compound path) was topologically 
+                        // split into multiple distinct primitives, generate a group.
+                        let implicitGroup = null;
+                        if (primArray.length > 1) {
+                            implicitGroup = {
+                                uid: `implicit_g_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                                id: null,
+                                label: 'Compound Shape'
+                            };
+                        }
+
                         primArray.forEach(prim => {
                             if (this.validatePrimitive(prim)) {
                                 if (gerberData.layers.units === 'inch') {
                                     // Late scaling: apply metric conversion just before finalizing the primitive
                                     this.convertToMetric(prim); 
                                 }
-                                // EasyShape5000 groupPath propagation. Ignored by EasyTrace5000 until extended interactivity is transfered.
-                                if (obj.groupPath) {
-                                    if (!prim.properties) prim.properties = {};
-                                    prim.properties.groupPath = obj.groupPath;
+
+                                if (!prim.properties) prim.properties = {};
+
+                                // EasyShape5000 groupPath propagation with implicit group injection
+                                let currentGroupPath = obj.groupPath ? [...obj.groupPath] : [];
+
+                                if (implicitGroup) {
+                                    currentGroupPath.push(implicitGroup);
                                 }
+
+                                if (currentGroupPath.length > 0) {
+                                    prim.properties.groupPath = currentGroupPath;
+                                }
+
                                 this.primitives.push(prim);
                                 this.creationStats.primitivesCreated++;
                             }
@@ -426,6 +448,9 @@
 
                     if (analyticSubpaths.length > 1) {
                         // Compound path: CW = hole (negative area in Y-up)
+                        // TODO: [WINDING-HIERARCHY] This blindly assumes CW = hole. 
+                        // Disjoint outer paths (e.g., dot of an 'i') will be falsely flagged as holes here due to Y-flip.
+                        // Review replacing this assignment with a spatial/topological check later.
                         isHole = isCW;
                     } else {
                         isHole = false;
@@ -460,11 +485,8 @@
                 return null; // No valid contours found
             }
 
-            // Sort contours: outer (isHole: false) first
-            contours.sort((a, b) => a.isHole - b.isHole);
-
             // Create a single PathPrimitive with the full contours list
-            const finalPrimitive = new PathPrimitive(contours, {
+            const rawPrimitive = new PathPrimitive(contours, {
                 isRegion: region.fill !== false,
                 fill: region.fill !== false,
                 stroke: region.stroke || false,
@@ -474,9 +496,16 @@
                 closed: region.closed !== false,
             });
 
-            this.creationStats.regionsCreated++;
-            // Return the single, complex primitive
-            return finalPrimitive; 
+            // Topological sorting and compound path splitting
+            // Explodes the compound path, sorts by absolute area, builds a true nesting tree,
+            // corrects winding, and reassembles distinct shapes into separate PathPrimitives.
+            // This safely splits disjoint shapes (like 'i' dots) without destroying true hole topology.
+            const resolvedPrimitives = GeometryUtils.resolveCompoundContours(rawPrimitive);
+
+            // Update stats to reflect the actual number of distinct shapes generated
+            this.creationStats.regionsCreated += resolvedPrimitives.length;
+
+            return resolvedPrimitives; 
         }
 
         /**
@@ -607,6 +636,7 @@
             } else if (interp === 'linear_path') {
                 // From polygon/polyline stroke
                 this.creationStats.tracesCreated++;
+                if (trace.closed === false) properties.closed = false;
                 const contour = {
                     points: trace.points,
                     isHole: false,
@@ -998,7 +1028,7 @@
 
             let center;
             if (Math.abs(denom) < 1e-12) {
-                // Tangent normals are parallel — 180° arc.
+                // Tangent normals are parallel - 180° arc.
                 // Center lies at the chord midpoint.
                 center = { x: (p0.x + p3.x) / 2, y: (p0.y + p3.y) / 2 };
             } else {
@@ -1016,7 +1046,19 @@
             const tol = Math.max(PRECISION, r0 * 0.004); // REVIEW - Changing the 0.004 tolerance can have unpredictable results in round arc bezier translation to arc primitives
             if (Math.abs(r0 - r1) > tol) return null;
 
-            const radius = (r0 + r1) / 2;
+            // Refit center onto the perpendicular bisector of the chord so
+            // |center-p0| == |center-p3| exactly.
+            const midX = (p0.x + p3.x) / 2, midY = (p0.y + p3.y) / 2;
+            const chordDx = p3.x - p0.x, chordDy = p3.y - p0.y;
+            const chordLenSq = chordDx * chordDx + chordDy * chordDy;
+            if (chordLenSq > 1e-18) {
+                const chordLen = Math.sqrt(chordLenSq);
+                const nx = -chordDy / chordLen, ny = chordDx / chordLen;
+                const t = (center.x - midX) * nx + (center.y - midY) * ny;
+                center.x = midX + t * nx;
+                center.y = midY + t * ny;
+            }
+            const radius = Math.hypot(p0.x - center.x, p0.y - center.y);
 
             // Sample the Bézier and verify distance from center
             for (const t of [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875]) {
@@ -1093,10 +1135,21 @@
             const r1 = Math.hypot(p2.x - center.x, p2.y - center.y);
             if (r0 < 1e-9 || r0 > 20000) return null;
 
-            const tol = Math.max(PRECISION, r0 * 0.004); // REVIEW - Changing the 0.004 tolerance can have unpredictable results in round arc bezier translation to arc primitives
+            const tol = Math.max(PRECISION, r0 * 0.004);
             if (Math.abs(r0 - r1) > tol) return null;
 
-            const radius = (r0 + r1) / 2;
+            // Refit center onto perpendicular bisector
+            const midX = (p0.x + p2.x) / 2, midY = (p0.y + p2.y) / 2;
+            const chordDx = p2.x - p0.x, chordDy = p2.y - p0.y;
+            const chordLenSq = chordDx * chordDx + chordDy * chordDy;
+            if (chordLenSq > 1e-18) {
+                const chordLen = Math.sqrt(chordLenSq);
+                const nx = -chordDy / chordLen, ny = chordDx / chordLen;
+                const t = (center.x - midX) * nx + (center.y - midY) * ny;
+                center.x = midX + t * nx;
+                center.y = midY + t * ny;
+            }
+            const radius = Math.hypot(p0.x - center.x, p0.y - center.y);
 
             for (const t of [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875]) {
                 const mt = 1 - t;

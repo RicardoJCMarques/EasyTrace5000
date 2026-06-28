@@ -450,6 +450,7 @@
             this.fileRoots = new Map();
 
             this.nodeIndex = new Map();
+            this.nodeIndex.set(this.root.id, this.root);
         }
 
         // -------------------------------------------------------------

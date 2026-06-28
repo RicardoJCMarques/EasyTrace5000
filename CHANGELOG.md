@@ -4,10 +4,30 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-06-28
+
+### Added
+- **EasyShape5000 Example:** Included a temporary flat-pack coffee table example file.
+- **404 page:** Because why not.
+
+### Fixed
+- **Toolpath Planning:** Complete rework of the optimization layer - EasyShape5000 highlighted too many problems in the old optimizations.
+- **Symmetric Arc Beziers:** All translated symmetric arc Bezier curves now have proper center and edge points, everything lines up correctly.
+- **SVG Parser:** Won't spitout svg's without size/unit attributes anymore, they'll fall through to defaults.
+
+### Changed
+- **SEO Stuff:** Trying to put the Optimization in SEO.
+- **Propagate EasyShape5000:** Readying a transition to EasyCAM5000.
+
+### Known Problems
+- **Tabs Don't work:** Something is causing tabs to not be generated. Possibly just a wiring issue, TBD.
+- **Themes & Colors:** Most transparency was removed from all rendering layers which caused colors to shift. Some things may look a bit off in the near future.
+
+
 ## [1.4.0] - 2026-06-22
 
 ### Added
-- **EasyShape5000 Launch:** [Initial TEST release of EasyTrace5000's 2.5-3D CNC Routing sister app.](https://cam.eltryus.design/easyshape5000/) Same foundational systems but with it's own dedicated UI and operations. 
+- **EasyShape5000 Launch:** [Initial TEST release of EasyTrace5000's 2.5-3D CNC Routing sister app.](https://cam.eltryus.design/easyshape5000/) Same foundational systems but with it's own dedicated UI and operations.
 - **Generation Feedback:** The spinner overlay now gives feedback on pass number so ongoing operations are more clearly either doing work or have indeed crashed.
 - **Helper Button:** New explicit button next to the theme button that opens the F1 Helper Modal.
 

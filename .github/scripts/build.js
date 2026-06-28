@@ -158,7 +158,7 @@ function buildHeader(title, subtitle, format = 'js') {
     const HOLDER = 'Eltryus - Ricardo Marques';
     const REPO   = 'https://github.com/RicardoJCMarques/EasyTrace5000';
 
-    const heading = subtitle ? `${title} — ${subtitle}` : title;
+    const heading = subtitle ? `${title} - ${subtitle}` : title;
     const timestamp = new Date().toISOString();
 
     if (format === 'html') {
@@ -566,6 +566,13 @@ class Builder {
                 continue;
             }
             deleteFile(filePath);
+        }
+
+        // Remove the icons directory since the sprite has been embedded into the HTML
+        const iconsDir = path.join(this.distDir, 'images/icons');
+        if (fs.existsSync(iconsDir)) {
+            deleteDir(iconsDir);
+            log('  Removed redundant images/icons directory');
         }
 
         // Clean any remaining empty directories

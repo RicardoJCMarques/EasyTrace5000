@@ -26,10 +26,10 @@
     <meta property="og:url" content="https://cam.eltryus.design/easytrace5000/doc/laser">
     <meta property="og:title" content="EasyTrace5000 | Laser Processing Guide">
     <meta property="og:description" content="Vector and raster output workflows for laser-based PCB prototyping.">
-    <meta property="og:image" content="https://cam.eltryus.design/images/social-preview.jpg">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-trace.jpg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:site_name" content="EasyTrace5000">
+    <meta property="og:site_name" content="Eltryus EasyCAM5000 Suite">
     <meta property="og:locale" content="en_US">
 
     <link rel="icon" type="image/png" href="../../images/favicon/favicon-96x96.png" sizes="96x96">
@@ -44,28 +44,35 @@
     <link rel="stylesheet" href="../../css/doc.css">
 
     <script type="application/ld+json">
-    [
-        {
-            "@context": "https://schema.org",
-            "@type": "TechArticle",
-            "headline": "Laser Pipeline Guide for PCB Fabrication",
-            "description": "Placeholder documentation for using lasers to fabricate PCBs and stencils.",
-            "author": { "@type": "Organization", "name": "Eltryus" },
-            "publisher": { "@type": "Organization", "name": "Eltryus" },
-            "datePublished": "2025-01-16",
-            "dateModified": "2026-03-02"
-        },
-        {
-            "@context": "https://schema.org",
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-                { "@type": "ListItem", "position": 1, "name": "Eltryus CAM Suite", "item": "https://cam.eltryus.design/" },
-                { "@type": "ListItem", "position": 2, "name": "EasyTrace5000", "item": "https://cam.eltryus.design/easytrace5000/" },
-                { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easytrace5000/doc/" },
-                { "@type": "ListItem", "position": 4, "name": "Laser Guide", "item": "https://cam.eltryus.design/easytrace5000/doc/laser" }
-            ]
-        }
-    ]
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "TechArticle",
+                "@id": "https://cam.eltryus.design/easytrace5000/doc/laser#article",
+                "headline": "Laser Pipeline Guide for PCB Fabrication",
+                "description": "Comprehensive guide for using lasers to fabricate PCBs and stencils.",
+                "image": "https://cam.eltryus.design/images/social-trace.jpg",
+                "url": "https://cam.eltryus.design/easytrace5000/doc/laser",
+                "inLanguage": "en",
+                "isPartOf": { "@id": "https://cam.eltryus.design/easytrace5000/doc/#docs" },
+                "about": { "@id": "https://cam.eltryus.design/easytrace5000/#app" },
+                "author": { "@id": "https://www.eltryus.design/#organization" },
+                "publisher": { "@id": "https://www.eltryus.design/#organization" },
+                "datePublished": "2025-01-16",
+                "dateModified": "2026-03-02"
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    { "@type": "ListItem", "position": 1, "name": "Eltryus EasyCAM5000 Suite", "item": "https://cam.eltryus.design/" },
+                    { "@type": "ListItem", "position": 2, "name": "EasyTrace5000", "item": "https://cam.eltryus.design/easytrace5000/" },
+                    { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easytrace5000/doc/" },
+                    { "@type": "ListItem", "position": 4, "name": "Laser Guide", "item": "https://cam.eltryus.design/easytrace5000/doc/laser" }
+                ]
+            }
+        ]
+    }
     </script>
 </head>
 <body>
@@ -98,13 +105,14 @@
              <a href="./" draggable="false" aria-label="Documentation Index">Docs</a>
             <a href="cnc" draggable="false" aria-label="CNC Milling Guide">CNC Guide</a>
             <a href="laser" class="active" draggable="false" aria-current="page" aria-label="Laser Processing Guide">Laser Guide</a>
+            <a href="operations" draggable="false" aria-label="Operation Reference">Operations</a>
+            <a href="parameters" draggable="false" aria-label="Parameter Reference">Parameters</a>
             <a href="accessibility" draggable="false" aria-label="Accessibility Statement">Accessibility</a>
             <span class="separator" aria-hidden="true"></span>
             <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
 
-            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle between light and dark theme">
-                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
             </button>
         </nav>
     </header>
@@ -158,7 +166,7 @@
                     </ul>
                 </div>
 
-                <p>The EasyTrace5000 Laser pipeline is engineered to generate highly optimized 2D vector and high-resolution raster files from standard PCB design files (Gerber, Excellon, SVG). Unlike the CNC pipeline—which must simulate Z-axis depths, plunge rates, and tool radiuses—the laser pipeline operates strictly in 2D coordinate space. </p>
+                <p>The EasyTrace5000 Laser pipeline is engineered to generate highly optimized 2D vector and high-resolution raster files from standard PCB design files (Gerber, Excellon, SVG). Unlike the CNC pipeline, which must consider Z-axis depths and plunge rates. The laser pipeline operates strictly in 2D coordinate space. </p>
 
                 <p>Because laser processing does not require toolpath depth simulation, the application intelligently bypasses the 3D preview stage, processing source geometry directly into export-ready analytic boundaries and fill patterns. The application does not control your laser hardware directly; it performs the computationally heavy geometric boolean operations, true-bounds calculations, and path optimizations, delivering precision files tailored for external control software like LightBurn, EZCAD, or RDWorks.</p>
                 
@@ -199,7 +207,7 @@
             <section id="operations">
                 <h2>Operation Types & Clearing Strategies</h2>
                 
-                <p>The geometry generation logic dynamically adapts to the operation type. The core concept relies on "Clearance Polygons"—the specific area requiring ablation.</p>
+                <p>The geometry generation logic dynamically adapts to the operation type. The core concept relies on "Clearance Polygons" - the specific area requiring ablation.</p>
                 
                 
                 <h3 id="op-isolation">Isolation Routing & Copper Clearing</h3>
@@ -263,21 +271,49 @@
     <script defer src="../../themes/theme-loader.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Theme Toggle Logic
+            // Load the SVG Sprite
+            fetch('../../images/icons/sprite.svg')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
+
+            // Theme toggle
             const themeBtn = document.getElementById('theme-toggle');
             if (themeBtn && window.ThemeLoader) {
-                themeBtn.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+                if (useEl) useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                });
             }
 
-            // Mobile Menu Logic
+            // Mobile menu toggle
             const menuBtn = document.querySelector('.doc-menu-toggle');
             const nav = document.querySelector('.doc-nav');
-
             if (menuBtn && nav) {
+                const useEl = menuBtn.querySelector('use');
                 menuBtn.addEventListener('click', () => {
                     const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
                     menuBtn.setAttribute('aria-expanded', !isExpanded);
                     nav.classList.toggle('is-open');
+
+                    if (useEl) useEl.setAttribute('href', !isExpanded ? '#icon-close' : '#icon-menu');
                 });
             }
         });

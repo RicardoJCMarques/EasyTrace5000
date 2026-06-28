@@ -328,8 +328,7 @@
         "category": "strategy",
         "default": "plunge",
         "options": [
-            { "value": "plunge", "label": "Plunge" },
-            { "value": "helix", "label": "Helix" }
+            { "value": "plunge", "label": "Plunge (Vertical)" }
         ]
         },
         "peckDepth": {
@@ -506,9 +505,9 @@
         "pipelineType": "laser",
         "operationTypes": ["isolation", "clearing"],
         "options": [
-            { "value": "offset", "label": "Offset Paths — Concentric, streak-proof" },
-            { "value": "filled", "label": "Filled Polygon — Laser software controls fill" },
-            { "value": "hatch", "label": "Hatch Fill — Directional line coverage" }
+            { "value": "offset", "label": "Offset Paths - Concentric, streak-proof" },
+            { "value": "filled", "label": "Filled Polygon - Laser software controls fill" },
+            { "value": "hatch", "label": "Hatch Fill - Directional line coverage" }
         ]
         },
         "laserSpacingMode": {

@@ -53,12 +53,12 @@
         /**
          * Determine tab locations along the path perimeter.
          */
-        // TODO [TAB-BOUNDARY-WRAP] — When a tab wraps around the contour seam,
+        // TODO [TAB-BOUNDARY-WRAP] - When a tab wraps around the contour seam,
         // handleBoundary splits it into two sub-tabs. But the overlap check in the
         // equidistant placement loop runs BEFORE wrappedTabs are pushed into placedTabs,
         // so subsequent proposals don't see the split segments.
 
-        // TODO [TAB-SPATIAL-DISTRIBUTION] — Priority 1 placement centers tabs on the
+        // TODO [TAB-SPATIAL-DISTRIBUTION] - Priority 1 placement centers tabs on the
         // longest straight segments (sorted by length, not spatial position). Two adjacent
         // long segments get tabs back-to-back. Consider a minimum angular/distance
         // separation constraint between Priority 1 tabs.
@@ -313,7 +313,7 @@
             const type = arc ? (isClockwise ? 'ARC_CW' : 'ARC_CCW') : 'LINEAR';
 
             const cmd = new MotionCommand(type, 
-                { x: finalEnd.x, y: finalEnd.y, z: null }, 
+                { x: finalEnd.x, y: finalEnd.y }, // REVIEW - should this be { x: finalEnd.x, y: finalEnd.y, null }?
                 { i: i_val, j: j_val, feed: feedRate }
             );
 

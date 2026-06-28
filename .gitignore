@@ -26,6 +26,4 @@ node_modules/
 
 # Extras
 /extras
-/examples/mesa/
-/examples/mesa/mesa.svg
 /renderer/3d.pdf

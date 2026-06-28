@@ -1,7 +1,7 @@
 /*!
  * @file        operations/shape-relief-handler.js
- * @description Relief / 2.5D-mold operation handler — heightmap-driven
- *              3D surfacing (roughing + finishing rasters). Not Wired.
+ * @description Relief / 2.5D-mold operation handler - heightmap-driven
+ *              3D surfacing (roughing + finishing rasters).
  *
  *              Mirrors ShapeVCarveHandler: parameters are parked in a
  *              module const until the profile-shape.json wiring pass,
@@ -33,7 +33,7 @@
     // TODO(re-wire): These belong in profile-shape.json "parameters"
     // (geometry stage, relief operationType) and should then flow in
     // through compileOperationParams / the parameter manager. Parked
-    // here so the wiring is a single-file change later — same pattern
+    // here so the wiring is a single-file change later - same pattern
     // as VCARVE_PARAM_DEFAULTS.
     // ════════════════════════════════════════════════════════════════
     const RELIEF_PARAM_DEFAULTS = {
@@ -81,7 +81,7 @@
             if (!this.getHeightmapSource(operation)) {
                 return {
                     success: false,
-                    message: 'No relief source — import an STL model or heightmap image for this operation',
+                    message: 'No relief source - import an STL model or heightmap image for this operation',
                     status: 'warning'
                 };
             }
@@ -94,7 +94,7 @@
             if (total === 0) {
                 return {
                     success: false,
-                    message: 'No relief paths generated — model may be flat or below resolution',
+                    message: 'No relief paths generated - model may be flat or below resolution',
                     status: 'warning'
                 };
             }
@@ -188,7 +188,7 @@
             // Two offset groups so the UI can toggle/delete roughing and
             // finishing independently. Both flagged is3DToolpath; every
             // primitive carries is3DContour for per-primitive dispatch
-            // in GeometryTranslator — same contract as V-Carve.
+            // in GeometryTranslator - same contract as V-Carve.
             const sharedMeta = {
                 generatedAt: Date.now(),
                 toolDiameter,

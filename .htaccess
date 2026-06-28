@@ -1,3 +1,6 @@
+# 404 page
+ErrorDocument 404 /404.html
+
 # Enable rewrite engine
 RewriteEngine On
 

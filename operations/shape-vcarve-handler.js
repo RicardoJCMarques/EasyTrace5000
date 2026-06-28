@@ -1,6 +1,6 @@
 /*!
  * @file        operations/shape-vcarve-handler.js
- * @description V-Carve operation handler — straight-skeleton 3D centerline paths. Not Wired.
+ * @description V-Carve operation handler - straight-skeleton 3D centerline paths.
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
@@ -31,7 +31,7 @@
         // Drop output chains shorter than this (mm). 0 = keep everything.
         vcarveMinChainLength: 0,
 
-        // Clamp Z at -vcarveMaxDepth. This is SAFETY clamping only —
+        // Clamp Z at -vcarveMaxDepth. This is SAFETY clamping only -
         // flat-floor clearing (vcarveFlatDepth / vcarveClearingTool)
         // is deferred. Set false to pass maxDepth: null to the generator.
         vcarveClampToMaxDepth: true
@@ -44,7 +44,7 @@
         // ════════════════════════════════════════════════════════════
 
         // TODO(refactor): duplicated from OffsetOperationHandler.
-        // Both copies should move UP to BaseOperationHandler — it has no
+        // Both copies should move UP to BaseOperationHandler - it has no
         // offset-pipeline dependencies (pure GeometryUtils closure check).
         countOpenPaths(operation) {
             return (operation.primitives || []).filter(p => {
@@ -54,7 +54,7 @@
         }
 
         // TODO(refactor): duplicated from OffsetOperationHandler.
-        // Same situation as countOpenPaths — move both to
+        // Same situation as countOpenPaths - move both to
         // BaseOperationHandler in the same pass. V-Carve NEEDS this:
         // a letter "O" imported as two separate circles must become one
         // compound (outer + hole) or the inner circle gets carved as a
@@ -97,7 +97,7 @@
             if (openCount > 0) {
                 return {
                     success: false,
-                    message: `V-Carve requires closed paths — ${openCount} open path(s) in selection`,
+                    message: `V-Carve requires closed paths - ${openCount} open path(s) in selection`,
                     status: 'warning'
                 };
             }
@@ -110,7 +110,7 @@
             if (total === 0) {
                 return {
                     success: false,
-                    message: 'No V-Carve paths generated — shapes may be degenerate or too small',
+                    message: 'No V-Carve paths generated - shapes may be degenerate or too small',
                     status: 'warning'
                 };
             }

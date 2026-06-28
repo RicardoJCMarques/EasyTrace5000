@@ -54,122 +54,72 @@
     <link rel="preload" href="../geometry/clipper2z.wasm" as="fetch" crossorigin>
 
     <script type="application/ld+json">
-        [
-            {
-                "@context": "https://schema.org",
-                "@type": "WebApplication",
-                "name": "EasyTrace5000",
-                "alternateName": "EasyTrace",
-                "url": "https://cam.eltryus.design/easytrace5000/",
-                "operatingSystem": "Any (Browser-based)",
-                "applicationCategory": "DeveloperApplication",
-                "applicationSubCategory": "CAM Software",
-                "isPartOf": {
+        {
+            "@context": "https://schema.org",
+            "@graph": [
+                {
                     "@type": "WebApplication",
-                    "name": "Eltryus CAM Suite",
-                    "url": "https://cam.eltryus.design/"
-                },
-                "subjectOf": [
-                    {
-                        "@type": "TechArticle",
-                        "url": "https://www.eltryus.design/en/work/easytrace5000/",
-                        "name": "Case Study: Developing EasyTrace5000"
-                    },
-                    {
+                    "@id": "https://cam.eltryus.design/easytrace5000/#app",
+                    "name": "EasyTrace5000",
+                    "alternateName": "EasyTrace",
+                    "url": "https://cam.eltryus.design/easytrace5000/",
+                    "applicationCategory": "DeveloperApplication",
+                    "applicationSubCategory": "CAM Software",
+                    "operatingSystem": "Any (Browser-based)",
+                    "browserRequirements": "Requires JavaScript and WebAssembly support",
+                    "softwareVersion": "1.4.1",
+                    "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
+                    "installUrl": "https://cam.eltryus.design/easytrace5000/",
+                    "sameAs": "https://github.com/RicardoJCMarques/EasyTrace5000",
+                    "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+                    "isAccessibleForFree": true,
+                    "description": "Browser-based CAM tool for generating G-code from PCB manufacturing files. Supports Gerber, Excellon, and SVG input with optimized toolpath generation.",
+                    "isPartOf": { "@id": "https://cam.eltryus.design/#suite" },
+                    "author": { "@id": "https://www.eltryus.design/#organization" },
+                    "publisher": { "@id": "https://www.eltryus.design/#organization" },
+                    "softwareHelp": [
+                        { "@id": "https://cam.eltryus.design/easytrace5000/doc/#docs" },
+                        { "@id": "https://cam.eltryus.design/easytrace5000/doc/cnc#article" },
+                        { "@id": "https://cam.eltryus.design/easytrace5000/doc/laser#article" }
+                    ],
+                    "subjectOf": [
+                        { "@id": "https://www.eltryus.design/en/work/easytrace5000/#article" },
+                        {
                         "@type": "Article",
                         "url": "https://www.hackster.io/news/easytrace5000-is-a-new-browser-based-cam-tool-for-pcb-fabrication-1539526435e8",
                         "name": "EasyTrace5000 Is a New Browser-Based CAM Tool for PCB Fabrication",
-                        "publisher": {
-                            "@type": "Organization",
-                            "name": "Hackster.io"
+                        "publisher": { "@type": "Organization", "name": "Hackster.io" }
                         }
-                    }
-                ],
-                "description": "Browser-based CAM tool for generating G-code from PCB manufacturing files. Supports Gerber, Excellon, and SVG input with optimized toolpath generation.",
-                "potentialAction": [
-                    {
-                        "@type": "ViewAction",
-                        "target": "https://cam.eltryus.design/easytrace5000/#quickstart",
-                        "name": "Quick Start Guide"
+                    ],
+                    "featureList": [
+                        "Browser-based, 100% client-side CAM processing with zero cloud dependencies",
+                        "Analytic parsing for Gerber (RS-274X), Excellon, and SVG files",
+                        "WebAssembly geometry engine for high-performance boolean operations",
+                        "CNC Pipeline: multi-pass isolation routing, pocket clearing, and board cutouts",
+                        "Laser Pipeline: Vector (SVG) and raster (PNG) export with hatch fills",
+                        "Smart drill strategy with dynamic peck-or-mill selection",
+                        "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
+                        "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
+                    ],
+                    "screenshot": {
+                        "@type": "ImageObject",
+                        "url": "https://cam.eltryus.design/images/social-trace.jpg",
+                        "caption": "EasyTrace5000 main workspace"
                     },
-                    {
-                        "@type": "DonateAction",
-                        "target": "https://cam.eltryus.design/easytrace5000/#support",
-                        "name": "Support Development"
-                    }
-                ],
-                "softwareHelp": [
-                    {
-                        "@type": "CollectionPage",
-                        "url": "https://cam.eltryus.design/easytrace5000/doc/",
-                        "name": "EasyTrace5000 Documentation"
-                    },
-                    {
-                        "@type": "TechArticle",
-                        "url": "https://cam.eltryus.design/easytrace5000/doc/cnc",
-                        "name": "CNC Milling Guide for PCB Isolation Routing"
-                    },
-                    {
-                        "@type": "TechArticle",
-                        "url": "https://cam.eltryus.design/easytrace5000/doc/laser",
-                        "name": "Laser Pipeline Guide for PCB Fabrication"
-                    },
-                    {
-                        "@type": "TechArticle",
-                        "url": "https://cam.eltryus.design/easytrace5000/doc/accessibility",
-                        "name": "Accessibility Information for EasyTrace5000"
-                    }
-                ],
-                "author": {
-                    "@type": "Organization",
-                    "name": "Eltryus",
-                    "url": "https://www.eltryus.design",
-                    "logo": "https://www.eltryus.design/images/logo.png"
+                    "potentialAction": [
+                        { "@type": "ViewAction", "target": "https://cam.eltryus.design/easytrace5000/#quickstart", "name": "Quick Start Guide" }
+                    ]
                 },
-                "screenshot": {
-                    "@type": "ImageObject",
-                    "url": "https://cam.eltryus.design/images/social-trace.jpg",
-                    "caption": "EasyTrace5000 main workspace"
-                },
-                "featureList": [
-                    "Browser-based, 100% client-side CAM processing with zero cloud dependencies",
-                    "Analytic parsing for Gerber (RS-274X), Excellon, and SVG files",
-                    "WebAssembly geometry engine for high-performance boolean operations",
-                    "CNC Pipeline: multi-pass isolation routing, pocket clearing, and board cutouts",
-                    "Laser Pipeline: Vector (SVG) and raster (PNG) export with hatch fills",
-                    "Smart drill strategy with dynamic peck-or-mill selection",
-                    "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
-                    "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
-                ],
-                "softwareVersion": "1.4.0",
-                "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
-                "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
-                "installUrl": "https://cam.eltryus.design/easytrace5000/",
-                "license": "https://www.gnu.org/licenses/agpl-3.0.html",
-                "isAccessibleForFree": true,
-                "browserRequirements": "Requires JavaScript and WebAssembly support",
-                "sameAs": ["https://github.com/RicardoJCMarques/EasyTrace5000"]
-            },
-            {
-                "@context": "https://schema.org",
-                "@type": "BreadcrumbList",
-                "itemListElement": [
-                    {
-                        "@type": "ListItem",
-                        "position": 1,
-                        "name": "Eltryus CAM Suite",
-                        "item": "https://cam.eltryus.design/"
-                    },
-                    {
-                        "@type": "ListItem",
-                        "position": 2,
-                        "name": "EasyTrace5000 Workspace",
-                        "item": "https://cam.eltryus.design/easytrace5000/"
-                    }
-                ]
-            }
-        ]
-    </script>
+                {
+                    "@type": "BreadcrumbList",
+                    "itemListElement": [
+                        { "@type": "ListItem", "position": 1, "name": "Eltryus EasyCAM5000 Suite", "item": "https://cam.eltryus.design/" },
+                        { "@type": "ListItem", "position": 2, "name": "EasyTrace5000", "item": "https://cam.eltryus.design/easytrace5000/" }
+                    ]
+                }
+            ]
+        }
+        </script>
 </head>
 <body>
 
@@ -240,7 +190,7 @@
             </button>
             <div class="toolbar-separator separator"></div>
             <button id="btn-help" class="btn btn--icon" title="Help (F1)" aria-label="Help">?</button>
-            <button class="btn btn--icon theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
                 <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
             </button>
         </div>
@@ -474,8 +424,8 @@
                         <div class="property-field">
                             <label for="roland-z-mode" data-i18n-tooltip="tooltips.machineSettings.rolandZMode">Z Command Mode</label>
                             <select id="roland-z-mode">
-                                <option value="3d">3D — Z x,y,z (simultaneous XYZ)</option>
-                                <option value="2.5d">2.5D — PU/PD (pen up/down only)</option>
+                                <option value="3d">3D - Z x,y,z (simultaneous XYZ)</option>
+                                <option value="2.5d">2.5D - PU/PD (pen up/down only)</option>
                             </select>
                         </div>
                         <div class="property-field">
@@ -506,8 +456,8 @@
                         <div class="property-field">
                             <label for="laser-export-format" data-i18n-tooltip="tooltips.machineSettings.laserExportFormat">Export Format</label>
                             <select id="laser-export-format">
-                                <option value="svg" selected>SVG — Vector</option>
-                                <option value="png">PNG — Raster Image</option>
+                                <option value="svg" selected>SVG - Vector</option>
+                                <option value="png">PNG - Raster Image</option>
                             </select>
                         </div>
                         <div class="property-field" id="laser-dpi-sidebar-field" style="display: none;">
@@ -761,7 +711,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false">Version 1.4.0</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false" aria-label="Changelog (opens in a new tab)">Version 1.4.1</a> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View AGPLv3 License (opens in a new tab)">AGPLv3</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -845,8 +795,8 @@
                 <div class="modal-notice modal-notice--caution" id="welcome-rewrite-notice">
                     <svg class="cam-icon" width="20" height="20"><use href="#icon-warning"></use></svg>
                     <div class="modal-notice-content">
-                        <strong>This release follows a large internal rewrite to accomodate EasyShape5000.</strong>
-                        <span>Work-flow should be unchanged. But please
+                        <strong>This release comes after a large internal rewrite to accomodate <a href="../easyshape5000/">EasyShape5000</a>.</strong>
+                        <span>Toolpath Optimizations were also optimized... Work-flow should be unchanged. But please
                             <a href="https://github.com/RicardoJCMarques/EasyTrace5000/issues" target="_blank" rel="noopener">report unexpected behavior</a>.
                         </span>
                     </div>
@@ -903,15 +853,15 @@
             </div>
             <div class="modal-footer welcome-footer">
                 <div class="welcome-footer-links">
-                    <a href="#help" id="welcome-help-link" draggable="false" aria-label="Opens Help modal">Help</a>
-                    <span class="separator" aria-hidden="true"></span>
-                    <a href="../LICENSE" target="_blank" draggable="false" aria-label="AGPLv3 License (opens in a new tab)">AGPLv3</a>
-                    <span class="separator" aria-hidden="true"></span>
-                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" target="_blank" rel="noopener" draggable="false">Changelog</a>
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="version" target="_blank" draggable="false" aria-label="Changelog (opens in a new tab)">v1.4.1</a>
                     <span class="separator" aria-hidden="true"></span>
                     <a href="doc/" target="_blank" draggable="false" aria-label="Documentation (opens in a new tab)">Documentation</a>
                     <span class="separator" aria-hidden="true"></span>
+                    <a href="#help" id="welcome-help-link" draggable="false" aria-label="Opens Help modal">Help</a>
+                    <span class="separator" aria-hidden="true"></span>
                     <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
+                    <span class="separator" aria-hidden="true"></span>
+                    <a href="../LICENSE" target="_blank" draggable="false" aria-label="AGPLv3 License (opens in a new tab)">AGPLv3</a>
                 </div>
             </div>
         </div>
@@ -927,7 +877,7 @@
                 </button>
             </div>
             <div class="modal-body">
-                <p class="welcome-intro">Select your laser type. The same PCB files are used — only the output format changes.</p>
+                <p class="welcome-intro">Select your laser type. The same PCB files are used - only the output format changes.</p>
 
                 <div class="pipeline-selection">
                     <a href="#" class="pipeline-card pipeline-card--active" id="laser-select-uv" draggable="false" aria-label="Select UV Laser">
@@ -936,7 +886,7 @@
                         </div>
                         <h3>UV Laser</h3>
                         <span class="pipeline-badge pipeline-badge--dev">Full Laser Pipeline</span>
-                        <p class="pipeline-desc">All operations via laser — copper ablation, drilling, clearing, and board cutout.</p>
+                        <p class="pipeline-desc">All operations via laser - copper ablation, drilling, clearing, and board cutout.</p>
                         <span class="pipeline-action" aria-hidden="true">Select UV</span>
                     </a>
 
@@ -1472,10 +1422,10 @@
     <script defer src="../operations/base-operation-handler.js"></script>
     <script defer src="../operations/offset-operation-handler.js"></script>
     <script defer src="../operations/drill-operation-handler.js"></script>
-    <script defer src="../operations/trace-isolation-operation-handler.js"></script>
-    <script defer src="../operations/trace-clearing-operation-handler.js"></script>
-    <script defer src="../operations/trace-cutout-operation-handler.js"></script>
-    <script defer src="../operations/trace-stencil-operation-handler.js"></script>
+    <script defer src="../operations/trace-isolation-handler.js"></script>
+    <script defer src="../operations/trace-clearing-handler.js"></script>
+    <script defer src="../operations/trace-cutout-handler.js"></script>
+    <script defer src="../operations/trace-stencil-handler.js"></script>
     <script defer src="../export/processors/grbl-processor.js"></script>
     <script defer src="../export/processors/makera-processor.js"></script>
     <script defer src="../export/processors/grblHAL-processor.js"></script>
@@ -1499,22 +1449,53 @@
 
     <!-- Initialization -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('EasyTrace5000 Advanced Workspace v1.4.0');
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load the SVG Sprite
+            fetch('../images/icons/sprite.svg')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
 
+            // Theme toggle logic
+            const themeBtn = document.getElementById('theme-toggle');
+            if (themeBtn && window.ThemeLoader) {
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+                
+                if (useEl) useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                });
+            }
+
+            // App Initialization
+            console.log('EasyTrace5000 Advanced Workspace v1.4.1');
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');
-
             if (loadingText) loadingText.textContent = 'Ready';
             if (loadingProgress) {
                 loadingProgress.textContent = '100%';
                 loadingProgress.setAttribute('aria-valuenow', 100);
             }
 
+            // Dynamically call the correct start function based on the app
             if (typeof window.startTraceApp === 'function') {
-                window.startTraceApp().catch(err => {
-                    console.error("Fatal startup error:", err);
-                    const loadingText = document.getElementById('loading-text');
+                startTraceApp().catch(err => {
+                    console.error('Fatal startup error:', err);
                     if (loadingText) loadingText.textContent = 'Startup failed. See console.';
                 });
             } else {

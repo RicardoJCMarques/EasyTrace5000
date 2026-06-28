@@ -1,6 +1,6 @@
 /*!
- * @file        operations/cutout-operation-handler.js
- * @description Board cutout — offset with cutSide control, closure detection, and tab orchestration
+ * @file        operations/trace-cutout-handler.js
+ * @description Board cutout - offset with cutSide control, closure detection, and tab orchestration
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
@@ -14,7 +14,7 @@
 
     class TraceCutoutHandler extends OffsetOperationHandler {
         // Base OffsetOperationHandler hooks already handle cutSide-driven offset direction.
-        // No hook overrides needed — cutout is the base case.
+        // No hook overrides needed - cutout is the base case.
 
         /**
          * Classifies raw plotter primitives for cutout operations.
@@ -74,7 +74,7 @@
         }
 
         async orchestrateGeneration(operation, params, core, options = {}) {
-            // Tier 1 only — cutout's classifyPrimitives already handles
+            // Tier 1 only - cutout's classifyPrimitives already handles
             // inter-primitive topology (loop extraction + stitching).
             operation.primitives = this.resolveContourTopology(operation.primitives);
 

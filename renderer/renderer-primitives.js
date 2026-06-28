@@ -666,7 +666,9 @@
                     });
                 }
 
-                this.ctx.closePath();
+                if (primitive.properties?.closed !== false) {
+                    this.ctx.closePath();
+                }
             }
 
             if (shouldFill) {

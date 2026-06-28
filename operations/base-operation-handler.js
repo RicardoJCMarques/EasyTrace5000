@@ -1,6 +1,6 @@
 /*!
  * @file        operations/base-operation-handler.js
- * @description Base operation handler interface — contract for all operation types
+ * @description Base operation handler interface - contract for all operation types
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
@@ -53,7 +53,7 @@
                 const props = prim.properties || {};
                 if (props.fill && !props.stroke && !props.isTrace) return prim;
 
-                // Shallow spread first (keeps a V8 hidden class — fast property
+                // Shallow spread first (keeps a V8 hidden class - fast property
                 // access downstream in the offset loop and Clipper marshalling),
                 // then re-attach the prototype for class methods (getBounds etc).
                 // Object.create + Object.assign built the object incrementally
@@ -103,6 +103,24 @@
          */
         async generateLaserFills(operation, settings) {
             return this.generateGeometry(operation, settings);
+        }
+
+        /**
+         * Toolpath optimization policy - controls how the optimizer
+         * orders and clusters this operation's plans.
+         *
+         * staydownPartition:
+         *   'shape'     - hard wall per shapeKey; staydown never crosses shapes (profile, pocket, cutout)
+         *   'proximity' - proximity clusters are the staydown unit; ignores shapeKey (isolation, clearing)
+         *
+         * Override in subclasses. Base default suits single-pass and
+         * multi-depth profile/cutout operations.
+         */
+        getToolpathPolicy() {
+            return {
+                staydownPartition: 'shape',
+                depthOrder: 'featureMajor' // REVIEW - Is this dead-code?
+            };
         }
 
         debug(message, data = null) {

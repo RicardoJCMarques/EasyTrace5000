@@ -26,10 +26,10 @@
     <meta property="og:url" content="https://cam.eltryus.design/easyshape5000/doc/guide">
     <meta property="og:title" content="EasyShape5000 | Workflow Guide">
     <meta property="og:description" content="From SVG to G-code: a complete walkthrough of EasyShape5000's CNC routing workflow.">
-    <meta property="og:image" content="https://cam.eltryus.design/images/social-preview-shape.jpg">
+    <meta property="og:image" content="https://cam.eltryus.design/images/social-shape.jpg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:site_name" content="EasyShape5000">
+    <meta property="og:site_name" content="Eltryus EasyCAM5000 Suite">
     <meta property="og:locale" content="en_US">
 
     <link rel="icon" type="image/png" href="../../images/favicon/favicon-96x96.png" sizes="96x96">
@@ -44,28 +44,35 @@
     <link rel="stylesheet" href="../../css/doc.css">
 
     <script type="application/ld+json">
-    [
-        {
-            "@context": "https://schema.org",
-            "@type": "TechArticle",
-            "headline": "EasyShape5000 Workflow Guide",
-            "description": "Step-by-step guide to CNC routing with EasyShape5000.",
-            "url": "https://cam.eltryus.design/easyshape5000/doc/guide",
-            "author": { "@type": "Organization", "name": "Eltryus" },
-            "datePublished": "2026-06-17",
-            "dateModified": "2026-06-17"
-        },
-        {
-            "@context": "https://schema.org",
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-                { "@type": "ListItem", "position": 1, "name": "Eltryus CAM Suite", "item": "https://cam.eltryus.design/" },
-                { "@type": "ListItem", "position": 2, "name": "EasyShape5000", "item": "https://cam.eltryus.design/easyshape5000/" },
-                { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easyshape5000/doc/" },
-                { "@type": "ListItem", "position": 4, "name": "Workflow Guide", "item": "https://cam.eltryus.design/easyshape5000/doc/guide" }
-            ]
-        }
-    ]
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "TechArticle",
+                "@id": "https://cam.eltryus.design/easyshape5000/doc/guide#article",
+                "headline": "EasyShape5000 Workflow Guide",
+                "description": "Step-by-step guide to CNC routing with EasyShape5000.",
+                "image": "https://cam.eltryus.design/images/social-shape.jpg",
+                "url": "https://cam.eltryus.design/easyshape5000/doc/guide",
+                "inLanguage": "en",
+                "isPartOf": { "@id": "https://cam.eltryus.design/easyshape5000/doc/#docs" },
+                "about": { "@id": "https://cam.eltryus.design/easyshape5000/#app" },
+                "author": { "@id": "https://www.eltryus.design/#organization" },
+                "publisher": { "@id": "https://www.eltryus.design/#organization" },
+                "datePublished": "2026-06-17",
+                "dateModified": "2026-06-17"
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    { "@type": "ListItem", "position": 1, "name": "Eltryus EasyCAM5000 Suite", "item": "https://cam.eltryus.design/" },
+                    { "@type": "ListItem", "position": 2, "name": "EasyShape5000", "item": "https://cam.eltryus.design/easyshape5000/" },
+                    { "@type": "ListItem", "position": 3, "name": "Documentation", "item": "https://cam.eltryus.design/easyshape5000/doc/" },
+                    { "@type": "ListItem", "position": 4, "name": "Workflow Guide", "item": "https://cam.eltryus.design/easyshape5000/doc/guide" }
+                ]
+            }
+        ]
+    }
     </script>
 </head>
 <body>
@@ -83,12 +90,14 @@
             <span class="separator" aria-hidden="true"></span>
             <a href="./" draggable="false">Docs</a>
             <a href="guide" class="active" draggable="false" aria-current="page">Workflow Guide</a>
+            <a href="operations" draggable="false" aria-label="Operation Reference">Operations</a>
+            <a href="parameters" draggable="false" aria-label="Parameter Reference">Parameters</a>
             <a href="/easytrace5000/doc/accessibility" draggable="false">Accessibility</a>
             <span class="separator" aria-hidden="true"></span>
             <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false">GitHub</a>
-            <button class="theme-toggle" id="theme-toggle" title="Toggle Theme" aria-label="Toggle between light and dark theme">
-                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
+                <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
             </button>
         </nav>
     </header>
@@ -128,14 +137,14 @@
         <main id="doc-content" class="doc-main">
 
             <section class="hero hero--compact">
-                <h1>EasyShape5000 — Workflow Guide</h1>
+                <h1>EasyShape5000 - Workflow Guide</h1>
                 <p class="tagline">From SVG design to G-code for your CNC router</p>
             </section>
 
             <!-- Interface Overview -->
             <section id="interface">
                 <h2>Interface Overview</h2>
-                <p>The interface mirrors EasyTrace5000's layout but adds scene-graph capabilities. A central canvas with two sidebars — the left for the scene tree and operations list, the right for shape properties and operation parameters.</p>
+                <p>The interface mirrors EasyTrace5000's layout but adds scene-graph capabilities. A central canvas with two sidebars - the left for the scene tree and operations list, the right for shape properties and operation parameters.</p>
 
                 <figure>
                     <svg viewBox="0 0 800 500" style="width:100%;max-width:800px;background:var(--color-canvas-background, #0f0f0f);border-radius:8px;">
@@ -166,18 +175,18 @@
                     <figcaption>The EasyShape5000 interface: (1) Toolbar, (2) Scene Tree, (3) Operations List, (4) Canvas, (5) Shape Inspector, (6) Operation Parameters, (7) Status Bar</figcaption>
                 </figure>
 
-                <p>The left sidebar is split into two panels. The <strong>Scene Tree</strong> shows the hierarchical structure of your imported SVG — groups and individual shapes with lock, visibility, and delete controls. Below it, the <strong>Operations List</strong> shows each assigned operation as a bucket with three stages: Geometry, Offsets, and Preview.</p>
+                <p>The left sidebar is split into two panels. The <strong>Scene Tree</strong> shows the hierarchical structure of your imported SVG - groups and individual shapes with lock, visibility, and delete controls. Below it, the <strong>Operations List</strong> shows each assigned operation as a bucket with three stages: Geometry, Offsets, and Preview.</p>
                 <p>The right sidebar adapts to your selection. When a shape is selected, the top shows its <strong>transform inspector</strong> (position, rotation, scale, mirror). Below, the <strong>operation panel</strong> shows parameters for the assigned operation type, or the operation type selector if nothing is assigned yet.</p>
             </section>
 
             <!-- Workflow -->
             <section id="workflow">
                 <h2>The Workflow</h2>
-                <p>EasyShape5000 follows a per-shape workflow: import a design, select shapes, assign operations, generate, and export — all non-destructively.</p>
+                <p>EasyShape5000 follows a per-shape workflow: import a design, select shapes, assign operations, generate, and export - all non-destructively.</p>
 
                 <h3 id="workflow-import">1. Importing SVGs</h3>
                 <p>Drag and drop an SVG file onto the canvas, or use <strong>Actions → Import SVG</strong>. The file's group hierarchy is preserved: SVG <code>&lt;g&gt;</code> elements become groups in the scene tree, paths and shapes become selectable nodes.</p>
-                <p>Each shape's geometry is stored in its original coordinate space. Transforms (move, rotate, scale) are applied non-destructively — the source geometry is never modified. The world-space position used for G-code export is computed by multiplying the parent chain's affine matrices.</p>
+                <p>Each shape's geometry is stored in its original coordinate space. Transforms (move, rotate, scale) are applied non-destructively - the source geometry is never modified. The world-space position used for G-code export is computed by multiplying the parent chain's affine matrices.</p>
 
                 <h3 id="workflow-scene">2. The Scene Tree</h3>
                 <p>The scene tree (left sidebar, top) shows every shape and group in your workspace. Each row has controls for:</p>
@@ -200,7 +209,7 @@
                 <p>Generated geometry appears in the Operations List (left sidebar, bottom) as a bucket with stage nodes. Click a stage node to view its parameters or re-generate. If you change parameters after generating, the bucket is marked as invalidated until you regenerate.</p>
 
                 <h3 id="workflow-preview">5. Generating Preview</h3>
-                <p>After offsets are generated, click <strong>Generate Preview</strong>. This creates a tool-reach simulation — the offset paths stroked at the tool's diameter — showing exactly what material will be removed. The preview is visual only; no G-code is generated yet.</p>
+                <p>After offsets are generated, click <strong>Generate Preview</strong>. This creates a tool-reach simulation - the offset paths stroked at the tool's diameter - showing exactly what material will be removed. The preview is visual only; no G-code is generated yet.</p>
                 <p>The preview stage also sets the Z-axis parameters (cut depth, multi-pass depth, entry strategy). These feed into the toolpath optimizer during export.</p>
 
                 <h3 id="workflow-export">6. Exporting G-code</h3>
@@ -211,7 +220,7 @@
                     <li>Review the G-code preview in the text area</li>
                     <li>Click <strong>Export Files</strong> to download</li>
                 </ol>
-                <p>Operations using different tools must be exported as separate files — automatic tool change (M6) is not yet supported.</p>
+                <p>Operations using different tools must be exported as separate files - automatic tool change (M6) is not yet supported.</p>
             </section>
 
             <!-- Operation Types -->
@@ -224,11 +233,11 @@
                     <dt>Cut Side</dt>
                     <dd><strong>Outside:</strong> tool path runs outside the shape boundary (the shape is the part you keep). <strong>Inside:</strong> tool path runs inside (you keep the surrounding material). <strong>On:</strong> tool center follows the path exactly (no offset compensation).</dd>
                     <dt>Nesting Detection</dt>
-                    <dd>When enabled, inner shapes are automatically detected as holes. A rectangle with a circle inside produces an outer cut and an inner cut with reversed winding — the circle becomes a raised island.</dd>
+                    <dd>When enabled, inner shapes are automatically detected as holes. A rectangle with a circle inside produces an outer cut and an inner cut with reversed winding - the circle becomes a raised island.</dd>
                     <dt>Holding Tabs</dt>
                     <dd>Optional bridges that keep the part attached to the stock during cutting. Configured by count, width, and height. The machine processor inserts Z-lifts at tab positions during G-code generation.</dd>
                 </dl>
-                <p>Profile cuts require closed geometry. Open paths will trigger a warning — close them in your SVG editor before importing.</p>
+                <p>Profile cuts require closed geometry. Open paths will trigger a warning - close them in your SVG editor before importing.</p>
 
                 <h3 id="op-pocket">Pocket Clearing</h3>
                 <p>Pocket clearing removes all material inside a closed shape using concentric inward offset passes. The tool spirals inward from the boundary until no clearable area remains.</p>
@@ -238,7 +247,7 @@
                     <dt>Nesting Detection</dt>
                     <dd>Same as profile: inner shapes become islands that the pocket cuts around rather than through.</dd>
                 </dl>
-                <p>Pocket operations always use internal offsets. If the tool diameter is too large for the shape, no paths are generated — reduce the tool size or enlarge the design.</p>
+                <p>Pocket operations always use internal offsets. If the tool diameter is too large for the shape, no paths are generated - reduce the tool size or enlarge the design.</p>
 
                 <h3 id="op-drill">Drilling</h3>
                 <p>Drilling converts SVG circles (and obround shapes) into drill holes or milled slots. The handler automatically classifies each primitive:</p>
@@ -246,7 +255,7 @@
                     <dt>Holes (circles)</dt>
                     <dd>If the circle diameter is within 0.1mm of the tool diameter, a peck cycle is used. If the circle is larger, a helical or plunge-mill strategy clears the oversized hole.</dd>
                     <dt>Slots (obrounds)</dt>
-                    <dd>Obround shapes are converted into milled slot paths — the tool follows the slot's centerline with width compensation.</dd>
+                    <dd>Obround shapes are converted into milled slot paths - the tool follows the slot's centerline with width compensation.</dd>
                     <dt>Peck Depth</dt>
                     <dd>For peck drilling, controls how deep each peck goes before retracting to clear chips. Shallower pecks are safer for deep holes.</dd>
                 </dl>
@@ -258,7 +267,7 @@
                 <p>The scene is a tree of groups and shapes with full undo/redo. Every structural mutation (move, group, delete, assign operation) is recorded as a command and can be reversed.</p>
                 <dl>
                     <dt>Grouping</dt>
-                    <dd>Select 2+ items, press <kbd>Ctrl+G</kbd>. A new group node is inserted at the position of the first selected item. The group inherits no transform — children keep their positions.</dd>
+                    <dd>Select 2+ items, press <kbd>Ctrl+G</kbd>. A new group node is inserted at the position of the first selected item. The group inherits no transform - children keep their positions.</dd>
                     <dt>Ungrouping</dt>
                     <dd>Select a group, press <kbd>Ctrl+Shift+G</kbd>. Children are moved to the group's parent. The group's transform is composited into each child (via matrix multiplication and TRS decomposition) so their visual position doesn't change.</dd>
                     <dt>Drag-move</dt>
@@ -274,13 +283,13 @@
                 <p>Each shape (and group) has a local TRS transform: translation (X/Y), rotation (degrees), and scale (uniform, with independent mirror on X/Y). The right sidebar's transform inspector shows the values for the selected shape.</p>
                 <dl>
                     <dt>Position (X / Y)</dt>
-                    <dd>Relative nudge fields. Enter a value and press Enter to move the shape by that amount. The fields reset to 0 after each commit — they represent a delta, not an absolute position.</dd>
+                    <dd>Relative nudge fields. Enter a value and press Enter to move the shape by that amount. The fields reset to 0 after each commit - they represent a delta, not an absolute position.</dd>
                     <dt>Rotation</dt>
                     <dd>Absolute rotation in degrees. Rotates around the shape's geometric center (or a pinned pivot if set by a prior rotation). Click the reset button to return to 0° and release the pinned pivot.</dd>
                     <dt>Scale</dt>
-                    <dd>Uniform scale factor. 1.0 = original size, 2.0 = double. The mirror checkboxes flip the shape on the X or Y axis independently — they toggle the sign of scaleX or scaleY without changing the magnitude.</dd>
+                    <dd>Uniform scale factor. 1.0 = original size, 2.0 = double. The mirror checkboxes flip the shape on the X or Y axis independently - they toggle the sign of scaleX or scaleY without changing the magnitude.</dd>
                 </dl>
-                <p>All transforms are non-destructive. The world-space position for rendering and G-code export is computed by multiplying the parent chain's affine matrices — the same math in TransformMath.js used throughout the application.</p>
+                <p>All transforms are non-destructive. The world-space position for rendering and G-code export is computed by multiplying the parent chain's affine matrices - the same math in TransformMath.js used throughout the application.</p>
             </section>
 
             <!-- Machine Settings -->
@@ -347,9 +356,9 @@
                     <ul>
                         <li>Convert text to paths before export.</li>
                         <li>Close all paths used for profile or pocket operations.</li>
-                        <li>Use circles (not ellipses) for drill holes.</li>
+                        <li>Use circles/obrounds (not ellipses) for drill hole/slots.</li>
                         <li>Set document units to millimeters.</li>
-                        <li>Avoid clipping masks and SVG clones — neither is imported.</li>
+                        <li>Avoid clipping masks and SVG clones - neither is imported.</li>
                         <li>Flatten transforms in Inkscape (Extensions → Generate from Path → Flatten Beziers) if shapes import at unexpected positions.</li>
                     </ul>
                 </div>
@@ -421,17 +430,49 @@
     <script defer src="../../themes/theme-loader.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Load the SVG Sprite
+            fetch('../../images/icons/sprite.svg')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
+
+            // Theme toggle
             const themeBtn = document.getElementById('theme-toggle');
             if (themeBtn && window.ThemeLoader) {
-                themeBtn.addEventListener('click', () => window.ThemeLoader.toggleTheme());
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+                if (useEl) useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                });
             }
+
+            // Mobile menu toggle
             const menuBtn = document.querySelector('.doc-menu-toggle');
             const nav = document.querySelector('.doc-nav');
             if (menuBtn && nav) {
+                const useEl = menuBtn.querySelector('use');
                 menuBtn.addEventListener('click', () => {
                     const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
                     menuBtn.setAttribute('aria-expanded', !isExpanded);
                     nav.classList.toggle('is-open');
+
+                    if (useEl) useEl.setAttribute('href', !isExpanded ? '#icon-close' : '#icon-menu');
                 });
             }
         });

@@ -54,30 +54,6 @@
             }
         }
 
-        /**
-         * Main entry point.
-         * Accepts an array of {operation, context} pairs from the controller.
-         */
-        async translateAllOperations(operationContextPairs) {
-            const allPlans = [];
-
-            for (const { operation, context } of operationContextPairs) {
-                if (!context) {
-                    console.error(`[GeometryTranslator] Missing context for operation ${operation.id}`);
-                    continue;
-                }
-
-                const opPlans = await this.translateOperation(operation, context);
-                allPlans.push(...opPlans);
-            }
-
-            if (debugState.enabled) {
-                console.log(`[GeometryTranslator] Translated ${allPlans.length} pure geometry plans`);
-            }
-
-            return allPlans;
-        }
-
         // ────────────────────────────────────────────────────────────
         // Main Router - Primitive-Driven
         // ────────────────────────────────────────────────────────────
@@ -90,11 +66,11 @@
          */
         async translateOperation(operation, ctx) {
             const plans = [];
-            const depthLevels = ctx.computed.depthLevels;
+            let featureSeq = 0;
 
             // Phase 1 - Extract grouped drill milling macros
             const { macroPlans, remainingPrimitives } =
-                this.extractDrillMacros(operation, ctx, depthLevels);
+                this.extractDrillMacros(operation, ctx);
             plans.push(...macroPlans);
 
             // Phase 2 - Role-based dispatch for everything else
@@ -111,16 +87,16 @@
 
                 // Point-based macros (peck marks)
                 if (role === 'peck_mark') {
-                    plans.push(this.translatePeckMark(primitive, ctx, depthLevels));
+                    plans.push(this.translatePeckMark(primitive, ctx));
                     continue;
                 }
 
                 // Remaining drill milling paths (centerlines, ungrouped fallbacks)
                 if (role === 'drill_milling_path') {
                     if (props.isCenterlinePath) {
-                        plans.push(...this.translateCenterlinePath(primitive, ctx, depthLevels));
+                        plans.push(...this.translateCenterlinePath(primitive, ctx));
                     } else {
-                        plans.push(...this.translateDrillMill(primitive, ctx, depthLevels));
+                        plans.push(...this.translateDrillMill(primitive, ctx));
                     }
                     continue;
                 }
@@ -140,9 +116,13 @@
 
                 if (!processable.contours?.length) {
                     // Fallback for raw circles/rectangles that couldn't be converted
-                    plans.push(...this.processStandardPrimitive(processable, ctx, depthLevels));
+                    plans.push(...this.processStandardPrimitive(processable, ctx));
                     continue;
                 }
+
+                const parentShapeKey = primitive.properties?.shapeKey ?? null;
+                const parentPass = primitive.properties?.pass ?? null;
+                const featureId = `${ctx.operationId}:sk${parentShapeKey ?? 'x'}:f${featureSeq++}`;
 
                 // Process contours (checking for tab configuration)
                 for (const contour of processable.contours) {
@@ -153,10 +133,9 @@
                     const isTabbedCutout = ctx.operationType === 'cutout' && tabCount > 0;
 
                     if (isTabbedCutout && this.tabPlanner) {
-                        // Remove 'props' argument, pass 'ctx' directly
-                        plans.push(...this.processTabbedContour(contour, ctx, depthLevels, isHole));
+                        plans.push(...this.processTabbedContour(contour, ctx, isHole, parentShapeKey, featureId, parentPass));
                     } else {
-                        plans.push(...this.processStandardContour(contour, processable, ctx, depthLevels, isHole));
+                        plans.push(...this.processStandardContour(contour, processable, ctx, isHole, parentShapeKey, featureId, parentPass));
                     }
                 }
             }
@@ -172,11 +151,10 @@
          * Groups concentric circle and obround drill milling paths by holeIndex, then emits a single drillMillMacro plan per hole.
          * Returns the macro plans and the list of primitives that were NOT consumed (pecks, centerlines, non-drill geometry).
          */
-        extractDrillMacros(operation, ctx, depthLevels) {
+        extractDrillMacros(operation, ctx) {
             const macroPlans = [];
             const remainingPrimitives = [];
-            const { operationId, tool, cutting, strategy, transforms } = ctx;
-            const finalDepth = depthLevels[depthLevels.length - 1];
+            const { operationId, tool, cutting, strategy, transforms, computed } = ctx;
 
             const circleMillByHole = new Map();
             const obroundMillByHole = new Map();
@@ -226,9 +204,8 @@
                 plan.metadata.drillMillMacro = true;
                 plan.metadata.entryType = strategy.entryType || 'plunge';
                 plan.metadata.concentricRings = rings;
-                plan.metadata.depthLevels = depthLevels;
-                plan.metadata.cutDepth = finalDepth;
-                plan.metadata.finalDepth = finalDepth;
+                plan.metadata.depthLevels = computed.depthLevels;
+                plan.metadata.cutDepth = computed.depthLevels[computed.depthLevels.length - 1];
                 plan.metadata.depthPerPass = strategy.depthPerPass;
                 plan.metadata.feedRate = cutting.feedRate;
                 plan.metadata.plungeRate = cutting.plungeRate;
@@ -240,8 +217,8 @@
                 plan.metadata.isSimpleCircle = true;
                 plan.metadata.isClosedLoop = true;
                 plan.metadata.primitiveType = 'circle';
-                plan.metadata.entryPoint = { x: entryX, y: entryY, z: finalDepth };
-                plan.metadata.exitPoint = { x: entryX, y: entryY, z: finalDepth };
+                plan.metadata.entryPoint = { x: entryX, y: entryY };
+                plan.metadata.exitPoint = { x: entryX, y: entryY };
                 plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:${operationId}_TYPE:drill_mill`;
                 plan.metadata.optimization = {
                     linkType: 'rapid',
@@ -291,9 +268,8 @@
                 plan.metadata.slotMacro = true;
                 plan.metadata.entryType = strategy.entryType || 'plunge';
                 plan.metadata.obroundRings = rings;
-                plan.metadata.depthLevels = depthLevels;
-                plan.metadata.cutDepth = finalDepth;
-                plan.metadata.finalDepth = finalDepth;
+                plan.metadata.depthLevels = computed.depthLevels;
+                plan.metadata.cutDepth = computed.depthLevels[computed.depthLevels.length - 1];
                 plan.metadata.depthPerPass = strategy.depthPerPass;
                 plan.metadata.feedRate = cutting.feedRate;
                 plan.metadata.plungeRate = cutting.plungeRate;
@@ -303,8 +279,8 @@
                 plan.metadata.isClosedLoop = true;
                 plan.metadata.isSimpleCircle = false;
                 plan.metadata.primitiveType = 'obround';
-                plan.metadata.entryPoint = { x: entryPoint.x, y: entryPoint.y, z: finalDepth };
-                plan.metadata.exitPoint = { x: entryPoint.x, y: entryPoint.y, z: finalDepth };
+                plan.metadata.entryPoint = { x: entryPoint.x, y: entryPoint.y };
+                plan.metadata.exitPoint = { x: entryPoint.x, y: entryPoint.y };
                 plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:${operationId}_TYPE:drill_mill`;
                 plan.metadata.optimization = {
                     linkType: 'rapid',
@@ -322,14 +298,13 @@
          * Specific Translation Macros
          */
 
-        translatePeckMark(primitive, ctx, depthLevels) {
-            const { operationId, tool, cutting, strategy, transforms } = ctx;
-            const finalDepth = depthLevels[depthLevels.length - 1];
+        translatePeckMark(primitive, ctx) {
+            const { operationId, tool, cutting, strategy, transforms, computed } = ctx;
 
             const plan = new ToolpathPlan(operationId);
             plan.metadata.context = ctx;
             plan.metadata.tool = tool;
-            plan.metadata.cutDepth = finalDepth;
+            plan.metadata.cutDepth = computed.depthLevels[computed.depthLevels.length - 1];
             plan.metadata.feedRate = cutting.feedRate;
             plan.metadata.plungeRate = cutting.plungeRate;
             plan.metadata.spindleSpeed = cutting.spindleSpeed;
@@ -337,8 +312,8 @@
             plan.metadata.isPeckMark = true;
 
             const transformedCenter = this.applyTransforms(primitive.center, transforms);
-            plan.metadata.entryPoint = { x: transformedCenter.x, y: transformedCenter.y, z: finalDepth };
-            plan.metadata.exitPoint = { x: transformedCenter.x, y: transformedCenter.y, z: finalDepth };
+            plan.metadata.entryPoint = { x: transformedCenter.x, y: transformedCenter.y };
+            plan.metadata.exitPoint = { x: transformedCenter.x, y: transformedCenter.y };
             plan.metadata.groupKey = `T:${tool.diameter.toFixed(3)}_OP:drill_TYPE:peck`;
 
             // Pack cycle parameters for the Machine Processor
@@ -366,37 +341,26 @@
         }
 
         /**
-         * Fallback for drill milling paths that weren't captured by the macro grouping pre-scan (e.g. path-type geometry).
+         * Drill milling paths that weren't captured by the macro grouping pre-scan (e.g. path-type geometry).
          */
-        translateDrillMill(primitive, ctx, depthLevels) {
+        translateDrillMill(primitive, ctx) {
             const plans = [];
             const isClosed = primitive.type === 'circle' || primitive.type === 'obround' ||
                              (primitive.contours?.[0]?.points?.length >= 3);
-            const finalDepth = depthLevels[depthLevels.length - 1];
 
             const drillMillCtx = { ...ctx, isDrillMilling: true };
             const geometryEntity = (primitive.type === 'path' && primitive.contours?.length > 0)
                 ? primitive.contours[0]
                 : primitive;
 
-            if (ctx.strategy.entryType === 'helix') {
-                const plan = this.createPurePlan(geometryEntity, drillMillCtx, finalDepth, isClosed, false, false);
-                if (plan) {
-                    plan.metadata.isDrillMilling = true;
-                    if (isClosed) this.enforceClimbMilling(plan, false);
-                    plans.push(plan);
-                }
-            } else {
-                for (const depth of depthLevels) {
-                    const plan = this.createPurePlan(geometryEntity, drillMillCtx, depth, isClosed, false, true);
-                    if (plan) {
-                        plan.metadata.isDrillMilling = true;
-                        plan.computeBounds();
-                        if (isClosed) this.enforceClimbMilling(plan, false);
-                        plans.push(plan);
-                    }
-                }
+            const plan = this.createPurePlan(geometryEntity, drillMillCtx, isClosed, false, true);
+            if (plan) {
+                plan.metadata.isDrillMilling = true;
+                plan.computeBounds();
+                if (isClosed) this.enforceClimbMilling(plan, false);
+                plans.push(plan);
             }
+
             return plans;
         }
 
@@ -404,7 +368,7 @@
          * Specialized translator for Centerline Slot Paths.
          * Generates a single "Macro" plan that the MachineProcessor expands into a Zig-Zag pattern.
          */
-        translateCenterlinePath(primitive, ctx, depthLevels) {
+        translateCenterlinePath(primitive, ctx) {
             const plans = [];
 
             // Centerline slots are wrapped in a PathPrimitive, so the points are in the first contour.
@@ -418,11 +382,10 @@
             const slotLength = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
 
             // Create the plan using the contour points
-            const plan = this.createPurePlan(contour, ctx, depthLevels[0], false, false, false);
+            const plan = this.createPurePlan(contour, ctx, false, false, false);
 
             if (plan && plan.metadata.exitPoint) {
                 // Only update the Z-depth of the exit point
-                plan.metadata.exitPoint.z = depthLevels[depthLevels.length - 1];
                 plan.metadata.primitiveType = 'centerline_slot';
                 plan.metadata.isCenterlinePath = true;
                 plan.metadata.isDrillMilling = true;
@@ -444,7 +407,7 @@
 
                 plan.commands.push(new MotionCommand(
                     'LINEAR',
-                    { x: targetX, y: targetY, z: depthLevels[0] },
+                    { x: targetX, y: targetY },
                     { feed: ctx.cutting.feedRate }
                 ));
 
@@ -530,41 +493,45 @@
          * Standard Multi-Depth Routing & Tabbing
          */
 
-        processStandardContour(contour, primitive, ctx, depthLevels, isHole) {
-            const plans = [];
-            for (const depth of depthLevels) {
-                const isClosed = primitive.closed ?? true;
-                const plan = this.createPurePlan(contour, ctx, depth, isClosed, isHole, true);
-                if (plan) {
-                    plan.computeBounds();
-                    if (isClosed) {
-                        this.enforceClimbMilling(plan, isHole);
-                    }
-                    plans.push(plan);
+        processStandardContour(contour, primitive, ctx, isHole, parentShapeKey, featureId, parentPass) {
+            const shapeKey = parentShapeKey ?? primitive.properties?.shapeKey ?? null;
+            const isClosed = primitive.closed ?? true;
+
+            const plan = this.createPurePlan(contour, ctx, isClosed, isHole, true);
+            if (plan) {
+                plan.metadata.shapeKey = shapeKey;
+                plan.metadata.featureId = featureId ?? null;
+                plan.metadata.pass = parentPass ?? plan.metadata.pass;
+                plan.computeBounds();
+                if (isClosed) {
+                    this.enforceClimbMilling(plan, isHole);
                 }
+                return [plan];
             }
-            return plans;
+            return [];
         }
 
-        processStandardPrimitive(primitive, ctx, depthLevels) {
-            const plans = [];
+        processStandardPrimitive(primitive, ctx) {
             const isHole = primitive.properties?.isHole || primitive.properties?.polarity === 'clear';
             const isClosed = primitive.type === 'circle' ||
                              primitive.type === 'obround' ||
                              primitive.type === 'rectangle' ||
                              (primitive.closed !== false);
+            const shapeKey = primitive.properties?.shapeKey ?? null;
+            const featureId = `${ctx.operationId}:sk${shapeKey ?? 'x'}:prim`;
+            const parentPass = primitive.properties?.pass ?? null;
 
-            for (const depth of depthLevels) {
-                const plan = this.createPurePlan(primitive, ctx, depth, isClosed, isHole, true);
-                if (plan) {
-                    plan.computeBounds();
-                    if (isClosed) {
-                        this.enforceClimbMilling(plan, isHole);
-                    }
-                    plans.push(plan);
+            const plan = this.createPurePlan(primitive, ctx, isClosed, isHole, true);
+            if (plan) {
+                plan.metadata.featureId = featureId;
+                plan.metadata.pass = parentPass ?? plan.metadata.pass;
+                plan.computeBounds();
+                if (isClosed) {
+                    this.enforceClimbMilling(plan, isHole);
                 }
+                return [plan];
             }
-            return plans;
+            return [];
         }
 
         /**
@@ -572,65 +539,46 @@
          * Generates tab-segmented commands via the TabPlanner, then emits one plan per depth level with tab Z-lift metadata.
          *
          * The tab planner receives the full context (ctx) for backward compatibility. The tabConfig on the primitive acts as the signal and provides the height for Z-lift calculation.
+         * // REVIEW - Is this fallback/backwards compatibility still necessary?
          */
-        processTabbedContour(contour, ctx, depthLevels, isHole) {
-            const plans = [];
-            const tabConfig = ctx.strategy.cutout; // Direct context access
+        processTabbedContour(contour, ctx, isHole, parentShapeKey, featureId, parentPass) {
+            const tabConfig = ctx.strategy.cutout; 
 
-            // Generate the base 2D path
-            const tempPlan = new ToolpathPlan(ctx.operationId);
-            tempPlan.metadata.context = ctx;
-            tempPlan.metadata.isClosed = true;
-            this.translatePrimitiveToCutting(tempPlan, contour, 0, ctx.cutting.feedRate);
-
-            const unsegmentedCommands = tempPlan.commands.map(cmd => {
-                cmd.metadata = cmd.metadata || {};
-                cmd.metadata.isTab = false;
-                return cmd;
-            });
-
-            if (unsegmentedCommands.length === 0) return plans;
-
-            // Delegate to Tab Planner to split the geometry
-            let segmentedCommands = [];
-
-            // Check tabConfig.tabs from the live UI state
+            // Create flat segmented commands via Tab Planner
+            let commandsToSend = [];
             if (tabConfig.tabs > 0 && this.tabPlanner) {
-                segmentedCommands = this.tabPlanner.calculateTabPositions(contour, ctx);
+                commandsToSend = this.tabPlanner.calculateTabPositions(contour, ctx);
             }
 
-            // Iterate Z-depths, lifting when passing through a tab region
-            const finalDepth = ctx.strategy.cutDepth;
-            const tabLiftAmount = tabConfig.tabHeight || 0; // Read height from live context
-            const Z_top = finalDepth + tabLiftAmount;
-
-            for (const depth of depthLevels) {
-                const plan = this.createPurePlan(contour, ctx, depth, true, isHole, false);
-                if (!plan) continue;
-
-                const useTabbedPath = segmentedCommands.length > 0 && depth < Z_top - PRECISION;
-                const commandsToSend = useTabbedPath ? segmentedCommands : unsegmentedCommands;
-
-                plan.commands = commandsToSend.map(cmd => ({
-                    ...cmd,
-                    z: depth,
-                    metadata: cmd.metadata ? { ...cmd.metadata } : { isTab: false }
-                }));
-
-                if (useTabbedPath) {
-                    plan.metadata.isTabbedPass = true;
-                    plan.metadata.tabTopZ = Z_top;
-                    plan.metadata.finalDepth = finalDepth;
-                } else {
-                    plan.metadata.isTabbedPass = false;
-                }
-
-                plan.computeBounds();
-                this.enforceClimbMilling(plan, isHole);
-                plans.push(plan);
+            // Fallback if tab calculation fails or tabs = 0
+            if (commandsToSend.length === 0) {
+                const tempPlan = new ToolpathPlan(ctx.operationId);
+                tempPlan.metadata.context = ctx;
+                tempPlan.metadata.isClosed = true;
+                this.translatePrimitiveToCutting(tempPlan, contour, ctx.cutting.feedRate);
+                commandsToSend = tempPlan.commands.map(cmd => {
+                    cmd.metadata = cmd.metadata || {};
+                    cmd.metadata.isTab = false;
+                    return cmd;
+                });
             }
 
-            return plans;
+            const plan = this.createPurePlan(contour, ctx, true, isHole, false);
+            if (!plan) return [];
+
+            plan.metadata.shapeKey = parentShapeKey ?? plan.metadata.shapeKey;
+            plan.metadata.featureId = featureId ?? null;
+            plan.metadata.pass = parentPass ?? plan.metadata.pass;
+
+            plan.commands = commandsToSend;
+
+            // Flag that this plan has tab segments requiring Z-expansion
+            plan.metadata.isTabbedPass = tabConfig.tabs > 0;
+
+            plan.computeBounds();
+            this.enforceClimbMilling(plan, isHole);
+            
+            return [plan];
         }
 
         /**
@@ -643,7 +591,7 @@
         // ctx is now frozen (see cam-core.js buildToolpathContext) as a safety measure.
         // Long-term fix: copy only the fields each plan needs (transforms, cutting, tool)
         // into metadata directly, and remove the ctx reference.
-        createPurePlan(primitive, ctx, depth, isClosed, isHole, generateCommands = true) {
+        createPurePlan(primitive, ctx, isClosed, isHole, generateCommands = true) {
             // Get all settings from the context
             const { operationId, operationType, tool, cutting, strategy } = ctx;
 
@@ -653,7 +601,7 @@
             // Set metadata
             plan.metadata.operationId = ctx.operationId;
             plan.metadata.operationType = ctx.operationType;
-            plan.metadata.cutDepth = depth;
+            plan.metadata.depthLevels = ctx.computed.depthLevels; // Pass depths for MachineProcessor
             plan.metadata.finalDepth = strategy.cutDepth;
             plan.metadata.feedRate = cutting.feedRate;
             plan.metadata.plungeRate = cutting.plungeRate;
@@ -663,6 +611,7 @@
             plan.metadata.spindleDwell = cutting.spindleDwell;
             plan.metadata.toolDiameter = tool.diameter;
             plan.metadata.stepOver = strategy.stepOver;
+            plan.metadata.toolpathPolicy = ctx.computed?.toolpathPolicy ?? null;
 
             const isDrillMilling = ctx.isDrillMilling || false;
             const typeKey = isDrillMilling ? 'drill_mill' : 'mill';
@@ -671,9 +620,12 @@
             plan.metadata.primitiveType = primitive.type || 'path';
             plan.metadata.isClosed = isClosed;
             plan.metadata.isHole = isHole;
+            plan.metadata.shapeKey = primitive.properties?.shapeKey ?? null; 
+            const passNum = primitive.properties?.pass ?? null;
+            plan.metadata.pass = passNum;
 
             // Analyze primitive sets entry/exit points and metadata
-            this.analyzePrimitive(plan, primitive, depth);
+            this.analyzePrimitive(plan, primitive);
 
             // Apply the machine transform to entry/exit points.
             // Gate on the MATRIX, not on rotation/mirror params - with origin
@@ -719,7 +671,7 @@
 
             // Generate commands only if explicitly requested
             if (generateCommands) {
-                this.translatePrimitiveToCutting(plan, primitive, depth, cutting.feedRate);
+                this.translatePrimitiveToCutting(plan, primitive, cutting.feedRate);
             }
 
             // Fallback safety for missed helix centers
@@ -749,7 +701,7 @@
          * Analyze geometry to extract entry/exit points and metadata.
          * @param {Object} geometry - The raw geometry object (Contour or Analytic Primitive)
          */
-        analyzePrimitive(plan, geometry, depth) {
+        analyzePrimitive(plan, geometry) {
             const metadata = plan.metadata;
 
             // Determine type. Contours have no 'type' property, so they default to 'path'.
@@ -758,8 +710,7 @@
             if (type === 'circle') {
                 metadata.entryPoint = {
                     x: geometry.center.x + geometry.radius,
-                    y: geometry.center.y,
-                    z: depth
+                    y: geometry.center.y
                 };
                 metadata.exitPoint = { ...metadata.entryPoint };
                 metadata.isClosedLoop = true;
@@ -777,8 +728,7 @@
 
                 metadata.entryPoint = {
                     x: obroundData.startCapCenter.x + obroundData.slotRadius * Math.cos(startAngle),
-                    y: obroundData.startCapCenter.y + obroundData.slotRadius * Math.sin(startAngle),
-                    z: depth
+                    y: obroundData.startCapCenter.y + obroundData.slotRadius * Math.sin(startAngle)
                 };
 
                 metadata.exitPoint = { ...metadata.entryPoint };
@@ -790,8 +740,8 @@
                 metadata.radius = obroundData.slotRadius;
 
             } else if (type === 'arc') {
-                metadata.entryPoint = { ...geometry.startPoint, z: depth };
-                metadata.exitPoint = { ...geometry.endPoint, z: depth };
+                metadata.entryPoint = { ...geometry.startPoint }; 
+                metadata.exitPoint = { ...geometry.endPoint }; 
                 metadata.isClosedLoop = false;
                 metadata.primitiveType = 'arc';
 
@@ -799,18 +749,38 @@
                 const points = geometry.points || (geometry.contours && geometry.contours[0]?.points);
 
                 if (points && points.length > 0) {
-                    metadata.entryPoint = { ...points[0], z: depth };
+                    metadata.entryPoint = { ...points[0] };
                     metadata.isClosedLoop = plan.metadata.isClosed;
 
                     if (metadata.isClosedLoop) {
                         metadata.exitPoint = { ...metadata.entryPoint };
                     } else {
-                        metadata.exitPoint = { ...points[points.length - 1], z: depth };
+                        metadata.exitPoint = { ...points[points.length - 1] };
                     }
 
                     metadata.primitiveType = 'path';
                     // Check for arc segments
                     metadata.hasArcs = geometry.arcSegments && geometry.arcSegments.length > 0;
+
+                    // Full circle stored as an all-arc path (every edge an arc
+                    // about one center).
+                    const arcs = geometry.arcSegments || [];
+                    if (metadata.isClosedLoop && arcs.length >= 3 &&
+                        arcs.length === points.length &&
+                        arcs[0].center && arcs[0].radius > 0) {
+                        const c0 = arcs[0];
+                        const sameCircle = arcs.every(a =>
+                            a.center &&
+                            Math.abs(a.center.x - c0.center.x) < PRECISION &&
+                            Math.abs(a.center.y - c0.center.y) < PRECISION &&
+                            Math.abs(a.radius - c0.radius) < PRECISION
+                        );
+                        if (sameCircle) {
+                            metadata.isSimpleCircle = true;
+                            metadata.center = { x: c0.center.x, y: c0.center.y };
+                            metadata.radius = c0.radius;
+                        }
+                    }
                 }
             }
         }
@@ -818,25 +788,25 @@
         /**
          * Translate primitive to pure cutting commands
          */
-        translatePrimitiveToCutting(plan, geometry, depth, feedRate) {
+        translatePrimitiveToCutting(plan, geometry, feedRate) {
             // Default to 'path' if no type (handles Contours)
             const type = geometry.type || 'path'; 
 
             if (type === 'circle') {
-                this.translateCircle(plan, geometry, depth, feedRate, false);
+                this.translateCircle(plan, geometry, feedRate, false);
             } else if (type === 'obround') {
-                this.translateObround(plan, geometry, depth, feedRate, false);
+                this.translateObround(plan, geometry, feedRate, false);
             } else if (type === 'arc') {
-                this.translateArc(plan, geometry, depth, feedRate);
+                this.translateArc(plan, geometry, feedRate);
             } else if (type === 'path') {
-                this.translatePath(plan, geometry, depth, feedRate);
+                this.translatePath(plan, geometry, feedRate);
             }
         }
 
         /**
          * Translate circle to cutting commands
          */
-        translateCircle(plan, primitive, depth, feedRate, clockwise) {
+        translateCircle(plan, primitive, feedRate, clockwise) {
             const transforms = plan.metadata.context?.transforms;
 
             // Transform the Center
@@ -862,7 +832,7 @@
             plan.addArc(
                 transformedStart.x, 
                 transformedStart.y, 
-                depth, 
+                undefined,
                 i, j, 
                 actualClockwise, 
                 feedRate
@@ -872,7 +842,7 @@
         /**
          * Translate obround to cutting commands (2 lines, 2 arcs)
          */
-        translateObround(plan, primitive, depth, feedRate, clockwise) {
+        translateObround(plan, primitive, feedRate, clockwise) {
             const transforms = plan.metadata.context?.transforms;
             const slotRadius = Math.min(primitive.width, primitive.height) / 2;
             const isHorizontal = primitive.width > primitive.height;
@@ -915,22 +885,22 @@
             const actualClockwise = true;
 
             if (actualClockwise) {
-                plan.addLinear(pD_x, pD_y, depth, feedRate);
-                plan.addArc(pC_x, pC_y, depth, i2, j2, true, feedRate);
-                plan.addLinear(pB_x, pB_y, depth, feedRate);
-                plan.addArc(pA_x, pA_y, depth, i1, j1, true, feedRate);
+                plan.addLinear(pD_x, pD_y, undefined, feedRate);
+                plan.addArc(pC_x, pC_y, undefined, i2, j2, true, feedRate);
+                plan.addLinear(pB_x, pB_y, undefined, feedRate);
+                plan.addArc(pA_x, pA_y, undefined, i1, j1, true, feedRate);
             } else {
-                plan.addArc(pB_x, pB_y, depth, i1, j1, false, feedRate);
-                plan.addLinear(pC_x, pC_y, depth, feedRate);
-                plan.addArc(pD_x, pD_y, depth, i2, j2, false, feedRate);
-                plan.addLinear(pA_x, pA_y, depth, feedRate);
+                plan.addArc(pB_x, pB_y, undefined, i1, j1, false, feedRate);
+                plan.addLinear(pC_x, pC_y, undefined, feedRate);
+                plan.addArc(pD_x, pD_y, undefined, i2, j2, false, feedRate);
+                plan.addLinear(pA_x, pA_y, undefined, feedRate);
             }
         }
 
         /**
          * Translate arc to cutting commands
          */
-        translateArc(plan, primitive, depth, feedRate) {
+        translateArc(plan, primitive, feedRate) {
             // Get Transform Context
             const transforms = plan.metadata.context?.transforms;
 
@@ -938,21 +908,21 @@
             const start = this.applyTransforms(primitive.startPoint, transforms);
             const end = this.applyTransforms(primitive.endPoint, transforms);
             const center = this.applyTransforms(primitive.center, transforms);
-
+            
             // Calculate Relative I/J for G-code
             const i = center.x - start.x;
             const j = center.y - start.y;
 
             // Handle Winding Direction
             let isClockwise = primitive.clockwise;
-
+            
             // If mirrored, it might be necessary to flip the arc direction
             if (transforms && transforms.windingFlipped) {
                 isClockwise = !isClockwise;
             }
 
             // Add Linear move to Start
-            plan.addLinear(start.x, start.y, depth, feedRate);
+            plan.addLinear(start.x, start.y, undefined, feedRate);
 
             // Check for collapsed arc (Safety)
             const minArcChordLength = 0.01;
@@ -962,15 +932,15 @@
             let sweep = primitive.endAngle - primitive.startAngle;
             if (isClockwise && sweep > 0) sweep -= 2 * Math.PI;
             if (!isClockwise && sweep < 0) sweep += 2 * Math.PI;
-
+            
             // Only skip if the chord AND the sweep are both tiny
             if (chordDistance < minArcChordLength && Math.abs(sweep) < Math.PI) {
-                plan.addLinear(end.x, end.y, depth, feedRate);
+                plan.addLinear(end.x, end.y, undefined, feedRate);
                 return;
             }
 
             // Add Arc Command
-            plan.addArc(end.x, end.y, depth, i, j, isClockwise, feedRate);
+            plan.addArc(end.x, end.y, undefined, i, j, isClockwise, feedRate);
         }
 
         // TODO [ARC-NORMALIZATION] - Arc sweep normalization logic is duplicated across
@@ -980,7 +950,7 @@
         // A single normalizeArcSweep(startAngle, endAngle, clockwise) utility should replace all of them.
         // Candidate location: ToolpathPlan static method or a shared geometry-utils module.
         // Defer until the next dedicated arc-geometry audit pass.
-        translatePath(plan, contour, depth, feedRate) {
+        translatePath(plan, contour, feedRate) {
             const points = contour.points;
             if (!points || points.length < 2) return;
 
@@ -989,13 +959,13 @@
             const arcSegments = contour.arcSegments || [];
             const minArcChordLength = 0.01;
             const minLinearLength = 0.001;
-
+            
             // Build arc map
             const arcMap = new Map();
             for (const arc of arcSegments) {
                 arcMap.set(arc.startIndex, arc);
             }
-
+            
             // Detect full circle: all edges are arcs from same center/radius
             if (arcSegments.length >= 3 && arcSegments.length === points.length) {
                 const first = arcSegments[0];
@@ -1018,7 +988,7 @@
                     plan.addArc(
                         transformedStart.x, 
                         transformedStart.y, 
-                        depth, 
+                        undefined, 
                         i, j, 
                         true, 
                         feedRate
@@ -1026,7 +996,7 @@
                     return;
                 }
             }
-
+            
             // Standard segment-by-segment processing
             const isPhysicallyClosed = ToolpathPlan.isClosedPoints(points);
             const numPoints = points.length;
@@ -1053,7 +1023,7 @@
 
                 const endPoint = this.applyTransforms(points[nextIndex], transforms);
 
-                    // Arc segment
+                // Arc segment
                 if (arc && arc.endIndex === nextIndex) {
                     const chordDistance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
 
@@ -1074,16 +1044,16 @@
                         let clockwise = arc.clockwise;
                         // If mirrored, it might be necessary to flip the arc direction
                         if (windingFlipped) { clockwise = !clockwise; }
-                        plan.addArc(endPoint.x, endPoint.y, depth, i_val, j_val, clockwise, feedRate);
+                        plan.addArc(endPoint.x, endPoint.y, undefined, i_val, j_val, clockwise, feedRate);
                     } else {
                         // Tiny arc or missing data, use line
-                        plan.addLinear(endPoint.x, endPoint.y, depth, feedRate);
+                        plan.addLinear(endPoint.x, endPoint.y, undefined, feedRate);
                     }
                 } else {
                     // Linear segment
                     const dist = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
                     if (dist > minLinearLength) {
-                        plan.addLinear(endPoint.x, endPoint.y, depth, feedRate);
+                        plan.addLinear(endPoint.x, endPoint.y, undefined, feedRate);
                     }
                 }
 

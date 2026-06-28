@@ -21,7 +21,7 @@
 
         // Offset direction hooks
 
-        // Pockets are always internal — tool clears inside the shape boundary.
+        // Pockets are always internal - tool clears inside the shape boundary.
         isInternalOffset() {
             return true;
         }
@@ -30,7 +30,13 @@
             return false;
         }
 
-        // Pocket clearing intentionally collapses geometry inward until nothing remains — the circle-collapse guard must not fire.
+        getToolpathPolicy() {
+            return {
+                staydownPartition: 'shape'
+            };
+        }
+
+        // Pocket clearing intentionally collapses geometry inward until nothing remains - the circle-collapse guard must not fire.
         shouldGuardCircleCollapse() {
             return false;
         }
@@ -85,7 +91,7 @@
             if (total === 0) {
                 return {
                     success: false,
-                    message: 'No pocket paths generated — tool may be too large for the shape',
+                    message: 'No pocket paths generated - tool may be too large for the shape',
                     status: 'warning'
                 };
             }

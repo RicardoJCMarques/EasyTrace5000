@@ -54,57 +54,31 @@
     <link rel="preload" href="../geometry/clipper2z.wasm" as="fetch" crossorigin>
 
     <script type="application/ld+json">
-        [
+    {
+        "@context": "https://schema.org",
+        "@graph": [
             {
-                "@context": "https://schema.org",
                 "@type": "WebApplication",
+                "@id": "https://cam.eltryus.design/easyshape5000/#app",
                 "name": "EasyShape5000",
                 "alternateName": "EasyShape",
                 "url": "https://cam.eltryus.design/easyshape5000/",
-                "operatingSystem": "Any (Browser-based)",
                 "applicationCategory": "DeveloperApplication",
                 "applicationSubCategory": "CAM Software",
-                "isPartOf": {
-                    "@type": "WebApplication",
-                    "name": "Eltryus CAM Suite",
-                    "url": "https://cam.eltryus.design/"
-                },
-                "subjectOf": [
-                    {
-                        "@type": "TechArticle",
-                        "url": "https://www.eltryus.design/en/work/easytrace5000/",
-                        "name": "Case Study: Developing EasyTrace5000"
-                    },
-                ],
+                "operatingSystem": "Any (Browser-based)",
+                "browserRequirements": "Requires JavaScript and WebAssembly support",
+                "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
+                "softwareVersion": "0.9.0",
+                "installUrl": "https://cam.eltryus.design/easyshape5000/",
+                "sameAs": "https://github.com/RicardoJCMarques/EasyTrace5000",
+                "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+                "isAccessibleForFree": true,
                 "description": "Browser-based CAM tool for CNC routers. Import SVG designs, assign profile/pocket/drill/engrave operations, and export optimized G-code.",
-                "potentialAction": [
-                    {
-                        "@type": "ViewAction",
-                        "target": "https://cam.eltryus.design/easyshape5000/#quickstart",
-                        "name": "Quick Start Guide"
-                    },
-                    {
-                        "@type": "DonateAction",
-                        "target": "https://cam.eltryus.design/easyshape5000/#support",
-                        "name": "Support Development"
-                    }
-                ],
-                "softwareHelp": {
-                    "@type": "CollectionPage",
-                    "url": "https://cam.eltryus.design/easyshape5000/doc/",
-                    "name": "EasyShape5000 Documentation"
-                },
-                "author": {
-                    "@type": "Organization",
-                    "name": "Eltryus",
-                    "url": "https://www.eltryus.design",
-                    "logo": "https://www.eltryus.design/images/logo.png"
-                },
-                "screenshot": {
-                    "@type": "ImageObject",
-                    "url": "https://cam.eltryus.design/images/social-shape.jpg",
-                    "caption": "EasyShape5000 main workspace"
-                },
+                "isPartOf": { "@id": "https://cam.eltryus.design/#suite" },
+                "author": { "@id": "https://www.eltryus.design/#organization" },
+                "publisher": { "@id": "https://www.eltryus.design/#organization" },
+                "softwareHelp": { "@id": "https://cam.eltryus.design/easyshape5000/doc/#docs" },
+                "subjectOf": { "@id": "https://www.eltryus.design/en/work/easytrace5000/#article" },
                 "featureList": [
                     "Browser-based, 100% client-side CAM processing with zero cloud dependencies",
                     "SVG import with hierarchical group preservation",
@@ -115,42 +89,32 @@
                     "Optimized toolpaths with staydown clustering and G2/G3 arc reconstruction",
                     "Multiple CNC post-processors supported (GRBL, Marlin, LinuxCNC, Roland RML)"
                 ],
-                "softwareVersion": "1.0.0",
-                "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
-                "downloadUrl": "https://github.com/RicardoJCMarques/EasyTrace5000/",
-                "installUrl": "https://cam.eltryus.design/easytrace5000/",
-                "license": "https://www.gnu.org/licenses/agpl-3.0.html",
-                "isAccessibleForFree": true,
-                "browserRequirements": "Requires JavaScript and WebAssembly support",
-                "sameAs": ["https://github.com/RicardoJCMarques/EasyTrace5000"]
+                "screenshot": {
+                    "@type": "ImageObject",
+                    "url": "https://cam.eltryus.design/images/social-shape.jpg",
+                    "caption": "EasyShape5000 main workspace"
+                },
+                "potentialAction": [
+                    { "@type": "ViewAction", "target": "https://cam.eltryus.design/easyshape5000/#quickstart", "name": "Quick Start Guide" }
+                ]
             },
             {
-                "@context": "https://schema.org",
-                "@type": "BreadcrumbList",
-                "itemListElement": [
-                    {
-                        "@type": "ListItem",
-                        "position": 1,
-                        "name": "Eltryus CAM Suite",
-                        "item": "https://cam.eltryus.design/"
-                    },
-                    {
-                        "@type": "ListItem",
-                        "position": 2,
-                        "name": "EasyShape5000 Workspace",
-                        "item": "https://cam.eltryus.design/easyshape5000/"
-                    }
-                ]
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+                { "@type": "ListItem", "position": 1, "name": "Eltryus EasyCAM5000 Suite", "item": "https://cam.eltryus.design/" },
+                { "@type": "ListItem", "position": 2, "name": "EasyShape5000", "item": "https://cam.eltryus.design/easyshape5000/" }
+            ]
             }
         ]
+    }
     </script>
 </head>
 <body>
 
-    <!-- Viewport warning bar — persistent, dismissible -->
+    <!-- Viewport warning bar - persistent, dismissible -->
     <div class="workspace-viewport-bar" id="workspace-viewport-bar">
         <svg class="cam-icon workspace-viewport-bar-icon" width="20" height="20"><use href="#icon-warning"></use></svg>
-        <span>Screen too narrow — rotate device or use a larger screen.</span>
+        <span>Screen too narrow - rotate device or use a larger screen.</span>
         <button class="workspace-viewport-bar-dismiss" id="dismiss-viewport-bar" aria-label="Dismiss warning">
             <svg class="cam-icon" width="20" height="20"><use href="#icon-close"></use></svg>
         </button>
@@ -162,7 +126,7 @@
     <!-- For non-JS crawlers -->
     <noscript>
         <div style="padding: 2rem; text-align: center; background: #1a1a1a; color: #fff;">
-            <h1>EasyShape5000 — CNC Router CAM</h1>
+            <h1>EasyShape5000 - CNC Router CAM</h1>
             <p>JavaScript required for application functionality.</p>
             <p><a href="doc/" style="color: #3b82f6;">View Documentation</a></p>
         </div>
@@ -209,14 +173,10 @@
 
         <div class="toolbar-section toolbar-right">
             <button class="btn--tool btn" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <svg class="cam-icon" width="18" height="18"><use href="#icon-undo"></use></svg>
-                </svg>
+                <svg class="cam-icon" width="18" height="18"><use href="#icon-undo"></use></svg>
             </button>
             <button class="btn--tool btn" id="btn-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <svg class="cam-icon" width="18" height="18"><use href="#icon-redo"></use></svg>
-                </svg>
+                <svg class="cam-icon" width="18" height="18"><use href="#icon-redo"></use></svg>
             </button>
             <div class="toolbar-separator separator"></div>
             <button class="btn--tool btn" id="zoom-fit-btn" title="Fit to View (F)" aria-label="Fit to View">
@@ -230,16 +190,17 @@
             </button>
             <div class="toolbar-separator separator"></div>
             <button id="btn-help" class="btn btn--icon" title="Help (F1)" aria-label="Help">?</button>
-            <button class="btn btn--icon theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+
+            <button id="theme-toggle" class="btn btn--icon" title="Toggle Theme" aria-label="Toggle Theme">
                 <svg class="cam-icon" width="16" height="16"><use href="#icon-sun"></use></svg>
             </button>
         </div>
     </div>
 
-    <!-- WORKSPACE — three-column grid -->
+    <!-- WORKSPACE - three-column grid -->
     <div class="cam-workspace workspace" id="cam-workspace">
 
-        <!-- LEFT SIDEBAR — scene tree + operations -->
+        <!-- LEFT SIDEBAR - scene tree + operations -->
         <aside class="sidebar sidebar-left" id="sidebar-left" aria-label="Scene & Operations">
 
             <!-- Operations Panel (generated operation object) -->
@@ -291,7 +252,7 @@
             </div>
         </aside>
 
-        <!-- CENTRE — canvas -->
+        <!-- CENTRE - canvas -->
         <main class="workspace-main" aria-label="Canvas">
             <div class="canvas-container">
 
@@ -437,8 +398,8 @@
                         <div class="property-field">
                             <label for="roland-z-mode" data-i18n-tooltip="tooltips.machineSettings.rolandZMode">Z Command Mode</label>
                             <select id="roland-z-mode">
-                                <option value="3d">3D — Z x,y,z (simultaneous XYZ)</option>
-                                <option value="2.5d">2.5D — PU/PD (pen up/down only)</option>
+                                <option value="3d">3D - Z x,y,z (simultaneous XYZ)</option>
+                                <option value="2.5d">2.5D - PU/PD (pen up/down only)</option>
                             </select>
                         </div>
                         <div class="property-field">
@@ -522,7 +483,7 @@
                         Select a path to create an operation.
                     </div>
 
-                    <!-- Shape transform — visible when any shape is selected -->
+                    <!-- Shape transform - visible when any shape is selected -->
                     <div class="shape-inspector" data-panel-state="source-selected bucket-stage" id="shape-inspector">
                         <div class="property-section">
                             <h3>Shape Transform</h3>
@@ -607,7 +568,7 @@
                         <div id="fresh-params-form"></div>
                     </div>
 
-                    <!-- Bucket stage params — populated dynamically -->
+                    <!-- Bucket stage params - populated dynamically -->
                     <div id="operation-form-container" data-panel-state="source-selected bucket-stage"></div>
                 </div>
             </div>
@@ -797,7 +758,7 @@
                         <span>While its foundations are shared with EasyTrace5000, more testing is needed. Please
                             <a href="https://github.com/RicardoJCMarques/EasyTrace5000/issues" target="_blank" rel="noopener">report unexpected behavior</a>.
                         </span>
-                        <p>Toolpaths should be safe but the optimization layer needs to be reworked for operations with a lot of polygons.</p>
+                        <p>Toolpath Optimizations were also fully reworked so double check output (<a href="https://ncviewer.com/" target="_blank" rel="noopener">ncviewer</a>).</p>
                     </div>
                 </div>
 
@@ -852,15 +813,15 @@
             </div>
             <div class="modal-footer welcome-footer">
                 <div class="welcome-footer-links">
-                    <a href="#help" id="welcome-help-link" draggable="false" aria-label="Opens Help modal">Help</a>
-                    <span class="separator" aria-hidden="true"></span>
-                    <a href="../LICENSE" target="_blank" draggable="false" aria-label="AGPLv3 License (opens in a new tab)">AGPLv3</a>
-                    <span class="separator" aria-hidden="true"></span>
-                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" target="_blank" rel="noopener" draggable="false">Changelog</a>
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" target="_blank" draggable="false" aria-label="Changelog (opens in a new tab)">v0.9.0</a>
                     <span class="separator" aria-hidden="true"></span>
                     <a href="doc/" target="_blank" draggable="false" aria-label="Documentation (opens in a new tab)">Documentation</a>
                     <span class="separator" aria-hidden="true"></span>
+                    <a href="#help" id="welcome-help-link" draggable="false" aria-label="Opens Help modal">Help</a>
+                    <span class="separator" aria-hidden="true"></span>
                     <a href="https://github.com/RicardoJCMarques/EasyTrace5000" target="_blank" draggable="false" aria-label="GitHub Repository (opens in a new tab)">GitHub</a>
+                    <span class="separator" aria-hidden="true"></span>
+                    <a href="../LICENSE" target="_blank" draggable="false" aria-label="AGPLv3 License (opens in a new tab)">AGPLv3</a>
                 </div>
             </div>
         </div>
@@ -1215,7 +1176,40 @@
 
     <!-- Bootstrap -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load the SVG Sprite
+            fetch('../images/icons/sprite.svg')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(svgText => {
+                    const div = document.createElement('div');
+                    div.innerHTML = svgText;
+                    const svg = div.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.style.cssText = 'position: absolute; width: 0; height: 0; visibility: hidden;';
+                        document.body.insertBefore(svg, document.body.firstChild);
+                    }
+                })
+                .catch(err => console.warn('Failed to load icon sprite:', err));
+
+            // Theme toggle logic
+            const themeBtn = document.getElementById('theme-toggle');
+            if (themeBtn && window.ThemeLoader) {
+                const useEl = themeBtn.querySelector('use');
+                const initialTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+                if (useEl) useEl.setAttribute('href', initialTheme === 'dark' ? '#icon-sun' : '#icon-moon');
+
+                themeBtn.addEventListener('click', async () => {
+                    const theme = await window.ThemeLoader.toggleTheme();
+                    if (useEl) useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+                });
+            }
+
+            // App Initialization
             console.log('EasyShape5000 v1.0.0');
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');
@@ -1224,14 +1218,18 @@
                 loadingProgress.textContent = '100%';
                 loadingProgress.setAttribute('aria-valuenow', 100);
             }
+
+            // Dynamically call the correct start function based on the app
             if (typeof window.startShapeApp === 'function') {
-                window.startShapeApp().catch(err => {
+                startShapeApp().catch(err => {
                     console.error('Fatal startup error:', err);
                     if (loadingText) loadingText.textContent = 'Startup failed. See console.';
                 });
             } else {
-                console.error('Fatal: startShapeApp() not found');
+                console.error('Fatal: startShapeApp() not found after script load');
                 if (loadingText) loadingText.textContent = 'Fatal Error: App failed to load';
+                // Help developers debug
+                console.error('Check browser console for script loading errors');
             }
         });
     </script>

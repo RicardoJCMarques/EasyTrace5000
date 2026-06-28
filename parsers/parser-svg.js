@@ -79,6 +79,7 @@
             this.cssRules = {};
             this.currentGroupPath = [];   // EasyShape5000 group hierarchy tracking
             this.nextGroupUid = 0;        // stable per-document group UIDs
+            this.docUidPrefix = `svg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
         }
 
         /**
@@ -104,7 +105,7 @@
 
             // Parse width/height with units
             const parseWithUnit = (attrValue) => {
-                if (attrValue.includes('%')) return null;
+                if (!attrValue || attrValue.includes('%')) return null;
                 const match = attrValue.match(/^(-?[\d.]+(?:[eE][+-]?\d+)?)\s*([a-z]*)$/i);
                 if (!match) return { value: parseFloat(attrValue), unit: 'px' };
                 return { value: parseFloat(match[1]), unit: match[2] || 'px' };
@@ -236,7 +237,7 @@
             const prevGroupPath = this.currentGroupPath;
             if (tagName === 'g') {
                 this.currentGroupPath = [...prevGroupPath, {
-                    uid: `g_${this.nextGroupUid++}`,
+                    uid: `${this.docUidPrefix}_g_${this.nextGroupUid++}`,
                     id: node.getAttribute('id') || null,
                     label: node.getAttribute('inkscape:label')
                         || node.getAttribute('data-name')
@@ -312,7 +313,7 @@
         }
 
         /**
-         * Process stroked shapes — converts SVG stroked paths into trace objects that the plotter can handle with correct width expansion.
+         * Process stroked shapes - converts SVG stroked paths into trace objects that the plotter can handle with correct width expansion.
          */
         processStrokedShape(geometry, transform, strokeWidth) {
             const transformed = this.applyTransformToGeometry(geometry, transform);
@@ -333,7 +334,7 @@
             const subpaths = transformed.subpaths || [];
             const points = transformed.points;
 
-            // Simple point arrays (polygon/polyline — no subpath wrapper)
+            // Simple point arrays (polygon/polyline - no subpath wrapper)
             if (subpaths.length === 0 && points?.length > 0) {
                 this.layers.objects.push(this.attachGroupPath({
                     type: 'trace',
@@ -348,7 +349,8 @@
 
             // Subpath-based paths (from PathDataParser)
             // Extract points from segments and create trace objects for linear paths, or region objects for paths containing curves.
-            for (const subpath of subpaths) {
+            for (let spIdx = 0; spIdx < subpaths.length; spIdx++) {
+                const subpath = subpaths[spIdx];
                 if (!subpath || subpath.length === 0) continue;
 
                 // Already a simple point array (e.g. from polygon/polyline transform)
@@ -374,7 +376,7 @@
                     } else if (seg.type === 'line') {
                         extractedPoints.push(seg.p1);
                     } else {
-                        // Arc, cubic, quad — can't reduce to simple trace
+                        // Arc, cubic, quad - can't reduce to simple trace
                         hasNonLinear = true;
                         break;
                     }
@@ -387,7 +389,8 @@
                         interpolation: 'linear_path',
                         points: extractedPoints,
                         width: strokeWidth,
-                        polarity: 'dark'
+                        polarity: 'dark',
+                        closed: geometry.subpathClosed ? geometry.subpathClosed[spIdx] : true
                     }));
                     this.stats.objectsCreated++;
                 } else {
@@ -398,7 +401,8 @@
                         polarity: 'dark',
                         stroke: true,
                         strokeWidth: strokeWidth,
-                        fill: false
+                        fill: false,
+                        closed: geometry.subpathClosed ? geometry.subpathClosed[spIdx] : true
                     }));
                     this.stats.objectsCreated++;
                 }
@@ -475,8 +479,11 @@
                 case 'polygon': return { type: 'path', subpaths: [this.parsePoly(node)] };
                 case 'polyline': return { type: 'path', subpaths: [this.parsePoly(node)] };
                 case 'path':
-                    const subpathsOfSegments = new PathDataParser(node.getAttribute('d')).getSubPaths();
-                    return { type: 'path', subpaths: subpathsOfSegments };
+                    const subpathResults = new PathDataParser(node.getAttribute('d')).getSubPaths();
+                    // Unwrap: subpaths array of segment arrays, plus per-subpath closed flags
+                    const subpathsOfSegments = subpathResults.map(r => r.segments);
+                    const subpathClosed = subpathResults.map(r => r.closed);
+                    return { type: 'path', subpaths: subpathsOfSegments, subpathClosed };
                 case 'line':
                     const p = this.parseLine(node);
                     return p ? { type: 'path', points: p, subpaths: [] } : null;
@@ -954,14 +961,14 @@
 
         getStyles(node, inheritedStyles = null) {
             const styles = {
-                // Inheritable SVG properties — start from parent or SVG spec defaults
+                // Inheritable SVG properties - start from parent or SVG spec defaults
                 fill: inheritedStyles?.fill ?? 'black',
                 fillOpacity: inheritedStyles?.fillOpacity ?? 1.0,
                 stroke: inheritedStyles?.stroke ?? 'none',
                 strokeWidth: inheritedStyles?.strokeWidth ?? 1.0,
                 strokeOpacity: inheritedStyles?.strokeOpacity ?? 1.0,
                 visibility: inheritedStyles?.visibility ?? 'visible',
-                // Non-inheritable — always reset to defaults
+                // Non-inheritable - always reset to defaults
                 display: 'inline'
             };
 
@@ -1089,10 +1096,11 @@
 
         getSubPaths() {
             this.parse();
-            // Only return subpaths that actually have geometry to draw
+            // Only return subpaths that actually have geometry to draw.
+            // Preserve the closed flag so stroked open paths aren't force-closed.
             return this.subPaths
                 .filter(sp => sp.segments.length > 1)
-                .map(sp => sp.segments);
+                .map(sp => ({ segments: sp.segments, closed: sp.closed }));
         }
 
         parse() {

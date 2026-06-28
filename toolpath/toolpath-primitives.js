@@ -112,22 +112,34 @@
 
         /**
          * Computes and stores the XY bounding box from this plan's commands.
-         * Single source of truth — replaces duplicated implementations in
-         * GeometryTranslator and ToolpathOptimizer.
          */
         computeBounds() {
             let minX = Infinity, minY = Infinity;
             let maxX = -Infinity, maxY = -Infinity;
 
+            const include = (x, y) => {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            };
+
             for (const cmd of this.commands) {
-                if (cmd.x !== null && cmd.x !== undefined) {
-                    if (cmd.x < minX) minX = cmd.x;
-                    if (cmd.x > maxX) maxX = cmd.x;
+                if (cmd.x !== null && cmd.x !== undefined &&
+                    cmd.y !== null && cmd.y !== undefined) {
+                    include(cmd.x, cmd.y);
                 }
-                if (cmd.y !== null && cmd.y !== undefined) {
-                    if (cmd.y < minY) minY = cmd.y;
-                    if (cmd.y > maxY) maxY = cmd.y;
-                }
+            }
+
+            // A full circle is a single arc command, so the loop above only sees
+            // its start point and the box collapses to that point - proximity
+            // clustering then mis-measures it. Use the circle's center/radius
+            // (set in analyzePrimitive) for the true extent.
+            const c = this.metadata.center;
+            const r = this.metadata.radius;
+            if (this.metadata.isSimpleCircle && c && typeof r === 'number' && r > 0) {
+                include(c.x - r, c.y - r);
+                include(c.x + r, c.y + r);
             }
 
             this.metadata.boundingBox = { minX, minY, maxX, maxY };
@@ -137,7 +149,7 @@
 
     /**
      * Checks whether a points array forms a closed loop (first ≈ last).
-     * Single source of truth — replaces duplicated implementations in
+     * Single source of truth - replaces duplicated implementations in
      * GeometryTranslator, ToolpathTabPlanner, and ToolpathOptimizer.
      * @param {Array<{x: number, y: number}>} points
      * @param {number} [precision] - Squared-distance threshold (default: uses CAMConfig coordinate precision)

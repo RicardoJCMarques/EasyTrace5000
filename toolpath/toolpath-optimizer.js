@@ -23,10 +23,8 @@
             this.options = {
                 enablePathOrdering: D.gcode.optimization.pathOrdering,
                 enableSegmentSimplification: D.gcode.optimization.segmentSimplification,
-                enableZLevelGrouping: D.gcode.optimization.zLevelGrouping,
                 angleTolerance: 1.0,
                 minSegmentLength: 0.05,
-                safeZ: 5.0,
                 ...options
             };
 
@@ -44,17 +42,11 @@
         }
 
         /**
-         * Main optimization entry - returns ordered metadata array
+         * Main optimization entry.
+         * Plans are flat 2D features - depth is passthrough metadata
+         * used exclusively by the MachineProcessor later.
          */
         optimize(pureGeometryPlans, startPos) {
-
-            // REVIEW - 3D toolpath skip, just a safeguard that could be moved/removed in the future with other guarantees they never reach the optimizer.
-            for (const plan of pureGeometryPlans) {
-                const m = plan.metadata;
-                m.skipReentry = m.isPeckMark || m.isDrillMilling || m.isCenterlinePath || m.is3DContour;
-                m.skipSimplify = m.is3DContour;
-                m.skipStaydown = m.is3DContour;
-            }
 
             const startTime = performance.now();
             this.resetStats();
@@ -64,10 +56,7 @@
                 return [];
             }
 
-            // Contract guarantees contextual safeZ
-            this.currentRunSafeZ = pureGeometryPlans[0].metadata.context.machine.safeZ;
-
-            // Group by tool diameter
+            // Group by tool+operation
             const plansByGroupKey = new Map();
             for (const plan of pureGeometryPlans) {
                 const groupKey = plan.metadata.groupKey || 'default';
@@ -77,95 +66,64 @@
                 plansByGroupKey.get(groupKey).push(plan);
             }
 
-            this.debug(`Grouped into ${plansByGroupKey.size} tool groups`);
+            this.debug(`Grouped into ${plansByGroupKey.size} groups`);
 
             let finalOrderedPlans = [];
             let currentMachinePos = { ...startPos };
 
-            // Process each tool group
+            // Process each group
             for (const [groupKey, groupPlans] of plansByGroupKey) {
                 this.debug(`Optimizing Tool Group: ${groupKey} (${groupPlans.length} plans)`);
-                let zLevelGroups = [groupPlans];
 
-                // Respect ZLevelGrouping option
-                if (this.options.enableZLevelGrouping) {
-                    zLevelGroups = this.groupByZLevel(groupPlans);
+                if (!this.options.enablePathOrdering) {
+                    finalOrderedPlans.push(...groupPlans);
+                    if (groupPlans.length > 0) {
+                        currentMachinePos = groupPlans[groupPlans.length - 1].metadata.exitPoint;
+                    }
+                    continue;
                 }
 
-                // Process each Z-level
-                for (const zGroup of zLevelGroups) {
-                    if (zGroup.length === 0) continue;
+                const policy = groupPlans[0]?.metadata?.toolpathPolicy || {};
+                const partition = policy.staydownPartition || 'shape';
 
-                    // Respect PathOrdering option
-                    if (this.options.enablePathOrdering) {
-                        // Build Staydown Clusters
-                        const firstPlan = zGroup[0];
-                        const toolDiameter = firstPlan.metadata.toolDiameter;
-                        const stepOver = firstPlan.metadata.stepOver; 
+                const { regions, allowStaydown } = this.buildRegions(groupPlans, partition);
+                const skipShapeGuard = (partition === 'proximity');
 
-                        // Calculate theoretical Step Distance
-                        const stepDistance = toolDiameter * (1.0 - (stepOver / 100.0));
+                // Wrap regions in proxies for cluster-level sorting
+                const clusterProxies = regions.map(regionPlans => ({
+                    plans: regionPlans,
+                    entryPoint: regionPlans[0].metadata.entryPoint,
+                    exitPoint: regionPlans[regionPlans.length - 1].metadata.exitPoint
+                }));
 
-                        // Strict Threshold: StepDistance + Epsilon
-                        const strictThreshold = stepDistance + EPSILON;
+                // Sort the clusters globally, starting from currentMachinePos
+                let seq = this.optimizePathOrder(clusterProxies, currentMachinePos, {
+                    allowStaydown: false, isClusterRun: true
+                });
 
-                        // Use strict threshold
-                        const clusters = this.buildStaydownClusters(zGroup, strictThreshold);
+                seq = this.refineRegionOrder(seq, currentMachinePos);
 
-                        this.stats.clustersFound += clusters.length;
+                // Optimize the actual toolpaths WITHIN each sorted cluster
+                for (const cluster of seq) {
+                    const ordered = this.optimizePathOrder(cluster.plans, currentMachinePos, {
+                        allowStaydown, skipShapeGuard
+                    });
 
-                        this.debug(`Found ${clusters.length} staydown clusters for Z-level`);
-
-                        // Optimize inside each cluster (allowing staydown)
-                        const optimizedClusters = [];
-                        for (const clusterPlans of clusters) {
-                            const optimizedPlans = this.optimizePathOrder(clusterPlans, currentMachinePos, { allowStaydown: true });
-
-                            // Count staydown links
-                            for (let i = 1; i < optimizedPlans.length; i++) {
-                                if (optimizedPlans[i].metadata.optimization?.linkType === 'staydown') {
-                                    this.stats.staydownLinksUsed++;
-                                }
-                            }
-
-                            if(optimizedPlans.length > 0) {
-                                optimizedClusters.push({
-                                    plans: optimizedPlans,
-                                    entryPoint: optimizedPlans[0].metadata.optimization?.optimizedEntryPoint || optimizedPlans[0].metadata.entryPoint,
-                                    exitPoint: optimizedPlans[optimizedPlans.length - 1].metadata.exitPoint
-                                });
-                                currentMachinePos = optimizedPlans[optimizedPlans.length - 1].metadata.exitPoint;
-                            }
+                    // Count staydown links
+                    for (let i = 1; i < ordered.length; i++) {
+                        if (ordered[i].metadata.optimization?.linkType === 'staydown') {
+                            this.stats.staydownLinksUsed++;
                         }
+                    }
 
-                        // Optimize between clusters (forcing rapid)
-                        const orderedClusters = this.optimizePathOrder(optimizedClusters, currentMachinePos, { 
-                            allowStaydown: false, 
-                            isClusterRun: true
-                        });
-
-                        // Flatten the results
-                        for (const cluster of orderedClusters) {
-                            finalOrderedPlans.push(...cluster.plans);
-                        }
-
-                        // Update machine position for next Z-level or tool-group
-                        if (orderedClusters.length > 0) {
-                            currentMachinePos = orderedClusters[orderedClusters.length - 1].exitPoint;
-                        }
-
-                    } else {
-                        // Path ordering is OFF, just add plans in original order
-                        finalOrderedPlans.push(...zGroup);
-                        if (zGroup.length > 0) {
-                             const lastPlan = zGroup[zGroup.length - 1];
-                             currentMachinePos = lastPlan.metadata.exitPoint;
-                        }
+                    if (ordered.length) {
+                        finalOrderedPlans.push(...ordered);
+                        currentMachinePos = ordered[ordered.length - 1].metadata.exitPoint;
                     }
                 }
             }
 
-            // Segment Simplification
+            // Segment simplification
             if (this.options.enableSegmentSimplification) {
                 this.debug(`Simplifying ${finalOrderedPlans.length} paths...`);
                 // Simplify after ordering to preserve entry/exit points
@@ -191,7 +149,7 @@
         /**
          * Groups plans into staydown clusters using connected components algorithm
          */
-        buildStaydownClusters(plans, margin) {
+        buildStaydownClusters(plans, margin, usePassAdjacency = true) {
             const clusters = [];
             const planIndices = new Set(plans.map((_, i) => i));
             const adjacency = new Map();
@@ -203,10 +161,22 @@
                 }
             });
 
+            // Two plans are connected if they are spatially close OR (within one
+            // shape) they are consecutive offset passes. Pass-adjacency is the
+            // generator's connectivity guarantee and is robust on concave shapes
+            // where vertex sampling under-reports closeness.
+            const adjacentPass = (a, b) => {
+                if (!usePassAdjacency) return false;
+                const pa = a.metadata.pass, pb = b.metadata.pass;
+                if (pa === null || pa === undefined || pb === null || pb === undefined) return false;
+                return Math.abs(pa - pb) === 1;
+            };
+
             // Build adjacency list (graph edges)
             for (let i = 0; i < plans.length; i++) {
                 for (let j = i + 1; j < plans.length; j++) {
-                    if (this.arePlansProximate(plans[i], plans[j], margin)) {
+                    if (adjacentPass(plans[i], plans[j]) ||
+                        this.arePlansProximate(plans[i], plans[j], margin)) {
                         if (!adjacency.has(i)) adjacency.set(i, []);
                         if (!adjacency.has(j)) adjacency.set(j, []);
                         adjacency.get(i).push(j);
@@ -269,32 +239,65 @@
          * Find actual closest distance between two plans
          */
         findClosestDistanceBetweenPlans(planA, planB) {
-            let minSqDist = Infinity;
+            // Sample points on one side, test against the OTHER side's segments, both
+            // directions. Catches mid-segment close approaches between near-parallel
+            // offset lines that vertex-to-vertex sampling missed (false "too far").
+            const ptsA = this.samplePlanPoints(planA, 24);
+            const ptsB = this.samplePlanPoints(planB, 24);
+            const segA = this.samplePlanPoints(planA, 64);
+            const segB = this.samplePlanPoints(planB, 64);
 
-            // Sample points from both plans (max 20 per plan for performance)
-            const pointsA = this.samplePlanPoints(planA, 20);
-            const pointsB = this.samplePlanPoints(planB, 20);
-
-            for (const pA of pointsA) {
-                for (const pB of pointsB) {
-                    const dx = pB.x - pA.x;
-                    const dy = pB.y - pA.y;
-                    const sqDist = dx * dx + dy * dy;
-                    if (sqDist < minSqDist) {
-                        minSqDist = sqDist;
+            let minSq = Infinity;
+            const scan = (pts, seg) => {
+                if (!seg || seg.length === 0) return;
+                for (const p of pts) {
+                    if (seg.length === 1) {
+                        const dx = p.x - seg[0].x;
+                        const dy = p.y - seg[0].y;
+                        const sq = dx * dx + dy * dy;
+                        if (sq < minSq) minSq = sq;
+                    } else {
+                        for (let i = 1; i < seg.length; i++) {
+                            const sq = GeometryUtils.getSqDistToSegment(p, seg[i - 1], seg[i]);
+                            if (sq < minSq) minSq = sq;
+                        }
                     }
                 }
-            }
-            return Math.sqrt(minSqDist);
+            };
+            scan(ptsA, segB);
+            scan(ptsB, segA);
+            return Math.sqrt(minSq);
         }
 
         /**
          * Sample representative points from a plan
          */
         samplePlanPoints(plan, maxPoints) {
+            // A full circle is emitted as ONE arc command, so command sampling
+            // yields a single point and every proximity / closest-distance test
+            // collapses (the circle can never join a stay-down cluster). Walk the
+            // real circumference instead. isSimpleCircle is set for analytic
+            // circles AND, via analyzePrimitive, for arc-reconstructed circular
+            // paths, so this one gate covers both populations.
+            if (plan.metadata?.isSimpleCircle) {
+                const arcCmd = plan.commands.find(c => c.type === 'ARC_CW' || c.type === 'ARC_CCW');
+                const entryCmd = plan.commands[0];
+                const centerX = plan.metadata.center?.x ?? ((arcCmd && entryCmd) ? entryCmd.x + arcCmd.i : undefined);
+                const centerY = plan.metadata.center?.y ?? ((arcCmd && entryCmd) ? entryCmd.y + arcCmd.j : undefined);
+                const radius  = plan.metadata.radius ?? (arcCmd ? Math.hypot(arcCmd.i, arcCmd.j) : undefined);
+                if (centerX !== undefined && centerY !== undefined && radius > 0) {
+                    const pts = [];
+                    for (let k = 0; k <= maxPoints; k++) {
+                        const a = (k / maxPoints) * Math.PI * 2;
+                        pts.push({ x: centerX + Math.cos(a) * radius, y: centerY + Math.sin(a) * radius });
+                    }
+                    return pts;
+                }
+            }
+
             const points = plan.commands
                 .filter(c => c.x !== null && c.y !== null)
-                .map(c => ({x: c.x, y: c.y}));
+                .map(c => ({ x: c.x, y: c.y }));
 
             if (points.length <= maxPoints) {
                 return points;
@@ -304,29 +307,137 @@
             const sampled = [];
             const step = points.length / maxPoints;
             for (let i = 0; i < maxPoints; i++) {
-                const idx = Math.floor(i * step);
-                sampled.push(points[idx]);
+                sampled.push(points[Math.floor(i * step)]);
             }
             return sampled;
         }
 
         /**
-         * Group paths by Z cutting depth
+         * Partition a tool-group's plans into regions, two levels deep.
+         *
+         * @param {string} partition - 'shape' (hard wall per shapeKey) or
+         *   'proximity' (connected-by-stepover clusters, ignores shapeKey).
+         *
+         * IDENTITY (shapeKey): a hard partition that staydown must
+         *   never cross. This is the gouge boundary between separate source
+         *   shapes (or separate parts placed close together on the bed).
+         *
+         * PROXIMITY (within each shape): splits a shape's geometry
+         *   into connected sub-clusters. Concentric pocket rings stay together
+         *   (each within one stepover of the next, so they form one connected
+         *   component and clear layer-by-layer). The outer and inner loops of
+         *   an "O" / a holed profile are separated by the wall (> one stepover),
+         *   so they split into their own sub-regions and each is cut on its own
+         *   terms - all of its Z-passes consecutively - instead of interleaving
+         *   outer/inner at every depth.
+         *
+         * Each resulting sub-region is therefore BOTH same-shape (staydown is
+         * safe) AND one connected cluster (correct cut granularity).
+         *
+         * Falls back to pure proximity with allowStaydown when no shapeKey
+         * is present; the caller may also force proximity via the partition arg.
+         *
+         * @returns {{ regions: Array, allowStaydown: boolean }}
          */
-        groupByZLevel(plans) {
-            const groups = new Map();
+        buildRegions(plans, partition = 'shape') {
+            const hasKey = (k) => k !== undefined && k !== null && k !== -1;
 
-            for (const plan of plans) {
-                const zKey = Math.round((plan.metadata.cutDepth || 0) * 1000) / 1000;
-                if (!groups.has(zKey)) {
-                    groups.set(zKey, []);
-                }
-                groups.get(zKey).push(plan);
+            // Helper: split a set of plans into connected staydown sub-clusters.
+            // Within a single shape treat consecutive passes as connected
+            // (generator guarantee), so concave shapes whose offset vertices
+            // sample far apart are not wrongly split. Across shapes this
+            // helper isn't given a pass signal, so it degrades to pure proximity.
+            const subdivideByProximity = (groupPlans, usePassAdjacency) => {
+                if (groupPlans.length <= 1) return [groupPlans];
+                const first = groupPlans[0];
+                const stepDistance =
+                    first.metadata.toolDiameter * (1.0 - (first.metadata.stepOver / 100.0));
+                return this.buildStaydownClusters(
+                    groupPlans, stepDistance + EPSILON, usePassAdjacency
+                );
+            };
+
+            // PROXIMITY MODE
+            // Isolation / clearing: proximity clusters ARE the staydown
+            // unit.
+            if (partition === 'proximity') {
+                const clusters = subdivideByProximity(plans, false);
+                this.debug(`buildRegions: proximity mode - ${clusters.length} cluster(s)`);
+                return { regions: clusters, allowStaydown: true };
             }
 
-            return Array.from(groups.values()).sort((a, b) => 
-                (b[0].metadata.cutDepth || 0) - (a[0].metadata.cutDepth || 0)
-            );
+            // SHAPE MODE
+            const identity = plans.some(p => hasKey(p.metadata.shapeKey));
+
+            if (identity) {
+                // Level 1: hard partition by shapeKey.
+                const byKey = new Map();
+                let loose = 0;
+                for (const p of plans) {
+                    const k = hasKey(p.metadata.shapeKey)
+                        ? p.metadata.shapeKey
+                        : `loose_${loose++}`;
+                    if (!byKey.has(k)) byKey.set(k, []);
+                    byKey.get(k).push(p);
+                }
+
+                // Level 2: proximity sub-clustering inside each shape.
+                // Pass-adjacency is enabled here because all plans share one shape.
+                const regions = [];
+                for (const [, shapePlans] of byKey) {
+                    for (const sub of subdivideByProximity(shapePlans, true)) {
+                        if (sub.length > 0) regions.push(sub);
+                    }
+                }
+
+                this.debug(
+                    `buildRegions: identity mode - ${byKey.size} shape(s) → ${regions.length} sub-region(s)`
+                );
+                return { regions, allowStaydown: true };
+            }
+
+            // No identity: pure proximity. allowStaydown stays true since
+            // unidentified plans default to distance-based safety.
+            const clusters = subdivideByProximity(plans, false);
+            this.debug(`buildRegions: proximity fallback - ${clusters.length} cluster(s)`);
+            return { regions: clusters, allowStaydown: true };
+        }
+
+        /**
+         * Or-opt relocate pass over the region sequence (look-ahead seed = greedy NN result).
+         * Direction-PRESERVING: it only moves a region to a better slot, never reverses a
+         * region's internal path - safe for multi-Z regions whose depth order is fixed.
+         * Geometry-neutral: regions are rapid-linked, so reordering changes only travel.
+         * This is the extension point: swap this for Or-3 / 2-opt / LK later without
+         * touching geometry or stay-down.
+         */
+        refineRegionOrder(regions, startPos) {
+            if (regions.length < 3) return regions;
+            const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+            const cost = (seq) => {
+                let pos = startPos, c = 0;
+                for (const r of seq) { c += d(pos, r.entryPoint); pos = r.exitPoint; }
+                return c;
+            };
+
+            let best = regions.slice();
+            let bestCost = cost(best);
+            let improved = true, guard = 0;
+            while (improved && guard++ < 6) {            // tiny N; a few passes converge
+                improved = false;
+                for (let i = 0; i < best.length && !improved; i++) {
+                    const without = best.slice();
+                    const [moved] = without.splice(i, 1);
+                    for (let j = 0; j <= without.length; j++) {
+                        if (j === i) continue;
+                        const trial = without.slice();
+                        trial.splice(j, 0, moved);
+                        const c = cost(trial);
+                        if (c < bestCost - 1e-6) { best = trial; bestCost = c; improved = true; break; }
+                    }
+                }
+            }
+            return best;
         }
 
         /**
@@ -338,6 +449,9 @@
             const ordered = [];
             const remaining = [...plans];
             let currentPos = { ...startPos };
+            // No prior plan at the start of a run → first link can't be staydown anyway.
+            this.lastShapeKey = null;
+            this.skipShapeGuard = options.skipShapeGuard || false;
 
             let totalOriginalTravel = 0;
             let totalOptimizedTravel = 0;
@@ -396,22 +510,22 @@
                     entryCommandIndex: bestResult.commandIndex
                 };
 
-                // Apply rotation if beneficial and safe
-                if (bestResult.commandIndex > 0) {
-                    // Only rotate if it's not a drill operation.
-                    // Rotate paths with arcs if a staydown point on them was selected, otherwise the machine feeds to the old entry point.
-                    if (!chosen.metadata.isPeckMark && !chosen.metadata.isDrillMilling) {
-                        if (chosen.metadata.isSimpleCircle) {
-                            this.rotateCircleEntry(chosen, currentPos);
-                        } else if (chosen.metadata.isClosedLoop) {
-                            this.rotatePlanCommands(chosen, bestResult.commandIndex);
-                        }
+                // Rotate entry point to reduce travel. Circles always
+                // rotate via projection (commandIndex is always 0 for
+                // circles, but rotateCircleEntry handles it correctly).
+                // Paths rotate only when a non-entry vertex was selected.
+                if (!chosen.metadata.isPeckMark && !chosen.metadata.isDrillMilling) {
+                    if (chosen.metadata.isSimpleCircle) {
+                        this.rotateCircleEntry(chosen, currentPos);
+                    } else if (bestResult.commandIndex >= 0 && chosen.metadata.isClosedLoop) {
+                        this.rotatePlanCommands(chosen, bestResult.commandIndex);
                     }
                 }
 
                 ordered.push(chosen);
                 totalOptimizedTravel += bestResult.realDistance;
                 currentPos = { ...chosen.metadata.exitPoint };
+                this.lastShapeKey = chosen.metadata.shapeKey ?? null;
             }
 
             this.stats.originalTravelDistance += totalOriginalTravel;
@@ -422,107 +536,106 @@
         }
 
         /**
-         * Calculate cost and link type for traveling between paths
+         * Calculate cost and link type for traveling between plans.
          */
         calculatePathLinkCost(fromPos, toPlan, allowStaydown = false) {
-            // Handle cluster objects (used when optimizing between clusters)
-            if (toPlan.plans && toPlan.entryPoint) { // Check if it's a cluster object
+            // Cluster objects (used when optimizing between clusters/regions)
+            if (toPlan.plans && toPlan.entryPoint) {
                 const bestPoint = toPlan.entryPoint;
                 const dx = bestPoint.x - fromPos.x;
                 const dy = bestPoint.y - fromPos.y;
                 const closestXYDist = Math.sqrt(dx * dx + dy * dy);
-                // Clusters always use rapid moves between them
                 const rapidCost = this.calculateRapidCost(fromPos, bestPoint, closestXYDist);
                 return {
                     cost: rapidCost,
                     realDistance: closestXYDist,
                     linkType: 'rapid',
                     bestPoint: bestPoint,
-                    commandIndex: 0 // Cannot rotate entry of a whole cluster
+                    commandIndex: -1
                 };
             }
 
-            // Standard Plan Processing
-            const planMetadata = toPlan.metadata || {}; // Ensure metadata exists
-
-            // Ensure required fields exist with defaults
+            const planMetadata = toPlan.metadata || {};
             planMetadata.exitPoint = planMetadata.exitPoint || planMetadata.entryPoint;
             planMetadata.isPeckMark = planMetadata.isPeckMark || false;
             planMetadata.isDrillMilling = planMetadata.isDrillMilling || false;
             planMetadata.isCenterlinePath = planMetadata.isCenterlinePath || false;
 
-            // Check if staydown is possible and allowed for this link
+            // Stay-down safety checks.
+            // sameShape: prevents the tool from dragging across open material
+            // between separate features.
+            // Multi-depth plans must NOT stay-down - the tool would traverse
+            // at the previous feature's final depth through uncleared material.
+            const sameShape = this.skipShapeGuard ? true :
+                (planMetadata.shapeKey === undefined ||
+                               planMetadata.shapeKey === null ||
+                               this.lastShapeKey === undefined ||
+                               this.lastShapeKey === null)
+                ? true
+                : (planMetadata.shapeKey === this.lastShapeKey);
+
+            const isMultiDepth = (planMetadata.depthLevels?.length || 1) > 1;
+
             const canStaydown = allowStaydown &&
-                               !planMetadata.isPeckMark && // Never staydown for drills
-                               !planMetadata.isDrillMilling && // Or drill milling
-                               Math.abs(fromPos.z - planMetadata.entryPoint.z) < 0.01; // Must be at same Z
+                               sameShape &&
+                               !isMultiDepth &&
+                               !planMetadata.isPeckMark &&
+                               !planMetadata.isDrillMilling;
 
             if (canStaydown) {
                 const dxEntry = planMetadata.entryPoint.x - fromPos.x;
                 const dyEntry = planMetadata.entryPoint.y - fromPos.y;
                 const originalEntryDist = Math.sqrt(dxEntry * dxEntry + dyEntry * dyEntry);
 
-                // Use calculated stepDistance + tolerance
                 const toolDiameter = planMetadata.toolDiameter;
-                // Get stepOver from settings
                 const stepOverPercent = planMetadata.stepOver;
                 const stepOverRatio = stepOverPercent / 100.0;
                 const stepDistance = toolDiameter * (1.0 - stepOverRatio);
-
-                // Threshold is the expected step distance plus a small tolerance
                 const staydownThreshold = stepDistance + EPSILON;
 
                 this.debug(`Plan ${planMetadata.operationId} (Pass ${planMetadata.pass || 1}): ToolD=${toolDiameter.toFixed(3)}, StepOver=${stepOverPercent}%, StepDist=${stepDistance.toFixed(3)}, Threshold=${staydownThreshold.toFixed(3)}`);
                 this.debug(`   Original Entry Dist: ${originalEntryDist.toFixed(3)}`);
 
-                // Option 1: Use original entry point if close enough (no rotation needed)
+                // Original entry is close enough (no rotation needed)
                 if (originalEntryDist <= staydownThreshold) {
                     this.debug(`   >> Using Original Entry (Staydown) - Within Threshold`);
                     return {
-                        cost: originalEntryDist, // Cost is just XY distance for staydown
+                        cost: originalEntryDist,
                         realDistance: originalEntryDist,
                         linkType: 'staydown',
                         bestPoint: planMetadata.entryPoint,
-                        commandIndex: 0 // No rotation
+                        commandIndex: -1
                     };
                 }
 
-                // Option 2: Find the closest point on the path and consider rotation
-                // (findClosestPointOnPlan already handles drill safety and circle analytics)
+                // Find closest point on the path and consider rotation
                 const { point: closestPoint, distance: closestDist, commandIndex } =
                     this.findClosestPointOnPlan(fromPos, toPlan);
 
-                // Check if rotating to the closest point is worthwhile AND within threshold
-                // Only use rotation if:
-                // 1. Closest distance is within staydown threshold
-                // 2. Savings vs original entry are significant (>30% improvement)
-                // 3. Rotation is actually possible (commandIndex > 0)
-                if (closestDist <= staydownThreshold &&
-                    closestDist < originalEntryDist * 0.7 && // Significant improvement
-                    commandIndex > 0)
+                if (closestDist <= staydownThreshold && (commandIndex >= 0 || planMetadata.isSimpleCircle))
                 {
                     this.debug(`   >> Using Rotated Entry (Staydown), Dist: ${closestDist.toFixed(3)}, Index: ${commandIndex}`);
                     return {
-                        cost: closestDist, // Cost is just XY distance
+                        cost: closestDist,
                         realDistance: closestDist,
                         linkType: 'staydown',
                         bestPoint: closestPoint,
-                        commandIndex: commandIndex // Signal rotation
+                        commandIndex: commandIndex
                     };
                 }
-                    this.debug(`   Closest point dist (${closestDist.toFixed(3)}) too far or not worth rotating.`);
+                    this.debug(`   Closest point dist (${closestDist.toFixed(3)}) beyond staydown threshold.`);
             }
 
-            // Default: Use Rapid Link
-            // Find closest point (again, or for the first time if staydown wasn't possible)
-            // This allows rapid links to also benefit from entry point rotation if possible.
+            // Rapid link
             const { point: bestRapidPoint, distance: closestRapidXYDist, commandIndex: rapidCommandIndex } =
                 this.findClosestPointOnPlan(fromPos, toPlan);
 
             const rapidCost = this.calculateRapidCost(fromPos, bestRapidPoint, closestRapidXYDist);
 
             if (debugState.enabled) {
-                const reason = !allowStaydown ? "Not Allowed" : (planMetadata.isPeckMark || planMetadata.isDrillMilling) ? "Drill Op" : "Too Far";
+                const reason = !allowStaydown ? "Not Allowed" :
+                    (planMetadata.isPeckMark || planMetadata.isDrillMilling) ? "Drill Op" :
+                    isMultiDepth ? "Multi-Depth" : "Too Far";
                 console.log(`[Optimizer]   >> Using Rapid Link (${reason}). Cost: ${rapidCost.toFixed(1)}, Dist: ${closestRapidXYDist.toFixed(3)}, Index: ${rapidCommandIndex}`);
             }
 
@@ -531,7 +644,7 @@
                 realDistance: closestRapidXYDist,
                 linkType: 'rapid',
                 bestPoint: bestRapidPoint,
-                commandIndex: rapidCommandIndex // Allow rapid links to rotate too
+                commandIndex: rapidCommandIndex
             };
         }
 
@@ -539,23 +652,10 @@
          * Helper for rapid cost calculation
          */
         calculateRapidCost(fromPos, toPos, xyDist) {
-            // Get optimization config
-            const rapidConfig = D.toolpath.generation.rapidCost;
-            const zTravelThreshold = rapidConfig.zTravelThreshold;
-            const zCostFactor = rapidConfig.zCostFactor;
-            const baseCost = rapidConfig.baseCost;
+            const rapidConfig = D.toolpath.generation.rapidCost || {};
+            const baseCost = rapidConfig.baseCost || 10000;
 
-            const activeSafeZ = this.currentRunSafeZ ?? this.options.safeZ;
-            let zCost;
-
-            if (xyDist < zTravelThreshold) {
-                const travelZ = fromPos.z < 0 ? activeSafeZ * 0.4 : fromPos.z;
-                zCost = Math.abs(travelZ - fromPos.z) + Math.abs(toPos.z - travelZ);
-            } else {
-                zCost = Math.abs(activeSafeZ - fromPos.z) + Math.abs(toPos.z - activeSafeZ);
-            }
-
-            return (xyDist + zCost * zCostFactor) + baseCost;
+            return xyDist + baseCost;
         }
 
         /**
@@ -592,9 +692,9 @@
                         const dxIdeal = idealX - fromPos.x;
                         const dyIdeal = idealY - fromPos.y;
                         return { 
-                            point: { x: idealX, y: idealY }, 
-                            distance: Math.sqrt(dxIdeal * dxIdeal + dyIdeal * dyIdeal), 
-                            commandIndex: 0 
+                            point: { x: idealX, y: idealY },
+                            distance: Math.sqrt(dxIdeal * dxIdeal + dyIdeal * dyIdeal),
+                            commandIndex: -1
                         };
                     }
                 }
@@ -606,15 +706,22 @@
             const dxEntry = bestPoint.x - fromPos.x;
             const dyEntry = bestPoint.y - fromPos.y;
             let bestDistSq = (dxEntry * dxEntry + dyEntry * dyEntry);
-            let bestIndex = 0;
+            let bestIndex = -1;
 
             if (plan.commands.length > 0) {
-                // Search for closest point
                 for (let i = 0; i < plan.commands.length; i++) {
                     const cmd = plan.commands[i];
-
-                    // MotionCommand guarantees null if missing, no undefined check needed
                     if (cmd.x === null || cmd.y === null) continue;
+
+                    // For closed loops, skip commands whose target ≈ entry.
+                    // Rotating to these (or their neighbor) places the
+                    // closure command first, producing a degenerate zero-move
+                    // and breaking the simplifier's collinearity reference.
+                    if (canRotate) {
+                        const ceX = cmd.x - meta.entryPoint.x;
+                        const ceY = cmd.y - meta.entryPoint.y;
+                        if (ceX * ceX + ceY * ceY < PRECISION * PRECISION) continue;
+                    }
 
                     const dx = cmd.x - fromPos.x;
                     const dy = cmd.y - fromPos.y;
@@ -635,10 +742,20 @@
         }
 
         /**
-         * Rotate plan entry point for closed loops
+         * Rotate plan entry point for closed loops.
+         *
+         * TODO [ROTATION-ARC-IJ] - This splice rotation breaks arc commands.
+         * Arc I/J offsets are relative to the arc's start point. When rotation
+         * moves the entry, the command that was previously mid-sequence now
+         * starts from a different position, but its I/J still reference the
+         * old start. Fix: after splicing, walk the rotated commands and
+         * recalculate I/J for any ARC_CW/ARC_CCW command whose preceding
+         * position changed. Alternatively, store arcs as absolute center
+         * coordinates internally and convert to relative I/J only at G-code
+         * emission time.
          */
         rotatePlanCommands(plan, newEntryIndex) {
-            if (newEntryIndex <= 0 || newEntryIndex >= plan.commands.length) return;
+            if (newEntryIndex < 0 || newEntryIndex >= plan.commands.length) return;
 
             // Identify the pivot command (the one that leads TO the new start point)
             const pivotCmd = plan.commands[newEntryIndex];
@@ -651,59 +768,33 @@
             // Skip newEntryIndex here because it must move to the end of the sequence
             const postPivot = plan.commands.slice(newEntryIndex + 1);
 
-            // Check for implicit closure and create a bridge if necessary
-            // Does the last command of the original path connect back to the Original Entry?
-            const originalEntryPoint = plan.metadata.entryPoint;
-            const lastCmd = plan.commands[plan.commands.length - 1];
-
-            const dx = (lastCmd.x || 0) - originalEntryPoint.x;
-            const dy = (lastCmd.y || 0) - originalEntryPoint.y;
-            const distToOriginalEntry = Math.sqrt(dx * dx + dy * dy);
-
-            const newCommands = [...postPivot];
-
-            // If implicit loop (gap > epsilon), insert a linear bridge move
-            if (distToOriginalEntry > PRECISION) {
-                 const bridgeCmd = new MotionCommand(
-                    'LINEAR',
-                    { 
-                        x: originalEntryPoint.x, 
-                        y: originalEntryPoint.y, 
-                        z: lastCmd.z !== null ? lastCmd.z : plan.metadata.cutDepth
-                    },
-                    { feed: plan.metadata.feedRate }
-                );
-                newCommands.push(bridgeCmd);
-            }
-
-            // Reassemble: Post -> Bridge -> Pre -> Pivot
-            // The pivot command (Old Start -> New Start) must be the LAST move in the new loop.
-            newCommands.push(...prePivot);
-            newCommands.push(pivotCmd);
-
-            // Apply
-            plan.commands = newCommands;
+            plan.commands = [...postPivot, ...prePivot, pivotCmd];
 
             // Update Entry/Exit Metadata
             plan.metadata.entryPoint = { 
                 x: pivotCmd.x, 
-                y: pivotCmd.y, 
-                z: pivotCmd.z !== null ? pivotCmd.z : plan.metadata.cutDepth
+                y: pivotCmd.y 
             };
+
             // Since the loop was closed (explicitly or via logic), exit = entry
-            plan.metadata.exitPoint = plan.metadata.entryPoint;
+            plan.metadata.exitPoint = { ...plan.metadata.entryPoint };
         }
 
         /**
-         * Rotate circle entry to closest point
+         * Rotate circle entry to closest point.
+         *
+         * TODO [CIRCLE-ROTATION] - This updates entry/exit metadata and the
+         * single arc command's target + I/J, which is correct for a full-circle
+         * arc (G2/G3 back to start). Winding is preserved because the arc
+         * direction (CW/CCW) doesn't change - only the start/end point moves
+         * along the circle. The current implementation is functionally correct
+         * for simple circles. For compound circles (multi-arc approximations
+         * from arc reconstruction), this would need to rotate within the arc
+         * sequence, not just update the first command.
          */
-        // REVIEW - Not that this seems to be wired up properly yet but does it keep correct winding post-rotation? Only entry-point should move.
         rotateCircleEntry(plan, fromPos) {
             const center = plan.metadata.center;
             const radius = plan.metadata.radius;
-            const feedRate = plan.metadata.feedRate; // Review - Rorate circle shouldn't be adding commands? It should rotate circle entrypoints to minimize rapid movements
-            const clockwise = plan.metadata.direction === 'conventional';
-            const depth = plan.metadata.cutDepth;
 
             if (!center || !radius) return;
 
@@ -716,17 +807,18 @@
             const newEntryX = center.x + (dx / distToCenter) * radius;
             const newEntryY = center.y + (dy / distToCenter) * radius;
 
-            plan.commands = [];
+            plan.metadata.entryPoint = { x: newEntryX, y: newEntryY };
+            plan.metadata.exitPoint = { x: newEntryX, y: newEntryY };
 
-            const i_val = center.x - newEntryX;
-            const j_val = center.y - newEntryY;
-            plan.commands.push(new MotionCommand(clockwise ? 'ARC_CW' : 'ARC_CCW',
-                { x: newEntryX, y: newEntryY, z: depth },
-                { i: i_val, j: j_val, feed: feedRate }
-            ));
-
-            plan.metadata.entryPoint = { x: newEntryX, y: newEntryY, z: depth };
-            plan.metadata.exitPoint = { x: newEntryX, y: newEntryY, z: depth };
+            if (plan.commands && plan.commands.length > 0) {
+                const cmd = plan.commands[0];
+                cmd.x = newEntryX;
+                cmd.y = newEntryY;
+                if (cmd.i !== undefined && cmd.j !== undefined) {
+                    cmd.i = center.x - newEntryX;
+                    cmd.j = center.y - newEntryY;
+                }
+            }
         }
 
         /**
@@ -740,9 +832,9 @@
             let i = 0;
 
             // Track the end position of the last added command
-            let currentPos = { x: null, y: null, z: null };
+            let currentPos = { x: null, y: null };
             if (plan.metadata.entryPoint) {
-                currentPos = { ...plan.metadata.entryPoint };
+                currentPos = { x: plan.metadata.entryPoint.x, y: plan.metadata.entryPoint.y };
             }
 
             const isIgnorableArcCmd = (c, start, end) => {
@@ -752,9 +844,7 @@
                 const iVal = c.i || 0;
                 const jVal = c.j || 0;
 
-                const isHelical = c.z !== null && Math.abs(c.z - start.z) > PRECISION; 
-
-                return !isHelical && (dx * dx + dy * dy) < PRECISION && (iVal * iVal + jVal * jVal) < PRECISION;
+                return (dx * dx + dy * dy) < PRECISION && (iVal * iVal + jVal * jVal) < PRECISION;
             };
 
             const precisionSq = PRECISION * PRECISION;
@@ -767,7 +857,7 @@
                     simplified.push(cmd);
                     // Update currentPos to this command's end, if it has coords
                     if (cmd.x !== null && cmd.y !== null) {
-                        currentPos = { x: cmd.x, y: cmd.y, z: cmd.z !== null ? cmd.z : currentPos.z };
+                        currentPos = { x: cmd.x, y: cmd.y };
                     }
                     i++;
                     continue;
@@ -776,8 +866,7 @@
                 // Resolve the absolute target position of this command
                 const cmdTargetPos = {
                     x: cmd.x !== null ? cmd.x : currentPos.x,
-                    y: cmd.y !== null ? cmd.y : currentPos.y,
-                    z: cmd.z !== null ? cmd.z : currentPos.z
+                    y: cmd.y !== null ? cmd.y : currentPos.y
                 };
 
                 // If it's a significant non-linear move, add it and continue.
@@ -796,7 +885,7 @@
 
                 // It's either LINEAR or an ignorable ARC here
                 if (cmd.type !== 'LINEAR') {
-                    linearSequenceCmds.push(new MotionCommand('LINEAR', { x: cmd.x, y: cmd.y, z: cmd.z }, { feed: cmd.f }));
+                    linearSequenceCmds.push(new MotionCommand('LINEAR', { x: cmd.x, y: cmd.y }, { feed: cmd.f }));
                 } else {
                     linearSequenceCmds.push(cmd); // It's the first linear cmd
                 }
@@ -811,13 +900,12 @@
 
                     const nextCmdTargetPos = {
                         x: nextCmd.x !== null ? nextCmd.x : sequenceEndPoint.x,
-                        y: nextCmd.y !== null ? nextCmd.y : sequenceEndPoint.y,
-                        z: nextCmd.z !== null ? nextCmd.z : sequenceEndPoint.z
+                        y: nextCmd.y !== null ? nextCmd.y : sequenceEndPoint.y
                     };
 
                     if (nextCmd.type === 'LINEAR' || isIgnorableArcCmd(nextCmd, sequenceEndPoint, nextCmdTargetPos)) {
                         if (nextCmd.type !== 'LINEAR') {
-                            linearSequenceCmds.push(new MotionCommand('LINEAR', { x: nextCmd.x, y: nextCmd.y, z: nextCmd.z }, { feed: nextCmd.f }));
+                            linearSequenceCmds.push(new MotionCommand('LINEAR', { x: nextCmd.x, y: nextCmd.y }, { feed: nextCmd.f }));
                         } else {
                             linearSequenceCmds.push(nextCmd);
                         }
@@ -843,15 +931,13 @@
                 for (const linearCmd of linearSequenceCmds) {
                     tempPos = {
                         x: linearCmd.x !== null ? linearCmd.x : tempPos.x,
-                        y: linearCmd.y !== null ? linearCmd.y : tempPos.y,
-                        z: linearCmd.z !== null ? linearCmd.z : tempPos.z
+                        y: linearCmd.y !== null ? linearCmd.y : tempPos.y
                     };
 
                     // Check for zero-length segments / duplicate start point
                     const dx = tempPos.x - lastPushedPoint.x;
                     const dy = tempPos.y - lastPushedPoint.y;
-                    const dz = tempPos.z - lastPushedPoint.z;
-                    const distSq = dx * dx + dy * dy + dz * dz;
+                    const distSq = dx * dx + dy * dy;
 
                     // Deduplicate microscopic moves before running the heavy collinear simplifier
                     // This prevents NaN errors in angle calculations later
@@ -865,17 +951,32 @@
                     }
                 }
 
-                // Simplify this point sequence using a collinear check
-                const simplifiedPoints = this.simplifyCollinearPoints(points);
+                // Closed-loop guard: when first ≈ last, the collinearity
+                // reference line degenerates to a point and all deviations
+                // become absolute distances, over-removing corners on small
+                // contours. Strip the duplicate closure point, simplify the
+                // open sequence, then re-attach the closure unconditionally.
+                let closureCmd = null;
+                const isClosed = plan.metadata.isClosedLoop || plan.metadata.isClosed;
+                if (isClosed && points.length >= 4) {
+                    const fp = points[0];
+                    const lp = points[points.length - 1];
+                    const cdx = lp.x - fp.x;
+                    const cdy = lp.y - fp.y;
+                    if (cdx * cdx + cdy * cdy < precisionSq) {
+                        closureCmd = points.pop().cmd;
+                    }
+                }
 
-                // Rebuild command list from simplified points
+                const simplifiedPoints = this.simplifyCollinearPoints(points);
                 for (const pt of simplifiedPoints) {
                     if (pt.cmd) { 
                         simplified.push(pt.cmd);
                     }
                 }
-
-                // Update position and main loop index
+                if (closureCmd) {
+                    simplified.push(closureCmd);
+                }
                 currentPos = sequenceEndPoint;
                 i = j;
             }
@@ -951,6 +1052,14 @@
             }
 
             simplified.push(points[points.length - 1]); // Always keep the end point
+
+            // A closed loop reduced below 3 points is degenerate geometry
+            // that would produce a missing or zero-area cut. Abort and
+            // return the original points to preserve the shape.
+            if (simplified.length < 3 && points.length >= 3) {
+                return points;
+            }
+
             return simplified;
         }
 

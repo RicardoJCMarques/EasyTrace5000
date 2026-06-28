@@ -1,6 +1,6 @@
 /*!
  * @file        cam-core.js
- * @description Core engine — state, parsing, shared infrastructure, pipeline execution
+ * @description Core engine - state, parsing, shared infrastructure, pipeline execution
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
@@ -46,7 +46,7 @@
             // Initialize fileTypes from config
             this.fileTypes = {};
 
-            // Settings — populated by controller via loadSettings(storageKey)
+            // Settings - populated by controller via loadSettings(storageKey)
             this.settings = JSON.parse(JSON.stringify(D));
 
             // Statistics
@@ -62,7 +62,7 @@
                 toolpaths: 0
             };
 
-            // Parser registry — populated by app controllers
+            // Parser registry - populated by app controllers
             this.parsers = new Map();
 
             // Universal workspace state
@@ -73,7 +73,6 @@
             // (tools, readouts, buildToolContext) work unchanged.
             this.scene = (typeof Scene !== 'undefined') ? new Scene() : null;
             this.sceneInteraction = this.scene;
-            this.stock = null;
 
             // Pipeline type: 'cnc' | 'laser' | 'hybrid'
             // Set by the application controller via setPipelineType().
@@ -89,6 +88,21 @@
             this.geometryOffsetter = null;
             this.processorInitialized = false;
             this.initializationPromise = null;
+        }
+
+        // Stock getter/setter - canonical location is settings.machine.stock.
+        // Direct property mutations (core.stock.width = 600) work because the
+        // getter returns the settings reference. Full replacement (core.stock = {...})
+        // goes through the setter. Either way, call saveSettings() to persist.
+
+        get stock() {
+            return this.settings?.machine?.stock || null;
+        }
+
+        set stock(val) {
+            if (this.settings?.machine) {
+                this.settings.machine.stock = val;
+            }
         }
 
         /**
@@ -277,12 +291,22 @@
          * Settings
          */
 
-        loadSettings(storageKey) {
-            this.settingsStorageKey  = storageKey;
+        loadSettings(storageKey, appProfile = null) {
+            this.settingsStorageKey = storageKey;
             const defaults = JSON.parse(JSON.stringify(D));
 
+            // Merge app-profile defaults into the factory baseline BEFORE
+            // localStorage is applied on top.  Final precedence:
+            //   factory D  <  profile machineDefaults/laserDefaults  <  saved localStorage
+            if (appProfile?.machineDefaults) {
+                mergeDeep(defaults.machine, appProfile.machineDefaults);
+            }
+            if (appProfile?.laserDefaults) {
+                mergeDeep(defaults.laser, appProfile.laserDefaults);
+            }
+
             try {
-                const raw = localStorage.getItem(this.settingsStorageKey );
+                const raw = localStorage.getItem(this.settingsStorageKey);
                 if (!raw) return defaults;
 
                 const saved = JSON.parse(raw);
@@ -291,20 +315,27 @@
                 if (saved.laser && saved.laser.profiles) {
                     for (const [profId, savedProf] of Object.entries(saved.laser.profiles)) {
                         if (defaults.laser.profiles[profId] && savedProf.layerColors) {
-                            // Splice the saved custom colors into the fresh factory defaults
                             defaults.laser.profiles[profId].layerColors = {
                                 ...defaults.laser.profiles[profId].layerColors,
                                 ...savedProf.layerColors
                             };
                         }
                     }
-                    // Delete the cached profiles object so mergeDeep doesn't blindly overwrite the live defaults with the rest of the outdated cached data.
-                    delete saved.laser.profiles; 
+                    delete saved.laser.profiles;
                 }
 
-                // Safely deep merge saved settings over defaults
-                const mergedSettings = mergeDeep({}, defaults, saved);
+                // Migrate: fold legacy separate pipeline key into the settings blob
+                // REVIEW - Possibly useless by now. Also do something about the error?
+                if (!saved.pipeline) {
+                    try {
+                        const legacyPipeline = localStorage.getItem(this.settingsStorageKey.replace('_settings', '_pipeline'));
+                        if (legacyPipeline) {
+                            saved.pipeline = JSON.parse(legacyPipeline);
+                        }
+                    } catch (e) { /* ignore */ }
+                }
 
+                const mergedSettings = mergeDeep({}, defaults, saved);
                 return mergedSettings;
             } catch (error) {
                 console.warn('Error loading settings from localStorage:', error);
@@ -513,15 +544,12 @@
         }
 
         /**
-         * Parsing — delegates classification to handlers
+         * Parsing - delegates classification to handlers
          */
 
         async parseOperation(operation) {
             try {
-                // REVIEW - this check never passes? This doesn't exist any more?
-                if (debugState.logging?.parseOperations) {
-                    console.log(`Parsing ${operation.file.name}...`);
-                }
+                this.debug(`[parseOperation] Parsing ${operation.file.name}...`);
 
                 let parseResult;
                 const parser = this.getParser(operation.file.name);
@@ -953,7 +981,7 @@
          */
         async executePipeline(operationContextPairs, options = {}) {
             if (!this.geometryTranslator || !this.machineProcessor) {
-                throw new Error('Pipeline components not initialized — call initializePipeline() first');
+                throw new Error('Pipeline components not initialized - call initializePipeline() first');
             }
 
             const optimize = options.optimize !== false;
@@ -1018,7 +1046,7 @@
          * Offset Strategy Builder
          *
          * Translates pipeline-specific UI parameters into a pipeline-agnostic
-         * strategy object. Called before any handler runs — handlers never
+         * strategy object. Called before any handler runs - handlers never
          * need to check pipeline type.
          *
          * @param {Object} operation - The operation with .type and .bounds
@@ -1091,7 +1119,7 @@
 
                 case 'clearing':
                     combineOffsets = true;
-                    // No targetWidth — handler loop runs until geometry collapses.
+                    // No targetWidth - handler loop runs until geometry collapses.
                     passes = 500;
                     break;
 
@@ -1185,7 +1213,7 @@
             }
             const t = this.scene.transform;
 
-            // Workspace matrix (rotation + mirror, NO origin) — still published
+            // Workspace matrix (rotation + mirror, NO origin) - still published
             // separately because GraphicsExporter composes origin itself.
             const wsMatrix = TransformMath.clone(this.scene.getWorkspaceMatrix());
 
@@ -1229,21 +1257,18 @@
             // Get all parameters from manager
             const params = parameterManager.getAllParameters(operationId);
 
-            // Drill milling aliases — JSON can't have duplicate keys with different
+            // Drill milling aliases - JSON can't have duplicate keys with different
             // conditionals, so EasyShape's profile uses prefixed names (drillMultiDepth,
             // drillDepthPerPass, drillEntryType) for drill-specific depth params that
             // share names with profile/pocket params. Map them to the standard names
             // the pipeline expects. EasyTrace's profile doesn't need this (its drill
             // params use unique categories, not duplicate keys).
             // REVIEW - Review if there's a better approach to this - there's already a new per app/operation input defaults override?
-            if (operation.type === 'drill' && params.millHoles) {
-                if (params.drillMultiDepth !== undefined && params.multiDepth === undefined)
-                    params.multiDepth = params.drillMultiDepth;
-                if (params.drillDepthPerPass !== undefined && params.depthPerPass === undefined)
-                    params.depthPerPass = params.drillDepthPerPass;
-                if (params.drillEntryType !== undefined && params.entryType === undefined)
-                    params.entryType = params.drillEntryType;
-            }
+            const isDrill = operation.type === 'drill';
+            const mappedMultiDepth = isDrill && params.drillMultiDepth !== undefined ? params.drillMultiDepth : params.multiDepth;
+            const mappedDepthPerPass = isDrill && params.drillDepthPerPass !== undefined ? params.drillDepthPerPass : params.depthPerPass;
+            const mappedEntryType = isDrill && params.drillEntryType !== undefined ? params.drillEntryType : params.entryType;
+            const mappedStepOver = isDrill && params.drillStepOver !== undefined ? params.drillStepOver : params.stepOver;
 
             // Get global settings
             const machine = this.settings.machine;
@@ -1325,11 +1350,11 @@
                 },
                 strategy: {
                     cutDepth: params.cutDepth,
-                    depthPerPass: params.depthPerPass,
-                    multiDepth: params.multiDepth,
+                    depthPerPass: mappedDepthPerPass,
+                    multiDepth: mappedMultiDepth,
                     passes: params.passes,
-                    stepOver: params.stepOver,
-                    entryType: params.entryType,
+                    stepOver: mappedStepOver,
+                    entryType: mappedEntryType,
                     drill: {
                         millHoles: params.millHoles,
                         peckDepth: params.peckDepth,
@@ -1355,7 +1380,10 @@
                 // Computed Values
                 computed: {
                     offsetDistances: offsetDistances,
-                    depthLevels: depthLevels
+                    depthLevels: depthLevels,
+                    toolpathPolicy: this.handlers.has(operation.type)
+                        ? this.getHandler(operation.type).getToolpathPolicy()
+                        : null
                 },
 
                 // Transform Values
@@ -1380,7 +1408,7 @@
             }
 
             // Prevent accidental mutation by downstream pipeline stages.
-            // TODO [METADATA-BLOAT] — Deep-freeze nested objects or replace
+            // TODO [METADATA-BLOAT] - Deep-freeze nested objects or replace
             // plan.metadata.context references with explicit field copies.
             Object.freeze(context);
 
@@ -1588,7 +1616,7 @@
          */
         async generateCNCResults(intent, parameterManager) {
             if (!this.gcodeGenerator) {
-                throw new Error('G-code generator not set — call setGCodeGenerator() first');
+                throw new Error('G-code generator not set - call setGCodeGenerator() first');
             }
 
             const gcodeConfig = this.settings.gcode;
@@ -1937,7 +1965,7 @@
 
         /**
          * Generates laser/stencil export files using the unified context builder.
-         * Returns blobs without triggering downloads — caller decides when to download.
+         * Returns blobs without triggering downloads - caller decides when to download.
          *
          * @param {Array} operations - Operation objects to export
          * @param {ParameterManager} parameterManager - For buildToolpathContext
@@ -2126,7 +2154,7 @@
 
     /**
      * Deep-merges one or more source objects into target.
-     * Arrays are replaced, not concatenated. Pure utility — no class dependency.
+     * Arrays are replaced, not concatenated. Pure utility - no class dependency.
      */
     function mergeDeep(target, ...sources) {
         for (const source of sources) {

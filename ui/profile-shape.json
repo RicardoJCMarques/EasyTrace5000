@@ -71,9 +71,9 @@
       "zeroReference": "bottom-left"
     },
     "heights": {
-      "safeZ": 15.0,
-      "travelZ": 5.0,
-      "feedHeight": 2.0,
+      "safeZ": 25.0,
+      "travelZ": 10.0,
+      "feedHeight": 5.0,
       "maxSafeDepth": -50.0
     },
     "speeds": {
@@ -523,9 +523,7 @@
       "operationTypes": ["profile", "pocket"],
       "default": "plunge",
       "options": [
-        { "value": "plunge", "label": "Plunge (Vertical)" },
-        { "value": "ramp", "label": "Ramp (Angled entry)" },
-        { "value": "helix", "label": "Helix (Spiral entry)" }
+        { "value": "plunge", "label": "Plunge (Vertical)" }
       ]
     },
     "finishingPass": {

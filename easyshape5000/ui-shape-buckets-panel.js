@@ -1,10 +1,10 @@
 /*!
  * @file        easyshape5000/ui-shape-buckets-panel.js
- * @description Operation buckets panel — EasyShape5000 only.
+ * @description Operation buckets panel - EasyShape5000 only.
  *              Manages the operation list below the scene tree.
  *              Each bucket represents one CAM operation with three
  *              stage nodes: Geometry, Offsets, Preview.
- *              Emits events — the controller decides what to execute.
+ *              Emits events - the controller decides what to execute.
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
  * @see         {@link https://github.com/RicardoJCMarques/EasyTrace5000}
@@ -37,6 +37,8 @@
             if (!operation) return;
 
             operation.primitives = [];
+            operation.shapeKeyToNodeId = new Map();   // dense sourceId → scene node id (UI / debug / future reorder)
+            let shapeKeySeq = 0;
             const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
 
             for (const sid of this.shapeRefs) {
@@ -47,6 +49,22 @@
                 const m = shape.getWorldMatrix();
                 const transformed = GeometryUtils.transformPrimitive(shape.primitive, m);
                 if (!transformed) continue;
+
+                // Per-operation dense identity (1..N).
+                const sourceId = ++shapeKeySeq;
+                (transformed.properties ||= {}).sourceId = sourceId;
+                operation.shapeKeyToNodeId.set(sourceId, sid);
+
+                // Stamp non-arc points so the Z channel carries identity through Clipper booleans.
+                // Only full circles don't have non-arc points.
+                if (transformed.contours) {
+                    for (const c of transformed.contours) {
+                        if (!c.points) continue;
+                        for (const pt of c.points) {
+                            if (!pt.curveId || pt.curveId <= 0) pt.sourceId = sourceId;
+                        }
+                    }
+                }
 
                 operation.primitives.push(transformed);
 
@@ -279,7 +297,7 @@
                 if (stageNode) {
                     stageNode.classList.add('selected');
                 } else {
-                    // Stage doesn't exist in DOM (data was deleted) — fall back to header
+                    // Stage doesn't exist in DOM (data was deleted) - fall back to header
                     row.querySelector('.bucket-header')?.classList.add('selected');
                     this.selectedNode.stage = 'geometry';
                 }

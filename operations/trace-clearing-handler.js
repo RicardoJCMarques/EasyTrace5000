@@ -1,5 +1,5 @@
 /*!
- * @file        operations/clearing-operation-handler.js
+ * @file        operations/trace-clearing-handler.js
  * @description Copper clearing — always-internal offsets with cut-in resolution
  * @author      Eltryus - Ricardo Marques
  * @copyright   2025-2026 Eltryus - Ricardo Marques
@@ -17,6 +17,12 @@
         isCopperOperation() { return true; }
         isInternalOffset() { return true; }
         isOnLine() { return false; }
+
+        getToolpathPolicy() {
+            return {
+                staydownPartition: 'proximity'
+            };
+        }
 
         /**
          * Clearing intentionally collapses geometry inward until nothing
