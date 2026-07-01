@@ -19,6 +19,7 @@
             super(ctrl);
 
             this.shapeOperationPanel = null;
+            this.canvasExporter = null;
             this.navScenePanel = null;
             this.opsPanel = null;
 
@@ -256,8 +257,15 @@
                     this.rebuildLayers();
                 } else if (action === 'delete-stage') {
                     this.opsPanel.clearBucketStage(bucketId, stage, this.ctrl.core);
-                    const prevStage = stage === 'preview' ? 'offsets' : 'geometry';
-                    this.opsPanel.selectStage(bucketId, prevStage);
+
+                    // If the bucket has no offsets and no preview objects just delete it
+                    const bucket = this.opsPanel.getBucket(bucketId);
+                    if (bucket && !bucket.hasOffsets && !bucket.hasPreview) {
+                        this.opsPanel.removeBucket(bucketId, this.ctrl.core);
+                    } else {
+                        const prevStage = stage === 'preview' ? 'offsets' : 'geometry';
+                        this.opsPanel.selectStage(bucketId, prevStage);
+                    }
                     this.rebuildLayers();
                 }
             });

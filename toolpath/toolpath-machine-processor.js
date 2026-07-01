@@ -141,7 +141,7 @@
                     const surfaceZ = startXY.z !== undefined ? startXY.z : 0; 
                     let currentZ = surfaceZ;
 
-                    const finalZ = strategy.cutDepth; // Negative value
+                    const finalZ = meta.depthLevels[meta.depthLevels.length - 1];
                     const stepZ = Math.abs(strategy.depthPerPass);
                     let goingForward = true;
 
@@ -267,19 +267,38 @@
                     const useTabs = isTabbedFeature && tabTopZ !== undefined &&
                                     depth < tabTopZ - PRECISION;
 
-                    for (const cmd of plan.commands) {
-                        if (useTabs && cmd.metadata?.isTab === true) {
-                             // Tab Lift
+                    // Track tab state to keep the tool up during multi-segment tabs
+                    let inTab = false;
+
+                    // Select the continuous path for upper layers, and the sliced path for tab layers
+                    const activeCommands = useTabs ? plan.commands : (plan.metadata.standardCommands || plan.commands);
+
+                    for (const cmd of activeCommands) {
+                        const isTabCmd = useTabs && cmd.metadata?.isTab === true;
+
+                        if (isTabCmd && !inTab) {
+                            // Entering a tab: Lift to tab height
                             cuttingPlan.addLinear(null, null, tabTopZ, plungeRate);
-                            cuttingPlan.addCommand({ ...cmd, z: tabTopZ });
+                            inTab = true;
+                        } else if (!isTabCmd && inTab) {
+                            // Exiting a tab: Plunge back to cut depth
                             cuttingPlan.addLinear(null, null, depth, plungeRate);
+                            inTab = false;
+                        }
+
+                        if (isTabCmd) {
+                            cuttingPlan.addCommand({ ...cmd, z: tabTopZ });
                         } else {
-                            // Normal Cut
                             cuttingPlan.addCommand({ ...cmd, z: depth });
                         }
 
                         if (cmd.x !== null) this.currentPosition.x = cmd.x;
                         if (cmd.y !== null) this.currentPosition.y = cmd.y;
+                    }
+
+                    // Return to standard depth if the path ends while still on a tab
+                    if (inTab) {
+                        cuttingPlan.addLinear(null, null, depth, plungeRate);
                     }
 
                     machineReadyPlans.push(cuttingPlan);
@@ -385,8 +404,9 @@
             const revolutions = Math.abs(targetDepth) / helixPitch;
             const steps = Math.ceil(revolutions * helixConfig.segmentsPerRevolution);
 
-            // Feed to material surface (Z0) to start helix geometry
-            plan.addLinear(null, null, 0, plungeRate);
+            // Feed to set 0 (Top or bottom of stock) to start helix geometry
+            const surfaceZ = this.context.machine.surfaceZ || 0;
+            plan.addLinear(null, null, surfaceZ, plungeRate);
 
             for (let i = 1; i <= steps; i++) {
                 const angle = (i / steps) * revolutions * 2 * Math.PI * angleDir;
@@ -402,8 +422,9 @@
 
         /* IGNORE UNTIL PROPERLY DEVELOPED AND TESTED
         generateRampEntry(plan, purePlan, targetDepth, plungeRate) {
-            // Feed to material surface (Z0)
-            plan.addLinear(null, null, 0, plungeRate);
+            // Feed to set 0 (Top or bottom of stock) to start ramping
+            const surfaceZ = this.context.machine.surfaceZ || 0;
+            plan.addLinear(null, null, surfaceZ, plungeRate);
 
             const rampAngle = this.context.strategy.entryRampAngle;
             const rampSlope = Math.tan(rampAngle * Math.PI / 180);
@@ -470,14 +491,14 @@
 
             // Single plunge
             if (supportsCanned && strategy.cannedCycle !== 'none') {
+                const retractPlane = strategy.retractHeight + (this.context.machine.surfaceZ || 0);
                 // Dispatch to Canned Cycle Primitive, passing the specific cycle type
                 if (strategy.cannedCycle === 'G83' || strategy.cannedCycle === 'G73') {
-                    machinePlan.addCannedPeck(position.x, position.y, finalDepth, strategy.retractHeight, strategy.peckDepth, cutting.plungeRate, strategy.cannedCycle);
+                    machinePlan.addCannedPeck(position.x, position.y, finalDepth, retractPlane, strategy.peckDepth, cutting.plungeRate, strategy.cannedCycle);
                 } else {
-                    machinePlan.addCannedSimple(position.x, position.y, finalDepth, strategy.retractHeight, cutting.plungeRate, strategy.dwellTime);
+                    machinePlan.addCannedSimple(position.x, position.y, finalDepth, retractPlane, cutting.plungeRate, strategy.dwellTime);
                 }
-                // Update tracker: Machine ends cycle at the retract plane
-                this.currentPosition.z = strategy.retractHeight;
+                this.currentPosition.z = retractPlane;
 
             } else if (strategy.cannedCycle === 'none' || strategy.peckDepth === 0 || strategy.peckDepth >= Math.abs(finalDepth)) {
                 // Standard manual single plunge
@@ -488,8 +509,9 @@
                 machinePlan.addRetract(machine.travelZ);
             } else {
                 // Standard manual pecking loop
-                let lastCutDepth = 0;
-                const retractPlane = strategy.retractHeight;
+                const surfaceZ = this.context.machine.surfaceZ || 0;
+                let lastCutDepth = surfaceZ;
+                const retractPlane = strategy.retractHeight + surfaceZ;
                 const rapidDownClearance = 0.1;
 
                 while (lastCutDepth > finalDepth) {
@@ -498,7 +520,7 @@
                         targetPeckDepth = finalDepth;
                     }
 
-                    const rapidDownTo = (lastCutDepth === 0) ? this.FEED_HEIGHT : (lastCutDepth + rapidDownClearance);
+                    const rapidDownTo = (lastCutDepth === surfaceZ) ? this.FEED_HEIGHT : (lastCutDepth + rapidDownClearance);
                     machinePlan.addRapid(undefined, undefined, rapidDownTo);
 
                     machinePlan.addPlunge(targetPeckDepth, cutting.plungeRate);
@@ -564,11 +586,12 @@
             const startY = purePlan.metadata.entryPoint.y;
             const startAngle = Math.atan2(startY - center.y, startX - center.x);
 
+            const surfaceZ = this.context.machine.surfaceZ || 0;
             machinePlan.addRapid(startX, startY, null);
-            machinePlan.addLinear(startX, startY, 0, plungeRate);
+            machinePlan.addLinear(startX, startY, surfaceZ, plungeRate);
 
             const ring = { center, radius };
-            const finalAngle = this.helixDownRing(machinePlan, ring, startAngle, 0, targetDepth, feedRate, toolDiameter, arcCW);
+            const finalAngle = this.helixDownRing(machinePlan, ring, startAngle, surfaceZ, targetDepth, feedRate, toolDiameter, arcCW);
             this.fullCircleAtDepth(machinePlan, ring, finalAngle, targetDepth, feedRate, arcCW);
 
             machinePlan.addRetract(this.context.machine.travelZ);
@@ -614,13 +637,15 @@
 
             machinePlan.addRapid(initialEntryX, initialEntryY, this.context.machine.travelZ);
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
-            machinePlan.addLinear(initialEntryX, initialEntryY, 0, plungeRate);
 
-            let currentZ = 0;
+            const surfaceZ = this.context.machine.surfaceZ || 0;
+            machinePlan.addLinear(initialEntryX, initialEntryY, surfaceZ, plungeRate);
+
+            let currentZ = surfaceZ;
             const finalDepth = depthLevels[depthLevels.length - 1];
             if (rings.length === 1 && useHelix) {
                 // Update currentAngle with wherever the helix stops
-                currentAngle = this.helixDownRing(machinePlan, innerRing, currentAngle, 0, finalDepth, feedRate, toolDiameter, arcCW);
+                currentAngle = this.helixDownRing(machinePlan, innerRing, currentAngle, surfaceZ, finalDepth, feedRate, toolDiameter, arcCW);
                 this.fullCircleAtDepth(machinePlan, innerRing, currentAngle, finalDepth, feedRate, arcCW);
 
             } else {
@@ -756,15 +781,16 @@
             machinePlan.addRapid(innerEntry.x, innerEntry.y, this.context.machine.travelZ);
             machinePlan.addRapid(null, null, this.FEED_HEIGHT);
 
-            // Feed to material surface
-            machinePlan.addLinear(innerEntry.x, innerEntry.y, 0, plungeRate);
+            // Feed to set 0 (top or bottom of stock)
+            const surfaceZ = this.context.machine.surfaceZ || 0;
+            machinePlan.addLinear(innerEntry.x, innerEntry.y, surfaceZ, plungeRate);
 
-            let currentZ = 0;
+            let currentZ = surfaceZ;
             const finalDepth = depthLevels[depthLevels.length - 1];
 
             // Single-ring shortcut
             if (rings.length === 1 && useHelix) {
-                this.helixDownObround(machinePlan, innerRing, 0, finalDepth, plungeRate, feedRate, toolDiameter, arcCW);
+                this.helixDownObround(machinePlan, innerRing, surfaceZ, finalDepth, plungeRate, feedRate, toolDiameter, arcCW);
                 this.obroundLoopAtDepth(machinePlan, innerRing, finalDepth, feedRate, arcCW);
             } else {
                 // Multi-ring depth-staged loop
@@ -879,10 +905,11 @@
             const plungeRate = purePlan.metadata.plungeRate;
 
             const entryPt = arcCW ? od.pB : od.pC;
+            const surfaceZ = this.context.machine.surfaceZ || 0;
             machinePlan.addRapid(entryPt.x, entryPt.y, null);
-            machinePlan.addLinear(entryPt.x, entryPt.y, 0, plungeRate);
+            machinePlan.addLinear(entryPt.x, entryPt.y, surfaceZ, plungeRate);
 
-            this.helixDownObround(machinePlan, od, 0, finalDepth, plungeRate, feedRate, toolDiameter, arcCW);
+            this.helixDownObround(machinePlan, od, surfaceZ, finalDepth, plungeRate, feedRate, toolDiameter, arcCW);
             this.obroundLoopAtDepth(machinePlan, od, finalDepth, feedRate, arcCW);
 
             machinePlan.addRetract(this.context.machine.travelZ);

@@ -132,10 +132,9 @@
         init(containerId) {
             this.container = document.getElementById(containerId || 'operations-bucket-list');
             if (this.container) {
-                this.container.setAttribute('role', 'tree');
-                this.container.setAttribute('aria-label', 'Operations');
                 this.container.addEventListener('keydown', (e) => this.handleKeydown(e));
             }
+            this.updateEmptyState();
         }
 
         setSceneResolver(fn) {
@@ -270,8 +269,8 @@
                 op.exportReady = false;
             } else if (stage === 'offsets') {
                 op.offsets = [];
-                op.preview = null;
-                op.exportReady = false;
+                op.exportReady = false;   // no offsets → not exportable, even if a stale preview remains 
+                // REVIEW - just because offsets were deleted it technically doesn't mean the offsets are stale? Offssets can never be readed to a given bucket so the preview object is always updated.
             }
 
             bucket.syncStateFromOperation(core);
@@ -461,9 +460,21 @@
         }
 
         updateEmptyState() {
+            const isEmpty = this.buckets.size === 0;
+
             const emptyState = document.getElementById('ops-empty-state');
             if (emptyState) {
-                emptyState.style.display = this.buckets.size === 0 ? '' : 'none';
+                emptyState.style.display = isEmpty ? '' : 'none';
+            }
+
+            if (this.container) {
+                if (isEmpty) {
+                    this.container.removeAttribute('role');
+                    this.container.removeAttribute('aria-label');
+                } else {
+                    this.container.setAttribute('role', 'tree');
+                    this.container.setAttribute('aria-label', 'Operations');
+                }
             }
         }
 

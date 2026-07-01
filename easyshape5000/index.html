@@ -208,7 +208,7 @@
                 <header class="section-header">
                     <h2>Operations</h2>
                 </header>
-                <div class="operations-list" id="operations-bucket-list" role="tree" aria-label="Operations">
+                <div class="operations-list" id="operations-bucket-list">
                     <div class="empty-state" id="ops-empty-state">
                         Select geometry and generate offsets to create an operation object.
                     </div>
@@ -243,7 +243,7 @@
                     </button>
                 </div>
 
-                <div class="tree-view" id="scene-tree-list" role="tree" aria-label="Scene tree">
+                <div class="tree-view" id="scene-tree-list">
                     <div class="empty-state" id="scene-empty-state">
                         <strong>No paths yet</strong>
                         Import an SVG to populate the scene tree.
@@ -270,10 +270,10 @@
 
             <!-- Stock Setup -->
             <div class="sidebar-section stock-section">
-                <header class="section-header collapsible-header collapsible" data-target="stock-controls">
+                <div class="section-header collapsible-header collapsible" data-target="stock-controls">
                     <h2>Stock Setup</h2>
                     <span class="collapse-indicator">▼</span>
-                </header>
+                </div>
                 <div class="section-content collapsible" id="stock-controls">
                     <div class="property-field">
                         <label for="stock-width">Width</label>
@@ -311,11 +311,11 @@
                         <label id="stock-origin-label">Stock Origin Offset</label>
                         <div class="input-stack">
                             <div class="input-unit">
-                                <input type="number" id="stock-x-offset" value="0" step="0.5">
+                                <input type="number" id="stock-x-offset" value="0" step="0.5" aria-label="Stock origin X offset in mm">
                                 <span class="unit" aria-hidden="true">X mm</span>
                             </div>
                             <div class="input-unit">
-                                <input type="number" id="stock-y-offset" value="0" step="0.5">
+                                <input type="number" id="stock-y-offset" value="0" step="0.5" aria-label="Stock origin Y offset in mm">
                                 <span class="unit" aria-hidden="true">Y mm</span>
                             </div>
                         </div>
@@ -333,10 +333,10 @@
 
             <!-- Global Machine Parameters -->
             <div class="sidebar-section machine-section">
-                <header class="section-header collapsible-header collapsible" data-target="machine-controls">
+                <div class="section-header collapsible-header collapsible" data-target="machine-controls">
                     <h2>Machine Settings</h2>
                     <span class="collapse-indicator">▼</span>
-                </header>
+                </div>
                 <div class="section-content collapsible" id="machine-controls">
 
                     <div class="property-section">

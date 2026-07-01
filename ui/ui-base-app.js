@@ -70,6 +70,11 @@
             }
 
             this.renderer.render();
+
+            // Initialize Canvas Exporter after the renderer is created
+            if (typeof CanvasExporter !== 'undefined') {
+                this.canvasExporter = new CanvasExporter(this.renderer);
+            }
         }
 
         /**

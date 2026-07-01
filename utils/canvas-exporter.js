@@ -144,9 +144,8 @@
             const bounds = this.core.bounds;
 
             if (!bounds || !isFinite(bounds.width)) {
-                // Use the core's controller/UI reference instead of a hardcoded global
                 // REVIEW - What's happening here?
-                if (this.core.appProfile) {
+                if (this.renderer.appCore.appProfile) {
                     console.warn('No content to export');
                 }
                 return null;
@@ -166,7 +165,7 @@
 
         createExportComment() {
             const vo = this.core.options;
-            const appName = this.core.appProfile.meta.app || 'EasyCAM5000';
+            const appName = this.renderer.appCore.appProfile.meta.app;
             const commentText = ` ${appName} Canvas Export | ${new Date().toLocaleString()} \n Mode: ${vo.showWireframe ? 'Wireframe' : 'Solid'} | Geometry: ${vo.fuseGeometry ? 'Fused' : 'Source'} `;
             return document.createComment(commentText);
         }
@@ -229,16 +228,20 @@
             const mainGroup = document.createElementNS(this.svgNS, 'g');
             mainGroup.setAttribute('id', 'pcb-layers');
 
-            const viewState = this.core.getViewState();
             const fmt = (n) => this.formatNumber(n, config.decimals);
-            let transform = 'scale(1,-1)';
+            
+            // Baseline Y-flip to map from mathematical space to SVG's Y-down space
+            let transformStr = 'scale(1,-1)'; 
 
-            if (viewState.rotation !== 0) {
-                const c = this.core.rotationCenter;
-                transform += ` rotate(${viewState.rotation} ${fmt(c.x)} ${fmt(c.y)})`;
+            // Read the unified global transform matrix from the scene
+            if (this.core.scene) {
+                const wm = this.core.scene.getWorkspaceMatrix();
+                if (wm && typeof window.TransformMath !== 'undefined' && !window.TransformMath.isIdentity(wm)) {
+                    transformStr += ` matrix(${fmt(wm.a)} ${fmt(wm.b)} ${fmt(wm.c)} ${fmt(wm.d)} ${fmt(wm.e)} ${fmt(wm.f)})`;
+                }
             }
 
-            mainGroup.setAttribute('transform', transform);
+            mainGroup.setAttribute('transform', transformStr);
             this.exportVisibleLayers(mainGroup, config);
             return mainGroup;
         }
@@ -265,8 +268,17 @@
                 layerGroup.setAttribute('id', name);
                 layerGroup.classList.add('lg');
 
-                this.applyGroupClass(layerGroup, layer);
+                // Apply independent shape transforms
+                if (layer.transform) {
+                    const m = layer.transform;
+                    const fmt = (n) => this.formatNumber(n, config.decimals);
+                    layerGroup.setAttribute(
+                        'transform', 
+                        `matrix(${fmt(m.a)} ${fmt(m.b)} ${fmt(m.c)} ${fmt(m.d)} ${fmt(m.e)} ${fmt(m.f)})`
+                    );
+                }
 
+                this.applyGroupClass(layerGroup, layer);
                 // Export each primitive via dispatcher
                 layer.primitives.forEach(primitive => {
                     const el = this.primitiveToSVG(primitive, layer, config);

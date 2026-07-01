@@ -127,10 +127,8 @@
                 // Process contours (checking for tab configuration)
                 for (const contour of processable.contours) {
                     const isHole = contour.isHole || false;
-
-                    // Use the live context as the absolute source of truth
                     const tabCount = ctx.strategy?.cutout?.tabs || 0;
-                    const isTabbedCutout = ctx.operationType === 'cutout' && tabCount > 0;
+                    const isTabbedCutout = (ctx.operationType === 'cutout' || ctx.operationType === 'profile') && tabCount > 0;
 
                     if (isTabbedCutout && this.tabPlanner) {
                         plans.push(...this.processTabbedContour(contour, ctx, isHole, parentShapeKey, featureId, parentPass));
@@ -544,23 +542,24 @@
         processTabbedContour(contour, ctx, isHole, parentShapeKey, featureId, parentPass) {
             const tabConfig = ctx.strategy.cutout; 
 
-            // Create flat segmented commands via Tab Planner
+            // Generate the standard, continuous (unsliced) path
+            const tempPlan = new ToolpathPlan(ctx.operationId);
+            tempPlan.metadata.context = ctx;
+            tempPlan.metadata.isClosed = true;
+            this.translatePrimitiveToCutting(tempPlan, contour, ctx.cutting.feedRate);
+            const standardCommands = tempPlan.commands.map(cmd => {
+                cmd.metadata = cmd.metadata || {};
+                cmd.metadata.isTab = false;
+                return cmd;
+            });
+
+            // Generate the tab-sliced path if tabs are requested
             let commandsToSend = [];
             if (tabConfig.tabs > 0 && this.tabPlanner) {
                 commandsToSend = this.tabPlanner.calculateTabPositions(contour, ctx);
             }
-
-            // Fallback if tab calculation fails or tabs = 0
             if (commandsToSend.length === 0) {
-                const tempPlan = new ToolpathPlan(ctx.operationId);
-                tempPlan.metadata.context = ctx;
-                tempPlan.metadata.isClosed = true;
-                this.translatePrimitiveToCutting(tempPlan, contour, ctx.cutting.feedRate);
-                commandsToSend = tempPlan.commands.map(cmd => {
-                    cmd.metadata = cmd.metadata || {};
-                    cmd.metadata.isTab = false;
-                    return cmd;
-                });
+                commandsToSend = standardCommands;
             }
 
             const plan = this.createPurePlan(contour, ctx, true, isHole, false);
@@ -571,9 +570,17 @@
             plan.metadata.pass = parentPass ?? plan.metadata.pass;
 
             plan.commands = commandsToSend;
+            plan.metadata.standardCommands = standardCommands;
 
             // Flag that this plan has tab segments requiring Z-expansion
             plan.metadata.isTabbedPass = tabConfig.tabs > 0;
+
+            // Calculate tab top from the absolute bottom machine depth
+            const finalDepth = ctx.computed.depthLevels[ctx.computed.depthLevels.length - 1];
+            plan.metadata.tabTopZ = finalDepth + tabConfig.tabHeight;
+
+            // Pass the depth levels array
+            plan.metadata.depthLevels = ctx.computed.depthLevels;
 
             plan.computeBounds();
             this.enforceClimbMilling(plan, isHole);

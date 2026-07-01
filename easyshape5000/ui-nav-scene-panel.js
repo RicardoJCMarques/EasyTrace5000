@@ -34,9 +34,6 @@
         init(containerId) {
             this.treeContainer = document.getElementById(containerId || 'scene-tree-list');
             if (this.treeContainer) {
-                this.treeContainer.setAttribute('role', 'tree');
-                this.treeContainer.setAttribute('aria-label', 'Scene tree');
-
                 // Keyboard navigation via shared utility
                 UIControls.setupTreeKeyboard(this.treeContainer, '[role="treeitem"]', {
                     onSelect: (id, e) => {
@@ -189,10 +186,16 @@
             if (this.sceneRef.shapeCount() === 0) {
                 if (emptyState) emptyState.style.display = '';
                 if (clearBtn) clearBtn.style.display = 'none';
+                // Empty tree owns no treeitems. Drop the role so it doesn't
+                // trip aria-required-children.
+                list.removeAttribute('role');
+                list.removeAttribute('aria-label');
                 return;
             }
             if (emptyState) emptyState.style.display = 'none';
             if (clearBtn) clearBtn.style.display = '';
+            list.setAttribute('role', 'tree');
+            list.setAttribute('aria-label', 'Scene tree');
 
             const selectedIds = this.sceneRef.selection.toSet();
 

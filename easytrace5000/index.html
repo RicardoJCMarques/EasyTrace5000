@@ -67,7 +67,7 @@
                     "applicationSubCategory": "CAM Software",
                     "operatingSystem": "Any (Browser-based)",
                     "browserRequirements": "Requires JavaScript and WebAssembly support",
-                    "softwareVersion": "1.4.1",
+                    "softwareVersion": "1.4.2",
                     "releaseNotes": "https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md",
                     "installUrl": "https://cam.eltryus.design/easytrace5000/",
                     "sameAs": "https://github.com/RicardoJCMarques/EasyTrace5000",
@@ -289,10 +289,10 @@
         <aside class="sidebar sidebar-right" id="sidebar-right" aria-label="Properties">
             <!-- Board Placement -->
             <div class="sidebar-section coordinate-section">
-                <header class="section-header collapsible-header collapsible" data-target="coordinate-controls">
+                <div class="section-header collapsible-header collapsible" data-target="coordinate-controls">
                     <h2>Board Placement</h2>
                     <span class="collapse-indicator">▼</span>
-                </header>
+                </div>
                 <div class="section-content collapsible" id="coordinate-controls">
 
                     <div class="origin-section">
@@ -359,10 +359,10 @@
 
             <!-- Global Machine Parameters -->
             <div class="sidebar-section machine-section">
-                <header class="section-header collapsible-header collapsible" data-target="machine-controls">
+                <div class="section-header collapsible-header collapsible" data-target="machine-controls">
                     <h2>Machine Settings</h2>
                     <span class="collapse-indicator">▼</span>
-                </header>
+                </div>
                 <div class="section-content collapsible" id="machine-controls">
 
                     <div class="property-section" data-pipeline-group="cnc">
@@ -711,7 +711,7 @@
         </div>
         <div class="status-right" id="status-right">
             <div class="status-info license-info">
-                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false" aria-label="Changelog (opens in a new tab)">Version 1.4.1</a> |
+                <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="Version" draggable="false" aria-label="Changelog (opens in a new tab)">Version 1.4.2</a> |
                 <a href="/" title="Return to Homepage" draggable="false">Home</a> |
                 <a href="../LICENSE" target="_blank" title="View License" draggable="false" aria-label="View AGPLv3 License (opens in a new tab)">AGPLv3</a> |
                 <a href="doc/" target="_blank" title="Documentation" draggable="false" aria-label="Documentation (opens in a new tab)">Doc</a> |
@@ -853,7 +853,7 @@
             </div>
             <div class="modal-footer welcome-footer">
                 <div class="welcome-footer-links">
-                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="version" target="_blank" draggable="false" aria-label="Changelog (opens in a new tab)">v1.4.1</a>
+                    <a href="https://github.com/RicardoJCMarques/EasyTrace5000/blob/main/CHANGELOG.md" title="version" target="_blank" draggable="false" aria-label="Changelog (opens in a new tab)">v1.4.2</a>
                     <span class="separator" aria-hidden="true"></span>
                     <a href="doc/" target="_blank" draggable="false" aria-label="Documentation (opens in a new tab)">Documentation</a>
                     <span class="separator" aria-hidden="true"></span>
@@ -1483,7 +1483,7 @@
             }
 
             // App Initialization
-            console.log('EasyTrace5000 Advanced Workspace v1.4.1');
+            console.log('EasyTrace5000 Advanced Workspace v1.4.2');
             const loadingText = document.getElementById('loading-text');
             const loadingProgress = document.getElementById('loading-progress');
             if (loadingText) loadingText.textContent = 'Ready';

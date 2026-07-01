@@ -392,7 +392,45 @@
             else if (commands.length > 1) this.history.executeAndRecord(new CompositeCommand(commands, 'Reset Transforms'));
         }
 
+        // ════════════════════════════════════════════════════════════════
+        // Bucket Lifecycle
+        // ════════════════════════════════════════════════════════════════
+
+        /**
+         * Removes stale shape refs from every bucket. If a bucket loses
+         * all its refs (every source shape was deleted), the bucket and
+         * its backing core operation are removed entirely.
+         */
+        cleanupOrphanedBuckets() {
+            if (!this.ui.opsPanel) return;
+
+            const bucketsToRemove = [];
+
+            for (const bucket of this.ui.opsPanel.getAllBuckets()) {
+                const prevCount = bucket.shapeRefs.length;
+
+                bucket.shapeRefs = bucket.shapeRefs.filter(ref =>
+                    this.scene.findShape(ref) !== null
+                );
+
+                if (bucket.shapeRefs.length === 0) {
+                    bucketsToRemove.push(bucket.id);
+                } else if (bucket.shapeRefs.length !== prevCount) {
+                    // Some refs died but bucket survives — update count + invalidate
+                    bucket.isInvalidated = true;
+                    bucket.invalidatedReason = 'Source shape(s) deleted. Regenerate offsets.';
+                    this.ui.opsPanel.updateBucketDOM(bucket, this.core);
+                }
+            }
+
+            for (const bucketId of bucketsToRemove) {
+                this.ui.opsPanel.removeBucket(bucketId, this.core);
+            }
+        }
+
         afterMutation() {
+            this.cleanupOrphanedBuckets();
+
             if (this.ui.opsPanel) {
                 // Collect IDs of shapes that could have changed
                 const changedShapeIds = new Set();
@@ -418,6 +456,7 @@
         }
 
         afterFlagMutation() {
+            this.cleanupOrphanedBuckets();
             this.ui.navScenePanel.updateFlagStates();
             this.ui.navScenePanel.syncTreeToolbar(this.selection, this.scene);
             this.ui.syncTransformFromSelection();
@@ -443,7 +482,17 @@
             }
         }
 
-        clearScene() { this.scene.clear(); this.history.clear(); }
+        clearScene() {
+            // Remove all buckets before clearing the scene so core
+            // operations are cleaned up in the correct order.
+            if (this.ui.opsPanel) {
+                for (const bucket of this.ui.opsPanel.getAllBuckets()) {
+                    this.ui.opsPanel.removeBucket(bucket.id, this.core);
+                }
+            }
+            this.scene.clear();
+            this.history.clear();
+        }
 
         // ════════════════════════════════════════════════════════════════
         // Toolbar
@@ -479,6 +528,21 @@
             document.getElementById('btn-clear-all')?.addEventListener('click', () => {
                 if (this.scene.shapeCount() === 0) return;
                 this.clearScene(); this.ui.renderAll(); this.ui.setStatus('Scene cleared');
+            });
+
+            document.getElementById('toolbar-export-canvas')?.addEventListener('click', async () => {
+                if (!this.ui.canvasExporter) {
+                    this.ui.setStatus('Canvas exporter not available', 'error');
+                    return;
+                }
+                try {
+                    this.ui.canvasExporter.exportCanvasSVG();
+                    this.ui.setStatus('Canvas exported successfully', 'success');
+                } catch (error) {
+                    console.error('Canvas export error:', error);
+                    this.ui.setStatus('Canvas export failed: ' + error.message, 'error');
+                }
+                this.closeDropdown();
             });
 
             this.setupSharedToolbarButtons();

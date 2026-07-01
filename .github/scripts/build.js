@@ -34,10 +34,18 @@ const CONFIG = {
     // Documentation pages to process (CSS inlining only)
     docPages: [
         'index.html',
+        // EasyTrace5000 Docs
         'easytrace5000/doc/index.html',
         'easytrace5000/doc/cnc.html', 
         'easytrace5000/doc/laser.html',
-        'easytrace5000/doc/accessibility.html'
+        'easytrace5000/doc/operations.html',
+        'easytrace5000/doc/parameters.html',
+        'easytrace5000/doc/accessibility.html',
+        // EasyShape5000 Docs
+        'easyshape5000/doc/index.html',
+        'easyshape5000/doc/guide.html',
+        'easyshape5000/doc/operations.html',
+        'easyshape5000/doc/parameters.html'
     ],
 
     // Files/folders to exclude from dist
@@ -419,6 +427,9 @@ class Builder {
 
         const spriteBlock = `<svg id="cam-icon-sprite" aria-hidden="true" style="position: absolute; width: 0; height: 0; visibility: hidden;">\n${symbols.join('\n')}\n</svg>`;
 
+        // Regex to safely locate and remove the redundant fetch logic
+        const fetchScriptRegex = /\s*\/\/\s*Load the SVG Sprite[\s\S]*?\.catch\([^;]+;/g;
+
         // Inject into each app HTML
         for (const app of CONFIG.apps) {
             const htmlPath = path.join(this.distDir, app.html);
@@ -429,6 +440,9 @@ class Builder {
             // Inject sprite directly after <body> tag
             html = html.replace(/<body>/, `<body>\n${spriteBlock}`);
 
+            // Strip the inline fetch script
+            html = html.replace(fetchScriptRegex, '');
+
             writeFile(htmlPath, html);
         }
 
@@ -436,9 +450,14 @@ class Builder {
         for (const page of CONFIG.docPages) {
             const pagePath = path.join(this.distDir, page);
             if (!fs.existsSync(pagePath)) continue;
+            
             let html = readFile(pagePath);
             if (html.includes('cam-icon')) {
                 html = html.replace(/<body>/, `<body>\n${spriteBlock}`);
+                
+                // Strip the inline fetch script
+                html = html.replace(fetchScriptRegex, '');
+                
                 writeFile(pagePath, html);
             }
         }
@@ -506,7 +525,7 @@ class Builder {
             let bundleRelPath = path.relative(path.dirname(htmlPath), bundleAbsPath).replace(/\\/g, '/');
             if (!bundleRelPath.startsWith('.')) bundleRelPath = './' + bundleRelPath;
 
-            const bundleTag = `    \n    <script defer src="${bundleRelPath}"></script>\n`;
+            const bundleTag = `    \n    <script defer fetchpriority="high" src="${bundleRelPath}"></script>\n`;
             htmlContent = htmlContent.replace('</body>', `${bundleTag}</body>`);
             htmlContent = htmlContent.replace(/^\s*[\r\n]/gm, '');
 

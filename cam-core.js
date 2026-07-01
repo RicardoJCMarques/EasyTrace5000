@@ -1171,17 +1171,17 @@
         /**
          * Calculates the final Z-depth levels for a toolpath.
          */
-        calculateDepthLevels(cutDepth, depthPerPass, multiDepth) {
-            // Ensure cutDepth is negative
-            const finalDepth = Math.abs(cutDepth) * -1;
+        calculateDepthLevels(cutDepth, depthPerPass, multiDepth, surfaceZ = 0) {
+            const totalCutDist = Math.abs(cutDepth);
+            const finalDepth = surfaceZ - totalCutDist;
             const step = Math.abs(depthPerPass);
 
-            if (!multiDepth || step <= 0 || Math.abs(finalDepth) <= step) {
+            if (!multiDepth || step <= 0 || totalCutDist <= step) {
                 return [finalDepth]; // Single pass
             }
 
             const levels = [];
-            let currentDepth = 0;
+            let currentDepth = surfaceZ;
 
             // Loop while currentDepth is greater than (less negative than) finalDepth
             while (currentDepth - step > finalDepth - EPSILON) {
@@ -1282,10 +1282,15 @@
             // Transform Values
             const transforms = this.getTransforms();
 
+            const stock = this.settings.machine.stock || {};
+            const isBedZero = stock.zeroReference && stock.zeroReference !== 'material';
+            const surfaceZ = isBedZero ? (stock.thickness || 0) : 0;
+
             const depthLevels = this.calculateDepthLevels(
                 params.cutDepth,
                 params.depthPerPass,
                 params.multiDepth,
+                surfaceZ,
                 PRECISION
             );
 
@@ -1322,9 +1327,10 @@
 
                 // Global Settings
                 machine: {
-                    safeZ: machine.heights.safeZ,
-                    travelZ: machine.heights.travelZ,
-                    feedHeight: machine.heights.feedHeight,
+                    surfaceZ: surfaceZ,
+                    safeZ: machine.heights.safeZ + surfaceZ,
+                    travelZ: machine.heights.travelZ + surfaceZ,
+                    feedHeight: machine.heights.feedHeight + surfaceZ,
                     rapidFeedRate: machine.speeds.rapidFeedRate,
                     maxFeedRate: machine.speeds.maxFeedRate,
                     spindleSpeed: machine.speeds.spindleSpeed,

@@ -1,6 +1,9 @@
-# EasyTrace5000 - Browser-Based PCB CAM Tool
+# EasyCAM5000 - Browser-Based CAM Tools
 
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg) ![Status: Active](https://img.shields.io/badge/status-active-success.svg) ![Tech: VanillaJS](https://img.shields.io/badge/tech-Vanilla_JS-yellow.svg) ![Tech: WebAssembly](https://img.shields.io/badge/tech-WebAssembly-blueviolet.svg) ![Accessibility: WCAG 2.1 AA Partial](https://img.shields.io/badge/accessibility-WCAG_2.1_AA_partial-yellow.svg)
+
+
+## EasyTrace5000
 
 EasyTrace5000 is a browser-based CAM workspace that converts standard fabrication files (Gerber, Excellon, SVG) into G-code for CNC milling and precision SVG/PNG files for Laser processing. It runs entirely client-side on any browser, removing the need for software installation or cloud processing.
 
@@ -8,10 +11,20 @@ EasyTrace5000 is a browser-based CAM workspace that converts standard fabricatio
   <img src="./images/EasyTrace5000_workspace.webp" width="830" height="467" alt="EasyTrace5000 Workspace screenshot">
 </div>
 
-## Try it!
-
-* **[→ Open Workspace ←](https://cam.eltryus.design/easytrace5000/)** - Runs entirely in your browser. No installation, accounts or cloud dependencies.
+* **[Open EasyTrace5000](https://cam.eltryus.design/easytrace5000/)** - Runs entirely in your browser. No installation, accounts or cloud dependencies.
 * **[Extra Documentation](https://cam.eltryus.design/easytrace5000/doc/)** - Guides for CNC milling and accessibility features, plus a laser pipeline preview.
+
+
+## EasyShape5000
+
+EasyShape5000 is a browser-based CAM workspace for CNC router milling of SVG files. Currently it has 3x 2D operations (Profile, Pocket and Drilling) and more are planned, including 3D operations (V-Carving & 3D Relief Maps). It shares all foundations with EasyTrace5000 but with it's own UI/tweaked work-flow and operation handlers.
+
+<div align="center">
+  <img src="./images/EasyShape5000_workspace.webp" width="830" height="467" alt="EasyShape5000 Workspace screenshot">
+</div>
+
+* **[Open EasyShape5000](https://cam.eltryus.design/easyshape5000/)** - Runs entirely in your browser. No installation, accounts or cloud dependencies.
+* **[Extra Documentation](https://cam.eltryus.design/easyshape5000/doc/)** - Guides for the new UI and it's own operations targeting 2.5-3D CNC milling.
 
 ## Key Features
 
@@ -63,9 +76,9 @@ EasyTrace5000 is a browser-based CAM workspace that converts standard fabricatio
 * **Rendering:** Custom 2D Canvas-based layer renderer with an overlay system for grids, rulers, and origin points.
 * **File Parsing:** Native parsers for Gerber (RS-274X), Excellon and SVG formats.
 * **Toolpath Generation:** A three-stage pipeline (Translate, Optimize, Process) to convert geometry into machine-ready plans.
-* **Post-Processors:** GRBL, Makera (Experimental), GrblHAL (Experimental), Marlin (Experimental), LinuxCNC (Experimental), UCCNC (Experimental), Mach3 (Experimental), Roland RML (VERY Experimental).
+* **Post-Processors:** GRBL, Makera (Less Experimental), GrblHAL (Less Experimental), Marlin (Less Experimental), LinuxCNC (Less Experimental), UCCNC (Less Experimental), Mach3 (Less Experimental), Roland RM (Experimental).
 
-Note: All Experimental post-processors need testing. I only have access to GRBL and Roland machines, be extra cautious. Please report successes or issues so I know and can plan accordingly.
+Note: Experimental post-processors need more testing. I only have access to GRBL and Roland machines. I have to assume things are working until someone tell me otherwise so please report issues so I know and can plan accordingly.
 
 ## File Compatibility
 
@@ -140,17 +153,22 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 /
 ├── index.html                            # Eltryus Cam Suite entry
 │
+├── 404.html                              # 
+│
 ├── config.js                             # Configuration and defaults
 │
 ├── cam-core.js                           # Foundation logic
-├── cam-ui.js                             # UI controller
-├── cam-easytrace5000.js                  # Application orchestration
+├── cam-controller.js                     # 
 │
 ├── css/
 │   ├── base.css                          # Foundation styles (reset, variables, etc)
 │   ├── canvas.css                        # Canvas-specific rendering styles
 │   ├── components.css                    # Reusable UI components (buttons, inputs, etc)
-│   ├── layout.css                        # Layout structure (grid, toolbar, etc)
+│   ├── doc.css                           # 
+│   ├── layout-easyshape5000.css          # 
+│   ├── layout-easytrace5000              # 
+│   ├── layout-shared.css                 # Layout structure (grid, toolbar, etc)
+│   ├── modals.css                        # 
 │   └── theme.css                         # Theme system fallback
 │
 ├── easytrace5000/
@@ -160,8 +178,28 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   │   ├── accessibility.html            # Accessibility documentation page (converted from .md)
 │   │   ├── index.html                    # Documentation entry
 │   │   ├── cnc.html                      # CNC pipeline documentation
-│   │   └── laser.html                    # Lase pipeline documentation
-│   └── index.html                        # Main EasyTrace5000 entry
+│   │   ├── laser.html                    # Lase pipeline documentation
+│   │   ├── operations.html               # Operation documentation
+│   │   └── parameters.html               # Parameter documentation
+│   ├── cam-easytrace5000.js              # 
+│   ├── ui-core-trace.js                  # 
+│   ├── ui-tree-scene-panel.js            # 
+│   ├── ui-trace-operation-panel.js       # 
+│   └── index.html                        # 
+│
+├── easyshape5000/
+│   ├── doc/
+│   │   ├── css/
+│   │   ├── index.html                    # Documentation entry
+│   │   ├── guide.html                    # Work-flow guide
+│   │   ├── operations.html               # Operation documentation
+│   │   └── parameters.html               # Parameter documentation
+│   ├── cam-easyshape5000.js              # 
+│   ├── ui-core-shape.js                  # 
+│   ├── ui-nav-scene-panel.js             # 
+│   ├── ui-shape-buckets-panel.js         # 
+│   ├── ui-shape-operation-panel.js       # 
+│   └── index.html                        # Main EasyShape5000 entry
 │
 ├── themes/
 │   ├── theme-loader.js                   # Theme loading and switching utility
@@ -170,12 +208,23 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │
 ├── utils/
 │   ├── canvas-exporter.js                # SVG export of canvas contents
-│   └── coordinate-system.js              # Coordinate transformations
+│   ├── coordinate-system.js              # 
+│   └── transform-math.js                 # 
+│
+├── input/
+│   ├── canvas-readout.js                 # 
+│   ├── command-manager.js                # 
+│   ├── input-manager.js                  # 
+│   ├── keyboard-manager.js               # 
+│   ├── tool-controller.js                # 
+│   ├── tools-common.js                   # 
+│   └── tools-interactive.js              # 
 │
 ├── ui/
-│   ├── ui-nav-tree-panel.js              # Operations tree (left sidebar)
-│   ├── ui-operation-panel.js             # Properties panel (right sidebar)
+│   ├── ui-base-app.js                    # 
+│   ├── ui-base-operation-panel.js        # 
 │   ├── ui-parameter-manager.js           # Parameter validation
+│   ├── ui-machine-settings.js            # 
 │   ├── ui-controls.js                    # User interaction handlers
 │   ├── ui-status-manager.js              # Status bar and log history manager
 │   ├── ui-tooltip.js                     # Tooltip system
@@ -184,37 +233,47 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │
 ├── operations/
 │   ├── base-operation-handler.js         # Base class for operation handlers
-│   ├── offset-operation-handler.js       # Core offset generation logic
-│   ├── isolation-operation-handler.js    # Isolation routing handler
-│   ├── clearing-operation-handler.js     # Copper clearing handler
-│   ├── cutout-operation-handler.js       # Board cutout handler
 │   ├── drill-operation-handler.js        # Peck/mill drill handler
-│   └── stencil-operation-handler.js      # Solderpaste stencil handler
+│   ├── offset-operation-handler.js       # Core offset generation logic
+│   ├── shape-drill-handler.js            # 
+│   ├── shape-engrave-handler.js          # 
+│   ├── shape-pattern-handler.js          # 
+│   ├── shape-pocket-handler.js           # 
+│   ├── shape-profile-handler.js          # 
+│   ├── shape-relief-handler.js           # 
+│   ├── shape-vcarve-handler.js           # 
+│   ├── trace-clearing-handler.js         # Copper clearing handler
+│   ├── trace-cutout-handler.js           # Board cutout handler
+│   ├── trace-isolation-handler.js        # Isolation routing handler
+│   └── trace-stencil-handler.js          # Solderpaste stencil handler
 │
 ├── geometry/
 │   ├── clipper2z.js                      # Clipper2 WASM factory
 │   ├── clipper2z.wasm                    # Clipper2 WASM binary
 │   ├── geometry-clipper-wrapper.js       # Clipper2 interface
-│   ├── geometry-processor.js             # Boolean operations
 │   ├── geometry-arc-reconstructor.js     # Post Clipper2 arc recovery
 │   ├── geometry-curve-registry.js        # Curve metadata tracking
 │   ├── geometry-offsetter.js             # Path offsetting
 │   ├── geometry-offsetter-analytic.js    # Analytic path offsetting (under developemnt)
-│   ├── geometry-utils-math.js            # Analytic path offsetting math utils
+│   ├── geometry-processor.js             # Boolean operations
+│   ├── geometry-utils.js                 # Geometry accessory functions
 │   ├── geometry-utils-hatching.js        # Laser Pipeline hatch pattern utils
-│   └── geometry-utils.js                 # Geometry accessory functions
+│   ├── geometry-utils-heightmap.js       # 
+│   ├── geometry-utils-math.js            # Analytic path offsetting math utils (under developemnt)
+│   ├── geometry-utils-relief.js          # 
+│   └── geometry-utils-vcarve.js          # 
 │
 ├── parsers/
 │   ├── parser-core.js                    # Base parser orchestration
 │   ├── parser-gerber.js                  # Gerber RS-274X parser
 │   ├── parser-excellon.js                # Excellon drill parser
 │   ├── parser-svg.js                     # SVG parser
+│   ├── parser-stl.js                     # STL parser
 │   ├── parser-plotter.js                 # Geometry converter
 │   └── primitives.js                     # Geometric data-structures
 │
 ├── renderer/
 │   ├── renderer-core.js                  # 2D Canvas renderer
-│   ├── renderer-interaction.js           # Pan/zoom/measure
 │   ├── renderer-layer.js                 # Layer management
 │   ├── renderer-overlay.js               # Grid/rulers/origin
 │   └── renderer-primitives.js            # Geometry rendering
@@ -238,6 +297,7 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │       ├── UCCNC-processor.js
 │       ├── mach3-processor.js
 │       ├── marlin-processor.js
+│       ├── uccnc-processor.js
 │       └── roland-processor.js           # Independent RML module
 │
 ├── language/
@@ -245,12 +305,13 @@ EasyTrace5000 supports keyboard-only navigation and screen readers. See the [Acc
 │   └── en.json                           # English text strings
 │
 ├── examples/
+│   ├── mesa/                             # Placeholder example for EasyShape5000
 │   ├── exampleSMD1/                      # Sample SMD board files
 │   ├── exampleThroughHole1/              # Sample Through-hole board files
 │   ├── LineTest.svg                      # Precision test pattern
 │   └── 100mmSquare.svg                   # 100*100mm square to check steps/mm
 │
-├── images/                               # Thumbnails and sharing stuff
+├── images/                               # Thumbnails and icons and sharing stuff
 │
 └── clipper2/                             # Clipper2 test page
 ```
@@ -310,7 +371,6 @@ window.getReconstructionRegistry()      // Inspect arc metadata from curve regis
 - Theme import/export
 - Multi-lingual UI
 - Automatic tool change (M6) support
-- Improved toolpath optimization
 - 3D G-code preview/simulation
 - Multi-sided PCB support
 - Service Worker for offline caching/work
@@ -406,4 +466,4 @@ While I'm not actively seeking major code contributions, please help me test it 
 
 ---
 
-**Status**: Active Development | **Version**: 1.3.3 | **Platform**: Client-side Web
+**Status**: Active Development | **Version**: 1.4.2 | **Platform**: Client-side Web

@@ -4,6 +4,23 @@ All notable changes to the **EasyTrace5000** project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-07-01
+
+### Fixed
+- **Tabs Are Back:** Tab toolpaths are correctly lifted/plunged again. Distribution still not great.
+- **Tabs Width:** Tab physical length parameter is extended by tool diameter.
+- **Absolute Z0:** EasyShape5000's toggle for Z0 on top or bottom of stock sets 0 corectly.
+- **Doc CSS & SVG Sprite:** Deployment had a few quirks that have been taken care of.
+- **ARIA Tags:** Attempt to fix some misplaced/wrong tags.
+
+### Changed
+- **Empty Buckets:** After offset and preview objects are deleted from a bucket, the bucket is also deleted automatically.
+- **More EasyShape5000:** Propagated more references, started updating README for EasyCAM5000 renaming.
+
+### Known Problems
+- **Themes & Colors:** Most transparency was removed from all rendering layers which caused colors to shift. Some things may look a bit off in the near future.
+
+
 ## [1.4.1] - 2026-06-28
 
 ### Added

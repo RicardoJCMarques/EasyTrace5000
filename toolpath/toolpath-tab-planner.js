@@ -34,15 +34,20 @@
             const tabWidth = context.strategy.cutout.tabWidth;
             const tabCount = context.strategy.cutout.tabs;
 
-            if (tabCount <= 0 || !geometrySource.points) return [];
+            // Pull the tool diameter from the context
+            const toolDiameter = context.tool.diameter;
 
+            if (tabCount <= 0 || !geometrySource.points) return []; // REVIEW - Change this to the begining of the method?
+
+            // Add the tool diameter to the requested width to create the physical gap
+            const compensatedTabWidth = tabWidth + toolDiameter;
             const totalLength = this.calculateTotalLength(geometrySource);
-            if (totalLength <= PRECISION || totalLength < tabWidth * tabCount) {
+            if (totalLength <= PRECISION || totalLength < compensatedTabWidth * tabCount) {
                 return [];
             }
 
-            // Calculate Tab Distance Ranges {start, end}
-            const tabRanges = this.calculateTabRanges(geometrySource, tabCount, tabWidth, totalLength);
+            // Pass the compensated width down into the range calculator
+            const tabRanges = this.calculateTabRanges(geometrySource, tabCount, compensatedTabWidth, totalLength);
 
             // Split Geometry using Tab Ranges (with transforms for correct G-code output)
             const motionCommands = this.splitGeometryByRanges(geometrySource, tabRanges, context.cutting.feedRate, context.transforms);

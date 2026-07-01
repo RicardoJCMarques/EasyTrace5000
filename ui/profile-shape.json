@@ -705,7 +705,7 @@
       "stage": "strategy",
       "category": "tabs",
       "operationType": "profile",
-      "default": 2,
+      "default": 3,
       "min": 0.5,
       "max": 10,
       "step": 0.5
